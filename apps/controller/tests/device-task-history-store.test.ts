@@ -56,6 +56,29 @@ describe("DeviceTaskHistoryStore", () => {
     expect(entries[199].taskId).toBe("t10");
   });
 
+  it("serializes concurrent appends without losing entries", async () => {
+    const count = 20;
+    await Promise.all(
+      Array.from({ length: count }, (_, i) =>
+        store.append({
+          deviceId: "d1",
+          taskId: `t${i}`,
+          task: "x",
+          dispatchedAt: "2026-04-16T00:00:00.000Z",
+          completedAt: "2026-04-16T00:00:00.000Z",
+          result: { taskId: `t${i}`, success: true },
+        }),
+      ),
+    );
+    const entries = await store.list();
+    expect(entries).toHaveLength(count);
+    const ids = new Set(entries.map((e) => e.taskId));
+    expect(ids.size).toBe(count);
+    for (let i = 0; i < count; i++) {
+      expect(ids.has(`t${i}`)).toBe(true);
+    }
+  });
+
   it("getByTaskId returns the matching entry or null", async () => {
     await store.append({
       deviceId: "d1",

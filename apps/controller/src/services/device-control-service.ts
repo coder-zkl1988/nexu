@@ -5,6 +5,7 @@ import type {
   DeviceListResponse,
   TaskResult,
 } from "@nexu/shared";
+import { logger } from "../lib/logger.js";
 import type { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 
@@ -111,15 +112,27 @@ export class DeviceControlService {
       { deviceId, task: body.task, timeoutMs: taskTimeout },
       taskTimeout + 5_000,
     );
-    await this.taskHistoryStore.append({
-      deviceId,
-      taskId: result.taskId,
-      task: body.task,
-      maxSteps: body.maxSteps,
-      dispatchedAt,
-      completedAt: new Date().toISOString(),
-      result,
-    });
+    try {
+      await this.taskHistoryStore.append({
+        deviceId,
+        taskId: result.taskId,
+        task: body.task,
+        maxSteps: body.maxSteps,
+        dispatchedAt,
+        completedAt: new Date().toISOString(),
+        result,
+      });
+    } catch (err) {
+      // History persistence is best-effort; never fail the user's task.
+      logger.warn(
+        {
+          error: err instanceof Error ? err.message : String(err),
+          deviceId,
+          taskId: result.taskId,
+        },
+        "failed to persist device task history",
+      );
+    }
     return { result };
   }
 

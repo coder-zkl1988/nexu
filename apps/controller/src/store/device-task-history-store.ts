@@ -9,6 +9,9 @@ const MAX_ENTRIES = 200;
 
 export class DeviceTaskHistoryStore {
   private readonly store: LowDbStore<DeviceTaskHistoryIndex>;
+  // Serializes concurrent append() calls so that read -> compute -> write
+  // in LowDbStore.update is not interleaved and no entry is lost.
+  private appendQueue: Promise<void> = Promise.resolve();
 
   constructor(filePath: string) {
     this.store = new LowDbStore<DeviceTaskHistoryIndex>(
@@ -29,9 +32,16 @@ export class DeviceTaskHistoryStore {
   }
 
   async append(entry: DeviceTaskHistoryEntry): Promise<void> {
-    await this.store.update((current) => ({
-      ...current,
-      entries: [entry, ...current.entries].slice(0, MAX_ENTRIES),
-    }));
+    const next = this.appendQueue.then(async () => {
+      await this.store.update((current) => ({
+        ...current,
+        entries: [entry, ...current.entries].slice(0, MAX_ENTRIES),
+      }));
+    });
+    // Swallow errors in the chain so one failed append does not poison
+    // the queue for subsequent appends. The original promise still rejects
+    // for the caller.
+    this.appendQueue = next.catch(() => undefined);
+    return next;
   }
 }
