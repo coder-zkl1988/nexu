@@ -717,6 +717,7 @@ const en = {
   "channels.botPicker.placeholder": "Select a bot…",
   "channels.botPicker.emptyHint":
     "No bots available. Create one on the Bots page.",
+  "channels.errors.botRequired": "Please select a bot before connecting.",
 
   // ── Channel Connect Modal ──
   "modal.connect": "Connect {{name}}",

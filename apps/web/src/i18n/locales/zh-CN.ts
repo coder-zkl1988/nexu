@@ -677,6 +677,7 @@ const zhCN = {
   "channels.botPicker.label": "分配给机器人",
   "channels.botPicker.placeholder": "请选择机器人…",
   "channels.botPicker.emptyHint": "暂无机器人。请先在「Bots」页面创建一个。",
+  "channels.errors.botRequired": "连接前请先选择一个机器人。",
 
   // ── Channel Connect Modal ──
   "modal.connect": "连接 {{name}}",
