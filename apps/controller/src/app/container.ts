@@ -19,6 +19,7 @@ import {
 } from "../runtime/state.js";
 import { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js";
 import { AgentService } from "../services/agent-service.js";
+import { DeviceControlService } from "../services/device-control-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
 import { ChannelFallbackService } from "../services/channel-fallback-service.js";
@@ -66,6 +67,7 @@ export interface ControllerContainer {
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
+  deviceControlService: DeviceControlService;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   runtimeState: ControllerRuntimeState;
@@ -151,6 +153,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawSyncService,
   );
   const githubStarVerificationService = new GithubStarVerificationService();
+  const deviceControlService = new DeviceControlService(configStore);
 
   // Wire cloud state change callback to sync refreshed cloud inventory without
   // auto-switching the default model during startup or first-channel connect.
@@ -202,6 +205,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawAuthService,
     quotaFallbackService,
     githubStarVerificationService,
+    deviceControlService,
     wsClient,
     gatewayService,
     configStore,
