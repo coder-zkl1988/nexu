@@ -2876,6 +2876,20 @@ export class NexuConfigStore {
     return runtime;
   }
 
+  async setDeviceControlConfig(patch: {
+    enabled?: boolean;
+    wsPort?: number;
+    rpcPort?: number;
+  }): Promise<void> {
+    await this.store.update((config) => ({
+      ...config,
+      deviceControl: {
+        ...config.deviceControl,
+        ...patch,
+      },
+    }));
+  }
+
   async getModelProviderConfigDocument(): Promise<PersistedModelsConfig> {
     const config = await this.getConfig();
     return config.models;

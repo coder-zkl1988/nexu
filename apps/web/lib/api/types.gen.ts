@@ -3823,6 +3823,28 @@ export type PutApiV1RuntimeConfigResponses = {
 
 export type PutApiV1RuntimeConfigResponse = PutApiV1RuntimeConfigResponses[keyof PutApiV1RuntimeConfigResponses];
 
+export type PatchApiV1RuntimeConfigDeviceControlData = {
+    body?: {
+        enabled?: boolean;
+        wsPort?: number;
+        rpcPort?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/device-control';
+};
+
+export type PatchApiV1RuntimeConfigDeviceControlResponses = {
+    /**
+     * Updated
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PatchApiV1RuntimeConfigDeviceControlResponse = PatchApiV1RuntimeConfigDeviceControlResponses[keyof PatchApiV1RuntimeConfigDeviceControlResponses];
+
 export type GetApiV1WorkspaceTemplatesData = {
     body?: never;
     path?: never;

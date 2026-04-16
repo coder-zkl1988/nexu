@@ -59,4 +59,39 @@ export function registerRuntimeConfigRoutes(
       return c.json({ runtime }, 200);
     },
   );
+
+  const deviceControlPatchSchema = z.object({
+    enabled: z.boolean().optional(),
+    wsPort: z.number().int().positive().optional(),
+    rpcPort: z.number().int().positive().optional(),
+  });
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/runtime-config/device-control",
+      tags: ["Runtime Config"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: deviceControlPatchSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: z.object({ ok: z.boolean() }) },
+          },
+          description: "Updated",
+        },
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      await container.configStore.setDeviceControlConfig(body);
+      await container.openclawSyncService.syncAll();
+      return c.json({ ok: true }, 200);
+    },
+  );
 }
