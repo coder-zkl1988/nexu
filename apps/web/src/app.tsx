@@ -5,8 +5,10 @@ import { AuthLayout } from "./layouts/auth-layout";
 import { InviteGuardLayout } from "./layouts/invite-guard-layout";
 import { WorkspaceLayout } from "./layouts/workspace-layout";
 import { ChannelsPage } from "./pages/channels";
-import { DevicesPage } from "./pages/devices/index";
 import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
+import { DevicesPage } from "./pages/devices/index";
+import { DeviceTaskDetailPage } from "./pages/devices/task-detail-page";
+import { DeviceTaskHistoryPage } from "./pages/devices/task-history-page";
 import { FeishuBindPage } from "./pages/feishu-bind";
 import { HomePage } from "./pages/home";
 import { IntegrationsPage } from "./pages/integrations";
@@ -73,6 +75,14 @@ export function App() {
               />
               <Route path="/workspace/channels" element={<ChannelsPage />} />
               <Route path="/workspace/devices" element={<DevicesPage />} />
+              <Route
+                path="/workspace/devices/tasks"
+                element={<DeviceTaskHistoryPage />}
+              />
+              <Route
+                path="/workspace/devices/tasks/:id"
+                element={<DeviceTaskDetailPage />}
+              />
               <Route
                 path="/workspace/integrations"
                 element={<IntegrationsPage />}
