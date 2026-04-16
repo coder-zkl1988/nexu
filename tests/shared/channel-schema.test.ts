@@ -3,7 +3,7 @@ import {
   connectFeishuSchema,
   connectWechatSchema,
   updateChannelBotSchema,
-} from "./channel.js";
+} from "../../packages/shared/src/schemas/channel.js";
 
 describe("connectFeishuSchema", () => {
   it("要求 botId", () => {
