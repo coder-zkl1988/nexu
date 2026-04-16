@@ -88,6 +88,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
+import { DeviceControlSettingsSection } from "./devices/settings-section";
 import { markSetupComplete } from "./welcome";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -1176,6 +1177,7 @@ function _GeneralSettings() {
           </div>
         </div>
       </div>
+      <DeviceControlSettingsSection />
     </div>
   );
 }
