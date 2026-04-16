@@ -1088,9 +1088,8 @@ export function registerChannelRoutes(
     }),
     async (c) => {
       try {
-        const { accountId } = c.req.valid("json");
         return c.json(
-          await container.channelService.connectWechat(accountId),
+          await container.channelService.connectWechat(c.req.valid("json")),
           200,
         );
       } catch (error) {

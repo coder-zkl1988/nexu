@@ -261,16 +261,17 @@ describe("WeChat connect flow (API-level)", () => {
     const resp = await app.request("/api/v1/channels/wechat/connect", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: "abc123-im-bot" }),
+      body: JSON.stringify({ accountId: "abc123-im-bot", botId: "bot-1" }),
     });
     const elapsed = Date.now() - start;
 
     expect(resp.status).toBe(200);
     // Must return in under 1 second — proves no readiness polling
     expect(elapsed).toBeLessThan(1000);
-    expect(container.channelService.connectWechat).toHaveBeenCalledWith(
-      "abc123-im-bot",
-    );
+    expect(container.channelService.connectWechat).toHaveBeenCalledWith({
+      accountId: "abc123-im-bot",
+      botId: "bot-1",
+    });
   });
 
   // ── Disconnect ──────────────────────────────────────────────
@@ -447,7 +448,7 @@ describe("WeChat connect flow (API-level)", () => {
     const connectResp = await app.request("/api/v1/channels/wechat/connect", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: waitData.accountId }),
+      body: JSON.stringify({ accountId: waitData.accountId, botId: "bot-1" }),
     });
     expect(connectResp.status).toBe(200);
 

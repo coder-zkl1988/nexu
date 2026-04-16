@@ -22,6 +22,7 @@ import type {
   ConnectQqbotInput,
   ConnectSlackInput,
   ConnectTelegramInput,
+  ConnectWechatInput,
   ConnectWecomInput,
 } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
@@ -948,8 +949,9 @@ export class ChannelService {
     return channel;
   }
 
-  async connectWechat(accountId: string) {
-    const channel = await this.configStore.connectWechat({ accountId });
+  async connectWechat(input: ConnectWechatInput) {
+    const { accountId, botId } = input;
+    const channel = await this.configStore.connectWechat({ accountId, botId });
     logger.info(
       {
         accountId,

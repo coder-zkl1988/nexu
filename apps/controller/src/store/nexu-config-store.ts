@@ -1201,8 +1201,14 @@ export class NexuConfigStore {
     return channel;
   }
 
-  async connectWechat(input: { accountId: string }): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+  async connectWechat(input: {
+    accountId: string;
+    botId: string;
+  }): Promise<ChannelResponse> {
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1340,7 +1346,10 @@ export class NexuConfigStore {
   }
 
   async connectFeishu(input: ConnectFeishuInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
