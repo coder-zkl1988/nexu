@@ -6,6 +6,8 @@ import { InviteGuardLayout } from "./layouts/invite-guard-layout";
 import { WorkspaceLayout } from "./layouts/workspace-layout";
 import { ChannelsPage } from "./pages/channels";
 import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
+import ExpertDetailPage from "./pages/expert-detail";
+import ExpertsPage from "./pages/experts";
 import { FeishuBindPage } from "./pages/feishu-bind";
 import { HomePage } from "./pages/home";
 import { IntegrationsPage } from "./pages/integrations";
@@ -30,6 +32,7 @@ function DocumentTitleSync() {
       "/workspace/integrations": t("title.integrations"),
       "/workspace/rewards": t("title.rewards"),
       "/workspace/skills": t("title.skills"),
+      "/workspace/experts": t("title.experts"),
       "/workspace/settings": t("title.settings"),
       "/workspace/models": t("title.settings"),
       "/feishu/bind": t("title.linkFeishu"),
@@ -81,6 +84,11 @@ export function App() {
               <Route
                 path="/workspace/skills/:slug"
                 element={<CommunitySkillDetailPage />}
+              />
+              <Route path="/workspace/experts" element={<ExpertsPage />} />
+              <Route
+                path="/workspace/experts/:slug"
+                element={<ExpertDetailPage />}
               />
               <Route
                 path="/workspace/channels/slack/callback"

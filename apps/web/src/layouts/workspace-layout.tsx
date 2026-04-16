@@ -37,6 +37,7 @@ import {
   ScrollText,
   Settings,
   Sparkles,
+  Users,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -573,6 +574,7 @@ function WorkspaceLayoutInner() {
     location.pathname === "/workspace/home";
   const isRewardsPage = location.pathname.includes("/rewards");
   const isSkillsPage = location.pathname.includes("/skills");
+  const isExpertsPage = location.pathname.includes("/experts");
   const isModelsPage =
     location.pathname.includes("/models") ||
     location.pathname.includes("/settings");
@@ -627,6 +629,7 @@ function WorkspaceLayoutInner() {
     !isHomePage &&
     !isRewardsPage &&
     !isSkillsPage &&
+    !isExpertsPage &&
     !isModelsPage &&
     !selectedSessionId;
 
@@ -639,20 +642,24 @@ function WorkspaceLayoutInner() {
       ? t("layout.mobile.rewards")
       : isSkillsPage
         ? t("layout.mobile.skills")
-        : isModelsPage
-          ? t("layout.mobile.settings")
-          : selectedSession?.title || t("layout.mobile.conversations");
+        : isExpertsPage
+          ? t("layout.mobile.experts")
+          : isModelsPage
+            ? t("layout.mobile.settings")
+            : selectedSession?.title || t("layout.mobile.conversations");
   const mobileSubtitle = isHomePage
     ? t("layout.mobile.homeSubtitle")
     : isRewardsPage
       ? t("layout.mobile.rewardsSubtitle")
       : isSkillsPage
         ? t("layout.mobile.skillsSubtitle")
-        : isModelsPage
-          ? t("layout.mobile.settingsSubtitle")
-          : selectedSession
-            ? `${getPlatformLabel(selectedSession.channelType)} · ${formatTime(selectedSession.lastTime)}`
-            : `${sessions.length} conversation${sessions.length === 1 ? "" : "s"}`;
+        : isExpertsPage
+          ? t("layout.mobile.expertsSubtitle")
+          : isModelsPage
+            ? t("layout.mobile.settingsSubtitle")
+            : selectedSession
+              ? `${getPlatformLabel(selectedSession.channelType)} · ${formatTime(selectedSession.lastTime)}`
+              : `${sessions.length} conversation${sessions.length === 1 ? "" : "s"}`;
   const isWindowsDesktopClient = isDesktopClient && isWindowsDesktopPlatform();
   const isMacDesktopClient = isDesktopClient && isMacDesktopPlatform();
   const desktopGlassTint = isWindowsDesktopClient
@@ -846,6 +853,20 @@ function WorkspaceLayoutInner() {
                   {installedSkillsCount}
                 </span>
               )}
+            </Link>
+            <Link
+              to="/workspace/experts"
+              onClick={() => {
+                track("workspace_experts_click");
+                track("workspace_sidebar_click", { target: "experts" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isExpertsPage && "nav-item-active",
+              )}
+            >
+              <Users size={16} className="shrink-0" />
+              {t("layout.nav.experts")}
             </Link>
           </div>
 
@@ -1377,6 +1398,25 @@ function WorkspaceLayoutInner() {
                     <span className="flex items-center gap-2">
                       <Sparkles size={14} />
                       {t("layout.nav.skills")}
+                    </span>
+                  </Link>
+                  <Link
+                    to="/workspace/experts"
+                    onClick={() => {
+                      track("workspace_experts_click");
+                      track("workspace_sidebar_click", { target: "experts" });
+                      setMobileDrawerOpen(false);
+                    }}
+                    className={cn(
+                      "flex items-center justify-between w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
+                      isExpertsPage
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users size={14} />
+                      {t("layout.nav.experts")}
                     </span>
                   </Link>
                   <Link
