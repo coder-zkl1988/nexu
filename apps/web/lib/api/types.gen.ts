@@ -1492,6 +1492,7 @@ export type PostApiV1ChannelsFeishuConnectData = {
         appSecret: string;
         connectionMode?: 'websocket' | 'webhook';
         verificationToken?: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1907,6 +1908,54 @@ export type DeleteApiV1ChannelsByChannelIdResponses = {
 
 export type DeleteApiV1ChannelsByChannelIdResponse = DeleteApiV1ChannelsByChannelIdResponses[keyof DeleteApiV1ChannelsByChannelIdResponses];
 
+export type PatchApiV1ChannelsByChannelIdData = {
+    body?: {
+        botId: string;
+    };
+    path: {
+        channelId: string;
+    };
+    query?: never;
+    url: '/api/v1/channels/{channelId}';
+};
+
+export type PatchApiV1ChannelsByChannelIdErrors = {
+    /**
+     * Invalid botId
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Channel not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdError = PatchApiV1ChannelsByChannelIdErrors[keyof PatchApiV1ChannelsByChannelIdErrors];
+
+export type PatchApiV1ChannelsByChannelIdResponses = {
+    /**
+     * Updated channel
+     */
+    200: {
+        id: string;
+        botId: string;
+        channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
+        accountId: string;
+        status: 'pending' | 'connected' | 'disconnected' | 'error';
+        teamName: string;
+        appId?: string;
+        botUserId?: string;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdResponse = PatchApiV1ChannelsByChannelIdResponses[keyof PatchApiV1ChannelsByChannelIdResponses];
+
 export type PostApiV1ChannelsWhatsappQrStartData = {
     body?: never;
     path?: never;
@@ -2079,6 +2128,7 @@ export type PostApiV1ChannelsWechatQrWaitResponse = PostApiV1ChannelsWechatQrWai
 export type PostApiV1ChannelsWechatConnectData = {
     body: {
         accountId: string;
+        botId: string;
     };
     path?: never;
     query?: never;

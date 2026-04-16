@@ -729,6 +729,35 @@ export class ChannelService {
     return this.configStore.getChannel(channelId);
   }
 
+  async updateChannelBot(
+    channelId: string,
+    botId: string,
+  ): Promise<ChannelResponse> {
+    const channel = await this.configStore.getChannel(channelId);
+    if (!channel) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+
+    const bot = await this.configStore.getBot(botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${botId}`);
+    }
+
+    const updated = await this.configStore.updateChannel(channelId, { botId });
+    await this.syncService.syncAll();
+    logger.info(
+      {
+        channelId: updated.id,
+        channelType: updated.channelType,
+        accountId: updated.accountId,
+        botId: updated.botId,
+        workspacePath: this.getWorkspacePath(updated.botId),
+      },
+      "channel_update_bot_success",
+    );
+    return updated;
+  }
+
   private getWorkspacePath(botId: string): string {
     return path.join(this.env.openclawStateDir, "agents", botId);
   }
