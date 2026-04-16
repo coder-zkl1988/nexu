@@ -4,8 +4,9 @@ import type { ControllerEnv } from "../app/env.js";
 
 const BUNDLED_PLUGIN_IDS = new Set([
   "dingtalk-connector",
-  "wecom",
+  "lobster-device-control",
   "openclaw-qqbot",
+  "wecom",
 ]);
 
 export class OpenClawRuntimePluginWriter {

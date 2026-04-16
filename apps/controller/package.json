@@ -10,7 +10,8 @@
     "bundle-runtime-plugins": "node scripts/bundle-runtime-plugins.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests",
-    "generate-openapi": "NODE_OPTIONS=--conditions=development tsx scripts/generate-openapi.ts"
+    "generate-openapi": "NODE_OPTIONS=--conditions=development tsx scripts/generate-openapi.ts",
+    "prepare:device-control": "node scripts/prepare-device-control-plugin.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
