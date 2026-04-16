@@ -331,6 +331,90 @@ describe("ExperthubCatalogManager", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("refresh() rejects tarball with parent-directory traversal", async () => {
+    // Build a malicious tarball that contains "../escape.txt" so extraction
+    // would, without guardrails, write outside the staging directory. We
+    // build this by creating the escape file in a tmp root and telling tar
+    // to archive it via a relative path that starts with "..".
+    const tarRoot = path.join(dir, "evil-root");
+    const innerDir = path.join(tarRoot, "inner");
+    await mkdir(innerDir, { recursive: true });
+    await writeFile(path.join(tarRoot, "escape.txt"), "pwned", "utf8");
+    const tarPath = path.join(dir, "evil.tar.gz");
+    await execFileAsync("tar", [
+      "-czf",
+      tarPath,
+      "-C",
+      innerDir,
+      "../escape.txt",
+    ]);
+    const tarballBytes = await readFile(tarPath);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: true,
+          json: {
+            version: "evil-v1",
+            updatedAt: "2026-04-17T00:00:00Z",
+            count: 1,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({ ok: true, body: new Uint8Array(tarballBytes) }),
+      );
+
+    const mgr = new ExperthubCatalogManager({
+      cacheDir,
+      ledgerPath,
+      staticDir,
+      versionUrl: "http://t/v.json",
+      downloadUrl: "http://t/t.tar.gz",
+      fetch: fetchMock,
+    });
+
+    const meta = await mgr.refresh();
+    // Traversal must be rejected — refresh returns null and no meta is persisted.
+    expect(meta).toBeNull();
+    expect(await mgr.getMeta()).toBeNull();
+  });
+
+  it("refresh() dedupes concurrent calls via in-flight lock", async () => {
+    // Use a fetch mock that delays its first resolution so both refresh()
+    // calls overlap. The second caller must attach to the in-flight promise
+    // rather than kick off a fresh fetch.
+    const fetchMock = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(
+              mockResponse({
+                ok: false,
+                status: 503,
+              }),
+            );
+          }, 50);
+        }),
+    );
+
+    const mgr = new ExperthubCatalogManager({
+      cacheDir,
+      ledgerPath,
+      staticDir,
+      versionUrl: "http://t/v.json",
+      downloadUrl: "http://t/t.tar.gz",
+      fetch: fetchMock,
+    });
+
+    const [a, b] = await Promise.all([mgr.refresh(), mgr.refresh()]);
+    expect(a).toBeNull();
+    expect(b).toBeNull();
+    // Only one version.json fetch should have been issued across both calls.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("managed experts override bundled with the same slug", async () => {
     // Bundle an "override-me" in the static dir.
     await writeManifest(staticDir, "override-me", { name: "Bundled Name" });

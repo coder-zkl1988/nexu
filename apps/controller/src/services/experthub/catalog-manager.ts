@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -8,6 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { open, rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -65,6 +67,41 @@ function tryParseManifest(
   return parsed.data;
 }
 
+async function validateTarballEntries(archivePath: string): Promise<void> {
+  // Guard against path-traversal entries (e.g. `../../etc/passwd`) and
+  // absolute paths in untrusted remote tarballs. We enumerate entries via
+  // `tar -tzf` and reject the archive before extraction if any entry is
+  // unsafe.
+  const toPosixPath = (p: string): string => p.replace(/\\/g, "/");
+  const listArgs = ["-tzf", toPosixPath(archivePath)];
+  let stdout: string;
+  if (process.platform === "win32") {
+    try {
+      const result = await execFileAsync("tar", ["--force-local", ...listArgs]);
+      stdout = result.stdout;
+    } catch {
+      const result = await execFileAsync("tar", listArgs);
+      stdout = result.stdout;
+    }
+  } else {
+    const result = await execFileAsync("tar", listArgs);
+    stdout = result.stdout;
+  }
+  const entries = stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const entry of entries) {
+    if (entry.startsWith("/") || /^[A-Za-z]:[\\/]/.test(entry)) {
+      throw new Error(`Tarball contains absolute path: ${entry}`);
+    }
+    const segments = entry.split(/[\\/]/);
+    if (segments.includes("..")) {
+      throw new Error(`Tarball contains parent-directory traversal: ${entry}`);
+    }
+  }
+}
+
 async function extractTarball(
   archivePath: string,
   destDir: string,
@@ -73,6 +110,7 @@ async function extractTarball(
   // npm `tar` dependency). GNU tar on Windows (Git Bash's tar.exe) needs
   // `--force-local` for paths with drive letters and rejects backslashes,
   // while bsdtar (System32) does not accept `--force-local`.
+  await validateTarballEntries(archivePath);
   const toPosixPath = (p: string): string => p.replace(/\\/g, "/");
   const baseArgs = [
     "-xzf",
@@ -107,6 +145,7 @@ export class ExperthubCatalogManager {
   private readonly downloadUrl: string;
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly log: ExperthubLogFn;
+  private refreshInFlight: Promise<CatalogMeta | null> | null = null;
 
   constructor(opts: ExperthubCatalogManagerOptions) {
     this.cacheDir = opts.cacheDir;
@@ -152,6 +191,18 @@ export class ExperthubCatalogManager {
   // ---- Remote refresh ---------------------------------------------------
 
   async refresh(): Promise<CatalogMeta | null> {
+    // Single-flight: dedupe concurrent refresh() calls so we don't fetch,
+    // download, and extract the same tarball in parallel.
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+    this.refreshInFlight = this.refreshInternal().finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
+  }
+
+  private async refreshInternal(): Promise<CatalogMeta | null> {
     const remote = await this.fetchRemoteVersion();
     if (!remote) {
       return null;
@@ -239,9 +290,18 @@ export class ExperthubCatalogManager {
   }
 
   async writeLedger(ledger: ExpertLedger): Promise<void> {
-    const tmpPath = `${this.ledgerPath}.tmp`;
-    writeFileSync(tmpPath, JSON.stringify(ledger, null, 2), "utf8");
-    renameSync(tmpPath, this.ledgerPath);
+    // Unique tmp suffix prevents concurrent writers from clobbering each
+    // other's tmp file. fsync before rename guarantees the bytes are on
+    // disk before we atomically swap in the new ledger.
+    const tmpPath = `${this.ledgerPath}.tmp-${randomUUID()}`;
+    const fh = await open(tmpPath, "w");
+    try {
+      await fh.writeFile(JSON.stringify(ledger, null, 2));
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    await rename(tmpPath, this.ledgerPath);
   }
 
   // ---- Internals --------------------------------------------------------
