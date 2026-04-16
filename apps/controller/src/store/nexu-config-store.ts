@@ -639,6 +639,11 @@ export class NexuConfigStore {
         desktop: {
           analyticsEnabled: true,
         },
+        deviceControl: {
+          enabled: false,
+          wsPort: 18790,
+          rpcPort: 18801,
+        },
         secrets: {},
       }),
     );

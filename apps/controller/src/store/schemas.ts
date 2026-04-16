@@ -562,6 +562,13 @@ const nexuConfigObjectSchema = z.object({
     })
     .catchall(z.unknown())
     .default({}),
+  deviceControl: z
+    .object({
+      enabled: z.boolean().default(false),
+      wsPort: z.number().int().positive().default(18790),
+      rpcPort: z.number().int().positive().default(18801),
+    })
+    .default({ enabled: false, wsPort: 18790, rpcPort: 18801 }),
   secrets: z.record(z.string(), z.string()).default({}),
 });
 
@@ -643,6 +650,11 @@ export const nexuConfigSchema = z.preprocess((input) => {
             : {}),
         }
       : {},
+    deviceControl:
+      typeof candidate.deviceControl === "object" &&
+      candidate.deviceControl !== null
+        ? candidate.deviceControl
+        : {},
     secrets:
       typeof candidate.secrets === "object" && candidate.secrets !== null
         ? candidate.secrets
