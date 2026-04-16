@@ -972,6 +972,7 @@ export class NexuConfigStore {
     systemPrompt?: string;
     modelId?: string;
     poolId?: string;
+    expertSlug?: string | null;
   }): Promise<BotResponse> {
     const createdAt = now();
     const bot: BotResponse = {
@@ -982,6 +983,7 @@ export class NexuConfigStore {
       status: "active",
       modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
       systemPrompt: input.systemPrompt ?? null,
+      expertSlug: input.expertSlug ?? null,
       createdAt,
       updatedAt: createdAt,
     };
