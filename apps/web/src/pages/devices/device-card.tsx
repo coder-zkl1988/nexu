@@ -61,7 +61,7 @@ export function DeviceCard({
             )}
           </div>
           <span
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 ${STATUS_TEXT[color]} bg-opacity-10`}
+            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 ${STATUS_TEXT[color]}`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[color]}`} />
             {statusLabel(device.status)}

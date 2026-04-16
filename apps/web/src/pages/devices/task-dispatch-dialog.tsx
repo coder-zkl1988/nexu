@@ -1,5 +1,4 @@
-import { useState } from "react";
-import "@/lib/api";
+import { useId, useState } from "react";
 import { postApiV1DevicesByDeviceIdTasks } from "../../../lib/api/sdk.gen";
 import type { DeviceInfo } from "./device-card";
 
@@ -14,6 +13,7 @@ export function TaskDispatchDialog({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const titleId = useId();
   const [task, setTask] = useState("");
   const [maxSteps, setMaxSteps] = useState(30);
   const [loading, setLoading] = useState(false);
@@ -56,15 +56,17 @@ export function TaskDispatchDialog({
     }
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     if (e.target === e.currentTarget && !loading) {
       onClose();
     }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4"
+    <dialog
+      open
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4 m-0 max-w-none max-h-none w-full h-full border-none bg-transparent"
+      aria-labelledby={titleId}
       onClick={handleBackdropClick}
       onKeyDown={(e) => {
         if (e.key === "Escape" && !loading) onClose();
@@ -77,7 +79,10 @@ export function TaskDispatchDialog({
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-border">
-          <div className="text-[14px] font-semibold text-text-primary">
+          <div
+            id={titleId}
+            className="text-[14px] font-semibold text-text-primary"
+          >
             Dispatch task
           </div>
           <div className="text-[12px] text-text-muted mt-0.5 truncate">
@@ -171,6 +176,6 @@ export function TaskDispatchDialog({
           </div>
         </form>
       </div>
-    </div>
+    </dialog>
   );
 }

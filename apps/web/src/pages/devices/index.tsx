@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import "@/lib/api";
 import { getApiV1Devices } from "../../../lib/api/sdk.gen";
 import type { DeviceInfo } from "./device-card";
 import { DeviceCard } from "./device-card";
@@ -35,12 +34,37 @@ export function DevicesPage() {
     }
   }, []);
 
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
+    const startPolling = () => {
+      if (intervalRef.current === null) {
+        intervalRef.current = setInterval(() => void fetchDevices(), 5000);
+      }
+    };
+    const stopPolling = () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        void fetchDevices();
+        startPolling();
+      }
+    };
+
     void fetchDevices();
-    const interval = setInterval(() => {
-      void fetchDevices();
-    }, 5000);
-    return () => clearInterval(interval);
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchDevices]);
 
   const handleRefresh = () => {

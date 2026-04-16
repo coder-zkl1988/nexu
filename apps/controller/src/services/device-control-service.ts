@@ -16,6 +16,19 @@ type RpcResponse<T> =
   | { result: T; error?: undefined }
   | { error: RpcErrorDetail; result?: undefined };
 
+const DEFAULT_RPC_TIMEOUT_MS = 10_000;
+const DEFAULT_LIST_TIMEOUT_MS = 5_000;
+
+export class DeviceControlRpcError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DeviceControlRpcError";
+  }
+}
+
 export class DeviceControlService {
   constructor(private readonly configStore: NexuConfigStore) {}
 
@@ -27,12 +40,14 @@ export class DeviceControlService {
   private async rpc<T>(
     method: string,
     params: Record<string, unknown>,
+    timeoutMs = DEFAULT_RPC_TIMEOUT_MS,
   ): Promise<T> {
     const port = await this.getRpcPort();
     const response = await fetch(`http://127.0.0.1:${port}/rpc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ method, params }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {
@@ -44,9 +59,7 @@ export class DeviceControlService {
     const data = (await response.json()) as RpcResponse<T>;
 
     if (data.error !== undefined) {
-      throw new Error(
-        `Device control RPC error [${data.error.code}]: ${data.error.message}`,
-      );
+      throw new DeviceControlRpcError(data.error.code, data.error.message);
     }
 
     return data.result as T;
@@ -66,7 +79,9 @@ export class DeviceControlService {
 
   async listDevices(): Promise<DeviceListResponse> {
     const port = await this.getRpcPort();
-    const response = await fetch(`http://127.0.0.1:${port}/devices`);
+    const response = await fetch(`http://127.0.0.1:${port}/devices`, {
+      signal: AbortSignal.timeout(DEFAULT_LIST_TIMEOUT_MS),
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -85,11 +100,12 @@ export class DeviceControlService {
     deviceId: string,
     body: DeviceExecuteTaskBody,
   ): Promise<{ result: TaskResult }> {
-    const result = await this.rpc<TaskResult>("device.execute_task", {
-      deviceId,
-      task: body.task,
-      timeoutMs: body.timeout,
-    });
+    const taskTimeout = body.timeout ?? 120_000;
+    const result = await this.rpc<TaskResult>(
+      "device.execute_task",
+      { deviceId, task: body.task, timeoutMs: taskTimeout },
+      taskTimeout + 5_000,
+    );
     return { result };
   }
 

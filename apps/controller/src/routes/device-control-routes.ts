@@ -1,6 +1,5 @@
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
-  cancelTaskBodySchema,
   cancelTaskResponseSchema,
   deviceExecuteTaskBodySchema,
   deviceExecuteTaskResponseSchema,
@@ -8,10 +7,40 @@ import {
   deviceListResponseSchema,
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
+import { DeviceControlRpcError } from "../services/device-control-service.js";
 import type { ControllerBindings } from "../types.js";
 
 const deviceIdParamSchema = z.object({ deviceId: z.string() });
+const taskIdParamSchema = z.object({
+  deviceId: z.string(),
+  taskId: z.string(),
+});
 const errorSchema = z.object({ message: z.string() });
+
+function mapRpcErrorToStatus(err: unknown): {
+  status: 404 | 503 | 504 | 500;
+  message: string;
+} {
+  if (err instanceof DeviceControlRpcError) {
+    if (err.code === "DEVICE_NOT_FOUND") {
+      return { status: 404, message: err.message };
+    }
+    if (err.code === "DEVICE_OFFLINE") {
+      return { status: 503, message: err.message };
+    }
+    if (err.code === "TIMEOUT") {
+      return { status: 504, message: err.message };
+    }
+    return { status: 500, message: err.message };
+  }
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return { status: 504, message: "Device control request timed out" };
+  }
+  return {
+    status: 500,
+    message: err instanceof Error ? err.message : "Unknown error",
+  };
+}
 
 export function registerDeviceControlRoutes(
   app: OpenAPIHono<ControllerBindings>,
@@ -36,10 +65,7 @@ export function registerDeviceControlRoutes(
     }),
     async (c) => {
       if (!(await container.deviceControlService.isAvailable())) {
-        return c.json(
-          { message: "Device control plugin is not running" },
-          503,
-        );
+        return c.json({ message: "Device control plugin is not running" }, 503);
       }
 
       return c.json(await container.deviceControlService.listDevices(), 200);
@@ -97,61 +123,88 @@ export function registerDeviceControlRoutes(
           },
           description: "Task result",
         },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Device not found",
+        },
         503: {
           content: { "application/json": { schema: errorSchema } },
           description: "Device control plugin is not running",
+        },
+        500: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Internal error",
+        },
+        504: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Task execution timed out",
         },
       },
     }),
     async (c) => {
       if (!(await container.deviceControlService.isAvailable())) {
-        return c.json(
-          { message: "Device control plugin is not running" },
-          503,
-        );
+        return c.json({ message: "Device control plugin is not running" }, 503);
       }
 
       const { deviceId } = c.req.valid("param");
       const body = c.req.valid("json");
-      const result = await container.deviceControlService.executeTask(
-        deviceId,
-        body,
-      );
-
-      return c.json(result, 200);
+      try {
+        const result = await container.deviceControlService.executeTask(
+          deviceId,
+          body,
+        );
+        return c.json(result, 200);
+      } catch (err) {
+        const mapped = mapRpcErrorToStatus(err);
+        return c.json({ message: mapped.message }, mapped.status);
+      }
     },
   );
 
-  // DELETE /api/v1/devices/{deviceId}/tasks — cancel task
+  // DELETE /api/v1/devices/{deviceId}/tasks/{taskId} — cancel task
   app.openapi(
     createRoute({
       method: "delete",
-      path: "/api/v1/devices/{deviceId}/tasks",
+      path: "/api/v1/devices/{deviceId}/tasks/{taskId}",
       tags: ["Device Control"],
       request: {
-        params: deviceIdParamSchema,
-        body: {
-          content: {
-            "application/json": { schema: cancelTaskBodySchema },
-          },
-        },
+        params: taskIdParamSchema,
       },
       responses: {
         200: {
           content: { "application/json": { schema: cancelTaskResponseSchema } },
           description: "Task cancelled",
         },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Device or task not found",
+        },
+        500: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Internal error",
+        },
+        503: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Device offline",
+        },
+        504: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Request timed out",
+        },
       },
     }),
     async (c) => {
-      const { deviceId } = c.req.valid("param");
-      const body = c.req.valid("json");
-      const result = await container.deviceControlService.cancelTask(
-        deviceId,
-        body,
-      );
-
-      return c.json(result, 200);
+      const { deviceId, taskId } = c.req.valid("param");
+      try {
+        const result = await container.deviceControlService.cancelTask(
+          deviceId,
+          { taskId },
+        );
+        return c.json(result, 200);
+      } catch (err) {
+        const mapped = mapRpcErrorToStatus(err);
+        return c.json({ message: mapped.message }, mapped.status);
+      }
     },
   );
 }

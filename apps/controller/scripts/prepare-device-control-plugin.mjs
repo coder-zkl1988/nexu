@@ -49,7 +49,7 @@ await rm(targetDir, { recursive: true, force: true });
 await mkdir(targetDir, { recursive: true });
 await cp(sourceDir, targetDir, {
   recursive: true,
-  dereference: false,
+  dereference: true,
   force: true,
 });
 
