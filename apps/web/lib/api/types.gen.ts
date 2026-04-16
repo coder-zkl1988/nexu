@@ -3928,6 +3928,99 @@ export type PutApiInternalWorkspaceTemplatesByNameResponses = {
 
 export type PutApiInternalWorkspaceTemplatesByNameResponse = PutApiInternalWorkspaceTemplatesByNameResponses[keyof PutApiInternalWorkspaceTemplatesByNameResponses];
 
+export type GetApiV1DevicesTasksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/devices/tasks';
+};
+
+export type GetApiV1DevicesTasksResponses = {
+    /**
+     * Task history (newest first, max 200)
+     */
+    200: {
+        entries: Array<{
+            deviceId: string;
+            taskId: string;
+            task: string;
+            maxSteps?: number;
+            dispatchedAt: string;
+            completedAt: string;
+            result: {
+                taskId: string;
+                success: boolean;
+                message?: string;
+                totalSteps?: number;
+                steps?: Array<{
+                    step: number;
+                    action: string;
+                    target?: string;
+                    success: boolean;
+                    error?: string;
+                }>;
+                failedAtStep?: number;
+                finalScreenshot?: string;
+                duration?: number;
+            };
+        }>;
+    };
+};
+
+export type GetApiV1DevicesTasksResponse = GetApiV1DevicesTasksResponses[keyof GetApiV1DevicesTasksResponses];
+
+export type GetApiV1DevicesTasksByTaskIdData = {
+    body?: never;
+    path: {
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/tasks/{taskId}';
+};
+
+export type GetApiV1DevicesTasksByTaskIdErrors = {
+    /**
+     * Task not found in history
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1DevicesTasksByTaskIdError = GetApiV1DevicesTasksByTaskIdErrors[keyof GetApiV1DevicesTasksByTaskIdErrors];
+
+export type GetApiV1DevicesTasksByTaskIdResponses = {
+    /**
+     * Task history entry
+     */
+    200: {
+        deviceId: string;
+        taskId: string;
+        task: string;
+        maxSteps?: number;
+        dispatchedAt: string;
+        completedAt: string;
+        result: {
+            taskId: string;
+            success: boolean;
+            message?: string;
+            totalSteps?: number;
+            steps?: Array<{
+                step: number;
+                action: string;
+                target?: string;
+                success: boolean;
+                error?: string;
+            }>;
+            failedAtStep?: number;
+            finalScreenshot?: string;
+            duration?: number;
+        };
+    };
+};
+
+export type GetApiV1DevicesTasksByTaskIdResponse = GetApiV1DevicesTasksByTaskIdResponses[keyof GetApiV1DevicesTasksByTaskIdResponses];
+
 export type GetApiV1DevicesData = {
     body?: never;
     path?: never;

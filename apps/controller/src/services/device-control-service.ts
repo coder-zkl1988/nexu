@@ -5,6 +5,7 @@ import type {
   DeviceListResponse,
   TaskResult,
 } from "@nexu/shared";
+import type { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 
 interface RpcErrorDetail {
@@ -30,7 +31,10 @@ export class DeviceControlRpcError extends Error {
 }
 
 export class DeviceControlService {
-  constructor(private readonly configStore: NexuConfigStore) {}
+  constructor(
+    private readonly configStore: NexuConfigStore,
+    private readonly taskHistoryStore: DeviceTaskHistoryStore,
+  ) {}
 
   private async getRpcPort(): Promise<number> {
     const config = await this.configStore.getConfig();
@@ -101,11 +105,21 @@ export class DeviceControlService {
     body: DeviceExecuteTaskBody,
   ): Promise<{ result: TaskResult }> {
     const taskTimeout = body.timeout ?? 120_000;
+    const dispatchedAt = new Date().toISOString();
     const result = await this.rpc<TaskResult>(
       "device.execute_task",
       { deviceId, task: body.task, timeoutMs: taskTimeout },
       taskTimeout + 5_000,
     );
+    await this.taskHistoryStore.append({
+      deviceId,
+      taskId: result.taskId,
+      task: body.task,
+      maxSteps: body.maxSteps,
+      dispatchedAt,
+      completedAt: new Date().toISOString(),
+      result,
+    });
     return { result };
   }
 

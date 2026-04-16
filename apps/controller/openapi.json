@@ -11482,6 +11482,269 @@
         }
       }
     },
+    "/api/v1/devices/tasks": {
+      "get": {
+        "tags": [
+          "Device Control"
+        ],
+        "responses": {
+          "200": {
+            "description": "Task history (newest first, max 200)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "deviceId": {
+                            "type": "string"
+                          },
+                          "taskId": {
+                            "type": "string"
+                          },
+                          "task": {
+                            "type": "string"
+                          },
+                          "maxSteps": {
+                            "type": "integer"
+                          },
+                          "dispatchedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "completedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "taskId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "success": {
+                                "type": "boolean"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "totalSteps": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "steps": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "step": {
+                                      "type": "integer",
+                                      "minimum": 1
+                                    },
+                                    "action": {
+                                      "type": "string"
+                                    },
+                                    "target": {
+                                      "type": "string"
+                                    },
+                                    "success": {
+                                      "type": "boolean"
+                                    },
+                                    "error": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "step",
+                                    "action",
+                                    "success"
+                                  ]
+                                }
+                              },
+                              "failedAtStep": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "finalScreenshot": {
+                                "type": "string"
+                              },
+                              "duration": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "taskId",
+                              "success"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "deviceId",
+                          "taskId",
+                          "task",
+                          "dispatchedAt",
+                          "completedAt",
+                          "result"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "entries"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/tasks/{taskId}": {
+      "get": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task history entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "taskId": {
+                      "type": "string"
+                    },
+                    "task": {
+                      "type": "string"
+                    },
+                    "maxSteps": {
+                      "type": "integer"
+                    },
+                    "dispatchedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "completedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "success": {
+                          "type": "boolean"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "totalSteps": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "steps": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "step": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "action": {
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              },
+                              "success": {
+                                "type": "boolean"
+                              },
+                              "error": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "action",
+                              "success"
+                            ]
+                          }
+                        },
+                        "failedAtStep": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "finalScreenshot": {
+                          "type": "string"
+                        },
+                        "duration": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "success"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "deviceId",
+                    "taskId",
+                    "task",
+                    "dispatchedAt",
+                    "completedAt",
+                    "result"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found in history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/devices": {
       "get": {
         "tags": [

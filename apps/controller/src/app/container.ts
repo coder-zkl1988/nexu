@@ -19,12 +19,12 @@ import {
 } from "../runtime/state.js";
 import { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js";
 import { AgentService } from "../services/agent-service.js";
-import { DeviceControlService } from "../services/device-control-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
 import { ChannelFallbackService } from "../services/channel-fallback-service.js";
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
+import { DeviceControlService } from "../services/device-control-service.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
@@ -40,6 +40,7 @@ import { SkillhubService } from "../services/skillhub-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
+import { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import { NexuConfigStore } from "../store/nexu-config-store.js";
 import { type ControllerEnv, env } from "./env.js";
 
@@ -68,6 +69,7 @@ export interface ControllerContainer {
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
+  deviceTaskHistoryStore: DeviceTaskHistoryStore;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   runtimeState: ControllerRuntimeState;
@@ -84,6 +86,9 @@ export async function createContainer(): Promise<ControllerContainer> {
     authMode: env.openclawGatewayToken ? "token" : "none",
   });
   const artifactsStore = new ArtifactsStore(env);
+  const deviceTaskHistoryStore = new DeviceTaskHistoryStore(
+    env.deviceTaskHistoryPath,
+  );
   const compiledStore = new CompiledOpenClawStore(env);
   const configWriter = new OpenClawConfigWriter(env);
   const authProfilesStore = new OpenClawAuthProfilesStore(env);
@@ -153,7 +158,10 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawSyncService,
   );
   const githubStarVerificationService = new GithubStarVerificationService();
-  const deviceControlService = new DeviceControlService(configStore);
+  const deviceControlService = new DeviceControlService(
+    configStore,
+    deviceTaskHistoryStore,
+  );
 
   // Wire cloud state change callback to sync refreshed cloud inventory without
   // auto-switching the default model during startup or first-channel connect.
@@ -206,6 +214,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
+    deviceTaskHistoryStore,
     wsClient,
     gatewayService,
     configStore,
