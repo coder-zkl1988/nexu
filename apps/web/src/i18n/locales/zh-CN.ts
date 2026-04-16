@@ -114,6 +114,7 @@ const zhCN = {
   "title.linkFeishu": "绑定飞书 · nexu",
   "title.connecting": "连接中 · nexu",
   "title.default": "nexu",
+  "title.devices": "设备 · nexu",
 
   // ── Workspace Layout ──
   "layout.brand": "你的数字同事",
@@ -122,6 +123,7 @@ const zhCN = {
   "layout.nav.deployments": "部署",
   "layout.nav.skills": "技能",
   "layout.nav.settings": "设置",
+  "layout.nav.devices": "设备",
   "layout.conversations": "对话",
   "layout.signOut": "退出登录",
   "layout.help.title": "帮助",

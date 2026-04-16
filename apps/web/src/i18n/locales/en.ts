@@ -116,6 +116,7 @@ const en = {
   "title.settings": "Settings · nexu",
   "title.linkFeishu": "Link Feishu · nexu",
   "title.connecting": "Connecting · nexu",
+  "title.devices": "Devices · nexu",
   "title.default": "nexu",
 
   // ── Workspace Layout ──
@@ -124,6 +125,7 @@ const en = {
   "layout.nav.rewards": "Rewards",
   "layout.nav.deployments": "Deployments",
   "layout.nav.skills": "Skills",
+  "layout.nav.devices": "Devices",
   "layout.nav.settings": "Settings",
   "layout.conversations": "Conversations",
   "layout.signOut": "Sign out",

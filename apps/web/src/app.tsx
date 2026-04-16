@@ -5,6 +5,7 @@ import { AuthLayout } from "./layouts/auth-layout";
 import { InviteGuardLayout } from "./layouts/invite-guard-layout";
 import { WorkspaceLayout } from "./layouts/workspace-layout";
 import { ChannelsPage } from "./pages/channels";
+import { DevicesPage } from "./pages/devices/index";
 import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
 import { FeishuBindPage } from "./pages/feishu-bind";
 import { HomePage } from "./pages/home";
@@ -28,6 +29,7 @@ function DocumentTitleSync() {
       "/workspace": t("title.home"),
       "/workspace/home": t("title.home"),
       "/workspace/integrations": t("title.integrations"),
+      "/workspace/devices": t("title.devices"),
       "/workspace/rewards": t("title.rewards"),
       "/workspace/skills": t("title.skills"),
       "/workspace/settings": t("title.settings"),
@@ -70,6 +72,7 @@ export function App() {
                 element={<SessionsPage />}
               />
               <Route path="/workspace/channels" element={<ChannelsPage />} />
+              <Route path="/workspace/devices" element={<DevicesPage />} />
               <Route
                 path="/workspace/integrations"
                 element={<IntegrationsPage />}
