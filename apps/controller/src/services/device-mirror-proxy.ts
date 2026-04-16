@@ -2,10 +2,12 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { mirrorClientActionSchema } from "@nexu/shared";
 import { WebSocket, WebSocketServer } from "ws";
+import { logger } from "../lib/logger.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 
 const MIRROR_PATH_PREFIX = "/api/v1/devices/";
 const MIRROR_PATH_SUFFIX = "/mirror";
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 export class DeviceMirrorProxy {
   private readonly wss: WebSocketServer;
@@ -31,6 +33,22 @@ export class DeviceMirrorProxy {
       socket.destroy();
       return true;
     }
+    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+      logger.warn({ deviceId }, "rejected mirror upgrade: invalid deviceId");
+      socket.destroy();
+      return true;
+    }
+
+    const remote = req.socket.remoteAddress ?? "";
+    const isLoopback =
+      remote === "127.0.0.1" ||
+      remote === "::1" ||
+      remote === "::ffff:127.0.0.1";
+    if (!isLoopback) {
+      logger.warn({ remote, deviceId }, "rejected non-loopback mirror upgrade");
+      socket.destroy();
+      return true;
+    }
 
     this.wss.handleUpgrade(req, socket, head, (clientWs) => {
       void this.bridge(clientWs, deviceId);
@@ -41,9 +59,15 @@ export class DeviceMirrorProxy {
   private async bridge(clientWs: WebSocket, deviceId: string): Promise<void> {
     const config = await this.configStore.getConfig();
     if (!config.deviceControl.enabled) {
+      logger.info(
+        { deviceId },
+        "mirror upgrade rejected: device control disabled",
+      );
       clientWs.close(4404, "Device control disabled");
       return;
     }
+
+    logger.info({ deviceId }, "mirror bridge opened");
 
     const upstream = new WebSocket(
       `ws://127.0.0.1:${config.deviceControl.wsPort}/phone`,
@@ -79,19 +103,40 @@ export class DeviceMirrorProxy {
             params: action,
           }),
         );
-      } catch {
-        // Silently drop malformed client frames.
+      } catch (err) {
+        logger.warn(
+          {
+            error: err instanceof Error ? err.message : String(err),
+            deviceId,
+          },
+          "dropped malformed mirror client frame",
+        );
       }
     });
 
-    const teardown = () => {
+    let torn = false;
+    const teardown = (source: "client" | "upstream") => {
+      if (torn) return;
+      torn = true;
+      logger.info({ deviceId, source }, "mirror bridge closed");
       if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
       if (upstream.readyState === WebSocket.OPEN) upstream.close();
     };
-    clientWs.on("close", teardown);
-    clientWs.on("error", teardown);
-    upstream.on("close", teardown);
-    upstream.on("error", teardown);
+    clientWs.on("close", () => teardown("client"));
+    clientWs.on("error", () => teardown("client"));
+    upstream.on("close", () => teardown("upstream"));
+    upstream.on("error", (err) => {
+      logger.warn(
+        {
+          error: err instanceof Error ? err.message : String(err),
+          deviceId,
+        },
+        "mirror upstream error",
+      );
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.close(4502, "Mirror upstream unavailable");
+      }
+    });
   }
 
   close(): void {
