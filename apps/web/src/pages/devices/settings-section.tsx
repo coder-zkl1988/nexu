@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -20,7 +21,14 @@ export function DeviceControlSettingsSection() {
     queryKey: RUNTIME_CONFIG_QUERY_KEY,
     queryFn: async () => {
       const res = await getApiV1RuntimeConfig();
-      if (res.error) throw new Error("Failed to load runtime config");
+      if (res.error) {
+        throw new Error(
+          formatChannelConnectErrorMessage(
+            res.error,
+            "Failed to load runtime config",
+          ),
+        );
+      }
       return res.data;
     },
   });
@@ -28,13 +36,14 @@ export function DeviceControlSettingsSection() {
   const deviceControl = data?.deviceControl;
   const [wsPort, setWsPort] = useState("");
   const [rpcPort, setRpcPort] = useState("");
+  const [portsDirty, setPortsDirty] = useState(false);
 
   useEffect(() => {
-    if (deviceControl) {
+    if (deviceControl && !portsDirty) {
       setWsPort(String(deviceControl.wsPort));
       setRpcPort(String(deviceControl.rpcPort));
     }
-  }, [deviceControl]);
+  }, [deviceControl, portsDirty]);
 
   const patchMutation = useMutation({
     mutationFn: async (body: {
@@ -43,7 +52,11 @@ export function DeviceControlSettingsSection() {
       rpcPort?: number;
     }) => {
       const res = await patchApiV1RuntimeConfigDeviceControl({ body });
-      if (res.error) throw new Error("Update failed");
+      if (res.error) {
+        throw new Error(
+          formatChannelConnectErrorMessage(res.error, "Update failed"),
+        );
+      }
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: RUNTIME_CONFIG_QUERY_KEY });
@@ -56,19 +69,30 @@ export function DeviceControlSettingsSection() {
     patchMutation.mutate({ enabled: checked });
   };
 
-  const handleSavePorts = () => {
+  const handleSavePorts = async () => {
     const ws = Number(wsPort);
     const rpc = Number(rpcPort);
     if (
       !Number.isInteger(ws) ||
       ws <= 0 ||
+      ws > 65535 ||
       !Number.isInteger(rpc) ||
-      rpc <= 0
+      rpc <= 0 ||
+      rpc > 65535
     ) {
-      toast.error("Ports must be positive integers");
+      toast.error("Ports must be integers between 1 and 65535");
       return;
     }
-    patchMutation.mutate({ wsPort: ws, rpcPort: rpc });
+    if (ws === rpc) {
+      toast.error("WebSocket and RPC ports must differ");
+      return;
+    }
+    try {
+      await patchMutation.mutateAsync({ wsPort: ws, rpcPort: rpc });
+      setPortsDirty(false);
+    } catch {
+      // toast already fired by mutation onError
+    }
   };
 
   if (isLoading || !deviceControl) {
@@ -112,7 +136,10 @@ export function DeviceControlSettingsSection() {
               min={1}
               max={65535}
               value={wsPort}
-              onChange={(e) => setWsPort(e.target.value)}
+              onChange={(e) => {
+                setWsPort(e.target.value);
+                setPortsDirty(true);
+              }}
               disabled={patchMutation.isPending}
             />
           </div>
@@ -124,7 +151,10 @@ export function DeviceControlSettingsSection() {
               min={1}
               max={65535}
               value={rpcPort}
-              onChange={(e) => setRpcPort(e.target.value)}
+              onChange={(e) => {
+                setRpcPort(e.target.value);
+                setPortsDirty(true);
+              }}
               disabled={patchMutation.isPending}
             />
           </div>
