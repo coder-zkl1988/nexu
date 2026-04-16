@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { getApiV1Devices } from "../../../lib/api/sdk.gen";
 import type { DeviceInfo } from "./device-card";
 import { DeviceCard } from "./device-card";
@@ -85,12 +86,12 @@ export function DevicesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="/workspace/devices/tasks"
+          <Link
+            to="/workspace/devices/tasks"
             className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-text-secondary rounded-lg border border-border hover:border-border-hover hover:bg-surface-2 transition-all"
           >
             Task history
-          </a>
+          </Link>
           <button
             type="button"
             onClick={handleRefresh}

@@ -1,3 +1,4 @@
+import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import type { DeviceTaskHistoryEntry } from "@nexu/shared";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -22,7 +23,12 @@ export function DeviceTaskHistoryPage() {
         const res = await getApiV1DevicesTasks();
         if (cancelled) return;
         if (res.error) {
-          setError("Failed to load history");
+          setError(
+            formatChannelConnectErrorMessage(
+              res.error,
+              "Failed to load history",
+            ),
+          );
         } else {
           setEntries(res.data?.entries ?? []);
         }

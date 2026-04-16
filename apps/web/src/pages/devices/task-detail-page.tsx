@@ -1,3 +1,4 @@
+import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import type { DeviceTaskHistoryEntry } from "@nexu/shared";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -12,6 +13,9 @@ export function DeviceTaskDetailPage() {
   useEffect(() => {
     if (id === undefined) return;
     let cancelled = false;
+    setLoading(true);
+    setEntry(null);
+    setError(null);
     (async () => {
       try {
         const res = await getApiV1DevicesTasksByTaskId({
@@ -19,7 +23,9 @@ export function DeviceTaskDetailPage() {
         });
         if (cancelled) return;
         if (res.error) {
-          setError("Task not found");
+          setError(
+            formatChannelConnectErrorMessage(res.error, "Task not found"),
+          );
         } else {
           setEntry(res.data ?? null);
         }
