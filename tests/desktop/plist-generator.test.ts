@@ -24,6 +24,7 @@ describe("generatePlist", () => {
     webUrl: "http://127.0.0.1:50801",
     openclawSkillsDir: "/Users/testuser/.nexu/openclaw/state/skills",
     skillhubStaticSkillsDir: "/app/static/bundled-skills",
+    experthubStaticExpertsDir: "/app/static/bundled-experts",
     platformTemplatesDir: "/app/static/platform-templates",
     openclawBinPath: "/app/openclaw/bin/openclaw",
     openclawExtensionsDir: "/app/node_modules/openclaw/extensions",

@@ -43,6 +43,8 @@ export interface PlistEnv {
   openclawSkillsDir: string;
   /** Bundled static skills directory */
   skillhubStaticSkillsDir: string;
+  /** Bundled static experts directory */
+  experthubStaticExpertsDir: string;
   /** Platform templates directory */
   platformTemplatesDir: string;
   /** OpenClaw binary path */
@@ -178,6 +180,8 @@ function generateControllerPlist(label: string, env: PlistEnv): string {
         <string>${escapeXml(env.openclawSkillsDir)}</string>
         <key>SKILLHUB_STATIC_SKILLS_DIR</key>
         <string>${escapeXml(env.skillhubStaticSkillsDir)}</string>
+        <key>EXPERTHUB_STATIC_EXPERTS_DIR</key>
+        <string>${escapeXml(env.experthubStaticExpertsDir)}</string>
         <key>PLATFORM_TEMPLATES_DIR</key>
         <string>${escapeXml(env.platformTemplatesDir)}</string>
         <key>OPENCLAW_BIN</key>

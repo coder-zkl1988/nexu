@@ -139,6 +139,7 @@ function makeBootstrapEnv(
     webUrl: "http://127.0.0.1:50810",
     openclawSkillsDir: "/tmp/state/skills",
     skillhubStaticSkillsDir: "/repo/apps/desktop/static/bundled-skills",
+    experthubStaticExpertsDir: "/repo/apps/desktop/static/bundled-experts",
     platformTemplatesDir: "/repo/apps/controller/static/platform-templates",
     openclawBinPath: "/repo/openclaw-runtime/bin/openclaw",
     openclawExtensionsDir: "/repo/node_modules/openclaw/extensions",

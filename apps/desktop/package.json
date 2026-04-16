@@ -99,6 +99,10 @@
         "to": "static/bundled-skills"
       },
       {
+        "from": "static/bundled-experts",
+        "to": "static/bundled-experts"
+      },
+      {
         "from": "../controller/static/platform-templates",
         "to": "static/platform-templates"
       },

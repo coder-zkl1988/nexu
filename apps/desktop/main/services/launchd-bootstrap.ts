@@ -75,6 +75,8 @@ export interface LaunchdBootstrapEnv {
   openclawSkillsDir: string;
   /** Bundled static skills directory */
   skillhubStaticSkillsDir: string;
+  /** Bundled static experts directory */
+  experthubStaticExpertsDir: string;
   /** Platform templates directory */
   platformTemplatesDir: string;
   /** OpenClaw binary path */
@@ -616,6 +618,7 @@ export async function bootstrapWithLaunchd(
     webUrl: env.webUrl,
     openclawSkillsDir: env.openclawSkillsDir,
     skillhubStaticSkillsDir: env.skillhubStaticSkillsDir,
+    experthubStaticExpertsDir: env.experthubStaticExpertsDir,
     platformTemplatesDir: env.platformTemplatesDir,
     openclawBinPath: env.openclawBinPath,
     openclawExtensionsDir: env.openclawExtensionsDir,

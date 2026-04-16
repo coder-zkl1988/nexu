@@ -30,6 +30,7 @@ describe("controller plist env var parity with manifests", () => {
     webUrl: "http://127.0.0.1:50810",
     openclawSkillsDir: "/Users/testuser/.nexu/openclaw/state/skills",
     skillhubStaticSkillsDir: "/app/static/bundled-skills",
+    experthubStaticExpertsDir: "/app/static/bundled-experts",
     platformTemplatesDir: "/app/static/platform-templates",
     openclawBinPath: "/app/openclaw/bin/openclaw",
     openclawExtensionsDir: "/app/node_modules/openclaw/extensions",
@@ -72,6 +73,7 @@ describe("controller plist env var parity with manifests", () => {
     // Controller-specific
     "WEB_URL",
     "SKILLHUB_STATIC_SKILLS_DIR",
+    "EXPERTHUB_STATIC_EXPERTS_DIR",
     "PLATFORM_TEMPLATES_DIR",
     "NODE_PATH",
     "TMPDIR",

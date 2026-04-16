@@ -915,6 +915,9 @@ async function runLaunchdColdStart(): Promise<void> {
   const skillhubStaticSkillsDir = app.isPackaged
     ? resolve(electronRoot, "static/bundled-skills")
     : resolve(repoRoot, "apps/desktop/static/bundled-skills");
+  const experthubStaticExpertsDir = app.isPackaged
+    ? resolve(electronRoot, "static/bundled-experts")
+    : resolve(repoRoot, "apps/desktop/static/bundled-experts");
   const platformTemplatesDir = app.isPackaged
     ? resolve(electronRoot, "static/platform-templates")
     : resolve(repoRoot, "apps/controller/static/platform-templates");
@@ -939,6 +942,7 @@ async function runLaunchdColdStart(): Promise<void> {
     webUrl: runtimeConfig.urls.web,
     openclawSkillsDir,
     skillhubStaticSkillsDir,
+    experthubStaticExpertsDir,
     platformTemplatesDir,
     openclawBinPath,
     openclawExtensionsDir,

@@ -78,6 +78,9 @@ export function createMacLaunchdBootstrapEnv(args: {
     skillhubStaticSkillsDir: app.isPackaged
       ? resolve(electronRoot, "static/bundled-skills")
       : resolve(repoRoot, "apps/desktop/static/bundled-skills"),
+    experthubStaticExpertsDir: app.isPackaged
+      ? resolve(electronRoot, "static/bundled-experts")
+      : resolve(repoRoot, "apps/desktop/static/bundled-experts"),
     platformTemplatesDir: app.isPackaged
       ? resolve(electronRoot, "static/platform-templates")
       : resolve(repoRoot, "apps/controller/static/platform-templates"),
