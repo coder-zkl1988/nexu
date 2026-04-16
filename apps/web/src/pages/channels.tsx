@@ -7,7 +7,12 @@ import { TelegramSetupView } from "@/components/channel-setup/telegram-setup-vie
 import { WechatSetupView } from "@/components/channel-setup/wechat-setup-view";
 import { WecomSetupView } from "@/components/channel-setup/wecom-setup-view";
 import { WhatsappSetupView } from "@/components/channel-setup/whatsapp-setup-view";
+import {
+  type ChannelInstance,
+  ChannelInstanceCard,
+} from "@/components/channels/channel-instance-card";
 import { useBotQuota } from "@/hooks/use-bot-quota";
+import { useBots } from "@/hooks/use-bots";
 import { useCountdown } from "@/hooks/use-countdown";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { track } from "@/lib/tracking";
@@ -24,6 +29,7 @@ import {
   Key,
   Link2,
   Loader2,
+  Plus,
   RotateCcw,
   Shield,
   Zap,
@@ -84,6 +90,11 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   qqbot: "QQ",
 };
 
+const MULTI_INSTANCE_PLATFORMS: ReadonlySet<Platform> = new Set<Platform>([
+  "feishu",
+  "wechat",
+]);
+
 // ─── Main page ───────────────────────────────────────────────
 
 export function ChannelsPage() {
@@ -92,6 +103,9 @@ export function ChannelsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [platform, setPlatform] = useState<Platform>("slack");
   const [forceGuide, setForceGuide] = useState(false);
+  // For multi-instance platforms: when user clicks "Connect another",
+  // we show the setup view even though instances already exist.
+  const [addingInstance, setAddingInstance] = useState(false);
 
   // Auto-enter manual Slack flow when redirected from OAuth error (run once on mount)
   const slackManual = searchParams.get("slackManual") === "true";
@@ -127,12 +141,23 @@ export function ChannelsPage() {
   });
 
   const { available: quotaAvailable, resetsAt } = useBotQuota();
+  const { bots } = useBots();
 
   const channels = channelsData?.channels ?? [];
-  const currentChannel = channels.find((ch) => ch.channelType === platform);
-  const isConfigured = !!currentChannel;
+  const isMultiInstance = MULTI_INSTANCE_PLATFORMS.has(platform);
+  const instancesForPlatform = channels.filter(
+    (ch) => ch.channelType === platform,
+  );
+  // Single-instance platforms: preserve the original "first match" semantics.
+  const currentChannel = isMultiInstance ? undefined : instancesForPlatform[0];
+  const hasAnyInstance = instancesForPlatform.length > 0;
+  const isConfigured = isMultiInstance ? hasAnyInstance : !!currentChannel;
   const quotaLimited = !quotaAvailable;
-  const showGuide = !isConfigured || forceGuide;
+  // For single-instance: show guide iff not configured OR user forced it.
+  // For multi-instance: show guide iff no instances yet OR user is adding another.
+  const showGuide = isMultiInstance
+    ? !hasAnyInstance || addingInstance
+    : !isConfigured || forceGuide;
 
   const handlePlatformChange = (p: Platform) => {
     if (!channels.some((ch) => ch.channelType === p)) {
@@ -140,10 +165,14 @@ export function ChannelsPage() {
     }
     setPlatform(p);
     setForceGuide(false);
+    setAddingInstance(false);
   };
 
   const handleConnected = () => {
     queryClient.invalidateQueries({ queryKey: ["channels"] });
+    // After a successful connect, leave the setup view for multi-instance
+    // platforms so the user sees the updated list of instances.
+    setAddingInstance(false);
   };
 
   return (
@@ -162,10 +191,15 @@ export function ChannelsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
         {PLATFORMS.map((p) => {
           const isActive = platform === p.id;
-          const configuredChannel = channels.find(
+          const platformIsMulti = MULTI_INSTANCE_PLATFORMS.has(p.id);
+          const platformInstances = channels.filter(
             (ch) => ch.channelType === p.id,
           );
-          const connected = !!configuredChannel;
+          const configuredChannel = platformInstances[0];
+          const connected = platformInstances.length > 0;
+          // For single-instance tiles, the live status icon tracks the one
+          // connected channel. For multi-instance tiles, we just show the
+          // aggregate count; per-instance status lives inside the cards.
           const channelLive = liveStatusData?.channels?.find(
             (e) => e.channelId === configuredChannel?.id,
           );
@@ -200,7 +234,16 @@ export function ChannelsPage() {
                   {p.desc}
                 </div>
               </div>
-              {connected ? (
+              {platformIsMulti && connected ? (
+                <span
+                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-[var(--color-success-muted)] text-[var(--color-success)] shrink-0"
+                  title={t("channels.connectedCount", {
+                    count: platformInstances.length,
+                  })}
+                >
+                  {platformInstances.length}
+                </span>
+              ) : connected ? (
                 channelLiveStatus === "error" ||
                 channelLiveStatus === "disconnected" ? (
                   <Shield size={14} className="text-red-500 shrink-0" />
@@ -233,10 +276,20 @@ export function ChannelsPage() {
       {quotaLimited && !isConfigured && <QuotaBanner resetsAt={resetsAt} />}
 
       {/* Back button when force-viewing guide for configured platform */}
-      {isConfigured && forceGuide && (
+      {isConfigured && !isMultiInstance && forceGuide && (
         <button
           type="button"
           onClick={() => setForceGuide(false)}
+          className="flex gap-1.5 items-center mb-5 text-[12px] text-accent font-medium hover:underline underline-offset-2"
+        >
+          <ArrowLeft size={13} /> {t("channels.backToConfig")}
+        </button>
+      )}
+      {/* Back button when adding another instance on a multi-instance platform */}
+      {isMultiInstance && hasAnyInstance && addingInstance && (
+        <button
+          type="button"
+          onClick={() => setAddingInstance(false)}
           className="flex gap-1.5 items-center mb-5 text-[12px] text-accent font-medium hover:underline underline-offset-2"
         >
           <ArrowLeft size={13} /> {t("channels.backToConfig")}
@@ -293,6 +346,18 @@ export function ChannelsPage() {
             disabled={quotaLimited}
           />
         )
+      ) : isMultiInstance ? (
+        <MultiInstanceView
+          platform={platform}
+          instances={instancesForPlatform}
+          bots={bots}
+          liveStatusData={liveStatusData}
+          onConnectAnother={() => {
+            track("workspace_channel_connect_click", { channel: platform });
+            setAddingInstance(true);
+          }}
+          quotaLimited={quotaLimited}
+        />
       ) : currentChannel ? (
         <ConfiguredView
           platform={platform}
@@ -302,6 +367,62 @@ export function ChannelsPage() {
           liveStatusData={liveStatusData}
         />
       ) : null}
+    </div>
+  );
+}
+
+// ─── Multi-instance list view (feishu / wechat) ──────────────
+
+function MultiInstanceView({
+  platform,
+  instances,
+  bots,
+  liveStatusData,
+  onConnectAnother,
+  quotaLimited,
+}: {
+  platform: Platform;
+  instances: ChannelInstance[];
+  bots: { id: string; name: string }[];
+  liveStatusData: LiveStatusData | undefined;
+  onConnectAnother: () => void;
+  quotaLimited: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[13px] font-semibold text-text-primary">
+          {t("channels.connectedCount", { count: instances.length })}{" "}
+          <span className="text-text-muted font-normal">
+            {"\u00B7"} {PLATFORM_LABELS[platform]}
+          </span>
+        </h2>
+      </div>
+      {instances.map((ch) => {
+        const botName = bots.find((b) => b.id === ch.botId)?.name ?? ch.botId;
+        const liveStatus = liveStatusData?.channels?.find(
+          (e) => e.channelId === ch.id,
+        )?.status;
+        return (
+          <ChannelInstanceCard
+            key={ch.id}
+            channel={ch}
+            botName={botName}
+            liveStatus={liveStatus}
+          />
+        );
+      })}
+      <button
+        type="button"
+        onClick={onConnectAnother}
+        disabled={quotaLimited}
+        className="flex items-center justify-center gap-1.5 w-full px-4 py-3 text-[12px] font-medium text-accent rounded-xl border border-dashed border-accent/40 hover:bg-accent/5 hover:border-accent transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        <Plus size={13} />
+        {t("channels.connectAnother")}
+      </button>
     </div>
   );
 }
