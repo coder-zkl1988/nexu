@@ -674,6 +674,9 @@ const zhCN = {
   "channels.cancel": "取消",
   "channels.quotaTitle": "当前需求量较大",
   "channels.quotaBody": "新的 Bot 配置将在 {{countdown}} 后可用。请稍后重试。",
+  "channels.botPicker.label": "分配给机器人",
+  "channels.botPicker.placeholder": "请选择机器人…",
+  "channels.botPicker.emptyHint": "暂无机器人。请先在「Bots」页面创建一个。",
 
   // ── Channel Connect Modal ──
   "modal.connect": "连接 {{name}}",
