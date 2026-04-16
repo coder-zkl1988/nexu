@@ -3786,6 +3786,11 @@ export type GetApiV1RuntimeConfigResponses = {
             };
             defaultModelId?: string;
         };
+        deviceControl: {
+            enabled?: boolean;
+            wsPort?: number;
+            rpcPort?: number;
+        };
     };
 };
 
@@ -4023,29 +4028,6 @@ export type GetApiV1DevicesByDeviceIdResponses = {
 
 export type GetApiV1DevicesByDeviceIdResponse = GetApiV1DevicesByDeviceIdResponses[keyof GetApiV1DevicesByDeviceIdResponses];
 
-export type DeleteApiV1DevicesByDeviceIdTasksData = {
-    body?: {
-        taskId: string;
-    };
-    path: {
-        deviceId: string;
-    };
-    query?: never;
-    url: '/api/v1/devices/{deviceId}/tasks';
-};
-
-export type DeleteApiV1DevicesByDeviceIdTasksResponses = {
-    /**
-     * Task cancelled
-     */
-    200: {
-        cancelled: boolean;
-        message?: string;
-    };
-};
-
-export type DeleteApiV1DevicesByDeviceIdTasksResponse = DeleteApiV1DevicesByDeviceIdTasksResponses[keyof DeleteApiV1DevicesByDeviceIdTasksResponses];
-
 export type PostApiV1DevicesByDeviceIdTasksData = {
     body?: {
         task: string;
@@ -4065,9 +4047,27 @@ export type PostApiV1DevicesByDeviceIdTasksData = {
 
 export type PostApiV1DevicesByDeviceIdTasksErrors = {
     /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Internal error
+     */
+    500: {
+        message: string;
+    };
+    /**
      * Device control plugin is not running
      */
     503: {
+        message: string;
+    };
+    /**
+     * Task execution timed out
+     */
+    504: {
         message: string;
     };
 };
@@ -4099,6 +4099,57 @@ export type PostApiV1DevicesByDeviceIdTasksResponses = {
 };
 
 export type PostApiV1DevicesByDeviceIdTasksResponse = PostApiV1DevicesByDeviceIdTasksResponses[keyof PostApiV1DevicesByDeviceIdTasksResponses];
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdData = {
+    body?: never;
+    path: {
+        deviceId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/tasks/{taskId}';
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdErrors = {
+    /**
+     * Device or task not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Internal error
+     */
+    500: {
+        message: string;
+    };
+    /**
+     * Device offline
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * Request timed out
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdError = DeleteApiV1DevicesByDeviceIdTasksByTaskIdErrors[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdErrors];
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses = {
+    /**
+     * Task cancelled
+     */
+    200: {
+        cancelled: boolean;
+        message?: string;
+    };
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponse = DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

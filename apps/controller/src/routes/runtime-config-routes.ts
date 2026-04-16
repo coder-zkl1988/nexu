@@ -1,9 +1,17 @@
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { ControllerContainer } from "../app/container.js";
-import { controllerRuntimeConfigSchema } from "../store/schemas.js";
+import {
+  controllerRuntimeConfigSchema,
+  deviceControlConfigSchema,
+} from "../store/schemas.js";
 import type { ControllerBindings } from "../types.js";
 
 const runtimeConfigEnvelopeSchema = z.object({
+  runtime: controllerRuntimeConfigSchema,
+  deviceControl: deviceControlConfigSchema,
+});
+
+const runtimeConfigPutEnvelopeSchema = z.object({
   runtime: controllerRuntimeConfigSchema,
 });
 
@@ -26,8 +34,11 @@ export function registerRuntimeConfigRoutes(
       },
     }),
     async (c) => {
-      const runtime = await container.runtimeConfigService.getRuntimeConfig();
-      return c.json({ runtime }, 200);
+      const [runtime, deviceControl] = await Promise.all([
+        container.runtimeConfigService.getRuntimeConfig(),
+        container.configStore.getDeviceControlConfig(),
+      ]);
+      return c.json({ runtime, deviceControl }, 200);
     },
   );
 
@@ -46,7 +57,7 @@ export function registerRuntimeConfigRoutes(
       responses: {
         200: {
           content: {
-            "application/json": { schema: runtimeConfigEnvelopeSchema },
+            "application/json": { schema: runtimeConfigPutEnvelopeSchema },
           },
           description: "Updated runtime config",
         },

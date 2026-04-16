@@ -51,6 +51,7 @@ import {
   type CloudProfileEntry,
   type CloudProfilesFile,
   type ControllerRuntimeConfig,
+  type DeviceControlConfig,
   type NexuConfig,
   cloudProfilesFileSchema,
   nexuConfigSchema,
@@ -2874,6 +2875,11 @@ export class NexuConfigStore {
     }));
 
     return runtime;
+  }
+
+  async getDeviceControlConfig(): Promise<DeviceControlConfig> {
+    const config = await this.getConfig();
+    return config.deviceControl;
   }
 
   async setDeviceControlConfig(patch: {

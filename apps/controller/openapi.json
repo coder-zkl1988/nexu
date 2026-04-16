@@ -11078,10 +11078,32 @@
                           "default": "link/gemini-3-flash-preview"
                         }
                       }
+                    },
+                    "deviceControl": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "wsPort": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "default": 18790
+                        },
+                        "rpcPort": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "default": 18801
+                        }
+                      }
                     }
                   },
                   "required": [
-                    "runtime"
+                    "runtime",
+                    "deviceControl"
                   ]
                 }
               }
@@ -11925,6 +11947,42 @@
               }
             }
           },
+          "404": {
+            "description": "Device not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
           "503": {
             "description": "Device control plugin is not running",
             "content": {
@@ -11942,9 +12000,29 @@
                 }
               }
             }
+          },
+          "504": {
+            "description": "Task execution timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
           }
         }
-      },
+      }
+    },
+    "/api/v1/devices/{deviceId}/tasks/{taskId}": {
       "delete": {
         "tags": [
           "Device Control"
@@ -11957,26 +12035,16 @@
             "required": true,
             "name": "deviceId",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "taskId": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "taskId"
-                ]
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Task cancelled",
@@ -11994,6 +12062,78 @@
                   },
                   "required": [
                     "cancelled"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device or task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Device offline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Request timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }
