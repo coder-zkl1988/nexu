@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { expertManifestSchema, installedExpertSchema } from "./expert.js";
+import {
+  expertManifestSchema,
+  installedExpertSchema,
+} from "../../packages/shared/src/schemas/expert.js";
 
 describe("expertManifestSchema", () => {
   const valid = {
