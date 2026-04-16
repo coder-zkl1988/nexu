@@ -69,6 +69,9 @@ importers:
       lowdb:
         specifier: ^7.0.1
         version: 7.0.1
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -76,6 +79,9 @@ importers:
       '@types/node':
         specifier: ^22.13.4
         version: 22.19.11
+      '@types/ws':
+        specifier: ^8.5.12
+        version: 8.18.1
       tsx:
         specifier: ^4.19.3
         version: 4.21.0
@@ -3227,6 +3233,9 @@ packages:
 
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -9935,6 +9944,10 @@ snapshots:
 
   '@types/verror@1.10.11':
     optional: true
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 25.3.2
 
   '@types/yauzl@2.10.3':
     dependencies:

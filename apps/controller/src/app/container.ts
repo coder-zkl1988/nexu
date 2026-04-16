@@ -25,6 +25,7 @@ import { ChannelFallbackService } from "../services/channel-fallback-service.js"
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
 import { DeviceControlService } from "../services/device-control-service.js";
+import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
@@ -69,6 +70,7 @@ export interface ControllerContainer {
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
+  deviceMirrorProxy: DeviceMirrorProxy;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
@@ -162,6 +164,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     deviceTaskHistoryStore,
   );
+  const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
 
   // Wire cloud state change callback to sync refreshed cloud inventory without
   // auto-switching the default model during startup or first-channel connect.
@@ -214,6 +217,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
+    deviceMirrorProxy,
     deviceTaskHistoryStore,
     wsClient,
     gatewayService,
