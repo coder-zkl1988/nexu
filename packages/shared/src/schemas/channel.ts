@@ -39,6 +39,7 @@ export const connectFeishuSchema = z.object({
   appSecret: z.string().min(1),
   connectionMode: z.enum(["websocket", "webhook"]).optional(),
   verificationToken: z.string().optional(),
+  botId: z.string().min(1),
 });
 
 export const connectWecomSchema = z.object({
@@ -53,7 +54,14 @@ export const connectDingtalkSchema = z.object({
 
 export const connectWechatSchema = z.object({
   accountId: z.string().min(1),
+  botId: z.string().min(1),
 });
+
+export const updateChannelBotSchema = z.object({
+  botId: z.string().min(1),
+});
+
+export type UpdateChannelBotInput = z.infer<typeof updateChannelBotSchema>;
 
 export const connectTelegramSchema = z.object({
   botToken: z.string().min(1),
