@@ -7,6 +7,7 @@ import { registerChannelRoutes } from "../routes/channel-routes.js";
 import { registerDesktopCompatRoutes } from "../routes/desktop-compat-routes.js";
 import { registerDesktopRewardsRoutes } from "../routes/desktop-rewards-routes.js";
 import { registerDesktopRoutes } from "../routes/desktop-routes.js";
+import { buildExperthubRoutes } from "../routes/experthub-routes.js";
 import { registerIntegrationRoutes } from "../routes/integration-routes.js";
 import { registerMiscCompatRoutes } from "../routes/misc-compat-routes.js";
 import { registerModelRoutes } from "../routes/model-routes.js";
@@ -46,6 +47,13 @@ export function createApp(container: ControllerContainer) {
   registerIntegrationRoutes(app, container);
   registerArtifactRoutes(app, container);
   registerSkillhubRoutes(app, container);
+  app.route(
+    "/api/v1/experthub",
+    buildExperthubRoutes({
+      catalog: container.experthubCatalogManager,
+      installExpert: container.installExpertFn,
+    }),
+  );
   registerUserRoutes(app, container);
   registerRuntimeConfigRoutes(app, container);
   registerWorkspaceTemplateRoutes(app, container);
