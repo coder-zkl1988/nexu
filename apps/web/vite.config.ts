@@ -22,7 +22,11 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/v1": webApiOrigin,
-      "/api": webApiOrigin,
+      "/api": {
+        target: webApiOrigin,
+        changeOrigin: true,
+        ws: true,
+      },
       "/openapi.json": webApiOrigin,
     },
   },

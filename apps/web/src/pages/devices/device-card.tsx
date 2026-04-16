@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { GetApiV1DevicesResponse } from "../../../lib/api/types.gen";
+import { MirrorDialog } from "./mirror-dialog";
 import { TaskDispatchDialog } from "./task-dispatch-dialog";
 
 export type DeviceInfo =
@@ -43,6 +44,7 @@ export function DeviceCard({
   onTaskSuccess: () => void;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [mirrorOpen, setMirrorOpen] = useState(false);
   const color = statusColor(device.status);
 
   return (
@@ -89,15 +91,24 @@ export function DeviceCard({
           )}
         </div>
 
-        {/* Action */}
-        <button
-          type="button"
-          disabled={device.status === "busy"}
-          onClick={() => setDialogOpen(true)}
-          className="mt-auto w-full rounded-lg border border-border bg-surface-0 px-3 py-2 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-2 hover:border-border-hover disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Dispatch task
-        </button>
+        {/* Actions */}
+        <div className="mt-auto flex gap-2">
+          <button
+            type="button"
+            disabled={device.status === "busy"}
+            onClick={() => setDialogOpen(true)}
+            className="flex-1 rounded-lg border border-border bg-surface-0 px-3 py-2 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-2 hover:border-border-hover disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Dispatch task
+          </button>
+          <button
+            type="button"
+            onClick={() => setMirrorOpen(true)}
+            className="flex-1 rounded-lg border border-border bg-surface-0 px-3 py-2 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-2 hover:border-border-hover"
+          >
+            View screen
+          </button>
+        </div>
       </div>
 
       <TaskDispatchDialog
@@ -108,6 +119,11 @@ export function DeviceCard({
           setDialogOpen(false);
           onTaskSuccess();
         }}
+      />
+      <MirrorDialog
+        device={device}
+        open={mirrorOpen}
+        onClose={() => setMirrorOpen(false)}
       />
     </>
   );
