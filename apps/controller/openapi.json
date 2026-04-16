@@ -55,6 +55,11 @@
                             "type": "string",
                             "nullable": true
                           },
+                          "expertSlug": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -115,6 +120,11 @@
                   },
                   "poolId": {
                     "type": "string"
+                  },
+                  "expertSlug": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^[a-z0-9-]+$"
                   }
                 },
                 "required": [
@@ -160,6 +170,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -236,6 +251,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -350,6 +370,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -480,6 +505,11 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -573,6 +603,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"

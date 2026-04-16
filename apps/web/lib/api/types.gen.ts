@@ -20,6 +20,7 @@ export type GetApiV1BotsResponses = {
             status: 'active' | 'paused' | 'deleted';
             modelId: string;
             systemPrompt: string;
+            expertSlug?: string;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -35,6 +36,7 @@ export type PostApiV1BotsData = {
         systemPrompt?: string;
         modelId?: string;
         poolId?: string;
+        expertSlug?: string;
     };
     path?: never;
     query?: never;
@@ -53,6 +55,7 @@ export type PostApiV1BotsResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -112,6 +115,7 @@ export type GetApiV1BotsByBotIdResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -155,6 +159,7 @@ export type PatchApiV1BotsByBotIdResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -194,6 +199,7 @@ export type PostApiV1BotsByBotIdPauseResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -233,6 +239,7 @@ export type PostApiV1BotsByBotIdResumeResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
