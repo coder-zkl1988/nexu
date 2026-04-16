@@ -80,6 +80,11 @@ function createBaseConfig(): NexuConfig {
     channels: [],
     templates: {},
     desktop: {},
+    deviceControl: {
+      enabled: false,
+      wsPort: 18790,
+      rpcPort: 18801,
+    },
     secrets: {},
   };
 }
