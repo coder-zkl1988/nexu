@@ -3901,6 +3901,183 @@ export type PutApiInternalWorkspaceTemplatesByNameResponses = {
 
 export type PutApiInternalWorkspaceTemplatesByNameResponse = PutApiInternalWorkspaceTemplatesByNameResponses[keyof PutApiInternalWorkspaceTemplatesByNameResponses];
 
+export type GetApiV1DevicesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/devices';
+};
+
+export type GetApiV1DevicesErrors = {
+    /**
+     * Device control plugin is not running
+     */
+    503: {
+        message: string;
+    };
+};
+
+export type GetApiV1DevicesError = GetApiV1DevicesErrors[keyof GetApiV1DevicesErrors];
+
+export type GetApiV1DevicesResponses = {
+    /**
+     * Device list
+     */
+    200: {
+        devices: Array<{
+            deviceId: string;
+            model?: string;
+            osVersion?: number | string;
+            screenWidth?: number;
+            screenHeight?: number;
+            status: 'idle' | 'busy' | 'error';
+            currentApp?: string;
+            currentTaskId?: string;
+            connectedAt: number;
+            lastSeen: number;
+            manufacturer?: string;
+            batteryLevel?: number;
+            batteryStatus?: string;
+            totalRam?: number | string;
+            availableRam?: number | string;
+            totalStorage?: number | string;
+            availableStorage?: number | string;
+            wifiSsid?: string;
+            isWifiConnected?: boolean;
+            isCharging?: boolean;
+        }>;
+    };
+};
+
+export type GetApiV1DevicesResponse = GetApiV1DevicesResponses[keyof GetApiV1DevicesResponses];
+
+export type GetApiV1DevicesByDeviceIdData = {
+    body?: never;
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}';
+};
+
+export type GetApiV1DevicesByDeviceIdErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1DevicesByDeviceIdError = GetApiV1DevicesByDeviceIdErrors[keyof GetApiV1DevicesByDeviceIdErrors];
+
+export type GetApiV1DevicesByDeviceIdResponses = {
+    /**
+     * Device info
+     */
+    200: {
+        deviceId: string;
+        model?: string;
+        osVersion?: number | string;
+        screenWidth?: number;
+        screenHeight?: number;
+        status: 'idle' | 'busy' | 'error';
+        currentApp?: string;
+        currentTaskId?: string;
+        connectedAt: number;
+        lastSeen: number;
+        manufacturer?: string;
+        batteryLevel?: number;
+        batteryStatus?: string;
+        totalRam?: number | string;
+        availableRam?: number | string;
+        totalStorage?: number | string;
+        availableStorage?: number | string;
+        wifiSsid?: string;
+        isWifiConnected?: boolean;
+        isCharging?: boolean;
+    };
+};
+
+export type GetApiV1DevicesByDeviceIdResponse = GetApiV1DevicesByDeviceIdResponses[keyof GetApiV1DevicesByDeviceIdResponses];
+
+export type DeleteApiV1DevicesByDeviceIdTasksData = {
+    body?: {
+        taskId: string;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/tasks';
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksResponses = {
+    /**
+     * Task cancelled
+     */
+    200: {
+        cancelled: boolean;
+        message?: string;
+    };
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksResponse = DeleteApiV1DevicesByDeviceIdTasksResponses[keyof DeleteApiV1DevicesByDeviceIdTasksResponses];
+
+export type PostApiV1DevicesByDeviceIdTasksData = {
+    body?: {
+        task: string;
+        maxSteps?: number;
+        guidance?: string;
+        sessionId?: string;
+        allowedActions?: Array<string>;
+        allowedApps?: Array<string>;
+        timeout?: number;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/tasks';
+};
+
+export type PostApiV1DevicesByDeviceIdTasksErrors = {
+    /**
+     * Device control plugin is not running
+     */
+    503: {
+        message: string;
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdTasksError = PostApiV1DevicesByDeviceIdTasksErrors[keyof PostApiV1DevicesByDeviceIdTasksErrors];
+
+export type PostApiV1DevicesByDeviceIdTasksResponses = {
+    /**
+     * Task result
+     */
+    200: {
+        result: {
+            taskId: string;
+            success: boolean;
+            message?: string;
+            totalSteps?: number;
+            steps?: Array<{
+                step: number;
+                action: string;
+                target?: string;
+                success: boolean;
+                error?: string;
+            }>;
+            failedAtStep?: number;
+            finalScreenshot?: string;
+            duration?: number;
+        };
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdTasksResponse = PostApiV1DevicesByDeviceIdTasksResponses[keyof PostApiV1DevicesByDeviceIdTasksResponses];
+
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
