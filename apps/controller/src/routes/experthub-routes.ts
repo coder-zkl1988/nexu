@@ -8,7 +8,10 @@ import {
   uninstallExpertResponseSchema,
 } from "@nexu/shared";
 import type { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
-import type { InstallExpertResult } from "../services/experthub/install-flow.js";
+import {
+  ExpertNotFoundError,
+  type InstallExpertResult,
+} from "../services/experthub/install-flow.js";
 
 /**
  * Narrow injected dependency surface for the experthub HTTP routes. The
@@ -119,9 +122,8 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
         const result = await deps.installExpert({ slug });
         return c.json(result, 200);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (/not found/i.test(message)) {
-          return c.json({ message }, 404);
+        if (error instanceof ExpertNotFoundError) {
+          return c.json({ message: error.message }, 404);
         }
         throw error;
       }

@@ -47,6 +47,20 @@ export type InstallExpertResult = {
 };
 
 /**
+ * Thrown by `installExpert` when the requested slug cannot be resolved by the
+ * catalog manager. The route layer uses `instanceof` to map this to HTTP 404
+ * without fragile substring matching on the error message.
+ */
+export class ExpertNotFoundError extends Error {
+  readonly slug: string;
+  constructor(slug: string) {
+    super(`Expert not found: ${slug}`);
+    this.name = "ExpertNotFoundError";
+    this.slug = slug;
+  }
+}
+
+/**
  * Install an expert end-to-end:
  *   1. Resolve the expert manifest from the catalog
  *   2. Create a bot seeded with the expert's systemPrompt/modelId
@@ -67,7 +81,7 @@ export async function installExpert(args: {
 
   const resolved = await deps.catalog.resolveExpert(slug);
   if (!resolved) {
-    throw new Error(`Expert not found: ${slug}`);
+    throw new ExpertNotFoundError(slug);
   }
   const manifest: ExpertManifest = resolved.manifest;
 

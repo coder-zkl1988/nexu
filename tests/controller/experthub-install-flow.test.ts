@@ -1,6 +1,7 @@
 import type { ExpertManifest } from "@nexu/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ExpertNotFoundError,
   type InstallExpertDeps,
   installExpert,
 } from "../../apps/controller/src/services/experthub/install-flow.js";
@@ -121,10 +122,13 @@ describe("installExpert", () => {
     expect(deps.sync.syncAll).toHaveBeenCalled();
   });
 
-  it("throws when expert not found", async () => {
+  it("throws ExpertNotFoundError when expert not found", async () => {
     const deps = buildDeps({
       catalog: { resolveExpert: vi.fn().mockResolvedValue(null) },
     });
+    await expect(
+      installExpert({ slug: "missing", deps }),
+    ).rejects.toBeInstanceOf(ExpertNotFoundError);
     await expect(installExpert({ slug: "missing", deps })).rejects.toThrow(
       /not found/i,
     );

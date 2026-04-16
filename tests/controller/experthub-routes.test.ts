@@ -4,6 +4,7 @@ import {
   type ExperthubRoutesDeps,
   buildExperthubRoutes,
 } from "../../apps/controller/src/routes/experthub-routes.js";
+import { ExpertNotFoundError } from "../../apps/controller/src/services/experthub/install-flow.js";
 
 const manifest: ExpertManifest = {
   schemaVersion: 1,
@@ -125,7 +126,7 @@ describe("experthub routes", () => {
   it("POST /install returns 404 when expert not found", async () => {
     const installExpert = vi
       .fn()
-      .mockRejectedValue(new Error("Expert not found: missing"));
+      .mockRejectedValue(new ExpertNotFoundError("missing"));
     const { app } = buildApp({ installExpert });
     const res = await app.request("/install", {
       method: "POST",
