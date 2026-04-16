@@ -293,6 +293,8 @@ function compilePlugins(
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
+  const deviceControlEnabled = config.deviceControl.enabled;
+
   // Sort and dedup defensively so `plugins.allow` is fully deterministic.
   // Without this, channel reorderings or brief status flaps change the
   // output order, which OpenClaw treats as a config change and triggers
@@ -302,6 +304,7 @@ function compilePlugins(
       ...connectedPluginIds,
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
+      ...(deviceControlEnabled ? ["lobster-device-control"] : []),
     ]),
   ).sort();
 
@@ -358,6 +361,17 @@ function compilePlugins(
         ? {
             "minimax-portal-auth": {
               enabled: true,
+            },
+          }
+        : {}),
+      ...(deviceControlEnabled
+        ? {
+            "lobster-device-control": {
+              enabled: true,
+              config: {
+                wsPort: config.deviceControl.wsPort,
+                rpcPort: config.deviceControl.rpcPort,
+              },
             },
           }
         : {}),
