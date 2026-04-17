@@ -76,6 +76,18 @@ export const connectQqbotSchema = z.object({
   appSecret: z.string().min(1),
 });
 
+export const feishuPolicySchema = z.enum(["open", "allowlist", "disabled"]);
+
+export const feishuPermissionsSchema = z.object({
+  requireMention: z.boolean().default(true),
+  dmPolicy: feishuPolicySchema.default("open"),
+  groupPolicy: feishuPolicySchema.default("open"),
+  allowFrom: z.array(z.string().min(1)).default([]),
+});
+
+export type FeishuPolicy = z.infer<typeof feishuPolicySchema>;
+export type FeishuPermissions = z.infer<typeof feishuPermissionsSchema>;
+
 export const channelConnectErrorCodeSchema = z.enum([
   "already_connected",
   "app_id_mismatch",
@@ -157,6 +169,7 @@ export const channelResponseSchema = z.object({
   botUserId: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  feishuPermissions: feishuPermissionsSchema.nullable().optional(),
 });
 
 export const channelListResponseSchema = z.object({
