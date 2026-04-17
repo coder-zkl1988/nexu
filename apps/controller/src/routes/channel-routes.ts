@@ -14,6 +14,7 @@ import {
   connectWecomSchema,
   connectWhatsappSchema,
   dingtalkConnectivityResponseSchema,
+  feishuPermissionsSchema,
   qqbotConnectivityResponseSchema,
   slackOAuthUrlResponseSchema,
   updateChannelBotSchema,
@@ -908,6 +909,71 @@ export function registerChannelRoutes(
         logger.error(
           { channelId, botId, error: message },
           "channel_update_bot_failed",
+        );
+        throw error;
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/channels/{channelId}/feishu-permissions",
+      tags: ["Channels"],
+      request: {
+        params: channelIdParamSchema,
+        body: {
+          content: {
+            "application/json": { schema: feishuPermissionsSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: channelResponseSchema } },
+          description: "Updated channel with new feishu permissions",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Not a Feishu channel",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Channel not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { channelId } = c.req.valid("param");
+      const perms = c.req.valid("json");
+      try {
+        const updated = await container.channelService.updateFeishuPermissions(
+          channelId,
+          perms,
+        );
+        return c.json(updated, 200);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to update feishu permissions";
+        if (/^Channel not found/i.test(message)) {
+          logger.warn(
+            { channelId },
+            "channel_update_feishu_permissions_channel_not_found",
+          );
+          return c.json({ message }, 404);
+        }
+        if (/^Not a Feishu channel/i.test(message)) {
+          logger.warn(
+            { channelId },
+            "channel_update_feishu_permissions_wrong_type",
+          );
+          return c.json({ message }, 400);
+        }
+        logger.error(
+          { channelId, error: message },
+          "channel_update_feishu_permissions_failed",
         );
         throw error;
       }

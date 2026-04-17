@@ -3895,6 +3895,42 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "feishuPermissions": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "requireMention": {
+                                "type": "boolean",
+                                "default": true
+                              },
+                              "dmPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "open",
+                                  "allowlist",
+                                  "disabled"
+                                ],
+                                "default": "open"
+                              },
+                              "groupPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "open",
+                                  "allowlist",
+                                  "disabled"
+                                ],
+                                "default": "open"
+                              },
+                              "allowFrom": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "default": []
+                              }
+                            }
                           }
                         },
                         "required": [
@@ -4082,6 +4118,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4210,6 +4282,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4529,6 +4637,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4647,6 +4791,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4951,6 +5131,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5145,6 +5361,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5339,6 +5591,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5520,6 +5808,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5722,6 +6046,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5740,6 +6100,210 @@
           },
           "400": {
             "description": "Invalid botId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{channelId}/feishu-permissions": {
+      "patch": {
+        "tags": [
+          "Channels"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "channelId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requireMention": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "dmPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "allowlist",
+                      "disabled"
+                    ],
+                    "default": "open"
+                  },
+                  "groupPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "allowlist",
+                      "disabled"
+                    ],
+                    "default": "open"
+                  },
+                  "allowFrom": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "default": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated channel with new feishu permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string",
+                      "enum": [
+                        "slack",
+                        "discord",
+                        "feishu",
+                        "dingtalk",
+                        "wecom",
+                        "wechat",
+                        "telegram",
+                        "whatsapp",
+                        "qqbot"
+                      ]
+                    },
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "connected",
+                        "disconnected",
+                        "error"
+                      ]
+                    },
+                    "teamName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "appId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "botUserId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "channelType",
+                    "accountId",
+                    "status",
+                    "teamName",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a Feishu channel",
             "content": {
               "application/json": {
                 "schema": {
@@ -5986,6 +6550,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6231,6 +6831,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
