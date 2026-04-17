@@ -1044,6 +1044,22 @@ const en = {
   "feishuSetup.connectSuccess": "Feishu bot connected!",
   "feishuSetup.connectFailed": "Failed to connect Feishu",
 
+  // ── Feishu Permissions ──
+  "feishu.permissions.title": "Permissions",
+  "feishu.permissions.usingDefaults": "using defaults",
+  "feishu.permissions.requireMention": "Only reply when @-mentioned in groups",
+  "feishu.permissions.dmPolicy": "Direct messages",
+  "feishu.permissions.groupPolicy": "Group messages",
+  "feishu.permissions.policy.open": "Open",
+  "feishu.permissions.policy.allowlist": "Allowlist",
+  "feishu.permissions.policy.disabled": "Disabled",
+  "feishu.permissions.allowFrom": "Allowlist (open_id, one per line)",
+  "feishu.permissions.openIdHelp": "How to find a Feishu user's open_id",
+  "feishu.permissions.save": "Save",
+  "feishu.permissions.reset": "Reset",
+  "feishu.permissions.saved": "Permissions updated",
+  "feishu.permissions.saveFailed": "Failed to update permissions",
+
   // ── WeChat Setup ──
   "wechatSetup.title": "Connect WeChat",
   "wechatSetup.desc": "Scan with WeChat on your phone to connect.",
