@@ -10,11 +10,16 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { BotPicker } from "./bot-picker";
+import {
+  type FeishuPermissionsDraft,
+  FeishuPermissionsPanel,
+} from "./feishu-permissions-panel";
 
 /**
  * Minimal channel shape required by the instance card. Kept structural (not
  * tied to the @nexu/shared ChannelResponse) so it also matches the SDK's
- * generated response type, which treats teamName as non-nullable.
+ * generated response type, which treats teamName as non-nullable and keeps
+ * feishuPermissions fields optional.
  */
 export type ChannelInstance = {
   id: string;
@@ -22,6 +27,8 @@ export type ChannelInstance = {
   accountId: string;
   teamName: string | null;
   status: string;
+  channelType?: string;
+  feishuPermissions?: FeishuPermissionsDraft | null;
 };
 
 type Props = {
@@ -148,6 +155,13 @@ export function ChannelInstanceCard({ channel, botName, liveStatus }: Props) {
           </button>
         </div>
       )}
+
+      {channel.channelType === "feishu" ? (
+        <FeishuPermissionsPanel
+          channelId={channel.id}
+          initial={channel.feishuPermissions ?? null}
+        />
+      ) : null}
     </div>
   );
 }
