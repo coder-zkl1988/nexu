@@ -12,6 +12,7 @@ import { DeviceTaskHistoryPage } from "./pages/devices/task-history-page";
 import { FeishuBindPage } from "./pages/feishu-bind";
 import { HomePage } from "./pages/home";
 import { IntegrationsPage } from "./pages/integrations";
+import { LocalChatPage } from "./pages/local-chat";
 import { ModelsPage } from "./pages/models";
 import { OAuthCallbackPage } from "./pages/oauth-callback";
 import { RewardsPage } from "./pages/rewards";
@@ -34,6 +35,7 @@ function DocumentTitleSync() {
       "/workspace/devices": t("title.devices"),
       "/workspace/rewards": t("title.rewards"),
       "/workspace/skills": t("title.skills"),
+      "/workspace/chat": t("localChat.title"),
       "/workspace/settings": t("title.settings"),
       "/workspace/models": t("title.settings"),
       "/feishu/bind": t("title.linkFeishu"),
@@ -91,6 +93,7 @@ export function App() {
               <Route path="/workspace/settings" element={<ModelsPage />} />
               <Route path="/workspace/models" element={<ModelsPage />} />
               <Route path="/workspace/skills" element={<SkillsPage />} />
+              <Route path="/workspace/chat" element={<LocalChatPage />} />
               <Route
                 path="/workspace/skills/:slug"
                 element={<CommunitySkillDetailPage />}
