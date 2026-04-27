@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { postApiV1DevicesByDeviceIdTasks } from "../../../lib/api/sdk.gen";
 import type { DeviceInfo } from "./device-card";
 
@@ -13,6 +14,7 @@ export function TaskDispatchDialog({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const titleId = useId();
   const [task, setTask] = useState("");
   const [maxSteps, setMaxSteps] = useState(30);
@@ -40,7 +42,7 @@ export function TaskDispatchDialog({
           apiError !== null &&
           "message" in apiError
             ? String((apiError as { message: unknown }).message)
-            : "Failed to dispatch task";
+            : t("devices.taskDispatch.errorFallback");
         throw new Error(msg);
       }
 
@@ -49,7 +51,9 @@ export function TaskDispatchDialog({
       onSuccess();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "An unexpected error occurred",
+        err instanceof Error
+          ? err.message
+          : t("devices.taskDispatch.errorFallback"),
       );
     } finally {
       setLoading(false);
@@ -77,49 +81,46 @@ export function TaskDispatchDialog({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="px-5 py-4 border-b border-border">
           <div
             id={titleId}
             className="text-[14px] font-semibold text-text-primary"
           >
-            Dispatch task
+            {t("devices.taskDispatch.title")}
           </div>
           <div className="text-[12px] text-text-muted mt-0.5 truncate">
             {device.deviceId}
           </div>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="px-5 py-4 flex flex-col gap-4">
-          {/* Task description */}
           <div className="flex flex-col gap-1.5">
             <label
               htmlFor="task-input"
               className="text-[12px] font-medium text-text-secondary"
             >
-              Task description <span className="text-red-500">*</span>
+              {t("devices.taskDispatch.taskLabel")}{" "}
+              <span className="text-red-500">*</span>
             </label>
             <textarea
               id="task-input"
               rows={3}
               value={task}
               onChange={(e) => setTask(e.target.value)}
-              placeholder="Describe what the device should do..."
+              placeholder={t("devices.taskDispatch.taskPlaceholder")}
               required
               disabled={loading}
               className="w-full resize-none rounded-lg border border-border bg-surface-0 px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent/40 disabled:opacity-60"
             />
           </div>
 
-          {/* Max steps slider */}
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
               <label
                 htmlFor="max-steps-input"
                 className="text-[12px] font-medium text-text-secondary"
               >
-                Max steps
+                {t("devices.taskDispatch.maxSteps")}
               </label>
               <span className="text-[12px] tabular-nums text-text-primary font-semibold">
                 {maxSteps}
@@ -142,14 +143,12 @@ export function TaskDispatchDialog({
             </div>
           </div>
 
-          {/* Error */}
           {error && (
             <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2 text-[12px] text-red-600">
               {error}
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex justify-end gap-2.5">
             <button
               type="button"
@@ -157,7 +156,7 @@ export function TaskDispatchDialog({
               disabled={loading}
               className="px-4 py-2 text-[12px] font-medium text-text-secondary rounded-lg border border-border hover:border-border-hover hover:bg-surface-3 transition-all disabled:opacity-60"
             >
-              Cancel
+              {t("devices.taskDispatch.cancel")}
             </button>
             <button
               type="submit"
@@ -167,10 +166,10 @@ export function TaskDispatchDialog({
               {loading ? (
                 <>
                   <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Dispatching…
+                  {t("devices.taskDispatch.dispatching")}
                 </>
               ) : (
-                "Dispatch"
+                t("devices.taskDispatch.dispatch")
               )}
             </button>
           </div>

@@ -13,9 +13,9 @@
  *   DEVICE_CONTROL_PLUGIN_PATH=/custom/path node scripts/prepare-device-control-plugin.mjs
  */
 import { access, cp, mkdir, rm } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTROLLER_ROOT = path.resolve(__dirname, "..");

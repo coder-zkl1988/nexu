@@ -20,20 +20,18 @@ export function DevicesPage() {
           apiError !== null &&
           "message" in apiError
             ? String((apiError as { message: unknown }).message)
-            : "Device control plugin is not running";
+            : t("devices.errorTitle");
         setError(msg);
-        setDevices([]);
       } else {
         setError(null);
         setDevices(data?.devices ?? []);
       }
     } catch {
-      setError("Failed to reach device control plugin");
-      setDevices([]);
+      setError(t("devices.errorTitle"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -79,10 +77,10 @@ export function DevicesPage() {
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold text-text-primary">
-            {t("title.devices", "Devices")}
+            {t("title.devices")}
           </h1>
           <p className="text-[13px] text-text-muted mt-1">
-            Connected Android devices via device control plugin
+            {t("devices.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -90,7 +88,7 @@ export function DevicesPage() {
             to="/workspace/devices/tasks"
             className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-text-secondary rounded-lg border border-border hover:border-border-hover hover:bg-surface-2 transition-all"
           >
-            Task history
+            {t("devices.taskHistory")}
           </Link>
           <button
             type="button"
@@ -101,7 +99,7 @@ export function DevicesPage() {
             <span
               className={`w-3 h-3 border-2 border-current border-t-transparent rounded-full ${loading ? "animate-spin" : ""}`}
             />
-            Refresh
+            {t("devices.refresh")}
           </button>
         </div>
       </div>
@@ -112,7 +110,7 @@ export function DevicesPage() {
           <span className="text-amber-500 shrink-0 mt-0.5">⚠</span>
           <div>
             <div className="font-medium text-text-primary">
-              Device control plugin is not running
+              {t("devices.errorTitle")}
             </div>
             <div className="text-text-muted mt-0.5 text-[12px]">{error}</div>
           </div>
@@ -133,16 +131,15 @@ export function DevicesPage() {
             <span className="text-2xl">📱</span>
           </div>
           <div className="text-[14px] font-semibold text-text-primary">
-            No devices connected
+            {t("devices.emptyTitle")}
           </div>
           <div className="text-[12px] text-text-muted mt-1 max-w-xs">
-            Connect an Android device via the device control plugin to get
-            started
+            {t("devices.emptyHint")}
           </div>
         </div>
       )}
 
-      {/* Device grid */}
+      {/* Device grid — show even during error if we have cached devices */}
       {devices.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {devices.map((device) => (

@@ -1,6 +1,7 @@
 import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import type { DeviceTaskHistoryEntry } from "@nexu/shared";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { getApiV1DevicesTasks } from "../../../lib/api/sdk.gen";
 
@@ -12,6 +13,7 @@ function formatDuration(ms: number | undefined): string {
 }
 
 export function DeviceTaskHistoryPage() {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<DeviceTaskHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export function DeviceTaskHistoryPage() {
           setError(
             formatChannelConnectErrorMessage(
               res.error,
-              "Failed to load history",
+              t("devices.taskHistory.loadError"),
             ),
           );
         } else {
@@ -39,24 +41,24 @@ export function DeviceTaskHistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-6 md:p-8 mx-auto max-w-4xl">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-lg font-bold text-text-primary">
-            Device task history
+            {t("devices.taskHistory.title")}
           </h1>
           <p className="text-[13px] text-text-muted mt-1">
-            Last 200 tasks dispatched via the device control plugin
+            {t("devices.taskHistory.subtitle")}
           </p>
         </div>
         <Link
           to="/workspace/devices"
           className="text-[12px] text-text-secondary hover:text-text-primary underline-offset-2 hover:underline"
         >
-          ← Back to devices
+          {t("devices.taskHistory.backToDevices")}
         </Link>
       </div>
 
@@ -74,7 +76,7 @@ export function DeviceTaskHistoryPage() {
 
       {!loading && !error && entries.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center text-[13px] text-text-muted">
-          No tasks dispatched yet.
+          {t("devices.taskHistory.empty")}
         </div>
       )}
 
@@ -104,7 +106,10 @@ export function DeviceTaskHistoryPage() {
                   {entry.result.totalSteps !== undefined && (
                     <>
                       <span>·</span>
-                      <span>{entry.result.totalSteps} steps</span>
+                      <span>
+                        {entry.result.totalSteps}{" "}
+                        {t("devices.taskDetail.steps")}
+                      </span>
                     </>
                   )}
                 </div>

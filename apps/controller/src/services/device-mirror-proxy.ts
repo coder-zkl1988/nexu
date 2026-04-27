@@ -9,6 +9,26 @@ const MIRROR_PATH_PREFIX = "/api/v1/devices/";
 const MIRROR_PATH_SUFFIX = "/mirror";
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 
+function isPrivateAddress(remote: string): boolean {
+  if (
+    remote === "127.0.0.1" ||
+    remote === "::1" ||
+    remote === "::ffff:127.0.0.1"
+  ) {
+    return true;
+  }
+  // Accept RFC-1918 private addresses so that the Vite dev proxy
+  // and desktop webview on the same LAN can reach mirror sessions.
+  const ipv4 = remote.startsWith("::ffff:") ? remote.slice(7) : remote;
+  return (
+    ipv4.startsWith("192.168.") ||
+    ipv4.startsWith("10.") ||
+    ipv4 === "172.16.0.0" ||
+    // 172.16.0.0/12 — check the full second octet range
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ipv4)
+  );
+}
+
 export class DeviceMirrorProxy {
   private readonly wss: WebSocketServer;
 
@@ -40,12 +60,8 @@ export class DeviceMirrorProxy {
     }
 
     const remote = req.socket.remoteAddress ?? "";
-    const isLoopback =
-      remote === "127.0.0.1" ||
-      remote === "::1" ||
-      remote === "::ffff:127.0.0.1";
-    if (!isLoopback) {
-      logger.warn({ remote, deviceId }, "rejected non-loopback mirror upgrade");
+    if (!isPrivateAddress(remote)) {
+      logger.warn({ remote, deviceId }, "rejected non-private mirror upgrade");
       socket.destroy();
       return true;
     }
@@ -69,24 +85,23 @@ export class DeviceMirrorProxy {
 
     logger.info({ deviceId }, "mirror bridge opened");
 
+    // Connect to the /mirror upgrade path on the device-control plugin.
+    // The plugin uses `/phone` for device auth and `/mirror` for screen
+    // mirror subscriptions.  Connecting to `/mirror` causes the plugin
+    // to enter handleMirrorConnection which expects the first message
+    // to contain { deviceId } to subscribe to that device's frames.
     const upstream = new WebSocket(
-      `ws://127.0.0.1:${config.deviceControl.wsPort}/phone`,
+      `ws://127.0.0.1:${config.deviceControl.wsPort}/mirror`,
     );
 
     upstream.on("open", () => {
-      // Subscribe to mirror channel for this device (protocol per ws-server.ts)
-      upstream.send(
-        JSON.stringify({
-          channel: "mirror",
-          type: "subscribe",
-          deviceId,
-        }),
-      );
+      // The /mirror handler expects the first message to carry the
+      // deviceId of the device to subscribe to.
+      upstream.send(JSON.stringify({ deviceId }));
     });
 
     upstream.on("message", (data) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      // Forward raw frames; browser decodes JSON and filters by channel === "mirror".
       clientWs.send(data);
     });
 

@@ -7,6 +7,7 @@ import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   getApiV1RuntimeConfig,
@@ -16,6 +17,7 @@ import {
 const RUNTIME_CONFIG_QUERY_KEY = ["runtime-config"] as const;
 
 export function DeviceControlSettingsSection() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: RUNTIME_CONFIG_QUERY_KEY,
@@ -25,7 +27,7 @@ export function DeviceControlSettingsSection() {
         throw new Error(
           formatChannelConnectErrorMessage(
             res.error,
-            "Failed to load runtime config",
+            t("devices.settings.loading"),
           ),
         );
       }
@@ -54,13 +56,16 @@ export function DeviceControlSettingsSection() {
       const res = await patchApiV1RuntimeConfigDeviceControl({ body });
       if (res.error) {
         throw new Error(
-          formatChannelConnectErrorMessage(res.error, "Update failed"),
+          formatChannelConnectErrorMessage(
+            res.error,
+            t("devices.settings.updateFailed"),
+          ),
         );
       }
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: RUNTIME_CONFIG_QUERY_KEY });
-      toast.success("Device control updated");
+      toast.success(t("devices.settings.updated"));
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -80,11 +85,11 @@ export function DeviceControlSettingsSection() {
       rpc <= 0 ||
       rpc > 65535
     ) {
-      toast.error("Ports must be integers between 1 and 65535");
+      toast.error(t("devices.settings.portValidationError"));
       return;
     }
     if (ws === rpc) {
-      toast.error("WebSocket and RPC ports must differ");
+      toast.error(t("devices.settings.portConflictError"));
       return;
     }
     try {
@@ -100,7 +105,7 @@ export function DeviceControlSettingsSection() {
       <Card>
         <CardContent className="flex items-center gap-2 py-6 text-[13px] text-text-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading device control config…
+          {t("devices.settings.loading")}
         </CardContent>
       </Card>
     );
@@ -109,15 +114,18 @@ export function DeviceControlSettingsSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Android Device Control</CardTitle>
+        <CardTitle>{t("devices.settings.title")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-[13px] font-medium">Enable plugin</div>
+            <div className="text-[13px] font-medium">
+              {t("devices.settings.enablePlugin")}
+            </div>
             <div className="text-[12px] text-text-muted mt-0.5">
-              Runs the lobster-device-control plugin to accept Android
-              connections at ws://0.0.0.0:{deviceControl.wsPort}/phone
+              {t("devices.settings.enablePluginDesc", {
+                wsPort: String(deviceControl.wsPort),
+              })}
             </div>
           </div>
           <Switch
@@ -129,7 +137,7 @@ export function DeviceControlSettingsSection() {
 
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 flex flex-col gap-1.5">
-            <Label htmlFor="ws-port">WebSocket port (phone)</Label>
+            <Label htmlFor="ws-port">{t("devices.settings.wsPort")}</Label>
             <Input
               id="ws-port"
               type="number"
@@ -144,7 +152,7 @@ export function DeviceControlSettingsSection() {
             />
           </div>
           <div className="flex-1 flex flex-col gap-1.5">
-            <Label htmlFor="rpc-port">HTTP RPC port (controller)</Label>
+            <Label htmlFor="rpc-port">{t("devices.settings.rpcPort")}</Label>
             <Input
               id="rpc-port"
               type="number"
@@ -164,7 +172,7 @@ export function DeviceControlSettingsSection() {
               onClick={handleSavePorts}
               disabled={patchMutation.isPending}
             >
-              Save ports
+              {t("devices.settings.savePorts")}
             </Button>
           </div>
         </div>

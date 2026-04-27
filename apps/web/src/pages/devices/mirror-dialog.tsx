@@ -1,4 +1,5 @@
 import { useId, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
 import { useMirrorSocket } from "./use-mirror-socket";
 
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function MirrorDialog({ device, open, onClose }: Props) {
+  const { t } = useTranslation();
   const titleId = useId();
   const imgRef = useRef<HTMLImageElement | null>(null);
   const { frame, status, sendAction } = useMirrorSocket(
@@ -36,6 +38,13 @@ export function MirrorDialog({ device, open, onClose }: Props) {
     sendAction({ type: "click", x: point.x, y: point.y });
   };
 
+  const statusText =
+    status === "connecting" || status === "subscribing"
+      ? t("devices.mirror.statusConnecting")
+      : status === "closed"
+        ? t("devices.mirror.statusClosed")
+        : status;
+
   return (
     <dialog
       open
@@ -59,10 +68,10 @@ export function MirrorDialog({ device, open, onClose }: Props) {
               id={titleId}
               className="text-[14px] font-semibold text-text-primary"
             >
-              Screen mirror
+              {t("devices.mirror.title")}
             </div>
             <div className="text-[12px] text-text-muted mt-0.5 truncate">
-              {device.deviceId} · {status}
+              {device.deviceId} · {statusText}
             </div>
           </div>
           <button
@@ -70,21 +79,23 @@ export function MirrorDialog({ device, open, onClose }: Props) {
             onClick={onClose}
             className="text-[12px] text-text-secondary hover:text-text-primary"
           >
-            Close
+            {t("devices.mirror.close")}
           </button>
         </div>
 
         <div className="px-5 py-4">
           {frame === null ? (
             <div className="aspect-[9/16] flex items-center justify-center text-[12px] text-text-muted">
-              {status === "open" ? "Waiting for first frame…" : status}
+              {status === "open"
+                ? t("devices.mirror.waitingFrame")
+                : statusText}
             </div>
           ) : (
             // biome-ignore lint/a11y/useKeyWithClickEvents: tap-relay to a phone has no keyboard analog
             <img
               ref={imgRef}
               src={`data:image/png;base64,${frame.screenshot}`}
-              alt="Device screen"
+              alt={t("devices.mirror.title")}
               onClick={handleClick}
               className="w-full rounded-lg cursor-pointer select-none"
             />

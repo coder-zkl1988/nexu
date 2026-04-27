@@ -1,10 +1,12 @@
 import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import type { DeviceTaskHistoryEntry } from "@nexu/shared";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { getApiV1DevicesTasksByTaskId } from "../../../lib/api/sdk.gen";
 
 export function DeviceTaskDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const [entry, setEntry] = useState<DeviceTaskHistoryEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,10 @@ export function DeviceTaskDetailPage() {
         if (cancelled) return;
         if (res.error) {
           setError(
-            formatChannelConnectErrorMessage(res.error, "Task not found"),
+            formatChannelConnectErrorMessage(
+              res.error,
+              t("devices.taskDetail.notFound"),
+            ),
           );
         } else {
           setEntry(res.data ?? null);
@@ -36,7 +41,7 @@ export function DeviceTaskDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, t]);
 
   return (
     <div className="px-4 py-4 sm:px-6 sm:py-6 md:p-8 mx-auto max-w-4xl">
@@ -45,7 +50,7 @@ export function DeviceTaskDetailPage() {
           to="/workspace/devices/tasks"
           className="text-[12px] text-text-secondary hover:text-text-primary"
         >
-          ← Back to history
+          {t("devices.taskDetail.backToHistory")}
         </Link>
       </div>
 
@@ -57,14 +62,16 @@ export function DeviceTaskDetailPage() {
 
       {!loading && (error || entry === null) && (
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-[13px] text-red-600">
-          {error ?? "Task not found"}
+          {error ?? t("devices.taskDetail.errorFallback")}
         </div>
       )}
 
       {entry && (
         <div className="flex flex-col gap-6">
           <div>
-            <div className="text-[13px] text-text-muted mb-1">Task</div>
+            <div className="text-[13px] text-text-muted mb-1">
+              {t("devices.taskDetail.task")}
+            </div>
             <div className="text-[15px] font-medium text-text-primary">
               {entry.task}
             </div>
@@ -72,23 +79,31 @@ export function DeviceTaskDetailPage() {
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-[12px]">
             <div>
-              <div className="text-text-muted">Device</div>
+              <div className="text-text-muted">
+                {t("devices.taskDetail.device")}
+              </div>
               <div className="text-text-primary mt-0.5 truncate">
                 {entry.deviceId}
               </div>
             </div>
             <div>
-              <div className="text-text-muted">Status</div>
+              <div className="text-text-muted">
+                {t("devices.taskDetail.status")}
+              </div>
               <div
                 className={`mt-0.5 font-medium ${
                   entry.result.success ? "text-green-600" : "text-red-600"
                 }`}
               >
-                {entry.result.success ? "Success" : "Failed"}
+                {entry.result.success
+                  ? t("devices.taskDetail.success")
+                  : t("devices.taskDetail.failed")}
               </div>
             </div>
             <div>
-              <div className="text-text-muted">Duration</div>
+              <div className="text-text-muted">
+                {t("devices.taskDetail.duration")}
+              </div>
               <div className="text-text-primary mt-0.5">
                 {entry.result.duration !== undefined
                   ? `${(entry.result.duration / 1000).toFixed(1)}s`
@@ -96,7 +111,9 @@ export function DeviceTaskDetailPage() {
               </div>
             </div>
             <div>
-              <div className="text-text-muted">Steps</div>
+              <div className="text-text-muted">
+                {t("devices.taskDetail.steps")}
+              </div>
               <div className="text-text-primary mt-0.5">
                 {entry.result.totalSteps ?? "—"}
               </div>
@@ -105,7 +122,9 @@ export function DeviceTaskDetailPage() {
 
           {entry.result.message && (
             <div>
-              <div className="text-[13px] text-text-muted mb-1">Message</div>
+              <div className="text-[13px] text-text-muted mb-1">
+                {t("devices.taskDetail.message")}
+              </div>
               <div className="rounded-lg border border-border bg-surface-1 px-3 py-2 text-[13px] text-text-primary whitespace-pre-wrap">
                 {entry.result.message}
               </div>
@@ -114,7 +133,9 @@ export function DeviceTaskDetailPage() {
 
           {entry.result.steps && entry.result.steps.length > 0 && (
             <div>
-              <div className="text-[13px] text-text-muted mb-2">Steps</div>
+              <div className="text-[13px] text-text-muted mb-2">
+                {t("devices.taskDetail.steps")}
+              </div>
               <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface-1 overflow-hidden">
                 {entry.result.steps.map((step) => (
                   <div
@@ -153,11 +174,11 @@ export function DeviceTaskDetailPage() {
           {entry.result.finalScreenshot && (
             <div>
               <div className="text-[13px] text-text-muted mb-2">
-                Final screenshot
+                {t("devices.taskDetail.finalScreenshot")}
               </div>
               <img
                 src={`data:image/png;base64,${entry.result.finalScreenshot}`}
-                alt="Final screen"
+                alt={t("devices.taskDetail.finalScreenshot")}
                 className="max-w-[320px] rounded-lg border border-border"
               />
             </div>
