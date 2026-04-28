@@ -242,6 +242,11 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
+                    },
                     "createdAt": {
                       "type": "string"
                     },

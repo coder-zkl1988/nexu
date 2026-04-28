@@ -93,6 +93,7 @@ export type GetApiV1BotsDefaultResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };

@@ -200,7 +200,6 @@ export async function createContainer(): Promise<ControllerContainer> {
     );
   });
 
-<<<<<<< HEAD
   // Experts (ExpertHub): catalog manager + install flow.
   // The catalog manager reads bundled manifests from the static dir and
   // managed manifests from the cache dir; if staticExpertsDir is undefined
