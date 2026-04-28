@@ -24,6 +24,7 @@ import type {
   ConnectTelegramInput,
   ConnectWechatInput,
   ConnectWecomInput,
+  FeishuPermissions,
 } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
 import { ChannelConnectError } from "../lib/channel-connect-error.js";
@@ -754,6 +755,30 @@ export class ChannelService {
         workspacePath: this.getWorkspacePath(updated.botId),
       },
       "channel_update_bot_success",
+    );
+    return updated;
+  }
+
+  async updateFeishuPermissions(
+    channelId: string,
+    perms: FeishuPermissions,
+  ): Promise<ChannelResponse> {
+    // configStore.updateChannelFeishuPermissions throws
+    // "Channel not found: ..." or "Not a Feishu channel: ..." which the HTTP
+    // layer maps to 404 and 400 respectively.
+    const updated = await this.configStore.updateChannelFeishuPermissions(
+      channelId,
+      perms,
+    );
+    await this.syncService.syncAll();
+    logger.info(
+      {
+        channelId: updated.id,
+        channelType: updated.channelType,
+        accountId: updated.accountId,
+        botId: updated.botId,
+      },
+      "channel_update_feishu_permissions_success",
     );
     return updated;
   }

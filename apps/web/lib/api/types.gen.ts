@@ -1327,6 +1327,12 @@ export type GetApiV1ChannelsResponses = {
             botUserId?: string;
             createdAt: string;
             updatedAt: string;
+            feishuPermissions?: {
+                requireMention?: boolean;
+                dmPolicy?: 'open' | 'allowlist' | 'disabled';
+                groupPolicy?: 'open' | 'allowlist' | 'disabled';
+                allowFrom?: Array<string>;
+            };
         }>;
     };
 };
@@ -1411,6 +1417,12 @@ export type PostApiV1ChannelsSlackConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1488,6 +1500,12 @@ export type PostApiV1ChannelsDiscordConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1532,6 +1550,12 @@ export type PostApiV1ChannelsFeishuConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1606,6 +1630,12 @@ export type PostApiV1ChannelsTelegramConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1647,6 +1677,12 @@ export type PostApiV1ChannelsDingtalkConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1721,6 +1757,12 @@ export type PostApiV1ChannelsQqbotConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1795,6 +1837,12 @@ export type PostApiV1ChannelsWecomConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1868,6 +1916,12 @@ export type GetApiV1ChannelsByChannelIdStatusResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1958,10 +2012,73 @@ export type PatchApiV1ChannelsByChannelIdResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
 export type PatchApiV1ChannelsByChannelIdResponse = PatchApiV1ChannelsByChannelIdResponses[keyof PatchApiV1ChannelsByChannelIdResponses];
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsData = {
+    body?: {
+        requireMention?: boolean;
+        dmPolicy?: 'open' | 'allowlist' | 'disabled';
+        groupPolicy?: 'open' | 'allowlist' | 'disabled';
+        allowFrom?: Array<string>;
+    };
+    path: {
+        channelId: string;
+    };
+    query?: never;
+    url: '/api/v1/channels/{channelId}/feishu-permissions';
+};
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsErrors = {
+    /**
+     * Not a Feishu channel
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Channel not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsError = PatchApiV1ChannelsByChannelIdFeishuPermissionsErrors[keyof PatchApiV1ChannelsByChannelIdFeishuPermissionsErrors];
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
+    /**
+     * Updated channel with new feishu permissions
+     */
+    200: {
+        id: string;
+        botId: string;
+        channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
+        accountId: string;
+        status: 'pending' | 'connected' | 'disconnected' | 'error';
+        teamName: string;
+        appId?: string;
+        botUserId?: string;
+        createdAt: string;
+        updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponse = PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses[keyof PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses];
 
 export type PostApiV1ChannelsWhatsappQrStartData = {
     body?: never;
@@ -2063,6 +2180,12 @@ export type PostApiV1ChannelsWhatsappConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -2168,6 +2291,12 @@ export type PostApiV1ChannelsWechatConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 

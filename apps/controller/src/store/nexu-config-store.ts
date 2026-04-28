@@ -12,6 +12,7 @@ import type {
   CreditRechargeRecord,
   DesktopRewardClaimProof,
   DesktopRewardsStatus,
+  FeishuPermissions,
   ModelProviderConfig,
   PersistedModelsConfig,
   RewardTask,
@@ -1123,7 +1124,7 @@ export class NexuConfigStore {
 
   async updateChannel(
     channelId: string,
-    patch: Partial<Pick<ChannelResponse, "botId">>,
+    patch: Partial<Pick<ChannelResponse, "botId" | "feishuPermissions">>,
   ): Promise<ChannelResponse> {
     const existing = await this.getChannel(channelId);
     if (!existing) {
@@ -1140,6 +1141,9 @@ export class NexuConfigStore {
     const updated: ChannelResponse = {
       ...existing,
       ...(patch.botId !== undefined ? { botId: patch.botId } : {}),
+      ...(patch.feishuPermissions !== undefined
+        ? { feishuPermissions: patch.feishuPermissions }
+        : {}),
       updatedAt: now(),
     };
 
@@ -1151,6 +1155,20 @@ export class NexuConfigStore {
     }));
 
     return updated;
+  }
+
+  async updateChannelFeishuPermissions(
+    channelId: string,
+    perms: FeishuPermissions | null,
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+    if (existing.channelType !== "feishu") {
+      throw new Error(`Not a Feishu channel: ${channelId}`);
+    }
+    return this.updateChannel(channelId, { feishuPermissions: perms });
   }
 
   async connectSlack(
@@ -1396,6 +1414,7 @@ export class NexuConfigStore {
       botUserId: null,
       createdAt: connectedAt,
       updatedAt: connectedAt,
+      feishuPermissions: null,
     };
 
     await this.store.update((config) => ({

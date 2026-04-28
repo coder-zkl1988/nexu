@@ -164,6 +164,10 @@ Config 生成器在检测到 `LITELLM_BASE_URL` 环境变量时会自动添加�
 | `domain` | `"feishu"` \| `"lark"` | API 域名（国内用 feishu，国际用 lark） |
 | `dmPolicy` | `"open"` \| `"pairing"` \| `"allowlist"` | 私聊策略 |
 | `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | 群聊策略 |
+| `requireMention` | boolean | 是否需要 @mention 才响应（群消息） |
+| `allowFrom` | string[] | 允许的用户 open_id 列表；`dmPolicy`/`groupPolicy` 为 `"allowlist"` 时生效 |
+
+> **UI control:** `requireMention`, `dmPolicy`, `groupPolicy`, and `allowFrom` can be configured per feishu channel via the Permissions panel in the UI. When not set (channel.feishuPermissions === null), the compiler emits historical defaults (requireMention=true, dmPolicy=open, groupPolicy=open, allowFrom=["*"]).
 
 ### Slack
 

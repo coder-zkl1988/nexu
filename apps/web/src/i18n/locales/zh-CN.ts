@@ -991,6 +991,22 @@ const zhCN = {
   "feishuSetup.connectSuccess": "飞书 Bot 已连接！",
   "feishuSetup.connectFailed": "连接飞书失败",
 
+  // ── Feishu Permissions ──
+  "feishu.permissions.title": "权限",
+  "feishu.permissions.usingDefaults": "使用默认",
+  "feishu.permissions.requireMention": "群里仅在被 @ 时回复",
+  "feishu.permissions.dmPolicy": "私聊",
+  "feishu.permissions.groupPolicy": "群消息",
+  "feishu.permissions.policy.open": "开启",
+  "feishu.permissions.policy.allowlist": "白名单",
+  "feishu.permissions.policy.disabled": "关闭",
+  "feishu.permissions.allowFrom": "白名单（open_id，每行一个）",
+  "feishu.permissions.openIdHelp": "如何查看飞书用户的 open_id",
+  "feishu.permissions.save": "保存",
+  "feishu.permissions.reset": "重置",
+  "feishu.permissions.saved": "权限已更新",
+  "feishu.permissions.saveFailed": "更新权限失败",
+
   // ── WeChat Setup ──
   "wechatSetup.title": "连接微信",
   "wechatSetup.desc": "用手机微信扫码即可连接。",

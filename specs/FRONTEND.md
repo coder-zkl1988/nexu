@@ -57,6 +57,19 @@ Feishu (`feishu`) and WeChat (`wechat`) channels can onboard multiple accounts, 
 
 Out of scope (possible follow-up, plan D): routing different chats under the same Feishu / WeChat account to different bots.
 
+### Per-channel Feishu permissions
+
+Each Feishu channel instance exposes four permissions via the [`FeishuPermissionsPanel`](../apps/web/src/components/channels/feishu-permissions-panel.tsx) collapsible panel on its [`<ChannelInstanceCard />`](../apps/web/src/components/channels/channel-instance-card.tsx):
+
+- `requireMention` — single toggle. When enabled (default), the bot only replies in groups when @-mentioned.
+- `dmPolicy` — `open` (default) / `allowlist` / `disabled`. Controls direct messages.
+- `groupPolicy` — `open` (default) / `allowlist` / `disabled`. Controls group messages.
+- `allowFrom` — Feishu `open_id` list, shown only when either policy is `allowlist`.
+
+Backward compatibility: when `channel.feishuPermissions` is `null` (historical records), the channel binding compiler emits the previously-hardcoded defaults (`requireMention: true`, `dmPolicy: open`, `groupPolicy: open`, `allowFrom: ["*"]`).
+
+Persistence flow: UI → [`useUpdateFeishuPermissions`](../apps/web/src/hooks/use-update-feishu-permissions.ts) → `PATCH /api/v1/channels/{channelId}/feishu-permissions` → store → `openclawSyncService.syncAll()` → OpenClaw `feishu.accounts[<accountId>]` fields.
+
 ## Conventions
 
 - **State:** React Query for all server state. No manual `fetch` + `useState` patterns.
