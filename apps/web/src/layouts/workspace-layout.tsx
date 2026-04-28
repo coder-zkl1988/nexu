@@ -575,11 +575,8 @@ function WorkspaceLayoutInner() {
     location.pathname === "/workspace/home";
   const isRewardsPage = location.pathname.includes("/rewards");
   const isSkillsPage = location.pathname.includes("/skills");
-<<<<<<< HEAD
   const isExpertsPage = location.pathname.includes("/experts");
-=======
   const isLocalChatPage = location.pathname === "/workspace/chat";
->>>>>>> main
   const isModelsPage =
     location.pathname.includes("/models") ||
     location.pathname.includes("/settings");
@@ -1433,7 +1430,6 @@ function WorkspaceLayoutInner() {
                     </span>
                   </Link>
                   <Link
-<<<<<<< HEAD
                     to="/workspace/experts"
                     onClick={() => {
                       track("workspace_experts_click");
@@ -1443,7 +1439,16 @@ function WorkspaceLayoutInner() {
                     className={cn(
                       "flex items-center justify-between w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
                       isExpertsPage
-=======
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Users size={14} />
+                      {t("layout.nav.experts")}
+                    </span>
+                  </Link>
+                  <Link
                     to="/workspace/chat"
                     onClick={() => {
                       track("workspace_sidebar_click", {
@@ -1454,17 +1459,10 @@ function WorkspaceLayoutInner() {
                     className={cn(
                       "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
                       isLocalChatPage
->>>>>>> main
                         ? "bg-accent/10 text-accent"
                         : "text-text-muted hover:text-text-primary hover:bg-surface-3",
                     )}
                   >
-<<<<<<< HEAD
-                    <span className="flex items-center gap-2">
-                      <Users size={14} />
-                      {t("layout.nav.experts")}
-                    </span>
-=======
                     <MessageSquare size={14} />
                     {t("layout.nav.localChat")}
                   </Link>
@@ -1483,7 +1481,6 @@ function WorkspaceLayoutInner() {
                   >
                     <Smartphone size={14} />
                     {t("layout.nav.devices")}
->>>>>>> main
                   </Link>
                   <Link
                     to="/workspace/settings"
