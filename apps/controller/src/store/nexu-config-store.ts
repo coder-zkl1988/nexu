@@ -1121,6 +1121,38 @@ export class NexuConfigStore {
     return config.channels.find((channel) => channel.id === channelId) ?? null;
   }
 
+  async updateChannel(
+    channelId: string,
+    patch: Partial<Pick<ChannelResponse, "botId">>,
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+
+    if (patch.botId !== undefined) {
+      const bot = await this.getBot(patch.botId);
+      if (!bot) {
+        throw new Error(`Bot not found: ${patch.botId}`);
+      }
+    }
+
+    const updated: ChannelResponse = {
+      ...existing,
+      ...(patch.botId !== undefined ? { botId: patch.botId } : {}),
+      updatedAt: now(),
+    };
+
+    await this.store.update((config) => ({
+      ...config,
+      channels: config.channels.map((channel) =>
+        channel.id === channelId ? updated : channel,
+      ),
+    }));
+
+    return updated;
+  }
+
   async connectSlack(
     input: ConnectSlackInput & { botUserId?: string | null },
   ): Promise<ChannelResponse> {
@@ -1203,8 +1235,14 @@ export class NexuConfigStore {
     return channel;
   }
 
-  async connectWechat(input: { accountId: string }): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+  async connectWechat(input: {
+    accountId: string;
+    botId: string;
+  }): Promise<ChannelResponse> {
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1342,7 +1380,10 @@ export class NexuConfigStore {
   }
 
   async connectFeishu(input: ConnectFeishuInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),

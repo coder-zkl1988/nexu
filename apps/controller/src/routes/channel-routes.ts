@@ -16,6 +16,7 @@ import {
   dingtalkConnectivityResponseSchema,
   qqbotConnectivityResponseSchema,
   slackOAuthUrlResponseSchema,
+  updateChannelBotSchema,
   wechatQrStartResponseSchema,
   wechatQrWaitResponseSchema,
   wecomConnectivityResponseSchema,
@@ -855,6 +856,64 @@ export function registerChannelRoutes(
     },
   );
 
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/channels/{channelId}",
+      tags: ["Channels"],
+      request: {
+        params: channelIdParamSchema,
+        body: {
+          content: { "application/json": { schema: updateChannelBotSchema } },
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: channelResponseSchema } },
+          description: "Updated channel",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Invalid botId",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Channel not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { channelId } = c.req.valid("param");
+      const { botId } = c.req.valid("json");
+      try {
+        const updated = await container.channelService.updateChannelBot(
+          channelId,
+          botId,
+        );
+        return c.json(updated, 200);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to update channel";
+        if (/^Channel not found/i.test(message)) {
+          logger.warn(
+            { channelId, botId },
+            "channel_update_bot_channel_not_found",
+          );
+          return c.json({ message }, 404);
+        }
+        if (/^Bot not found/i.test(message)) {
+          logger.warn({ channelId, botId }, "channel_update_bot_bot_not_found");
+          return c.json({ message }, 400);
+        }
+        logger.error(
+          { channelId, botId, error: message },
+          "channel_update_bot_failed",
+        );
+        throw error;
+      }
+    },
+  );
+
   // WhatsApp QR login flow
   app.openapi(
     createRoute({
@@ -1088,9 +1147,8 @@ export function registerChannelRoutes(
     }),
     async (c) => {
       try {
-        const { accountId } = c.req.valid("json");
         return c.json(
-          await container.channelService.connectWechat(accountId),
+          await container.channelService.connectWechat(c.req.valid("json")),
           200,
         );
       } catch (error) {

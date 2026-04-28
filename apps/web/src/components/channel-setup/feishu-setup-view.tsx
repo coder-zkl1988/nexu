@@ -1,3 +1,4 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { Input } from "@/components/ui/input";
 import { identify, track } from "@/lib/tracking";
 import {
@@ -124,6 +125,7 @@ export function FeishuSetupView({
   const [activeStep, setActiveStep] = useState(0);
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
+  const [botId, setBotId] = useState<string>("");
   const [connecting, setConnecting] = useState(false);
   const [jsonCopied, setJsonCopied] = useState(false);
 
@@ -134,10 +136,14 @@ export function FeishuSetupView({
   };
 
   const handleConnect = async () => {
+    if (!botId) {
+      toast.error(t("channels.errors.botRequired"));
+      return;
+    }
     setConnecting(true);
     try {
       const { error } = await postApiV1ChannelsFeishuConnect({
-        body: { appId: appId.trim(), appSecret: appSecret.trim() },
+        body: { appId: appId.trim(), appSecret: appSecret.trim(), botId },
       });
       if (error) {
         track("workspace_channel_config_submit", {
@@ -341,6 +347,12 @@ export function FeishuSetupView({
             </div>
           </div>
           <div className="ml-11 space-y-4">
+            <BotPicker
+              value={botId || null}
+              onChange={setBotId}
+              required
+              disabled={connecting}
+            />
             <div>
               <div className="flex items-baseline gap-1.5 mb-1.5">
                 <label
@@ -390,7 +402,11 @@ export function FeishuSetupView({
               type="button"
               onClick={handleConnect}
               disabled={
-                disabled || connecting || !appId.trim() || !appSecret.trim()
+                disabled ||
+                connecting ||
+                !appId.trim() ||
+                !appSecret.trim() ||
+                !botId
               }
               className="flex gap-1.5 items-center px-5 py-2.5 text-[13px] font-medium text-white rounded-lg bg-[#3370FF] hover:bg-[#2860E6] transition-all disabled:opacity-60 cursor-pointer"
             >

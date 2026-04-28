@@ -717,6 +717,19 @@ const en = {
   "channels.quotaTitle": "We're experiencing high demand",
   "channels.quotaBody":
     "New bot setup will be available in {{countdown}}. Please try again later.",
+  "channels.botPicker.label": "Assign to bot",
+  "channels.botPicker.placeholder": "Select a bot…",
+  "channels.botPicker.emptyHint":
+    "No bots available. Create one on the Bots page.",
+  "channels.errors.botRequired": "Please select a bot before connecting.",
+  "channels.connectAnother": "Connect another",
+  "channels.connectedCount": "{{count}} connected",
+  "channels.instance.routedTo": "Routed to:",
+  "channels.instance.change": "Change",
+  "channels.instance.save": "Save",
+  "channels.instance.cancel": "Cancel",
+  "channels.instance.saved": "Bot updated",
+  "channels.instance.saveFailed": "Failed to update bot",
 
   // ── Channel Connect Modal ──
   "modal.connect": "Connect {{name}}",

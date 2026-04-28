@@ -678,6 +678,18 @@ const zhCN = {
   "channels.cancel": "取消",
   "channels.quotaTitle": "当前需求量较大",
   "channels.quotaBody": "新的 Bot 配置将在 {{countdown}} 后可用。请稍后重试。",
+  "channels.botPicker.label": "分配给机器人",
+  "channels.botPicker.placeholder": "请选择机器人…",
+  "channels.botPicker.emptyHint": "暂无机器人。请先在「Bots」页面创建一个。",
+  "channels.errors.botRequired": "连接前请先选择一个机器人。",
+  "channels.connectAnother": "连接另一个",
+  "channels.connectedCount": "已接入 {{count}} 个",
+  "channels.instance.routedTo": "路由到：",
+  "channels.instance.change": "修改",
+  "channels.instance.save": "保存",
+  "channels.instance.cancel": "取消",
+  "channels.instance.saved": "机器人已更新",
+  "channels.instance.saveFailed": "更新机器人失败",
 
   // ── Channel Connect Modal ──
   "modal.connect": "连接 {{name}}",

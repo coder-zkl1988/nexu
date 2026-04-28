@@ -42,6 +42,21 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 - **`AuthLayout`** — Requires authenticated session, wraps all workspace routes.
 - **`WorkspaceLayout`** — Sidebar + main content area.
 
+## Channels
+
+Channel management lives at `/workspace/channels` ([`apps/web/src/pages/channels.tsx`](../apps/web/src/pages/channels.tsx)). Slack and Discord remain single-instance per workspace; Feishu and WeChat support multi-instance connections.
+
+### Multi-instance Feishu / WeChat
+
+Feishu (`feishu`) and WeChat (`wechat`) channels can onboard multiple accounts, each independently routed to one bot:
+
+- **Bot required at connect time.** The connect form for Feishu / WeChat uses [`<BotPicker />`](../apps/web/src/components/channels/bot-picker.tsx) as a required field. Submitting without a selection surfaces the `channels.errors.botRequired` toast.
+- **Instance list rendering.** For `feishu` / `wechat`, `channels.tsx` renders a list of connected instances plus a "Connect another" action. Other channel types keep the existing single-instance UI.
+- **Instance cards.** Each [`<ChannelInstanceCard />`](../apps/web/src/components/channels/channel-instance-card.tsx) shows the account id, status, and a "Routes to bot: X" row with an inline "Change" button. Changing the bound bot calls `PATCH /api/v1/channels/:id` via the [`useUpdateChannelBot`](../apps/web/src/hooks/use-update-channel-bot.ts) hook.
+- **Platform badge.** The platform picker shows an "N connected" count for Feishu / WeChat once at least one instance is connected; other platforms keep the existing check / loader icon behavior.
+
+Out of scope (possible follow-up, plan D): routing different chats under the same Feishu / WeChat account to different bots.
+
 ## Conventions
 
 - **State:** React Query for all server state. No manual `fetch` + `useState` patterns.
