@@ -839,6 +839,19 @@ function WorkspaceLayoutInner() {
               {t("layout.nav.home")}
             </Link>
             <Link
+              to="/workspace/chat"
+              onClick={() => {
+                track("workspace_sidebar_click", { target: "local-chat" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isLocalChatPage && "nav-item-active",
+              )}
+            >
+              <MessageSquare size={16} className="shrink-0" />
+              {t("layout.nav.localChat")}
+            </Link>
+            <Link
               to="/workspace/skills"
               onClick={() => {
                 track("workspace_skills_click");
@@ -870,19 +883,6 @@ function WorkspaceLayoutInner() {
             >
               <Users size={16} className="shrink-0" />
               {t("layout.nav.experts")}
-            </Link>
-            <Link
-              to="/workspace/chat"
-              onClick={() => {
-                track("workspace_sidebar_click", { target: "local-chat" });
-              }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isLocalChatPage && "nav-item-active",
-              )}
-            >
-              <MessageSquare size={16} className="shrink-0" />
-              {t("layout.nav.localChat")}
             </Link>
             <Link
               to="/workspace/devices"
@@ -1411,6 +1411,24 @@ function WorkspaceLayoutInner() {
                     {t("layout.nav.home")}
                   </Link>
                   <Link
+                    to="/workspace/chat"
+                    onClick={() => {
+                      track("workspace_sidebar_click", {
+                        target: "local-chat",
+                      });
+                      setMobileDrawerOpen(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
+                      isLocalChatPage
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
+                    )}
+                  >
+                    <MessageSquare size={14} />
+                    {t("layout.nav.localChat")}
+                  </Link>
+                  <Link
                     to="/workspace/skills"
                     onClick={() => {
                       track("workspace_skills_click");
@@ -1447,24 +1465,6 @@ function WorkspaceLayoutInner() {
                       <Users size={14} />
                       {t("layout.nav.experts")}
                     </span>
-                  </Link>
-                  <Link
-                    to="/workspace/chat"
-                    onClick={() => {
-                      track("workspace_sidebar_click", {
-                        target: "local-chat",
-                      });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
-                      isLocalChatPage
-                        ? "bg-accent/10 text-accent"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
-                    )}
-                  >
-                    <MessageSquare size={14} />
-                    {t("layout.nav.localChat")}
                   </Link>
                   <Link
                     to="/workspace/devices"
