@@ -1,9 +1,18 @@
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { ControllerContainer } from "../app/container.js";
-import { controllerRuntimeConfigSchema } from "../store/schemas.js";
+import { getLocalIp } from "../lib/local-ip.js";
+import {
+  controllerRuntimeConfigSchema,
+  deviceControlConfigSchema,
+} from "../store/schemas.js";
 import type { ControllerBindings } from "../types.js";
 
 const runtimeConfigEnvelopeSchema = z.object({
+  runtime: controllerRuntimeConfigSchema,
+  deviceControl: deviceControlConfigSchema,
+});
+
+const runtimeConfigPutEnvelopeSchema = z.object({
   runtime: controllerRuntimeConfigSchema,
 });
 
@@ -26,8 +35,17 @@ export function registerRuntimeConfigRoutes(
       },
     }),
     async (c) => {
-      const runtime = await container.runtimeConfigService.getRuntimeConfig();
-      return c.json({ runtime }, 200);
+      const [runtime, deviceControl] = await Promise.all([
+        container.runtimeConfigService.getRuntimeConfig(),
+        container.configStore.getDeviceControlConfig(),
+      ]);
+      return c.json(
+        {
+          runtime,
+          deviceControl: { ...deviceControl, localIp: getLocalIp() },
+        },
+        200,
+      );
     },
   );
 
@@ -46,7 +64,7 @@ export function registerRuntimeConfigRoutes(
       responses: {
         200: {
           content: {
-            "application/json": { schema: runtimeConfigEnvelopeSchema },
+            "application/json": { schema: runtimeConfigPutEnvelopeSchema },
           },
           description: "Updated runtime config",
         },
@@ -57,6 +75,41 @@ export function registerRuntimeConfigRoutes(
         c.req.valid("json"),
       );
       return c.json({ runtime }, 200);
+    },
+  );
+
+  const deviceControlPatchSchema = z.object({
+    enabled: z.boolean().optional(),
+    wsPort: z.number().int().positive().optional(),
+    rpcPort: z.number().int().positive().optional(),
+  });
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/runtime-config/device-control",
+      tags: ["Runtime Config"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: deviceControlPatchSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: z.object({ ok: z.boolean() }) },
+          },
+          description: "Updated",
+        },
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      await container.configStore.setDeviceControlConfig(body);
+      await container.openclawSyncService.syncAll();
+      return c.json({ ok: true }, 200);
     },
   );
 }

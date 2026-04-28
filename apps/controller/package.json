@@ -10,7 +10,8 @@
     "bundle-runtime-plugins": "node scripts/bundle-runtime-plugins.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests",
-    "generate-openapi": "NODE_OPTIONS=--conditions=development tsx scripts/generate-openapi.ts"
+    "generate-openapi": "node --conditions=development --import tsx scripts/generate-openapi.ts",
+    "prepare:device-control": "node scripts/prepare-device-control-plugin.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.8",
@@ -20,10 +21,13 @@
     "dotenv": "^16.6.1",
     "hono": "^4.7.5",
     "lowdb": "^7.0.1",
+    "pdf-parse": "^2.4.5",
+    "ws": "^8.18.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.19.3",
     "typescript": "^5.7.3"
   }

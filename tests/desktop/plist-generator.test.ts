@@ -221,6 +221,7 @@ describe("generatePlist", () => {
       "run",
       "--port",
       String(mockEnv.openclawPort),
+      "--allow-unconfigured",
     ]);
   });
 
@@ -245,6 +246,7 @@ describe("generatePlist", () => {
       "run",
       "--port",
       String(mockEnv.openclawPort),
+      "--allow-unconfigured",
       "--auth",
       "none",
     ]);

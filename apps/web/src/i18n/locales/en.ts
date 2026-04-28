@@ -117,6 +117,7 @@ const en = {
   "title.settings": "Settings · nexu",
   "title.linkFeishu": "Link Feishu · nexu",
   "title.connecting": "Connecting · nexu",
+  "title.devices": "Devices · nexu",
   "title.default": "nexu",
 
   // ── Workspace Layout ──
@@ -126,7 +127,9 @@ const en = {
   "layout.nav.deployments": "Deployments",
   "layout.nav.skills": "Skills",
   "layout.nav.experts": "Experts",
+  "layout.nav.devices": "Devices",
   "layout.nav.settings": "Settings",
+  "layout.nav.localChat": "Chat",
   "layout.conversations": "Conversations",
   "layout.signOut": "Sign out",
   "layout.help.title": "Help",
@@ -452,6 +455,9 @@ const en = {
   "settings.general.loggedOutHint":
     "Sign in to sync settings and use premium models.",
   "settings.general.goLogin": "Go to sign in",
+  "settings.general.logoutConfirmTitle": "Log out of your nexu account?",
+  "settings.general.logoutConfirmDescription":
+    "This will disconnect your current nexu account from this desktop workspace.",
   "settings.general.preferences": "Preferences",
   "settings.general.language": "Language",
   "settings.general.languageHint": "Choose your interface language",
@@ -586,6 +592,9 @@ const en = {
     "Sign in with your nexu account to access unlimited premium models like Claude Opus 4.6, GPT-5.4, and more — no API key needed.",
   "models.managed.waitingLogin": "Waiting for browser login...",
   "models.managed.loginButton": "Sign in to nexu",
+  "models.managed.logoutConfirmTitle": "Log out of nexu Official?",
+  "models.managed.logoutConfirmDescription":
+    "This will disconnect nexu Official from your current nexu account on this device.",
   "models.managed.availableModels": "Available models",
   "models.managed.refreshSucceeded": "Models refreshed",
   "models.managed.refreshFailed": "Could not refresh models",
@@ -772,6 +781,23 @@ const en = {
   "skills.installQueued": "Skill queued for installation",
   "skills.skillNotFound":
     '"{{slug}}" is not available on ClawHub. It may have been removed or renamed.',
+  "skills.skillNotAvailable":
+    "This skill is not available on ClawHub. It may have been removed or renamed.",
+  "skills.installRateLimited":
+    "ClawHub is rate-limiting requests. Please wait a moment and retry.",
+  "skills.installFailedGeneric":
+    "Installation failed. Please retry in a moment.",
+  "skills.retryInstall": "Retry",
+  "skills.cancelInstall": "Cancel",
+  "skills.cancelling": "Cancelling…",
+  "skills.cancelFailed": "Failed to cancel: {{error}}",
+  "skills.installNpmMissing":
+    "npm is required to install this skill. Please install Node.js from https://nodejs.org/ and restart Nexu.",
+  "skills.installDepsFailed":
+    'Failed to install dependencies for "{{slug}}". Check the controller logs for details.',
+  "skills.installFailed": 'Failed to install "{{slug}}": {{error}}',
+  "skills.installRequestFailed": "Could not start the install: {{error}}",
+  "skills.uninstallRequestFailed": "Could not uninstall the skill: {{error}}",
   "skills.import": "Import",
   "skills.importSkill": "Import Skill",
   "skills.importSkillDesc":
@@ -1099,6 +1125,22 @@ const en = {
 
   // ── WhatsApp Setup ──
   "whatsappSetup.title": "Connect WhatsApp",
+  "whatsappSetup.personalTitle": "Connect Personal WhatsApp",
+  "whatsappSetup.desc":
+    "Scan once with your phone to link WhatsApp Web. Direct messages stay open, and group replies are enabled by default when the account is mentioned.",
+  "whatsappSetup.qrAlt": "WhatsApp QR code",
+  "whatsappSetup.waitingForScan": "Waiting for WhatsApp scan",
+  "whatsappSetup.scanHint":
+    "Open WhatsApp on your phone, then go to Linked Devices and scan this QR code.",
+  "whatsappSetup.preparingQr": "Preparing WhatsApp QR code",
+  "whatsappSetup.finishingConnection": "Finishing WhatsApp connection",
+  "whatsappSetup.retry": "Retry",
+  "whatsappSetup.scanQr": "Scan WhatsApp QR",
+  "whatsappSetup.connectSuccess": "WhatsApp connected",
+  "whatsappSetup.connectFailed": "WhatsApp connect failed",
+  "whatsappSetup.startFailed": "Failed to start WhatsApp login",
+  "whatsappSetup.loadQrFailed": "Failed to load WhatsApp QR code",
+  "whatsappSetup.waitFailed": "WhatsApp login timed out",
 
   // ── QQ Setup ──
   "qqbotSetup.title": "Connect QQ",
@@ -1300,6 +1342,97 @@ const en = {
   "common.loading": "Loading...",
   "common.connect": "Connect",
   "common.disconnect": "Disconnect",
+
+  // ── Local Chat ──
+  "localChat.title": "Local Chat",
+  "localChat.subtitle": "Chat directly with your AI bot",
+  "localChat.selectBot": "Select a bot",
+  "localChat.noBots": "No active bots yet",
+  "localChat.selectBotFirst": "Select a bot above to start chatting",
+  "localChat.waiting": "Waiting for reply…",
+  "localChat.inputPlaceholder":
+    "Type a message… (Enter to send, Shift+Enter for newline)",
+  "localChat.attachFile": "Attach image or file",
+  "localChat.removeAttachment": "Remove",
+  "localChat.startChat": "Chat with {{name}}",
+  "localChat.pickBot": "Pick a bot to get started",
+  "localChat.emptyHint": "Select a bot, then type a message below",
+  "localChat.selectChannel": "Channel",
+  "localChat.channel.webchat": "WebChat",
+  "localChat.channel.feishu": "Feishu",
+  "localChat.channel.wechat": "WeChat",
+  "localChat.creatingDefaultBot": "Creating your bot…",
+  "localChat.createDefaultBotError": "Failed to create bot",
+  "localChat.retryCreateBot": "Retry",
+  "localChat.missingApiKey.title": "No API Key configured",
+  "localChat.missingApiKey.description":
+    "Please configure your LLM API key to use the chat.",
+  "localChat.missingApiKey.goToSettings": "Go to Settings",
+
+  // ── Devices ──
+  "devices.subtitle": "Connected Android devices via device control plugin",
+  "devices.taskHistory": "Task history",
+  "devices.refresh": "Refresh",
+  "devices.errorTitle": "Device control plugin is not running",
+  "devices.emptyTitle": "No devices connected",
+  "devices.emptyHint":
+    "Connect an Android device via the device control plugin to get started",
+  "devices.status.idle": "Idle",
+  "devices.status.busy": "Busy",
+  "devices.status.error": "Error",
+  "devices.currentApp": "Current App",
+  "devices.battery": "Battery",
+  "devices.dispatchTask": "Dispatch task",
+  "devices.viewScreen": "View screen",
+  "devices.mirror.title": "Screen mirror",
+  "devices.mirror.close": "Close",
+  "devices.mirror.waitingFrame": "Connected — waiting for screen data…",
+  "devices.mirror.statusConnecting": "connecting",
+  "devices.mirror.statusClosed": "closed",
+  "devices.mirror.statusOpen": "connected",
+  "devices.mirror.closedHint":
+    "Connection closed. Check that the device is online and try again.",
+  "devices.mirror.connectingHint": "Connecting to device screen…",
+  "devices.mirror.retry": "Retry",
+  "devices.taskDispatch.title": "Dispatch task",
+  "devices.taskDispatch.taskLabel": "Task description",
+  "devices.taskDispatch.taskPlaceholder": "Describe what the device should do…",
+  "devices.taskDispatch.maxSteps": "Max steps",
+  "devices.taskDispatch.cancel": "Cancel",
+  "devices.taskDispatch.dispatch": "Dispatch",
+  "devices.taskDispatch.dispatching": "Dispatching…",
+  "devices.taskDispatch.errorFallback": "Failed to dispatch task",
+  "devices.taskHistory.title": "Device task history",
+  "devices.taskHistory.subtitle":
+    "Last 200 tasks dispatched via the device control plugin",
+  "devices.taskHistory.backToDevices": "← Back to devices",
+  "devices.taskHistory.empty": "No tasks dispatched yet.",
+  "devices.taskHistory.loadError": "Failed to load history",
+  "devices.taskDetail.backToHistory": "← Back to history",
+  "devices.taskDetail.notFound": "Task not found",
+  "devices.taskDetail.task": "Task",
+  "devices.taskDetail.device": "Device",
+  "devices.taskDetail.status": "Status",
+  "devices.taskDetail.success": "Success",
+  "devices.taskDetail.failed": "Failed",
+  "devices.taskDetail.duration": "Duration",
+  "devices.taskDetail.steps": "Steps",
+  "devices.taskDetail.message": "Message",
+  "devices.taskDetail.finalScreenshot": "Final screenshot",
+  "devices.taskDetail.errorFallback": "Task not found",
+  "devices.settings.title": "Android Device Control",
+  "devices.settings.enablePlugin": "Enable plugin",
+  "devices.settings.enablePluginDesc":
+    "Runs the lobster-device-control plugin to accept Android connections at ws://0.0.0.0:{{wsPort}}/phone",
+  "devices.settings.wsPort": "WebSocket port (phone)",
+  "devices.settings.rpcPort": "HTTP RPC port (controller)",
+  "devices.settings.savePorts": "Save ports",
+  "devices.settings.loading": "Loading device control config…",
+  "devices.settings.updated": "Device control updated",
+  "devices.settings.portValidationError":
+    "Ports must be integers between 1 and 65535",
+  "devices.settings.portConflictError": "WebSocket and RPC ports must differ",
+  "devices.settings.updateFailed": "Update failed",
 } as const;
 
 export default en;

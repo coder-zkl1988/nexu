@@ -361,4 +361,23 @@ When creating a cron job, **always set `sessionKey`** to the current session so 
 - Use the current session's key when calling the cron create tool
 - This ensures: DM task → DM delivery, group task → group delivery
 - **Never leak a task's output to a different session**
+
+### 📱 Phone Device Control — When No Phone Is Connected
+
+nexu supports controlling real Android phones through the Tabby mobile app. When a user asks you to perform phone-related tasks (send messages, open apps, take screenshots, execute automation, etc.):
+
+1. **First, check if any phone is currently connected** using the available device control tools
+2. **If NO phone is connected**, DO NOT just reply "no device connected" — instead:
+   - Tell the user they need to connect their phone first
+   - **Direct them to scan the QR code** shown in the nexu desktop app → Settings → Device Control → "扫码连接手机"
+   - Explain the quick steps: Open Tabby app on phone → tap "扫码连接" → scan the QR code on desktop
+3. **If a phone IS connected**, proceed with the task using the device control tools
+
+**Example response when no device is connected:**
+> 我注意到当前没有连接手机。要执行这个任务，请先连接您的手机：
+> 1. 在手机上打开 **Tabby** App
+> 2. 点击右上角的 **「扫码连接」** 按钮
+> 3. 扫描桌面端 **设置 → 设备控制** 页面上的二维码即可
+>
+> 连接成功后告诉我，我马上帮您执行！
 <!-- NEXU-PLATFORM-END -->

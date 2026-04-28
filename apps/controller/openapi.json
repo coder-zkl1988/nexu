@@ -201,6 +201,90 @@
         }
       }
     },
+    "/api/v1/bots/default": {
+      "get": {
+        "tags": [
+          "Bots"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default bot (existing or newly created)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "poolId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "paused",
+                        "deleted"
+                      ]
+                    },
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "systemPrompt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "poolId",
+                    "status",
+                    "modelId",
+                    "systemPrompt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to get or create default bot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/bots/{botId}": {
       "get": {
         "tags": [
@@ -1073,23 +1157,49 @@
                     "ready": {
                       "type": "boolean"
                     },
+                    "coreReady": {
+                      "type": "boolean"
+                    },
+                    "degraded": {
+                      "type": "boolean"
+                    },
+                    "bootPhase": {
+                      "type": "string",
+                      "enum": [
+                        "preparing",
+                        "starting-managed-runtime",
+                        "attaching-external-runtime",
+                        "reconciling-runtime",
+                        "stabilizing-runtime",
+                        "ready"
+                      ]
+                    },
                     "workspacePath": {
                       "type": "string"
                     },
-                    "runtime": {
+                    "controlPlane": {
                       "type": "object",
                       "properties": {
                         "ok": {
                           "type": "boolean"
                         },
-                        "status": {
-                          "type": "number",
-                          "nullable": true
+                        "phase": {
+                          "type": "string",
+                          "enum": [
+                            "disconnected",
+                            "connecting",
+                            "ready",
+                            "degraded"
+                          ]
+                        },
+                        "wsConnected": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "ok",
-                        "status"
+                        "phase",
+                        "wsConnected"
                       ]
                     },
                     "status": {
@@ -1104,8 +1214,11 @@
                   },
                   "required": [
                     "ready",
+                    "coreReady",
+                    "degraded",
+                    "bootPhase",
                     "workspacePath",
-                    "runtime",
+                    "controlPlane",
                     "status"
                   ]
                 }
@@ -5218,7 +5331,7 @@
               }
             }
           },
-          "409": {
+          "422": {
             "description": "Invalid credentials",
             "content": {
               "application/json": {
@@ -5227,10 +5340,192 @@
                   "properties": {
                     "message": {
                       "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "already_connected",
+                        "app_id_mismatch",
+                        "invalid_credentials",
+                        "network_error",
+                        "proxy_error",
+                        "sync_failed",
+                        "timeout",
+                        "upstream_http_error"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "verify_credentials",
+                        "verify_app",
+                        "persist_config",
+                        "sync_runtime"
+                      ]
                     }
                   },
                   "required": [
-                    "message"
+                    "message",
+                    "code",
+                    "requestId",
+                    "retryable",
+                    "phase"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "already_connected",
+                        "app_id_mismatch",
+                        "invalid_credentials",
+                        "network_error",
+                        "proxy_error",
+                        "sync_failed",
+                        "timeout",
+                        "upstream_http_error"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "verify_credentials",
+                        "verify_app",
+                        "persist_config",
+                        "sync_runtime"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code",
+                    "requestId",
+                    "retryable",
+                    "phase"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Local persistence or runtime sync failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "already_connected",
+                        "app_id_mismatch",
+                        "invalid_credentials",
+                        "network_error",
+                        "proxy_error",
+                        "sync_failed",
+                        "timeout",
+                        "upstream_http_error"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "verify_credentials",
+                        "verify_app",
+                        "persist_config",
+                        "sync_runtime"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code",
+                    "requestId",
+                    "retryable",
+                    "phase"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Upstream timeout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "already_connected",
+                        "app_id_mismatch",
+                        "invalid_credentials",
+                        "network_error",
+                        "proxy_error",
+                        "sync_failed",
+                        "timeout",
+                        "upstream_http_error"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "retryable": {
+                      "type": "boolean"
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "verify_credentials",
+                        "verify_app",
+                        "persist_config",
+                        "sync_runtime"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "code",
+                    "requestId",
+                    "retryable",
+                    "phase"
                   ]
                 }
               }
@@ -7111,6 +7406,419 @@
                   },
                   "required": [
                     "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/session": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "botId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "sessionKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session resolved from sessionKey",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "botId": {
+                          "type": "string"
+                        },
+                        "sessionKey": {
+                          "type": "string"
+                        },
+                        "channelType": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "channelId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "messageCount": {
+                          "type": "number"
+                        },
+                        "lastMessageAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": {
+                            "nullable": true
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "botId",
+                        "sessionKey",
+                        "channelType",
+                        "channelId",
+                        "title",
+                        "status",
+                        "messageCount",
+                        "lastMessageAt",
+                        "metadata",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "session"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/local": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string"
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "image",
+                          "video",
+                          "audio",
+                          "file"
+                        ]
+                      },
+                      "content": {
+                        "type": "string",
+                        "maxLength": 10000000
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "properties": {
+                          "width": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "duration": {
+                            "type": "number"
+                          },
+                          "mimeType": {
+                            "type": "string"
+                          },
+                          "filename": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "attachments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "image",
+                                "file"
+                              ]
+                            },
+                            "content": {
+                              "type": "string",
+                              "maxLength": 10000000
+                            },
+                            "metadata": {
+                              "type": "object",
+                              "properties": {
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "filename": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "content"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "content"
+                    ]
+                  }
+                },
+                "required": [
+                  "botId",
+                  "sessionKey",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local chat message sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "botId": {
+                          "type": "string"
+                        },
+                        "sessionKey": {
+                          "type": "string"
+                        },
+                        "channelType": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "channelId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "messageCount": {
+                          "type": "number"
+                        },
+                        "lastMessageAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": {
+                            "nullable": true
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "botId",
+                        "sessionKey",
+                        "channelType",
+                        "channelId",
+                        "title",
+                        "status",
+                        "messageCount",
+                        "lastMessageAt",
+                        "metadata",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "message": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "nullable": true
+                        },
+                        "timestamp": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "role",
+                        "type",
+                        "timestamp",
+                        "createdAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "session",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/history": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "botId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2000
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full conversation history aggregated across all compacted sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "assistant"
+                            ]
+                          },
+                          "content": {
+                            "nullable": true
+                          },
+                          "timestamp": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "role",
+                          "timestamp",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "sessionCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "messages",
+                    "sessionCount"
                   ]
                 }
               }
@@ -11213,6 +11921,8 @@
                             "enum": [
                               "skill_not_found",
                               "rate_limit",
+                              "npm_missing",
+                              "deps_install_failed",
                               "unknown"
                             ]
                           },
@@ -11383,6 +12093,55 @@
                   },
                   "required": [
                     "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skillhub/cancel": {
+      "post": {
+        "tags": [
+          "SkillHub"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancel or dismiss a queued / failed install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "cancelled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "cancelled"
                   ]
                 }
               }
@@ -11606,6 +12365,16 @@
                     },
                     "error": {
                       "type": "string"
+                    },
+                    "errorCode": {
+                      "type": "string",
+                      "enum": [
+                        "skill_not_found",
+                        "rate_limit",
+                        "npm_missing",
+                        "deps_install_failed",
+                        "unknown"
+                      ]
                     }
                   },
                   "required": [
@@ -11616,25 +12385,34 @@
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Import rejected or failed",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
                     "ok": {
-                      "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "type": "boolean"
+                    },
+                    "slug": {
+                      "type": "string"
                     },
                     "error": {
                       "type": "string"
+                    },
+                    "errorCode": {
+                      "type": "string",
+                      "enum": [
+                        "skill_not_found",
+                        "rate_limit",
+                        "npm_missing",
+                        "deps_install_failed",
+                        "unknown"
+                      ]
                     }
                   },
                   "required": [
-                    "ok",
-                    "error"
+                    "ok"
                   ]
                 }
               }
@@ -12342,10 +13120,35 @@
                           "default": "link/gemini-3-flash-preview"
                         }
                       }
+                    },
+                    "deviceControl": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "wsPort": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "default": 18790
+                        },
+                        "rpcPort": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true,
+                          "default": 18801
+                        },
+                        "localIp": {
+                          "type": "string"
+                        }
+                      }
                     }
                   },
                   "required": [
-                    "runtime"
+                    "runtime",
+                    "deviceControl"
                   ]
                 }
               }
@@ -12458,6 +13261,57 @@
                   },
                   "required": [
                     "runtime"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/device-control": {
+      "patch": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "wsPort": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "rpcPort": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
                   ]
                 }
               }
@@ -12665,6 +13519,1122 @@
                     "ok",
                     "name",
                     "version"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/tasks": {
+      "get": {
+        "tags": [
+          "Device Control"
+        ],
+        "responses": {
+          "200": {
+            "description": "Task history (newest first, max 200)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "deviceId": {
+                            "type": "string"
+                          },
+                          "deviceName": {
+                            "type": "string"
+                          },
+                          "taskId": {
+                            "type": "string"
+                          },
+                          "task": {
+                            "type": "string"
+                          },
+                          "maxSteps": {
+                            "type": "integer"
+                          },
+                          "dispatchedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "completedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "taskId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "success": {
+                                "type": "boolean"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "totalSteps": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "steps": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "step": {
+                                      "type": "integer",
+                                      "minimum": 1
+                                    },
+                                    "action": {
+                                      "type": "string"
+                                    },
+                                    "target": {
+                                      "type": "string"
+                                    },
+                                    "success": {
+                                      "type": "boolean"
+                                    },
+                                    "error": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "step",
+                                    "action",
+                                    "success"
+                                  ]
+                                }
+                              },
+                              "failedAtStep": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "finalScreenshot": {
+                                "type": "string"
+                              },
+                              "duration": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "taskId",
+                              "success"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "deviceId",
+                          "taskId",
+                          "task",
+                          "dispatchedAt",
+                          "completedAt",
+                          "result"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "entries"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/tasks/{taskId}": {
+      "get": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task history entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "deviceName": {
+                      "type": "string"
+                    },
+                    "taskId": {
+                      "type": "string"
+                    },
+                    "task": {
+                      "type": "string"
+                    },
+                    "maxSteps": {
+                      "type": "integer"
+                    },
+                    "dispatchedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "completedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "success": {
+                          "type": "boolean"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "totalSteps": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "steps": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "step": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "action": {
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              },
+                              "success": {
+                                "type": "boolean"
+                              },
+                              "error": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "action",
+                              "success"
+                            ]
+                          }
+                        },
+                        "failedAtStep": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "finalScreenshot": {
+                          "type": "string"
+                        },
+                        "duration": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "success"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "deviceId",
+                    "taskId",
+                    "task",
+                    "dispatchedAt",
+                    "completedAt",
+                    "result"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task not found in history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": [
+          "Device Control"
+        ],
+        "responses": {
+          "200": {
+            "description": "Device list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "deviceId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "osVersion": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "screenWidth": {
+                            "type": "number"
+                          },
+                          "screenHeight": {
+                            "type": "number"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "idle",
+                              "busy",
+                              "error"
+                            ]
+                          },
+                          "currentApp": {
+                            "type": "string"
+                          },
+                          "currentTaskId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "connectedAt": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "lastSeen": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "manufacturer": {
+                            "type": "string"
+                          },
+                          "batteryLevel": {
+                            "type": "number"
+                          },
+                          "batteryStatus": {
+                            "type": "string"
+                          },
+                          "totalRam": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "availableRam": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "totalStorage": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "availableStorage": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "wifiSsid": {
+                            "type": "string"
+                          },
+                          "isWifiConnected": {
+                            "type": "boolean"
+                          },
+                          "isCharging": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "deviceId",
+                          "status",
+                          "connectedAt",
+                          "lastSeen"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "devices"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Device control plugin is not running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{deviceId}": {
+      "get": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "deviceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deviceId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "osVersion": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "screenWidth": {
+                      "type": "number"
+                    },
+                    "screenHeight": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "busy",
+                        "error"
+                      ]
+                    },
+                    "currentApp": {
+                      "type": "string"
+                    },
+                    "currentTaskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "connectedAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "lastSeen": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "manufacturer": {
+                      "type": "string"
+                    },
+                    "batteryLevel": {
+                      "type": "number"
+                    },
+                    "batteryStatus": {
+                      "type": "string"
+                    },
+                    "totalRam": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availableRam": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "totalStorage": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availableStorage": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "wifiSsid": {
+                      "type": "string"
+                    },
+                    "isWifiConnected": {
+                      "type": "boolean"
+                    },
+                    "isCharging": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deviceId",
+                    "status",
+                    "connectedAt",
+                    "lastSeen"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "deviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Device renamed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deviceId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "osVersion": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "screenWidth": {
+                      "type": "number"
+                    },
+                    "screenHeight": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "busy",
+                        "error"
+                      ]
+                    },
+                    "currentApp": {
+                      "type": "string"
+                    },
+                    "currentTaskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "connectedAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "lastSeen": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "manufacturer": {
+                      "type": "string"
+                    },
+                    "batteryLevel": {
+                      "type": "number"
+                    },
+                    "batteryStatus": {
+                      "type": "string"
+                    },
+                    "totalRam": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availableRam": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "totalStorage": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availableStorage": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "wifiSsid": {
+                      "type": "string"
+                    },
+                    "isWifiConnected": {
+                      "type": "boolean"
+                    },
+                    "isCharging": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deviceId",
+                    "status",
+                    "connectedAt",
+                    "lastSeen"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{deviceId}/tasks": {
+      "post": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "deviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "maxSteps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 30
+                  },
+                  "guidance": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "allowedActions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "allowedApps": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "default": 120000
+                  }
+                },
+                "required": [
+                  "task"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "object",
+                      "properties": {
+                        "taskId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "success": {
+                          "type": "boolean"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "totalSteps": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "steps": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "step": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "action": {
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              },
+                              "success": {
+                                "type": "boolean"
+                              },
+                              "error": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "step",
+                              "action",
+                              "success"
+                            ]
+                          }
+                        },
+                        "failedAtStep": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "finalScreenshot": {
+                          "type": "string"
+                        },
+                        "duration": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "taskId",
+                        "success"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "result"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Device control plugin is not running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Task execution timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{deviceId}/tasks/{taskId}": {
+      "delete": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "deviceId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cancelled": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "cancelled"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device or task not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Device offline",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Request timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }

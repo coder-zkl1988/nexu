@@ -6,11 +6,15 @@ import { InviteGuardLayout } from "./layouts/invite-guard-layout";
 import { WorkspaceLayout } from "./layouts/workspace-layout";
 import { ChannelsPage } from "./pages/channels";
 import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
+import { DevicesPage } from "./pages/devices/index";
+import { DeviceTaskDetailPage } from "./pages/devices/task-detail-page";
+import { DeviceTaskHistoryPage } from "./pages/devices/task-history-page";
 import ExpertDetailPage from "./pages/expert-detail";
 import ExpertsPage from "./pages/experts";
 import { FeishuBindPage } from "./pages/feishu-bind";
 import { HomePage } from "./pages/home";
 import { IntegrationsPage } from "./pages/integrations";
+import { LocalChatPage } from "./pages/local-chat";
 import { ModelsPage } from "./pages/models";
 import { OAuthCallbackPage } from "./pages/oauth-callback";
 import { RewardsPage } from "./pages/rewards";
@@ -30,9 +34,11 @@ function DocumentTitleSync() {
       "/workspace": t("title.home"),
       "/workspace/home": t("title.home"),
       "/workspace/integrations": t("title.integrations"),
+      "/workspace/devices": t("title.devices"),
       "/workspace/rewards": t("title.rewards"),
       "/workspace/skills": t("title.skills"),
       "/workspace/experts": t("title.experts"),
+      "/workspace/chat": t("localChat.title"),
       "/workspace/settings": t("title.settings"),
       "/workspace/models": t("title.settings"),
       "/feishu/bind": t("title.linkFeishu"),
@@ -73,6 +79,15 @@ export function App() {
                 element={<SessionsPage />}
               />
               <Route path="/workspace/channels" element={<ChannelsPage />} />
+              <Route path="/workspace/devices" element={<DevicesPage />} />
+              <Route
+                path="/workspace/devices/tasks"
+                element={<DeviceTaskHistoryPage />}
+              />
+              <Route
+                path="/workspace/devices/tasks/:id"
+                element={<DeviceTaskDetailPage />}
+              />
               <Route
                 path="/workspace/integrations"
                 element={<IntegrationsPage />}
@@ -81,6 +96,7 @@ export function App() {
               <Route path="/workspace/settings" element={<ModelsPage />} />
               <Route path="/workspace/models" element={<ModelsPage />} />
               <Route path="/workspace/skills" element={<SkillsPage />} />
+              <Route path="/workspace/chat" element={<LocalChatPage />} />
               <Route
                 path="/workspace/skills/:slug"
                 element={<CommunitySkillDetailPage />}

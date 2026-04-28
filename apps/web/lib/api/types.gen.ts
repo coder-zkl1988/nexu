@@ -63,6 +63,43 @@ export type PostApiV1BotsResponses = {
 
 export type PostApiV1BotsResponse = PostApiV1BotsResponses[keyof PostApiV1BotsResponses];
 
+export type GetApiV1BotsDefaultData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/bots/default';
+};
+
+export type GetApiV1BotsDefaultErrors = {
+    /**
+     * Failed to get or create default bot
+     */
+    500: {
+        message: string;
+    };
+};
+
+export type GetApiV1BotsDefaultError = GetApiV1BotsDefaultErrors[keyof GetApiV1BotsDefaultErrors];
+
+export type GetApiV1BotsDefaultResponses = {
+    /**
+     * Default bot (existing or newly created)
+     */
+    200: {
+        id: string;
+        name: string;
+        slug: string;
+        poolId: string;
+        status: 'active' | 'paused' | 'deleted';
+        modelId: string;
+        systemPrompt: string;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type GetApiV1BotsDefaultResponse = GetApiV1BotsDefaultResponses[keyof GetApiV1BotsDefaultResponses];
+
 export type DeleteApiV1BotsByBotIdData = {
     body?: never;
     path: {
@@ -430,10 +467,14 @@ export type GetApiInternalDesktopReadyResponses = {
      */
     200: {
         ready: boolean;
+        coreReady: boolean;
+        degraded: boolean;
+        bootPhase: 'preparing' | 'starting-managed-runtime' | 'attaching-external-runtime' | 'reconciling-runtime' | 'stabilizing-runtime' | 'ready';
         workspacePath: string;
-        runtime: {
+        controlPlane: {
             ok: boolean;
-            status: number;
+            phase: 'disconnected' | 'connecting' | 'ready' | 'degraded';
+            wsConnected: boolean;
         };
         status: 'active' | 'starting' | 'degraded' | 'unhealthy';
     };
@@ -1655,8 +1696,42 @@ export type PostApiV1ChannelsDingtalkConnectErrors = {
     /**
      * Invalid credentials
      */
-    409: {
+    422: {
         message: string;
+        code: 'already_connected' | 'app_id_mismatch' | 'invalid_credentials' | 'network_error' | 'proxy_error' | 'sync_failed' | 'timeout' | 'upstream_http_error';
+        requestId: string;
+        retryable: boolean;
+        phase: 'verify_credentials' | 'verify_app' | 'persist_config' | 'sync_runtime';
+    };
+    /**
+     * Upstream request failed
+     */
+    502: {
+        message: string;
+        code: 'already_connected' | 'app_id_mismatch' | 'invalid_credentials' | 'network_error' | 'proxy_error' | 'sync_failed' | 'timeout' | 'upstream_http_error';
+        requestId: string;
+        retryable: boolean;
+        phase: 'verify_credentials' | 'verify_app' | 'persist_config' | 'sync_runtime';
+    };
+    /**
+     * Local persistence or runtime sync failed
+     */
+    503: {
+        message: string;
+        code: 'already_connected' | 'app_id_mismatch' | 'invalid_credentials' | 'network_error' | 'proxy_error' | 'sync_failed' | 'timeout' | 'upstream_http_error';
+        requestId: string;
+        retryable: boolean;
+        phase: 'verify_credentials' | 'verify_app' | 'persist_config' | 'sync_runtime';
+    };
+    /**
+     * Upstream timeout
+     */
+    504: {
+        message: string;
+        code: 'already_connected' | 'app_id_mismatch' | 'invalid_credentials' | 'network_error' | 'proxy_error' | 'sync_failed' | 'timeout' | 'upstream_http_error';
+        requestId: string;
+        retryable: boolean;
+        phase: 'verify_credentials' | 'verify_app' | 'persist_config' | 'sync_runtime';
     };
 };
 
@@ -2371,6 +2446,135 @@ export type GetApiV1ChannelsByChannelIdReadinessResponses = {
 };
 
 export type GetApiV1ChannelsByChannelIdReadinessResponse = GetApiV1ChannelsByChannelIdReadinessResponses[keyof GetApiV1ChannelsByChannelIdReadinessResponses];
+
+export type GetApiV1ChatSessionData = {
+    body?: never;
+    path?: never;
+    query: {
+        botId: string;
+        sessionKey: string;
+    };
+    url: '/api/v1/chat/session';
+};
+
+export type GetApiV1ChatSessionResponses = {
+    /**
+     * Session resolved from sessionKey
+     */
+    200: {
+        session: {
+            id: string;
+            botId: string;
+            sessionKey: string;
+            channelType: string;
+            channelId: string;
+            title: string;
+            status: string;
+            messageCount: number;
+            lastMessageAt: string;
+            metadata: {
+                [key: string]: unknown;
+            };
+            createdAt: string;
+            updatedAt: string;
+        };
+    };
+};
+
+export type GetApiV1ChatSessionResponse = GetApiV1ChatSessionResponses[keyof GetApiV1ChatSessionResponses];
+
+export type PostApiV1ChatLocalData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        message: {
+            type: 'text' | 'image' | 'video' | 'audio' | 'file';
+            content: string;
+            metadata?: {
+                width?: number;
+                height?: number;
+                duration?: number;
+                mimeType?: string;
+                filename?: string;
+                size?: number;
+            };
+            attachments?: Array<{
+                type: 'image' | 'file';
+                content: string;
+                metadata?: {
+                    mimeType?: string;
+                    filename?: string;
+                    size?: number;
+                };
+            }>;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/local';
+};
+
+export type PostApiV1ChatLocalResponses = {
+    /**
+     * Local chat message sent
+     */
+    200: {
+        session: {
+            id: string;
+            botId: string;
+            sessionKey: string;
+            channelType: string;
+            channelId: string;
+            title: string;
+            status: string;
+            messageCount: number;
+            lastMessageAt: string;
+            metadata: {
+                [key: string]: unknown;
+            };
+            createdAt: string;
+            updatedAt: string;
+        };
+        message: {
+            id: string;
+            role: string;
+            type: string;
+            content?: unknown;
+            timestamp: number;
+            createdAt: string;
+        };
+    };
+};
+
+export type PostApiV1ChatLocalResponse = PostApiV1ChatLocalResponses[keyof PostApiV1ChatLocalResponses];
+
+export type GetApiV1ChatHistoryData = {
+    body?: never;
+    path?: never;
+    query: {
+        botId: string;
+        limit?: number;
+    };
+    url: '/api/v1/chat/history';
+};
+
+export type GetApiV1ChatHistoryResponses = {
+    /**
+     * Full conversation history aggregated across all compacted sessions
+     */
+    200: {
+        messages: Array<{
+            id: string;
+            role: 'user' | 'assistant';
+            content?: unknown;
+            timestamp: number;
+            createdAt: string;
+        }>;
+        sessionCount: number;
+    };
+};
+
+export type GetApiV1ChatHistoryResponse = GetApiV1ChatHistoryResponses[keyof GetApiV1ChatHistoryResponses];
 
 export type PostApiInternalSessionsData = {
     body?: {
@@ -3715,7 +3919,7 @@ export type GetApiV1SkillhubCatalogResponses = {
             status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
             position: number;
             error: string;
-            errorCode: 'skill_not_found' | 'rate_limit' | 'unknown';
+            errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
             retries: number;
             enqueuedAt: string;
         }>;
@@ -3773,6 +3977,27 @@ export type PostApiV1SkillhubUninstallResponses = {
 };
 
 export type PostApiV1SkillhubUninstallResponse = PostApiV1SkillhubUninstallResponses[keyof PostApiV1SkillhubUninstallResponses];
+
+export type PostApiV1SkillhubCancelData = {
+    body?: {
+        slug: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/skillhub/cancel';
+};
+
+export type PostApiV1SkillhubCancelResponses = {
+    /**
+     * Cancel or dismiss a queued / failed install
+     */
+    200: {
+        ok: boolean;
+        cancelled: boolean;
+    };
+};
+
+export type PostApiV1SkillhubCancelResponse = PostApiV1SkillhubCancelResponses[keyof PostApiV1SkillhubCancelResponses];
 
 export type PostApiV1SkillhubRefreshData = {
     body?: never;
@@ -3852,11 +4077,13 @@ export type PostApiV1SkillhubImportData = {
 
 export type PostApiV1SkillhubImportErrors = {
     /**
-     * Bad request
+     * Import rejected or failed
      */
     400: {
-        ok: false;
-        error: string;
+        ok: boolean;
+        slug?: string;
+        error?: string;
+        errorCode?: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
     };
 };
 
@@ -3870,6 +4097,7 @@ export type PostApiV1SkillhubImportResponses = {
         ok: boolean;
         slug?: string;
         error?: string;
+        errorCode?: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
     };
 };
 
@@ -4131,6 +4359,12 @@ export type GetApiV1RuntimeConfigResponses = {
             };
             defaultModelId?: string;
         };
+        deviceControl: {
+            enabled?: boolean;
+            wsPort?: number;
+            rpcPort?: number;
+            localIp?: string;
+        };
     };
 };
 
@@ -4167,6 +4401,28 @@ export type PutApiV1RuntimeConfigResponses = {
 };
 
 export type PutApiV1RuntimeConfigResponse = PutApiV1RuntimeConfigResponses[keyof PutApiV1RuntimeConfigResponses];
+
+export type PatchApiV1RuntimeConfigDeviceControlData = {
+    body?: {
+        enabled?: boolean;
+        wsPort?: number;
+        rpcPort?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/device-control';
+};
+
+export type PatchApiV1RuntimeConfigDeviceControlResponses = {
+    /**
+     * Updated
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PatchApiV1RuntimeConfigDeviceControlResponse = PatchApiV1RuntimeConfigDeviceControlResponses[keyof PatchApiV1RuntimeConfigDeviceControlResponses];
 
 export type GetApiV1WorkspaceTemplatesData = {
     body?: never;
@@ -4245,6 +4501,379 @@ export type PutApiInternalWorkspaceTemplatesByNameResponses = {
 };
 
 export type PutApiInternalWorkspaceTemplatesByNameResponse = PutApiInternalWorkspaceTemplatesByNameResponses[keyof PutApiInternalWorkspaceTemplatesByNameResponses];
+
+export type GetApiV1DevicesTasksData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/devices/tasks';
+};
+
+export type GetApiV1DevicesTasksResponses = {
+    /**
+     * Task history (newest first, max 200)
+     */
+    200: {
+        entries: Array<{
+            deviceId: string;
+            deviceName?: string;
+            taskId: string;
+            task: string;
+            maxSteps?: number;
+            dispatchedAt: string;
+            completedAt: string;
+            result: {
+                taskId: string;
+                success: boolean;
+                message?: string;
+                totalSteps?: number;
+                steps?: Array<{
+                    step: number;
+                    action: string;
+                    target?: string;
+                    success: boolean;
+                    error?: string;
+                }>;
+                failedAtStep?: number;
+                finalScreenshot?: string;
+                duration?: number;
+            };
+        }>;
+    };
+};
+
+export type GetApiV1DevicesTasksResponse = GetApiV1DevicesTasksResponses[keyof GetApiV1DevicesTasksResponses];
+
+export type GetApiV1DevicesTasksByTaskIdData = {
+    body?: never;
+    path: {
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/tasks/{taskId}';
+};
+
+export type GetApiV1DevicesTasksByTaskIdErrors = {
+    /**
+     * Task not found in history
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1DevicesTasksByTaskIdError = GetApiV1DevicesTasksByTaskIdErrors[keyof GetApiV1DevicesTasksByTaskIdErrors];
+
+export type GetApiV1DevicesTasksByTaskIdResponses = {
+    /**
+     * Task history entry
+     */
+    200: {
+        deviceId: string;
+        deviceName?: string;
+        taskId: string;
+        task: string;
+        maxSteps?: number;
+        dispatchedAt: string;
+        completedAt: string;
+        result: {
+            taskId: string;
+            success: boolean;
+            message?: string;
+            totalSteps?: number;
+            steps?: Array<{
+                step: number;
+                action: string;
+                target?: string;
+                success: boolean;
+                error?: string;
+            }>;
+            failedAtStep?: number;
+            finalScreenshot?: string;
+            duration?: number;
+        };
+    };
+};
+
+export type GetApiV1DevicesTasksByTaskIdResponse = GetApiV1DevicesTasksByTaskIdResponses[keyof GetApiV1DevicesTasksByTaskIdResponses];
+
+export type GetApiV1DevicesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/devices';
+};
+
+export type GetApiV1DevicesErrors = {
+    /**
+     * Device control plugin is not running
+     */
+    503: {
+        message: string;
+    };
+};
+
+export type GetApiV1DevicesError = GetApiV1DevicesErrors[keyof GetApiV1DevicesErrors];
+
+export type GetApiV1DevicesResponses = {
+    /**
+     * Device list
+     */
+    200: {
+        devices: Array<{
+            deviceId: string;
+            name?: string;
+            model?: string;
+            osVersion?: number | string;
+            screenWidth?: number;
+            screenHeight?: number;
+            status: 'idle' | 'busy' | 'error';
+            currentApp?: string;
+            currentTaskId?: string;
+            connectedAt: number;
+            lastSeen: number;
+            manufacturer?: string;
+            batteryLevel?: number;
+            batteryStatus?: string;
+            totalRam?: number | string;
+            availableRam?: number | string;
+            totalStorage?: number | string;
+            availableStorage?: number | string;
+            wifiSsid?: string;
+            isWifiConnected?: boolean;
+            isCharging?: boolean;
+        }>;
+    };
+};
+
+export type GetApiV1DevicesResponse = GetApiV1DevicesResponses[keyof GetApiV1DevicesResponses];
+
+export type GetApiV1DevicesByDeviceIdData = {
+    body?: never;
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}';
+};
+
+export type GetApiV1DevicesByDeviceIdErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1DevicesByDeviceIdError = GetApiV1DevicesByDeviceIdErrors[keyof GetApiV1DevicesByDeviceIdErrors];
+
+export type GetApiV1DevicesByDeviceIdResponses = {
+    /**
+     * Device info
+     */
+    200: {
+        deviceId: string;
+        name?: string;
+        model?: string;
+        osVersion?: number | string;
+        screenWidth?: number;
+        screenHeight?: number;
+        status: 'idle' | 'busy' | 'error';
+        currentApp?: string;
+        currentTaskId?: string;
+        connectedAt: number;
+        lastSeen: number;
+        manufacturer?: string;
+        batteryLevel?: number;
+        batteryStatus?: string;
+        totalRam?: number | string;
+        availableRam?: number | string;
+        totalStorage?: number | string;
+        availableStorage?: number | string;
+        wifiSsid?: string;
+        isWifiConnected?: boolean;
+        isCharging?: boolean;
+    };
+};
+
+export type GetApiV1DevicesByDeviceIdResponse = GetApiV1DevicesByDeviceIdResponses[keyof GetApiV1DevicesByDeviceIdResponses];
+
+export type PatchApiV1DevicesByDeviceIdData = {
+    body?: {
+        name: string;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}';
+};
+
+export type PatchApiV1DevicesByDeviceIdErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1DevicesByDeviceIdError = PatchApiV1DevicesByDeviceIdErrors[keyof PatchApiV1DevicesByDeviceIdErrors];
+
+export type PatchApiV1DevicesByDeviceIdResponses = {
+    /**
+     * Device renamed
+     */
+    200: {
+        deviceId: string;
+        name?: string;
+        model?: string;
+        osVersion?: number | string;
+        screenWidth?: number;
+        screenHeight?: number;
+        status: 'idle' | 'busy' | 'error';
+        currentApp?: string;
+        currentTaskId?: string;
+        connectedAt: number;
+        lastSeen: number;
+        manufacturer?: string;
+        batteryLevel?: number;
+        batteryStatus?: string;
+        totalRam?: number | string;
+        availableRam?: number | string;
+        totalStorage?: number | string;
+        availableStorage?: number | string;
+        wifiSsid?: string;
+        isWifiConnected?: boolean;
+        isCharging?: boolean;
+    };
+};
+
+export type PatchApiV1DevicesByDeviceIdResponse = PatchApiV1DevicesByDeviceIdResponses[keyof PatchApiV1DevicesByDeviceIdResponses];
+
+export type PostApiV1DevicesByDeviceIdTasksData = {
+    body?: {
+        task: string;
+        maxSteps?: number;
+        guidance?: string;
+        sessionId?: string;
+        allowedActions?: Array<string>;
+        allowedApps?: Array<string>;
+        timeout?: number;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/tasks';
+};
+
+export type PostApiV1DevicesByDeviceIdTasksErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Internal error
+     */
+    500: {
+        message: string;
+    };
+    /**
+     * Device control plugin is not running
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * Task execution timed out
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdTasksError = PostApiV1DevicesByDeviceIdTasksErrors[keyof PostApiV1DevicesByDeviceIdTasksErrors];
+
+export type PostApiV1DevicesByDeviceIdTasksResponses = {
+    /**
+     * Task result
+     */
+    200: {
+        result: {
+            taskId: string;
+            success: boolean;
+            message?: string;
+            totalSteps?: number;
+            steps?: Array<{
+                step: number;
+                action: string;
+                target?: string;
+                success: boolean;
+                error?: string;
+            }>;
+            failedAtStep?: number;
+            finalScreenshot?: string;
+            duration?: number;
+        };
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdTasksResponse = PostApiV1DevicesByDeviceIdTasksResponses[keyof PostApiV1DevicesByDeviceIdTasksResponses];
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdData = {
+    body?: never;
+    path: {
+        deviceId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/tasks/{taskId}';
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdErrors = {
+    /**
+     * Device or task not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Internal error
+     */
+    500: {
+        message: string;
+    };
+    /**
+     * Device offline
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * Request timed out
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdError = DeleteApiV1DevicesByDeviceIdTasksByTaskIdErrors[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdErrors];
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses = {
+    /**
+     * Task cancelled
+     */
+    200: {
+        cancelled: boolean;
+        message?: string;
+    };
+};
+
+export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponse = DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

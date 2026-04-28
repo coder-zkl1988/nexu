@@ -542,6 +542,13 @@ export const controllerArtifactSchema = z.object({
   updatedAt: z.string(),
 });
 
+export const deviceControlConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  wsPort: z.number().int().positive().default(18790),
+  rpcPort: z.number().int().positive().default(18801),
+  localIp: z.string().optional(),
+});
+
 const nexuConfigObjectSchema = z.object({
   $schema: z.string(),
   schemaVersion: z.number().int().positive(),
@@ -562,6 +569,11 @@ const nexuConfigObjectSchema = z.object({
     })
     .catchall(z.unknown())
     .default({}),
+  deviceControl: deviceControlConfigSchema.default({
+    enabled: true,
+    wsPort: 18790,
+    rpcPort: 18801,
+  }),
   secrets: z.record(z.string(), z.string()).default({}),
 });
 
@@ -643,6 +655,11 @@ export const nexuConfigSchema = z.preprocess((input) => {
             : {}),
         }
       : {},
+    deviceControl:
+      typeof candidate.deviceControl === "object" &&
+      candidate.deviceControl !== null
+        ? candidate.deviceControl
+        : {},
     secrets:
       typeof candidate.secrets === "object" && candidate.secrets !== null
         ? candidate.secrets
@@ -675,6 +692,7 @@ export type NexuConfig = z.infer<typeof nexuConfigSchema>;
 export type ControllerRuntimeConfig = z.infer<
   typeof controllerRuntimeConfigSchema
 >;
+export type DeviceControlConfig = z.infer<typeof deviceControlConfigSchema>;
 export type ControllerProvider = z.infer<typeof controllerProviderSchema>;
 export type ControllerArtifact = z.infer<typeof controllerArtifactSchema>;
 export type ArtifactsIndex = z.infer<typeof artifactsIndexSchema>;

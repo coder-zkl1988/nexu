@@ -36,6 +36,7 @@ import {
   PanelLeftOpen,
   ScrollText,
   Settings,
+  Smartphone,
   Sparkles,
   Users,
   X,
@@ -574,10 +575,15 @@ function WorkspaceLayoutInner() {
     location.pathname === "/workspace/home";
   const isRewardsPage = location.pathname.includes("/rewards");
   const isSkillsPage = location.pathname.includes("/skills");
+<<<<<<< HEAD
   const isExpertsPage = location.pathname.includes("/experts");
+=======
+  const isLocalChatPage = location.pathname === "/workspace/chat";
+>>>>>>> main
   const isModelsPage =
     location.pathname.includes("/models") ||
     location.pathname.includes("/settings");
+  const isDevicesPage = location.pathname.includes("/devices");
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
@@ -867,6 +873,32 @@ function WorkspaceLayoutInner() {
             >
               <Users size={16} className="shrink-0" />
               {t("layout.nav.experts")}
+            </Link>
+            <Link
+              to="/workspace/chat"
+              onClick={() => {
+                track("workspace_sidebar_click", { target: "local-chat" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isLocalChatPage && "nav-item-active",
+              )}
+            >
+              <MessageSquare size={16} className="shrink-0" />
+              {t("layout.nav.localChat")}
+            </Link>
+            <Link
+              to="/workspace/devices"
+              onClick={() => {
+                track("workspace_sidebar_click", { target: "devices" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isDevicesPage && "nav-item-active",
+              )}
+            >
+              <Smartphone size={16} className="shrink-0" />
+              {t("layout.nav.devices")}
             </Link>
           </div>
 
@@ -1401,6 +1433,7 @@ function WorkspaceLayoutInner() {
                     </span>
                   </Link>
                   <Link
+<<<<<<< HEAD
                     to="/workspace/experts"
                     onClick={() => {
                       track("workspace_experts_click");
@@ -1410,14 +1443,47 @@ function WorkspaceLayoutInner() {
                     className={cn(
                       "flex items-center justify-between w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
                       isExpertsPage
+=======
+                    to="/workspace/chat"
+                    onClick={() => {
+                      track("workspace_sidebar_click", {
+                        target: "local-chat",
+                      });
+                      setMobileDrawerOpen(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
+                      isLocalChatPage
+>>>>>>> main
                         ? "bg-accent/10 text-accent"
                         : "text-text-muted hover:text-text-primary hover:bg-surface-3",
                     )}
                   >
+<<<<<<< HEAD
                     <span className="flex items-center gap-2">
                       <Users size={14} />
                       {t("layout.nav.experts")}
                     </span>
+=======
+                    <MessageSquare size={14} />
+                    {t("layout.nav.localChat")}
+                  </Link>
+                  <Link
+                    to="/workspace/devices"
+                    onClick={() => {
+                      track("workspace_sidebar_click", { target: "devices" });
+                      setMobileDrawerOpen(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
+                      isDevicesPage
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
+                    )}
+                  >
+                    <Smartphone size={14} />
+                    {t("layout.nav.devices")}
+>>>>>>> main
                   </Link>
                   <Link
                     to="/workspace/settings"

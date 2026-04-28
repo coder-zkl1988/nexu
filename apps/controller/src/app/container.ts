@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { logger } from "../lib/logger.js";
+import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
 import { CreditGuardStateWriter } from "../runtime/credit-guard-state-writer.js";
 import { GatewayClient } from "../runtime/gateway-client.js";
 import { startHealthLoop } from "../runtime/loops.js";
@@ -10,12 +11,11 @@ import { OpenClawAuthProfilesStore } from "../runtime/openclaw-auth-profiles-sto
 import { OpenClawAuthProfilesWriter } from "../runtime/openclaw-auth-profiles-writer.js";
 import { OpenClawConfigWriter } from "../runtime/openclaw-config-writer.js";
 import { OpenClawProcessManager } from "../runtime/openclaw-process.js";
-import { OpenClawRuntimeModelWriter } from "../runtime/openclaw-runtime-model-writer.js";
-import { OpenClawRuntimePluginWriter } from "../runtime/openclaw-runtime-plugin-writer.js";
 import { OpenClawWatchTrigger } from "../runtime/openclaw-watch-trigger.js";
 import { OpenClawWsClient } from "../runtime/openclaw-ws-client.js";
-import { RuntimeHealth } from "../runtime/runtime-health.js";
 import { SessionsRuntime } from "../runtime/sessions-runtime.js";
+import { OpenClawRuntimeModelWriter } from "../runtime/slimclaw-runtime-model-writer.js";
+import { OpenClawRuntimePluginWriter } from "../runtime/slimclaw-runtime-plugin-writer.js";
 import {
   type ControllerRuntimeState,
   createRuntimeState,
@@ -24,9 +24,12 @@ import { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js
 import { AgentService } from "../services/agent-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
+import { AttachmentStore } from "../services/attachment-store.js";
 import { ChannelFallbackService } from "../services/channel-fallback-service.js";
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
+import { DeviceControlService } from "../services/device-control-service.js";
+import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
 import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
 import {
   type InstallExpertResult,
@@ -47,6 +50,7 @@ import { SkillhubService } from "../services/skillhub-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
+import { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import { NexuConfigStore } from "../store/nexu-config-store.js";
 import { type ControllerEnv, env } from "./env.js";
 
@@ -54,7 +58,7 @@ export interface ControllerContainer {
   env: ControllerEnv;
   configStore: NexuConfigStore;
   gatewayClient: GatewayClient;
-  runtimeHealth: RuntimeHealth;
+  controlPlaneHealth: ControlPlaneHealthService;
   openclawProcess: OpenClawProcessManager;
   agentService: AgentService;
   channelService: ChannelService;
@@ -68,6 +72,7 @@ export interface ControllerContainer {
   desktopLocalService: DesktopLocalService;
   analyticsService: AnalyticsService;
   artifactService: ArtifactService;
+  attachmentStore: AttachmentStore;
   templateService: TemplateService;
   skillhubService: SkillhubService;
   experthubCatalogManager: ExperthubCatalogManager;
@@ -76,6 +81,10 @@ export interface ControllerContainer {
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
+  deviceControlService: DeviceControlService;
+  deviceMirrorProxy: DeviceMirrorProxy;
+  deviceTaskHistoryStore: DeviceTaskHistoryStore;
+  deviceNameStore: Map<string, string>;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   runtimeState: ControllerRuntimeState;
@@ -92,6 +101,10 @@ export async function createContainer(): Promise<ControllerContainer> {
     authMode: env.openclawGatewayToken ? "token" : "none",
   });
   const artifactsStore = new ArtifactsStore(env);
+  const deviceTaskHistoryStore = new DeviceTaskHistoryStore(
+    env.deviceTaskHistoryPath,
+    env.screenshotsDir,
+  );
   const compiledStore = new CompiledOpenClawStore(env);
   const configWriter = new OpenClawConfigWriter(env);
   const authProfilesStore = new OpenClawAuthProfilesStore(env);
@@ -100,14 +113,22 @@ export async function createContainer(): Promise<ControllerContainer> {
   const runtimeModelWriter = new OpenClawRuntimeModelWriter(env);
   const creditGuardStateWriter = new CreditGuardStateWriter(env);
   const templateWriter = new WorkspaceTemplateWriter(env);
-  const watchTrigger = new OpenClawWatchTrigger(env);
   const gatewayClient = new GatewayClient(env);
   const sessionsRuntime = new SessionsRuntime(env);
-  const runtimeHealth = new RuntimeHealth(env);
   const runtimeState = createRuntimeState();
+  // Construct openclawProcess before watchTrigger so the watch trigger can
+  // delegate gateway restarts to OpenClawProcessManager.restart() instead of
+  // re-implementing the dev-vs-launchd branching inline.
   const openclawProcess = new OpenClawProcessManager(env);
+  const watchTrigger = new OpenClawWatchTrigger(env, openclawProcess);
   const wsClient = new OpenClawWsClient(env);
-  const gatewayService = new OpenClawGatewayService(wsClient, runtimeState);
+  const gatewayService = new OpenClawGatewayService(wsClient);
+  const controlPlaneHealth = new ControlPlaneHealthService(
+    gatewayService,
+    wsClient,
+    runtimeState,
+    openclawProcess,
+  );
   const channelFallbackService = new ChannelFallbackService(
     openclawProcess,
     gatewayService,
@@ -161,7 +182,25 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawSyncService,
   );
   const githubStarVerificationService = new GithubStarVerificationService();
+  const deviceControlService = new DeviceControlService(
+    configStore,
+    deviceTaskHistoryStore,
+  );
+  const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
+  const attachmentStore = new AttachmentStore({
+    openclawStateDir: env.openclawStateDir,
+  });
+  // Sweep expired webchat attachments on boot.  Fire-and-forget so controller
+  // startup isn't blocked by disk I/O, and errors are swallowed-with-log by
+  // the store itself.
+  void attachmentStore.cleanupExpired().catch((err) => {
+    logger.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "attachment-store: startup cleanup failed",
+    );
+  });
 
+<<<<<<< HEAD
   // Experts (ExpertHub): catalog manager + install flow.
   // The catalog manager reads bundled manifests from the static dir and
   // managed manifests from the cache dir; if staticExpertsDir is undefined
@@ -237,18 +276,25 @@ export async function createContainer(): Promise<ControllerContainer> {
   // Wire cloud state change callback to sync refreshed cloud inventory without
   // auto-switching the default model during startup or first-channel connect.
   configStore.onCloudStateChanged = async (change) => {
+    // Auto-select a valid default model: on login, pick a managed model;
+    // on logout, fall back to any remaining BYOK/OAuth model (or leave
+    // cleared, which surfaces the explicit no-model guidance).
+    await modelProviderService.ensureValidDefaultModel();
     await openclawSyncService.syncAll();
-    if (!change.hadCloudInventory && change.hasCloudInventory) {
-      await openclawProcess.stop();
-      openclawProcess.enableAutoRestart();
-      openclawProcess.start();
-    }
+    // Restart the gateway on every login/logout.  Provider-level changes
+    // are not hot-reload-safe: OpenClaw builds its provider/model registry
+    // once at boot, so without a restart the old providers map stays
+    // resident in memory and the runtime keeps resolving to stale entries
+    // (e.g. link/*) after disconnect, or reports "Unknown model" after a
+    // fresh login because the registry never saw the new providers map.
+    // `restart()` handles both dev-managed and launchd-managed modes.
+    await openclawProcess.restart("cloud_state_changed");
   };
 
   return {
     env,
     gatewayClient,
-    runtimeHealth,
+    controlPlaneHealth,
     openclawProcess,
     agentService,
     channelService: new ChannelService(
@@ -257,7 +303,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       openclawSyncService,
       gatewayService,
       openclawProcess,
-      runtimeHealth,
+      controlPlaneHealth,
       wsClient,
       quotaFallbackService,
     ),
@@ -278,6 +324,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     ),
     analyticsService,
     artifactService: new ArtifactService(artifactsStore),
+    attachmentStore,
     templateService: new TemplateService(configStore, openclawSyncService),
     skillhubService,
     experthubCatalogManager,
@@ -286,6 +333,10 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawAuthService,
     quotaFallbackService,
     githubStarVerificationService,
+    deviceControlService,
+    deviceMirrorProxy,
+    deviceTaskHistoryStore,
+    deviceNameStore: new Map(),
     wsClient,
     gatewayService,
     configStore,
@@ -295,7 +346,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       const stopHealthLoop = startHealthLoop({
         env,
         state: runtimeState,
-        runtimeHealth,
+        controlPlaneHealth,
         processManager: openclawProcess,
         wsClient,
       });
