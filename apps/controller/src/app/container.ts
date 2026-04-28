@@ -74,6 +74,7 @@ export interface ControllerContainer {
   deviceControlService: DeviceControlService;
   deviceMirrorProxy: DeviceMirrorProxy;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
+  deviceNameStore: Map<string, string>;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   runtimeState: ControllerRuntimeState;
@@ -92,6 +93,7 @@ export async function createContainer(): Promise<ControllerContainer> {
   const artifactsStore = new ArtifactsStore(env);
   const deviceTaskHistoryStore = new DeviceTaskHistoryStore(
     env.deviceTaskHistoryPath,
+    env.screenshotsDir,
   );
   const compiledStore = new CompiledOpenClawStore(env);
   const configWriter = new OpenClawConfigWriter(env);
@@ -247,6 +249,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     deviceControlService,
     deviceMirrorProxy,
     deviceTaskHistoryStore,
+    deviceNameStore: new Map(),
     wsClient,
     gatewayService,
     configStore,

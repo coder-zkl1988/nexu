@@ -177,7 +177,7 @@ export function DeviceTaskDetailPage() {
                 {t("devices.taskDetail.finalScreenshot")}
               </div>
               <img
-                src={`data:image/png;base64,${entry.result.finalScreenshot}`}
+                src={entry.result.finalScreenshot}
                 alt={t("devices.taskDetail.finalScreenshot")}
                 className="max-w-[320px] rounded-lg border border-border"
               />

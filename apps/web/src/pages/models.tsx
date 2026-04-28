@@ -1076,6 +1076,8 @@ function _GeneralSettings() {
         </div>
       ) : null}
 
+      <DeviceControlSettingsSection />
+
       <div className="overflow-hidden rounded-xl border border-border bg-surface-1">
         <div className="border-b border-border px-5 py-4">
           <div className="flex items-center gap-2">
@@ -1246,7 +1248,6 @@ function _GeneralSettings() {
           </div>
         </div>
       </div>
-      <DeviceControlSettingsSection />
     </div>
   );
 }

@@ -1325,6 +1325,11 @@ const en = {
   "devices.mirror.waitingFrame": "Connected — waiting for screen data…",
   "devices.mirror.statusConnecting": "connecting",
   "devices.mirror.statusClosed": "closed",
+  "devices.mirror.statusOpen": "connected",
+  "devices.mirror.closedHint":
+    "Connection closed. Check that the device is online and try again.",
+  "devices.mirror.connectingHint": "Connecting to device screen…",
+  "devices.mirror.retry": "Retry",
   "devices.taskDispatch.title": "Dispatch task",
   "devices.taskDispatch.taskLabel": "Task description",
   "devices.taskDispatch.taskPlaceholder": "Describe what the device should do…",

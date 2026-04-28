@@ -96,13 +96,14 @@ export class DeviceMirrorProxy {
 
     upstream.on("open", () => {
       // The /mirror handler expects the first message to carry the
-      // deviceId of the device to subscribe to.
-      upstream.send(JSON.stringify({ deviceId }));
+      // deviceId of the device to subscribe to. Include fps hint so
+      // the phone agent can adjust its screenshot interval.
+      upstream.send(JSON.stringify({ deviceId, fps: 20 }));
     });
 
     upstream.on("message", (data) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      clientWs.send(data);
+      clientWs.send(typeof data === "string" ? data : data.toString());
     });
 
     clientWs.on("message", (raw) => {

@@ -30,24 +30,29 @@ export function TaskDispatchDialog({
     setLoading(true);
     setError(null);
 
+    // Close dialog immediately, dispatch in background
+    const taskText = task.trim();
+    const steps = maxSteps;
+    setTask("");
+    setMaxSteps(30);
+    onClose();
+
     try {
       const { error: apiError } = await postApiV1DevicesByDeviceIdTasks({
         path: { deviceId: device.deviceId },
-        body: { task: task.trim(), maxSteps },
+        body: { task: taskText, maxSteps: steps },
       });
 
       if (apiError) {
-        const msg =
+        throw new Error(
           typeof apiError === "object" &&
-          apiError !== null &&
-          "message" in apiError
+            apiError !== null &&
+            "message" in apiError
             ? String((apiError as { message: unknown }).message)
-            : t("devices.taskDispatch.errorFallback");
-        throw new Error(msg);
+            : t("devices.taskDispatch.errorFallback"),
+        );
       }
 
-      setTask("");
-      setMaxSteps(30);
       onSuccess();
     } catch (err) {
       setError(
@@ -89,7 +94,7 @@ export function TaskDispatchDialog({
             {t("devices.taskDispatch.title")}
           </div>
           <div className="text-[12px] text-text-muted mt-0.5 truncate">
-            {device.deviceId}
+            {device.name || device.deviceId}
           </div>
         </div>
 

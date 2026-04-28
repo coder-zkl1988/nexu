@@ -5,6 +5,7 @@ import {
   deviceExecuteTaskResponseSchema,
   deviceInfoSchema,
   deviceListResponseSchema,
+  deviceRenameBodySchema,
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
 import { DeviceControlRpcError } from "../services/device-control-service.js";
@@ -15,6 +16,7 @@ const taskIdParamSchema = z.object({
   deviceId: z.string(),
   taskId: z.string(),
 });
+const renameParamSchema = z.object({ deviceId: z.string() });
 const errorSchema = z.object({ message: z.string() });
 
 function mapRpcErrorToStatus(err: unknown): {
@@ -68,7 +70,16 @@ export function registerDeviceControlRoutes(
         return c.json({ message: "Device control plugin is not running" }, 503);
       }
 
-      return c.json(await container.deviceControlService.listDevices(), 200);
+      const list = await container.deviceControlService.listDevices();
+      return c.json(
+        {
+          devices: list.devices.map((d) => ({
+            ...d,
+            name: container.deviceNameStore.get(d.deviceId) ?? d.name,
+          })),
+        },
+        200,
+      );
     },
   );
 
@@ -98,7 +109,50 @@ export function registerDeviceControlRoutes(
         return c.json({ message: "Device not found" }, 404);
       }
 
-      return c.json(device, 200);
+      return c.json(
+        {
+          ...device,
+          name: container.deviceNameStore.get(deviceId) ?? device.name,
+        },
+        200,
+      );
+    },
+  );
+
+  // PATCH /api/v1/devices/{deviceId} — rename device
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/devices/{deviceId}",
+      tags: ["Device Control"],
+      request: {
+        params: renameParamSchema,
+        body: {
+          content: {
+            "application/json": { schema: deviceRenameBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: deviceInfoSchema } },
+          description: "Device renamed",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Device not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { deviceId } = c.req.valid("param");
+      const { name } = c.req.valid("json");
+      container.deviceNameStore.set(deviceId, name);
+      const device = await container.deviceControlService.getDevice(deviceId);
+      if (device === null) {
+        return c.json({ message: "Device not found" }, 404);
+      }
+      return c.json({ ...device, name }, 200);
     },
   );
 

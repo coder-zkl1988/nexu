@@ -11862,7 +11862,7 @@
                       "properties": {
                         "enabled": {
                           "type": "boolean",
-                          "default": false
+                          "default": true
                         },
                         "wsPort": {
                           "type": "integer",
@@ -11875,6 +11875,9 @@
                           "minimum": 0,
                           "exclusiveMinimum": true,
                           "default": 18801
+                        },
+                        "localIp": {
+                          "type": "string"
                         }
                       }
                     }
@@ -12281,6 +12284,9 @@
                           "deviceId": {
                             "type": "string"
                           },
+                          "deviceName": {
+                            "type": "string"
+                          },
                           "taskId": {
                             "type": "string"
                           },
@@ -12407,6 +12413,9 @@
                   "type": "object",
                   "properties": {
                     "deviceId": {
+                      "type": "string"
+                    },
+                    "deviceName": {
                       "type": "string"
                     },
                     "taskId": {
@@ -12544,6 +12553,9 @@
                           "deviceId": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "name": {
+                            "type": "string"
                           },
                           "model": {
                             "type": "string"
@@ -12711,6 +12723,190 @@
                     "deviceId": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "osVersion": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "screenWidth": {
+                      "type": "number"
+                    },
+                    "screenHeight": {
+                      "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "busy",
+                        "error"
+                      ]
+                    },
+                    "currentApp": {
+                      "type": "string"
+                    },
+                    "currentTaskId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "connectedAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "lastSeen": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "manufacturer": {
+                      "type": "string"
+                    },
+                    "batteryLevel": {
+                      "type": "number"
+                    },
+                    "batteryStatus": {
+                      "type": "string"
+                    },
+                    "totalRam": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availableRam": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "totalStorage": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availableStorage": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "wifiSsid": {
+                      "type": "string"
+                    },
+                    "isWifiConnected": {
+                      "type": "boolean"
+                    },
+                    "isCharging": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deviceId",
+                    "status",
+                    "connectedAt",
+                    "lastSeen"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "deviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Device renamed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deviceId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "name": {
+                      "type": "string"
                     },
                     "model": {
                       "type": "string"

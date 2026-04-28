@@ -24,6 +24,7 @@ export const deviceStatusSchema = z.enum(["idle", "busy", "error"]);
 
 export const deviceInfoSchema = z.object({
   deviceId: z.string().min(1),
+  name: z.string().optional(),
   model: z.string().optional(),
   osVersion: z.union([z.number(), z.string()]).optional(),
   screenWidth: z.number().optional(),
@@ -47,6 +48,10 @@ export const deviceInfoSchema = z.object({
 
 export const deviceListResponseSchema = z.object({
   devices: z.array(deviceInfoSchema),
+});
+
+export const deviceRenameBodySchema = z.object({
+  name: z.string().min(1).max(64),
 });
 
 export const deviceExecuteTaskBodySchema = z.object({

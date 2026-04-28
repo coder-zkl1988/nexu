@@ -1,5 +1,6 @@
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { ControllerContainer } from "../app/container.js";
+import { getLocalIp } from "../lib/local-ip.js";
 import {
   controllerRuntimeConfigSchema,
   deviceControlConfigSchema,
@@ -38,7 +39,13 @@ export function registerRuntimeConfigRoutes(
         container.runtimeConfigService.getRuntimeConfig(),
         container.configStore.getDeviceControlConfig(),
       ]);
-      return c.json({ runtime, deviceControl }, 200);
+      return c.json(
+        {
+          runtime,
+          deviceControl: { ...deviceControl, localIp: getLocalIp() },
+        },
+        200,
+      );
     },
   );
 

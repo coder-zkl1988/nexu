@@ -11,6 +11,7 @@ import { registerDesktopRoutes } from "../routes/desktop-routes.js";
 import { registerDeviceControlRoutes } from "../routes/device-control-routes.js";
 import { registerDeviceTaskHistoryRoutes } from "../routes/device-task-history-routes.js";
 import { registerIntegrationRoutes } from "../routes/integration-routes.js";
+import { registerMediaRoutes } from "../routes/media-routes.js";
 import { registerMiscCompatRoutes } from "../routes/misc-compat-routes.js";
 import { registerModelRoutes } from "../routes/model-routes.js";
 import { registerProviderOAuthRoutes } from "../routes/provider-oauth-routes.js";
@@ -55,6 +56,7 @@ export function createApp(container: ControllerContainer) {
   registerWorkspaceTemplateRoutes(app, container);
   registerDeviceTaskHistoryRoutes(app, container);
   registerDeviceControlRoutes(app, container);
+  registerMediaRoutes(app, container);
 
   app.doc("/openapi.json", {
     openapi: "3.1.0",

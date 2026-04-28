@@ -4018,6 +4018,7 @@ export type GetApiV1RuntimeConfigResponses = {
             enabled?: boolean;
             wsPort?: number;
             rpcPort?: number;
+            localIp?: string;
         };
     };
 };
@@ -4170,6 +4171,7 @@ export type GetApiV1DevicesTasksResponses = {
     200: {
         entries: Array<{
             deviceId: string;
+            deviceName?: string;
             taskId: string;
             task: string;
             maxSteps?: number;
@@ -4223,6 +4225,7 @@ export type GetApiV1DevicesTasksByTaskIdResponses = {
      */
     200: {
         deviceId: string;
+        deviceName?: string;
         taskId: string;
         task: string;
         maxSteps?: number;
@@ -4274,6 +4277,7 @@ export type GetApiV1DevicesResponses = {
     200: {
         devices: Array<{
             deviceId: string;
+            name?: string;
             model?: string;
             osVersion?: number | string;
             screenWidth?: number;
@@ -4325,6 +4329,7 @@ export type GetApiV1DevicesByDeviceIdResponses = {
      */
     200: {
         deviceId: string;
+        name?: string;
         model?: string;
         osVersion?: number | string;
         screenWidth?: number;
@@ -4348,6 +4353,59 @@ export type GetApiV1DevicesByDeviceIdResponses = {
 };
 
 export type GetApiV1DevicesByDeviceIdResponse = GetApiV1DevicesByDeviceIdResponses[keyof GetApiV1DevicesByDeviceIdResponses];
+
+export type PatchApiV1DevicesByDeviceIdData = {
+    body?: {
+        name: string;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}';
+};
+
+export type PatchApiV1DevicesByDeviceIdErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1DevicesByDeviceIdError = PatchApiV1DevicesByDeviceIdErrors[keyof PatchApiV1DevicesByDeviceIdErrors];
+
+export type PatchApiV1DevicesByDeviceIdResponses = {
+    /**
+     * Device renamed
+     */
+    200: {
+        deviceId: string;
+        name?: string;
+        model?: string;
+        osVersion?: number | string;
+        screenWidth?: number;
+        screenHeight?: number;
+        status: 'idle' | 'busy' | 'error';
+        currentApp?: string;
+        currentTaskId?: string;
+        connectedAt: number;
+        lastSeen: number;
+        manufacturer?: string;
+        batteryLevel?: number;
+        batteryStatus?: string;
+        totalRam?: number | string;
+        availableRam?: number | string;
+        totalStorage?: number | string;
+        availableStorage?: number | string;
+        wifiSsid?: string;
+        isWifiConnected?: boolean;
+        isCharging?: boolean;
+    };
+};
+
+export type PatchApiV1DevicesByDeviceIdResponse = PatchApiV1DevicesByDeviceIdResponses[keyof PatchApiV1DevicesByDeviceIdResponses];
 
 export type PostApiV1DevicesByDeviceIdTasksData = {
     body?: {

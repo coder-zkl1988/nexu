@@ -3,6 +3,7 @@ import { taskResultSchema } from "./device-control.js";
 
 export const deviceTaskHistoryEntrySchema = z.object({
   deviceId: z.string(),
+  deviceName: z.string().optional(),
   taskId: z.string(),
   task: z.string(),
   maxSteps: z.number().int().optional(),

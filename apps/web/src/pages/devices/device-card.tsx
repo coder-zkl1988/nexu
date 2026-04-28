@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Pencil } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { patchApiV1DevicesByDeviceId } from "../../../lib/api/sdk.gen";
 import type { GetApiV1DevicesResponse } from "../../../lib/api/types.gen";
-import { MirrorDialog } from "./mirror-dialog";
 import { TaskDispatchDialog } from "./task-dispatch-dialog";
+import { useDeviceSnapshot } from "./use-device-snapshot";
 
 export type DeviceInfo =
   NonNullable<GetApiV1DevicesResponse>["devices"][number];
@@ -39,80 +42,166 @@ const STATUS_I18N_KEY: Record<DeviceInfo["status"], string> = {
 export function DeviceCard({
   device,
   onTaskSuccess,
+  onViewScreen,
 }: {
   device: DeviceInfo;
   onTaskSuccess: () => void;
+  onViewScreen: (device: DeviceInfo) => void;
 }) {
   const { t } = useTranslation();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [mirrorOpen, setMirrorOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(device.name ?? "");
+  const nameInputRef = useRef<HTMLSpanElement>(null);
+  const snapshot = useDeviceSnapshot(device.deviceId);
   const color = statusColor(device.status);
   const label = STATUS_I18N_KEY[device.status]
     ? t(STATUS_I18N_KEY[device.status])
     : device.status;
+  const displayName = device.name || device.deviceId;
+
+  const startRename = useCallback(() => {
+    setNameDraft(device.name ?? "");
+    setEditingName(true);
+  }, [device.name]);
+
+  const commitRename = useCallback(async () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === device.name) {
+      setEditingName(false);
+      return;
+    }
+    try {
+      await patchApiV1DevicesByDeviceId({
+        path: { deviceId: device.deviceId },
+        body: { name: trimmed },
+      });
+    } catch {
+      // ignore
+    }
+    setEditingName(false);
+  }, [nameDraft, device.name, device.deviceId]);
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-surface-1 p-4 flex flex-col gap-3 shadow-sm">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-[13px] font-semibold text-text-primary truncate">
-              {device.deviceId}
+      <div className="border border-border bg-surface-1 shadow-sm flex rounded overflow-hidden">
+        <div className="shrink-0 w-[120px] bg-surface-2 flex items-center justify-center">
+          {snapshot ? (
+            <img
+              src={`data:image/png;base64,${snapshot}`}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span className="text-3xl opacity-30">📱</span>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0 p-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1 flex items-center gap-1">
+              <span
+                ref={nameInputRef}
+                contentEditable={editingName}
+                suppressContentEditableWarning
+                onFocus={() => {
+                  if (!editingName) return;
+                  // Select all text on focus
+                  const range = document.createRange();
+                  range.selectNodeContents(nameInputRef.current!);
+                  const sel = window.getSelection();
+                  sel?.removeAllRanges();
+                  sel?.addRange(range);
+                }}
+                onInput={(e) => setNameDraft(e.currentTarget.textContent ?? "")}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitRename();
+                  }
+                  if (e.key === "Escape") {
+                    setEditingName(false);
+                    e.currentTarget.textContent =
+                      device.name || device.deviceId;
+                  }
+                }}
+                className={
+                  editingName
+                    ? "text-[13px] font-semibold text-text-primary outline-none rounded px-0.5 -mx-0.5 min-w-[60px] inline-block caret-accent"
+                    : "text-[13px] font-semibold text-text-primary truncate"
+                }
+              >
+                {displayName}
+              </span>
+              {!editingName && (
+                <button
+                  type="button"
+                  onClick={startRename}
+                  className="shrink-0 p-0.5 rounded text-text-muted hover:text-accent hover:bg-surface-2 transition-colors"
+                  title="重命名"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
             </div>
-            {device.model && (
-              <div className="text-[11px] text-text-muted mt-0.5 truncate">
-                {device.model}
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 ${STATUS_TEXT[color]}`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[color]}`}
+              />
+              {label}
+            </span>
+          </div>
+
+          {device.model && (
+            <div className="text-[11px] text-text-muted truncate mt-0.5">
+              {device.model}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1 text-[12px] text-text-secondary">
+            {device.currentApp && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">
+                  {t("devices.currentApp")}
+                </span>
+                <span className="truncate text-right">{device.currentApp}</span>
+              </div>
+            )}
+            {device.batteryLevel !== undefined && (
+              <div className="flex justify-between gap-2">
+                <span className="text-text-muted shrink-0">
+                  {t("devices.battery")}
+                </span>
+                <span>
+                  {device.batteryLevel}%
+                  {device.isCharging && (
+                    <span className="ml-1 text-green-600">⚡</span>
+                  )}
+                </span>
               </div>
             )}
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0 ${STATUS_TEXT[color]}`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[color]}`} />
-            {label}
-          </span>
-        </div>
 
-        <div className="flex flex-col gap-1 text-[12px] text-text-secondary">
-          {device.currentApp && (
-            <div className="flex justify-between gap-2">
-              <span className="text-text-muted shrink-0">
-                {t("devices.currentApp")}
-              </span>
-              <span className="truncate text-right">{device.currentApp}</span>
-            </div>
-          )}
-          {device.batteryLevel !== undefined && (
-            <div className="flex justify-between gap-2">
-              <span className="text-text-muted shrink-0">
-                {t("devices.battery")}
-              </span>
-              <span>
-                {device.batteryLevel}%
-                {device.isCharging && (
-                  <span className="ml-1 text-green-600">⚡</span>
-                )}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-auto flex gap-2">
-          <button
-            type="button"
-            disabled={device.status === "busy"}
-            onClick={() => setDialogOpen(true)}
-            className="flex-1 rounded-lg border border-border bg-surface-0 px-3 py-2 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-2 hover:border-border-hover disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {t("devices.dispatchTask")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMirrorOpen(true)}
-            className="flex-1 rounded-lg border border-border bg-surface-0 px-3 py-2 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-2 hover:border-border-hover"
-          >
-            {t("devices.viewScreen")}
-          </button>
+          <div className="mt-auto flex justify-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={device.status === "busy"}
+              onClick={() => setDialogOpen(true)}
+            >
+              {device.status === "busy" ? "执行中…" : t("devices.dispatchTask")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onViewScreen(device)}
+            >
+              {t("devices.viewScreen")}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -124,11 +213,6 @@ export function DeviceCard({
           setDialogOpen(false);
           onTaskSuccess();
         }}
-      />
-      <MirrorDialog
-        device={device}
-        open={mirrorOpen}
-        onClose={() => setMirrorOpen(false)}
       />
     </>
   );
