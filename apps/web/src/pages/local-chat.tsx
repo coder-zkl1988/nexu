@@ -7,10 +7,15 @@ import {
   File,
   FileSpreadsheet,
   FileText,
+  Globe,
   Loader2,
-  Paperclip,
-  Send,
+  Mail,
+  Plus,
+  Presentation,
+  Search,
+  SendHorizonal,
   Sparkles,
+  Wand2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -625,16 +630,14 @@ function AttachmentTray({
 function TypingIndicator() {
   return (
     <div className="flex items-start gap-3">
-      <img
-        src={BOT_AVATAR}
-        alt=""
-        className="h-9 w-9 shrink-0 object-contain -ml-1"
-      />
-      <div className="flex items-center gap-1.5 rounded-[20px] rounded-tl-sm border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-tabby-orange)]">
+        <Bot className="h-4 w-4 text-white" />
+      </div>
+      <div className="flex items-center gap-1.5 rounded-[20px] rounded-tl-sm border border-[var(--color-tabby-border)] bg-white px-4 py-3 shadow-sm">
         {[0, 1, 2].map((i) => (
           <span
             key={i}
-            className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted"
+            className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--color-tabby-muted)]"
             style={{ animationDelay: `${i * 150}ms` }}
           />
         ))}
@@ -757,13 +760,11 @@ function ChatBubble({
     >
       {/* Avatar */}
       {isBot ? (
-        <img
-          src={BOT_AVATAR}
-          alt=""
-          className="h-9 w-9 shrink-0 object-contain -ml-1"
-        />
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-tabby-orange)]">
+          <Bot className="h-4 w-4 text-white" />
+        </div>
       ) : (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 ring-1 ring-border/50">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-500">
           <span className="text-[11px] font-semibold leading-none text-white">
             Me
           </span>
@@ -799,10 +800,10 @@ function ChatBubble({
             <div
               key={key}
               className={cn(
-                "inline-block max-w-full break-words rounded-[20px] px-4 py-3 text-[13px] shadow-[0_10px_24px_rgba(15,23,42,0.04)]",
+                "inline-block max-w-full break-words rounded-[20px] px-4 py-3 text-[13px] leading-relaxed",
                 isBot
-                  ? "border border-border bg-surface-1 text-text-primary rounded-tl-sm"
-                  : "bg-surface-3 text-text-primary rounded-tr-sm",
+                  ? "border border-[var(--color-tabby-border)] bg-white text-[var(--color-tabby-foreground)] rounded-tl-sm shadow-sm"
+                  : "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-foreground)] rounded-tr-sm",
               )}
             >
               <ChatMarkdown content={block.text} />
@@ -989,7 +990,7 @@ export function LocalChatPage() {
   const noActiveBots = activeBots.length === 0;
   const isCreatingBot = botsLoading || createDefaultBot.isPending;
   // Only show "creating" copy when we are genuinely creating a new bot (not just loading)
-  const isCreatingNewBot = createDefaultBot.isPending;
+
   const createError = createDefaultBot.error;
   // True when still initializing — no bot selected yet (loading bots or creating new bot)
   // OR bot selected but history not yet loaded.
@@ -1476,170 +1477,242 @@ export function LocalChatPage() {
           ? t("localChat.waiting")
           : t("localChat.inputPlaceholder");
 
-  return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b border-border px-6 py-4 md:pt-12">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-[15px] font-bold text-text-heading">
-              {t("localChat.title")}
-            </h1>
-            <p className="mt-0.5 text-[11px] text-text-muted">
-              {t("localChat.subtitle")}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {createError ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-red-500">
-                  {t("localChat.createDefaultBotError")}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => createDefaultBot.mutate()}
-                  className="text-[12px] text-accent underline"
-                >
-                  {t("localChat.retryCreateBot")}
-                </button>
-              </div>
-            ) : isCreatingBot ? (
-              <div className="flex items-center gap-2">
-                <Loader2 size={16} className="animate-spin text-text-muted" />
-                {isCreatingNewBot && (
-                  <span className="text-[12px] text-text-muted">
-                    {t("localChat.creatingDefaultBot")}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <BotSelector
-                bots={bots}
-                selected={selectedBot}
-                onSelect={handleSelectBot}
-              />
-            )}
-          </div>
-        </div>
-      </div>
+  const skillPills = [
+    { icon: "gpt", label: "GPT Image 2" },
+    { icon: "banana", label: "Nano Banana 2" },
+    { icon: "sparkles", label: "Create skill" },
+    { icon: "slides", label: "Create slides" },
+    { icon: "globe", label: "Frontend design" },
+    { icon: "mail", label: "Tabbymail skill" },
+    { icon: "search", label: "Research skills" },
+  ];
 
-      {/* Message list */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {isInitializing ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 size={20} className="animate-spin text-text-muted" />
-          </div>
-        ) : (messages === null || messages.length === 0) && !waitingReply ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-3">
-                <Sparkles className="h-7 w-7 text-text-muted" />
-              </div>
-              <div>
-                {createError ? (
-                  <>
-                    <p className="text-[14px] font-medium text-red-500">
-                      {t("localChat.createDefaultBotError")}
-                    </p>
-                    <p className="mt-1 text-[12px] text-text-muted">
-                      {t("localChat.retryCreateBot")}
-                    </p>
-                  </>
-                ) : isCreatingNewBot ? (
-                  <>
-                    <p className="text-[14px] font-medium text-text-primary">
-                      {t("localChat.creatingDefaultBot")}
-                    </p>
-                    <p className="mt-1 text-[12px] text-text-muted">
-                      {t("localChat.emptyHint")}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[14px] font-medium text-text-primary">
-                      {selectedBot
-                        ? t("localChat.startChat", { name: selectedBot.name })
-                        : t("localChat.pickBot")}
-                    </p>
-                    <p className="mt-1 text-[12px] text-text-muted">
-                      {t("localChat.emptyHint")}
-                    </p>
-                  </>
+  function SkillPillIcon({ type }: { type: string }) {
+    switch (type) {
+      case "gpt":
+        return (
+          <svg
+            className="w-4 h-4 shrink-0"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.677l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.896zm16.597 3.855l-5.843-3.371 2.019-1.168a.076.076 0 0 1 .071 0l4.83 2.786a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.4-.674zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z" />
+          </svg>
+        );
+      case "banana":
+        return <span className="text-sm leading-none">🍌</span>;
+      case "sparkles":
+        return <Sparkles className="w-4 h-4" />;
+      case "slides":
+        return <Presentation className="w-4 h-4" />;
+      case "globe":
+        return <Globe className="w-4 h-4" />;
+      case "mail":
+        return <Mail className="w-4 h-4" />;
+      case "search":
+        return <Search className="w-4 h-4" />;
+      default:
+        return <Wand2 className="w-4 h-4" />;
+    }
+  }
+
+  const hasMessages = messages !== null && messages.length > 0;
+
+  return (
+    <div className="h-full overflow-hidden">
+      <main className="h-full w-full overflow-hidden relative flex flex-col">
+        {hasMessages || waitingReply ? (
+          <>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 py-4 bg-white">
+              {isInitializing ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2
+                    size={20}
+                    className="animate-spin text-[var(--color-tabby-muted)]"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {messages?.map((msg) => (
+                    <ChatBubble key={msg.id} msg={msg} t={t} />
+                  ))}
+                  {waitingReply && <TypingIndicator />}
+                  <div className="h-4" />
+                  <div ref={endRef} />
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 bg-white border-t border-[var(--color-tabby-border)] px-4 py-3">
+              <div className="bg-[var(--color-tabby-bg)] rounded-3xl border border-[var(--color-tabby-border)] shadow-sm">
+                {pendingAttachments.length > 0 && (
+                  <AttachmentTray
+                    attachments={pendingAttachments}
+                    onRemove={removeAttachment}
+                  />
                 )}
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder={placeholder}
+                  disabled={!selectedBot || waitingReply || isCreatingBot}
+                  rows={1}
+                  className="w-full resize-none bg-transparent text-[var(--color-tabby-foreground)] placeholder:text-[var(--color-tabby-muted)] outline-none px-4 pt-4 pb-2 text-sm min-h-[40px] disabled:cursor-not-allowed"
+                  style={{ maxHeight: "120px", overflowY: "auto" }}
+                />
+                <div className="flex items-center justify-between px-2 pb-2">
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)]"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Skills
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
+                    >
+                      Sonnet 4.6
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSend()}
+                      disabled={!canSend}
+                      className={cn(
+                        "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                        canSend
+                          ? "bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
+                          : "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-muted)] cursor-not-allowed",
+                      )}
+                    >
+                      <SendHorizonal className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="px-4 py-8 sm:px-6">
-            <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5">
-              {/* biome-ignore lint/style/noNonNullAssertion: messages is guaranteed non-null in this branch */}
-              {messages!.map((msg) => (
-                <ChatBubble key={msg.id} msg={msg} t={t} />
-              ))}
-              {waitingReply && <TypingIndicator />}
-              <div ref={endRef} />
+          <div className="flex-1 overflow-y-auto overflow-x-hidden h-full">
+            <div className="flex flex-col items-center justify-center min-h-full px-4 py-6 md:py-10">
+              <div className="mb-5 md:mb-6 relative w-[144px] h-[144px] md:w-[176px] md:h-[176px]">
+                <img
+                  src="/images/tabby-mascot.png"
+                  alt="Tabby mascot"
+                  className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+                />
+                <img
+                  src="/images/tabby-mascot-colorful.png"
+                  alt="Tabby mascot colorful"
+                  className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
+                />
+              </div>
+              <h2
+                className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)] mb-6 md:mb-8"
+                style={{ fontFamily: "var(--font-script)" }}
+              >
+                Happy Tabby
+              </h2>
+              <div className="w-full max-w-xl md:max-w-2xl">
+                <div className="bg-[var(--color-tabby-bg)] rounded-3xl border border-[var(--color-tabby-border)] shadow-sm">
+                  <div className="px-4 pt-4 pb-2">
+                    <textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      onPaste={handlePaste}
+                      placeholder={placeholder}
+                      disabled={!selectedBot || waitingReply || isCreatingBot}
+                      rows={1}
+                      className="w-full resize-none bg-transparent text-[var(--color-tabby-foreground)] placeholder:text-[var(--color-tabby-muted)] outline-none min-h-[40px] text-sm disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between px-2 pb-2">
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => fileRef.current?.click()}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)]"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Skills
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      {isCreatingBot ? (
+                        <Loader2
+                          size={14}
+                          className="animate-spin text-[var(--color-tabby-muted)]"
+                        />
+                      ) : (
+                        <BotSelector
+                          bots={bots}
+                          selected={selectedBot}
+                          onSelect={handleSelectBot}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
+                      >
+                        Sonnet 4.6
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSend()}
+                        disabled={!canSend}
+                        className={cn(
+                          "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                          canSend
+                            ? "bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
+                            : "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-muted)] cursor-not-allowed",
+                        )}
+                      >
+                        <SendHorizonal className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 mt-5">
+                  {skillPills.map((pill) => (
+                    <button
+                      key={pill.label}
+                      type="button"
+                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--color-tabby-border)] bg-white/80 text-sm text-[var(--color-tabby-foreground)] hover:bg-[var(--color-tabby-canvas)] transition-colors"
+                    >
+                      <SkillPillIcon type={pill.icon} />
+                      {pill.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
-      </div>
-
-      {/* Input bar */}
-      <div className="shrink-0 border-t border-border bg-surface-1 px-4 py-4">
-        <div className="mx-auto flex w-full max-w-[920px] items-center gap-2">
-          {/* Input container: attachment tray + textarea row */}
-          <div
-            className="flex min-h-[44px] flex-1 flex-col rounded-2xl border border-border bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)] focus-within:border-accent/60 focus-within:shadow-[0_2px_12px_rgba(15,23,42,0.08)]"
-            onPaste={handlePaste}
-          >
-            {pendingAttachments.length > 0 && (
-              <AttachmentTray
-                attachments={pendingAttachments}
-                onRemove={removeAttachment}
-              />
-            )}
-            <div className="flex items-center px-3 py-2.5">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                disabled={!selectedBot || waitingReply || isCreatingBot}
-                rows={1}
-                className="flex-1 resize-none bg-transparent text-[13px] text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed"
-                style={{ maxHeight: "120px", overflowY: "auto" }}
-              />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={
-                  !selectedBot || sending || waitingReply || isCreatingBot
-                }
-                className="ml-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                title={t("localChat.attachFile")}
-              >
-                <Paperclip size={15} />
-              </button>
-            </div>
-          </div>
-
-          {/* Send button */}
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={!canSend}
-            className={cn(
-              "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors",
-              canSend
-                ? "bg-accent text-white shadow-[0_4px_12px_rgba(0,0,0,0.15)] hover:bg-accent/90"
-                : "bg-surface-3 text-text-muted cursor-not-allowed",
-            )}
-          >
-            <Send size={16} />
-          </button>
-        </div>
-
-        {/* Hidden file input — accepts images and common documents */}
         <input
           ref={fileRef}
           type="file"
@@ -1647,7 +1720,7 @@ export function LocalChatPage() {
           className="hidden"
           onChange={handleFile}
         />
-      </div>
+      </main>
     </div>
   );
 }

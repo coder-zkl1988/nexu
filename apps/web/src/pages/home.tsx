@@ -382,8 +382,6 @@ export function HomePage() {
     }
   });
   const queryClient = useQueryClient();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoHover, setVideoHover] = useState(false);
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
   const connectingToastIdRef = useRef<string | number | null>(null);
   const previousLiveStatusesRef = useRef<Record<string, ChannelLiveStatus>>({});
@@ -708,33 +706,6 @@ export function HomePage() {
     }
   }, [liveStatus, pendingChannelId, t]);
 
-  // Video playback effects — reset when channel state changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasChannel triggers reset intentionally
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = 0;
-    v.loop = false;
-    v.play().catch(() => {});
-    const onEnded = () => {
-      v.pause();
-    };
-    v.addEventListener("ended", onEnded);
-    return () => v.removeEventListener("ended", onEnded);
-  }, [hasChannel]);
-
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (videoHover) {
-      v.currentTime = 0;
-      v.loop = true;
-      v.play().catch(() => {});
-    } else {
-      v.loop = false;
-    }
-  }, [videoHover]);
-
   /* ══════════════════════════════════════════════════════════════════════
      Scene A: First-run — No channels connected (Idle state)
      ══════════════════════════════════════════════════════════════════════ */
@@ -744,28 +715,23 @@ export function HomePage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
           {/* ═══ TOP: Hero — Bot idle, waiting to be activated ═══ */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="relative w-32 h-32 mb-5 cursor-default"
-              onMouseEnter={() => setVideoHover(true)}
-              onMouseLeave={() => setVideoHover(false)}
-            >
-              <video
-                ref={videoRef}
-                src="/nexu-alpha.mp4"
-                poster="/nexu-alpha-poster.jpg"
-                preload="auto"
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-contain"
+            <div className="relative w-32 h-32 mb-5 cursor-default">
+              <img
+                src="/images/tabby-mascot.png"
+                alt="Tabby"
+                className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+              />
+              <img
+                src="/images/tabby-mascot-colorful.png"
+                alt="Tabby colorful"
+                className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
               />
             </div>
             <h2
-              className="text-[26px] font-normal tracking-tight text-text-primary mb-1.5"
+              className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)] mb-1.5"
               style={{ fontFamily: "var(--font-script)" }}
             >
-              nexu alpha
+              Happy Tabby
             </h2>
             <div className="flex items-center gap-3 text-[11px] text-text-muted">
               <span
@@ -961,30 +927,25 @@ export function HomePage() {
       >
         {/* ═══ TOP: Hero — Bot running (horizontal layout) ═══ */}
         <div className="flex items-center gap-4">
-          <div
-            className="relative w-28 h-28 cursor-default shrink-0"
-            onMouseEnter={() => setVideoHover(true)}
-            onMouseLeave={() => setVideoHover(false)}
-          >
-            <video
-              ref={videoRef}
-              src="/nexu-alpha.mp4"
-              poster="/nexu-alpha-poster.jpg"
-              preload="auto"
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-contain"
+          <div className="relative w-28 h-28 cursor-default shrink-0">
+            <img
+              src="/images/tabby-mascot.png"
+              alt="Tabby"
+              className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+            />
+            <img
+              src="/images/tabby-mascot-colorful.png"
+              alt="Tabby colorful"
+              className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
             />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5">
               <h2
-                className="text-[26px] font-normal tracking-tight text-text-primary"
+                className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)]"
                 style={{ fontFamily: "var(--font-script)" }}
               >
-                nexu alpha
+                Happy Tabby
               </h2>
               <span
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium"

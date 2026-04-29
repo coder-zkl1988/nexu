@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthLayout } from "./layouts/auth-layout";
 import { InviteGuardLayout } from "./layouts/invite-guard-layout";
 import { WorkspaceLayout } from "./layouts/workspace-layout";
+import { AutomationsPage } from "./pages/automations";
 import { ChannelsPage } from "./pages/channels";
 import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
 import { DevicesPage } from "./pages/devices/index";
@@ -41,6 +42,7 @@ function DocumentTitleSync() {
       "/workspace/chat": t("localChat.title"),
       "/workspace/settings": t("title.settings"),
       "/workspace/models": t("title.settings"),
+      "/workspace/automations": t("layout.nav.automations"),
       "/feishu/bind": t("title.linkFeishu"),
     };
 
@@ -100,6 +102,10 @@ export function App() {
               <Route
                 path="/workspace/skills/:slug"
                 element={<CommunitySkillDetailPage />}
+              />
+              <Route
+                path="/workspace/automations"
+                element={<AutomationsPage />}
               />
               <Route path="/workspace/experts" element={<ExpertsPage />} />
               <Route

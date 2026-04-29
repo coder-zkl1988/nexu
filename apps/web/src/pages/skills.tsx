@@ -770,8 +770,12 @@ export function SkillsPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
-            <h1 className="heading-page">{t("skills.pageTitle")}</h1>
-            <p className="heading-page-desc">{t("skills.pageSubtitle")}</p>
+            <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
+              {t("skills.pageTitle")}
+            </h1>
+            <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
+              {t("skills.pageSubtitle")}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <GitHubStarCta

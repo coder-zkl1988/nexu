@@ -233,8 +233,12 @@ export default function ExpertsPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
-            <h1 className="heading-page">{t("experts.title")}</h1>
-            <p className="heading-page-desc">{t("experts.subtitle")}</p>
+            <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
+              {t("experts.title")}
+            </h1>
+            <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
+              {t("experts.subtitle")}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">
