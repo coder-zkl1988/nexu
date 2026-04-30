@@ -1848,10 +1848,10 @@ function assertSafeRmTarget(targetPath: string): void {
 
 /**
  * Read CFBundleExecutable from Info.plist to get the actual binary name.
- * Falls back to "Nexu" if the plist cannot be parsed.
+ * Falls back to "Tabby" if the plist cannot be parsed.
  */
 function readBundleExecutableName(appContentsPath: string): string {
-  const fallback = "Nexu";
+  const fallback = "Tabby";
   try {
     const plistPath = path.join(appContentsPath, "Info.plist");
     const raw = readFileSync(plistPath, "utf8");

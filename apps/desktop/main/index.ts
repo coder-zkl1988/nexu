@@ -626,8 +626,8 @@ function showAboutDialog(): void {
   ];
   const options = {
     type: "info" as const,
-    title: "About Nexu",
-    message: "Nexu",
+    title: "About Tabby",
+    message: "Tabby",
     detail: detailLines.join("\n"),
     buttons: ["OK"],
     noLink: true,
@@ -1182,7 +1182,7 @@ function ensureResidentTray(): void {
 
   const tray = new Tray(trayIcon);
   residentTray = tray;
-  tray.setToolTip("nexu");
+  tray.setToolTip("Tabby");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -1229,7 +1229,7 @@ async function ensureWindowsTray(): Promise<void> {
   }
 
   systemTray = new Tray(trayIcon);
-  systemTray.setToolTip("Nexu");
+  systemTray.setToolTip("Tabby");
   updateSystemTrayMenu();
 
   systemTray.on("click", () => {
@@ -1311,7 +1311,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: needsSetupExtraction ? 1280 : 1120,
     minHeight: 720,
     backgroundColor: isMacOS ? "#00000000" : "#0B1020",
-    title: "nexu",
+    title: "tabby",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
     ...(isMacOS
