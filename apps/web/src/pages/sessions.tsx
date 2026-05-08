@@ -1,3 +1,5 @@
+import { type BotItem, ChatInputArea } from "@/components/chat-input-area";
+import { InlineModelSelector } from "@/components/inline-model-selector";
 import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { getChannelChatUrl } from "@/lib/channel-links";
@@ -12,17 +14,21 @@ import {
   MessageSquare,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
+  getApiV1Bots,
+  getApiV1BotsByBotId,
   getApiV1Channels,
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
+  postApiV1ChatLocal,
 } from "../../lib/api/sdk.gen";
 
-const BOT_AVATAR = "/brand/ip-nexu.svg";
+const BOT_AVATAR = "/images/claw-avatar.png";
+const USER_AVATAR = "/images/tabby-avatar.png";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,7 +77,10 @@ function stripMetadata(raw: string): string {
 }
 
 function stripAssistantReplyPrefix(raw: string): string {
-  return raw.replace(/^\s*\[\[reply_to_current\]\]\s*/u, "");
+  return raw
+    .replace(/^\s*\[\[reply_to_current\]\]\s*/u, "")
+    .replace(/<final>\s*/giu, "")
+    .replace(/\s*<\/final>/giu, "");
 }
 
 /**
@@ -447,13 +456,7 @@ function ArtifactCard({ summary }: { summary: string | null }) {
   );
 }
 
-function ReplyContextCard({
-  text,
-  isBot,
-}: {
-  text: string;
-  isBot: boolean;
-}) {
+function ReplyContextCard({ text, isBot }: { text: string; isBot: boolean }) {
   const { t } = useTranslation();
 
   return (
@@ -525,7 +528,7 @@ function ChatBubble({
     <div
       data-chat-message={msg.id}
       data-chat-role={msg.role}
-      className={`flex gap-3 ${isBot ? "items-start" : "flex-row-reverse items-end"}`}
+      className="flex gap-3 items-start"
     >
       {isBot ? (
         <img
@@ -534,23 +537,13 @@ function ChatBubble({
           className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
         />
       ) : (
-        <div
-          className={cn(
-            "w-7 h-7 mt-0.5 rounded-lg bg-gradient-to-br flex items-center justify-center shrink-0 ring-1 ring-border/50",
-            gradient,
-          )}
-        >
-          <span className="text-[11px] font-semibold text-white leading-none">
-            {initials}
-          </span>
-        </div>
+        <img
+          src={USER_AVATAR}
+          alt=""
+          className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+        />
       )}
-      <div
-        className={cn(
-          "flex max-w-[44rem] flex-col gap-2",
-          isBot ? "items-start" : "items-end text-right",
-        )}
-      >
+      <div className={cn("flex max-w-[44rem] flex-col gap-2", "items-start")}>
         {hasReplyContext && replyContextText && (
           <ReplyContextCard text={replyContextText} isBot={isBot} />
         )}
@@ -560,20 +553,14 @@ function ChatBubble({
               "inline-block max-w-full rounded-[20px] px-4 py-3 text-[13px] break-words shadow-[0_10px_24px_rgba(15,23,42,0.04)]",
               isBot
                 ? "border border-border bg-surface-1 text-text-primary rounded-tl-sm"
-                : "bg-surface-3 text-text-primary rounded-tr-sm",
+                : "bg-surface-3 text-text-primary rounded-tl-sm",
             )}
           >
             <ChatMarkdown content={text} />
           </div>
         )}
         {isBot && hasToolCall && <ArtifactCard summary={toolCallSummary} />}
-        {time && (
-          <div
-            className={`text-[10px] text-text-muted ${isBot ? "pl-1" : "pr-1 text-right"}`}
-          >
-            {time}
-          </div>
-        )}
+        {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
     </div>
   );
@@ -607,6 +594,7 @@ export function SessionsPage() {
     data: chatData,
     isLoading: chatLoading,
     isError: chatError,
+    isFetching,
   } = useQuery({
     queryKey: ["chat-history", id],
     queryFn: async () => {
@@ -629,16 +617,97 @@ export function SessionsPage() {
     enabled: !!id,
   });
 
+  // Bots list (for ChatInputArea)
+  const { data: botsData } = useQuery({
+    queryKey: ["bots"],
+    queryFn: async () => {
+      const { data } = await getApiV1Bots();
+      return data;
+    },
+  });
+  const bots = (botsData?.bots ?? []) as BotItem[];
+
+  // Selected bot for this session
+  const { data: botData } = useQuery({
+    queryKey: ["bot", session?.botId],
+    queryFn: async () => {
+      if (!session?.botId) return null;
+      const { data } = await getApiV1BotsByBotId({
+        path: { botId: session.botId },
+      });
+      return data;
+    },
+    enabled: !!session?.botId,
+  });
+  const bot = (botData as Record<string, unknown> | null) ?? null;
+  const selectedBot: BotItem | null = bot
+    ? ({
+        id: (bot as Record<string, unknown>).id as string,
+        name: (bot as Record<string, unknown>).name as string,
+        slug: (bot as Record<string, unknown>).slug as string,
+        status: (bot as Record<string, unknown>).status as
+          | "active"
+          | "paused"
+          | "deleted",
+        modelId: (bot as Record<string, unknown>).modelId as string,
+      } as BotItem)
+    : null;
+
+  // Send message handler
+  const handleSend = useCallback(
+    async (text: string) => {
+      if (!selectedBot || !id || !session?.sessionKey) return;
+      lastSentTextRef.current = text;
+      setChatSending(true);
+      try {
+        await postApiV1ChatLocal({
+          body: {
+            botId: selectedBot.id,
+            sessionKey: session.sessionKey,
+            message: { type: "text", content: text },
+          },
+        });
+      } catch {
+        // error handled silently
+      } finally {
+        setChatSending(false);
+        lastSentTextRef.current = "";
+      }
+    },
+    [selectedBot, id, session?.sessionKey],
+  );
+
   // null = not yet loaded, [] = loaded but empty, [...] = loaded with messages
   const messages = (
     chatData ? ((chatData as Record<string, unknown>)?.messages ?? []) : null
   ) as ChatMessageData[] | null;
   const safeMessages = chatLoading ? [] : (messages ?? []);
 
+  // Optimistic send state
+  const [chatSending, setChatSending] = useState(false);
+  const lastSentTextRef = useRef<string>("");
+  const isWaitingReply =
+    chatSending || (isFetching && lastSentTextRef.current !== "");
+
+  // Optimistic message for the sent message
+  const optimisticMessages: ChatMessageData[] =
+    chatSending && lastSentTextRef.current
+      ? [
+          {
+            id: "optimistic",
+            role: "user",
+            text: lastSentTextRef.current,
+            timestamp: Date.now(),
+          } as unknown as ChatMessageData,
+        ]
+      : [];
+
+  const displayMessages = [...optimisticMessages, ...safeMessages];
+
   // Auto-scroll on new messages
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages change
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    endRef.current?.scrollIntoView({ behavior: "instant" });
   }, [chatData]);
 
   if (!id) {
@@ -706,13 +775,19 @@ export function SessionsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="shrink-0 border-b border-border px-6 py-4 md:pt-12">
+      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-12">
         <div className="flex items-center justify-between">
           <div className="flex gap-3 items-center">
             <SessionPlatformBadge
               platform={platform}
               className="h-[34px] w-[34px] shrink-0"
             />
+            {selectedBot && (
+              <InlineModelSelector
+                selectedModelId={selectedBot.modelId}
+                onSelectModel={() => {}}
+              />
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-[15px] font-bold text-text-heading truncate">
@@ -794,10 +869,10 @@ export function SessionsPage() {
       </div>
 
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col justify-center">
         {chatError ? (
           <ChatUnavailable />
-        ) : chatLoading ? null : safeMessages.length === 0 ? (
+        ) : chatLoading ? null : displayMessages.length === 0 ? (
           <ChatEmpty />
         ) : (
           <div data-chat-thread={id} className="px-4 py-8 sm:px-6">
@@ -805,7 +880,7 @@ export function SessionsPage() {
               data-chat-layout="centered"
               className="mx-auto flex w-full max-w-[920px] flex-col gap-5"
             >
-              {safeMessages
+              {displayMessages
                 .map((msg) => ({
                   msg,
                   extracted: extractMessage(
@@ -827,6 +902,25 @@ export function SessionsPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Chat Input */}
+      <div className="shrink-0 px-4 py-3">
+        <div className="mx-auto w-full max-w-[920px]">
+          <ChatInputArea
+            bots={bots}
+            selectedBot={selectedBot}
+            onSelectBot={() => {}}
+            onSend={(text) => {
+              void handleSend(text);
+            }}
+            sending={chatSending}
+            waitingReply={isWaitingReply}
+            disabled={!session?.botId}
+            placeholder={t("localChat.inputPlaceholder")}
+            showBotSelector={false}
+          />
+        </div>
       </div>
     </div>
   );

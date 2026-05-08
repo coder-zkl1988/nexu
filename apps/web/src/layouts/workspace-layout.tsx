@@ -26,7 +26,6 @@ import {
   ChevronUp,
   CircleHelp,
   CirclePlus,
-  Gift,
   Home,
   Info,
   LogOut,
@@ -602,10 +601,6 @@ function WorkspaceLayoutInner() {
     progress: rewardsStatus.progress,
     cloudBalance: rewardsStatus.cloudBalance,
   });
-  const shouldShowRewardsBanner =
-    cloudConnected &&
-    rewardsStatus.progress.totalCount > 0 &&
-    rewardsStatus.progress.claimedCount < rewardsStatus.progress.totalCount;
   const rewardsCardLoading =
     cloudStatusLoading && desktopCloudStatus === undefined;
   const { bannerDismissible, budgetStatus, dismissBanner, shouldShowPrompt } =
@@ -1021,29 +1016,6 @@ function WorkspaceLayoutInner() {
             </div>
           ) : (
             <div>
-              {shouldShowRewardsBanner && (
-                <Link
-                  to="/workspace/rewards"
-                  data-sidebar-growth-card="rewards"
-                  className="group mx-3 mb-2 flex items-center gap-3 rounded-[12px] border border-[#F5DFC0]/50 bg-gradient-to-br from-[#FFF8F0] via-[#FFFAF5] to-[#FFF5EB] px-3.5 py-3 shadow-[0_1px_3px_rgba(245,200,120,0.08)] transition-all duration-200 hover:border-[#F0D0A0]/60 hover:shadow-[0_2px_8px_rgba(245,200,120,0.15)]"
-                  onClick={() => {
-                    track("workspace_growth_rewards_click");
-                    track("workspace_rewards_click");
-                    track("workspace_sidebar_click", { target: "rewards" });
-                  }}
-                >
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[linear-gradient(135deg,#fbbf24_0%,#fb923c_100%)] text-white shadow-[0_1px_3px_rgba(245,158,11,0.25)]">
-                    <Gift size={14} />
-                  </div>
-                  <span className="min-w-0 flex-1 text-[12px] font-medium leading-[1.3] text-text-primary">
-                    {t("layout.sidebar.rewardsTitle")}
-                  </span>
-                  <ChevronRight
-                    size={14}
-                    className="shrink-0 text-text-muted transition-transform duration-200 group-hover:translate-x-0.5"
-                  />
-                </Link>
-              )}
               <div className="px-3 mb-1.5 relative" ref={balanceRef}>
                 <button
                   type="button"
