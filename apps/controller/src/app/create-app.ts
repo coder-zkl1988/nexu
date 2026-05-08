@@ -57,6 +57,7 @@ export function createApp(container: ControllerContainer) {
     buildExperthubRoutes({
       catalog: container.experthubCatalogManager,
       installExpert: container.installExpertFn,
+      createCustomExpert: container.createCustomExpertFn,
     }),
   );
   registerUserRoutes(app, container);
@@ -69,7 +70,7 @@ export function createApp(container: ControllerContainer) {
   app.doc("/openapi.json", {
     openapi: "3.1.0",
     info: {
-      title: "Nexu Controller API",
+      title: "Tabby Controller API",
       version: "0.1.0",
     },
   });

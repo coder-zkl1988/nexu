@@ -66,8 +66,8 @@ export class AgentService {
 
     const config = await this.configStore.getConfig();
     const bot = await this.configStore.createBot({
-      name: "Local Chat",
-      slug: "nexu-local-chat",
+      name: "Tabby",
+      slug: "tabby-local-chat",
       modelId: config.runtime.defaultModelId,
     });
     await this.syncService.writePlatformTemplatesForBot(bot.id);

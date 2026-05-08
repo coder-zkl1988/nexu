@@ -1,5 +1,4 @@
 import { type BotItem, ChatInputArea } from "@/components/chat-input-area";
-import { InlineModelSelector } from "@/components/inline-model-selector";
 import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { getChannelChatUrl } from "@/lib/channel-links";
@@ -775,19 +774,13 @@ export function SessionsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-12">
+      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-7">
         <div className="flex items-center justify-between">
           <div className="flex gap-3 items-center">
             <SessionPlatformBadge
               platform={platform}
               className="h-[34px] w-[34px] shrink-0"
             />
-            {selectedBot && (
-              <InlineModelSelector
-                selectedModelId={selectedBot.modelId}
-                onSelectModel={() => {}}
-              />
-            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-[15px] font-bold text-text-heading truncate">
@@ -830,7 +823,7 @@ export function SessionsPage() {
               <FolderOpen className="size-[18px] text-text-secondary" />
               <span>{t("sessions.openFolder")}</span>
             </button>
-            {platform !== "web" &&
+            {!!session?.channelId &&
               platform !== "wechat" &&
               (externalChatUrl ? (
                 <a
@@ -869,16 +862,16 @@ export function SessionsPage() {
       </div>
 
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col justify-center">
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
         {chatError ? (
           <ChatUnavailable />
         ) : chatLoading ? null : displayMessages.length === 0 ? (
           <ChatEmpty />
         ) : (
-          <div data-chat-thread={id} className="px-4 py-8 sm:px-6">
+          <div data-chat-thread={id} className="px-4 pt-12 pb-8 sm:px-6">
             <div
               data-chat-layout="centered"
-              className="mx-auto flex w-full max-w-[920px] flex-col gap-5"
+              className="mx-auto flex max-w-[800px] flex-col gap-5"
             >
               {displayMessages
                 .map((msg) => ({
@@ -906,7 +899,7 @@ export function SessionsPage() {
 
       {/* Chat Input */}
       <div className="shrink-0 px-4 py-3">
-        <div className="mx-auto w-full max-w-[920px]">
+        <div className="mx-auto w-full max-w-[800px]">
           <ChatInputArea
             bots={bots}
             selectedBot={selectedBot}

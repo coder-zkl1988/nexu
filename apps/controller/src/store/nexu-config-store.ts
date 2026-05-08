@@ -645,7 +645,7 @@ export class NexuConfigStore {
           analyticsEnabled: true,
         },
         deviceControl: {
-          enabled: false,
+          enabled: true,
           wsPort: 18790,
           rpcPort: 18801,
         },

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { ExpertManifest } from "@nexu/shared";
 import type { ExpertLedger, ResolvedExpert } from "./types.js";
@@ -154,9 +155,139 @@ function assertSafeWorkspacePath(relPath: string): void {
 }
 
 function normalizeWorkspacePath(relPath: string): string {
-  // Normalize to POSIX-style separators and strip any leading slashes so
-  // `path.join(root, safeRel)` always stays under `root`.
   const posix = relPath.replace(/\\/g, "/");
   const stripped = posix.replace(/^\/+/, "");
   return path.posix.normalize(stripped);
+}
+
+export type CreateCustomExpertDeps = {
+  catalog: {
+    readLedger: () => Promise<ExpertLedger>;
+    writeLedger: (ledger: ExpertLedger) => Promise<void>;
+  };
+  botService: {
+    createBot: (input: {
+      name: string;
+      slug: string;
+      systemPrompt: string;
+      modelId: string;
+      expertSlug: string;
+    }) => Promise<{ id: string; slug: string }>;
+    getBotByExpertSlug: (slug: string) => Promise<{ id: string } | null>;
+    deleteBot: (id: string) => Promise<void>;
+  };
+  skillhub: {
+    install: (input: {
+      slug: string;
+      agentId: string;
+      source: "workspace";
+    }) => Promise<{ ok: boolean; error?: string }>;
+  };
+  sync: {
+    syncAll: () => Promise<unknown>;
+  };
+  fs: {
+    writeFile: (p: string, data: string) => Promise<void>;
+    mkdir: (p: string, opts?: { recursive: boolean }) => Promise<void>;
+    rm: (p: string, opts?: { recursive: boolean }) => Promise<void>;
+  };
+  agentsDir: string;
+};
+
+export async function createCustomExpert(args: {
+  name: string;
+  avatarDataUrl?: string;
+  modelId: string;
+  description?: string;
+  skills: string[];
+  existingSlug?: string;
+  workspaceFiles: Record<string, string>;
+  deps: CreateCustomExpertDeps;
+}): Promise<{ ok: true; botId: string; slug: string }> {
+  const {
+    name,
+    modelId,
+    description,
+    skills,
+    existingSlug,
+    workspaceFiles,
+    deps,
+  } = args;
+
+  const ledger = await deps.catalog.readLedger();
+
+  if (existingSlug) {
+    const existingEntry = ledger.entries[existingSlug];
+    if (existingEntry) {
+      try {
+        await deps.botService.deleteBot(existingEntry.botId);
+      } catch {
+        // Ignore if bot already deleted
+      }
+      try {
+        await deps.fs.rm(path.join(deps.agentsDir, existingEntry.botId), {
+          recursive: true,
+        });
+      } catch {
+        // Ignore if directory already removed
+      }
+      delete ledger.entries[existingSlug];
+    }
+  }
+
+  const expertSlug =
+    existingSlug ?? `custom-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+  for (const relPath of Object.keys(workspaceFiles)) {
+    assertSafeWorkspacePath(relPath);
+  }
+
+  const bot = await deps.botService.createBot({
+    name,
+    slug: expertSlug,
+    systemPrompt: "",
+    modelId,
+    expertSlug,
+  });
+
+  for (const skillSlug of skills) {
+    await deps.skillhub.install({
+      slug: skillSlug,
+      agentId: bot.id,
+      source: "workspace",
+    });
+  }
+
+  const workspaceRoot = path.join(deps.agentsDir, bot.id);
+  await deps.fs.mkdir(workspaceRoot, { recursive: true });
+
+  if (args.avatarDataUrl) {
+    const avatarPath = path.join(workspaceRoot, "avatar.txt");
+    await deps.fs.writeFile(avatarPath, args.avatarDataUrl);
+  }
+
+  for (const [relPath, content] of Object.entries(workspaceFiles)) {
+    if (!content) continue;
+    const safeRel = normalizeWorkspacePath(relPath);
+    const target = path.join(workspaceRoot, safeRel);
+    await deps.fs.mkdir(path.dirname(target), { recursive: true });
+    await deps.fs.writeFile(target, content);
+  }
+
+  const installedAt = new Date().toISOString();
+  ledger.entries[expertSlug] = {
+    slug: expertSlug,
+    version: "0.0.1",
+    botId: bot.id,
+    installedAt,
+    name,
+    avatarDataUrl: args.avatarDataUrl ?? undefined,
+    description,
+  };
+  ledger.updatedAt = installedAt;
+  await deps.catalog.writeLedger(ledger);
+
+  await deps.sync.syncAll();
+
+  return { ok: true, botId: bot.id, slug: expertSlug };
 }

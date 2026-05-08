@@ -24,6 +24,11 @@ const bundledPlugins = [
     id: "openclaw-qqbot",
     npmName: "@tencent-connect/openclaw-qqbot",
   },
+  {
+    id: "tabby-control",
+    // Local repo — resolved from TBBY_CONTROL_DIR env or default workspace path
+    localSource: true,
+  },
 ];
 
 const MANIFEST_ID_FIXES = {
@@ -172,26 +177,40 @@ async function maybeFixPluginManifest(outputDir) {
   }
 }
 
-async function bundlePlugin({ id, npmName }) {
-  let packageJsonPath;
-  try {
-    packageJsonPath = requireFromRepo.resolve(`${npmName}/package.json`);
-  } catch {
-    throw new Error(
-      `Missing ${npmName}. Run "pnpm install" at the repo root before building controller runtime plugins.`,
-    );
-  }
+async function bundlePlugin({ id, npmName, localSource }) {
+  let sourcePackageRoot;
 
-  const sourcePackageRoot = await realpath(path.dirname(packageJsonPath));
+  if (localSource) {
+    const tabbyControlDir =
+      process.env.TABBY_CONTROL_DIR ||
+      path.resolve(repoRoot, "..", "..", "..", "tabby-control");
+    const tabbyDistNexu = path.join(tabbyControlDir, "dist-nexu", "tabby-control");
+    sourcePackageRoot = await realpath(tabbyDistNexu);
+  } else {
+    let packageJsonPath;
+    try {
+      packageJsonPath = requireFromRepo.resolve(`${npmName}/package.json`);
+    } catch {
+      throw new Error(
+        `Missing ${npmName}. Run "pnpm install" at the repo root before building controller runtime plugins.`,
+      );
+    }
+    sourcePackageRoot = await realpath(path.dirname(packageJsonPath));
+  }
   const outputDir = path.join(outputRoot, id);
 
   await cp(sourcePackageRoot, outputDir, {
     recursive: true,
     force: true,
     dereference: true,
-    filter: shouldCopyPluginPath,
+    filter: localSource ? undefined : shouldCopyPluginPath,
   });
   await maybeFixPluginManifest(outputDir);
+
+  // Skip npm dependency closure for local-source plugins (they bundle their own node_modules)
+  if (localSource) {
+    return;
+  }
 
   const rootDependencyNodeModules =
     resolveDependencyNodeModules(sourcePackageRoot);

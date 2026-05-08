@@ -1,5 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  createCustomExpertRequestSchema,
+  createCustomExpertResponseSchema,
   expertManifestSchema,
   experthubCatalogResponseSchema,
   installExpertRequestSchema,
@@ -31,6 +33,15 @@ export type ExperthubRoutesDeps = {
     | "writeLedger"
   >;
   installExpert: (args: { slug: string }) => Promise<InstallExpertResult>;
+  createCustomExpert: (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) => Promise<{ ok: true; botId: string; slug: string }>;
 };
 
 const notFoundErrorSchema = z.object({ message: z.string() });
@@ -218,6 +229,43 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
         return c.json({ message: "Expert not found" }, 404);
       }
       return c.json(resolved.manifest, 200);
+    },
+  );
+
+  // POST /custom
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/custom",
+      tags: ["ExpertHub"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: createCustomExpertRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: createCustomExpertResponseSchema },
+          },
+          description: "Custom expert created",
+        },
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      const result = await deps.createCustomExpert({
+        name: body.name,
+        avatarDataUrl: body.avatarDataUrl,
+        modelId: body.modelId,
+        description: body.description,
+        skills: body.skills,
+        existingSlug: body.existingSlug,
+        workspaceFiles: body.workspaceFiles as Record<string, string>,
+      });
+      return c.json(result, 200);
     },
   );
 

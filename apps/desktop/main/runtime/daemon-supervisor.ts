@@ -69,6 +69,8 @@ export class RuntimeOrchestrator {
 
   private readonly listeners = new Set<(event: RuntimeEvent) => void>();
 
+  private readonly pendingRestartTimers = new Map<string, NodeJS.Timeout>();
+
   private readonly recentEntries: RuntimeLogEntry[] = [];
 
   private launchdManager: LaunchdManager | null = null;
@@ -228,6 +230,10 @@ export class RuntimeOrchestrator {
   }
 
   async dispose(): Promise<void> {
+    for (const timer of this.pendingRestartTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingRestartTimers.clear();
     await this.stopAll();
   }
 
@@ -405,13 +411,20 @@ export class RuntimeOrchestrator {
         message: `auto-restart #${record.autoRestartAttempts} in ${delayMs}ms`,
       });
 
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.pendingRestartTimers.delete(id);
         this.startUnit(id).catch(() => {});
       }, delayMs);
+      this.pendingRestartTimers.set(id, timer);
     });
   }
 
   private async startUnit(id: string): Promise<void> {
+    const pending = this.pendingRestartTimers.get(id);
+    if (pending) {
+      clearTimeout(pending);
+      this.pendingRestartTimers.delete(id);
+    }
     const record = this.requireRecord(id);
 
     if (record.manifest.launchStrategy === "launchd") {

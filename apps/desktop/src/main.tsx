@@ -1068,15 +1068,17 @@ function DiagnosticsPage({
 }
 
 function DesktopShell() {
-  const [activeSurface, setActiveSurface] = useState<DesktopSurface>("web");
+  const devImmersive = window.nexuHost.bootstrap.devImmersive;
+  const [activeSurface, setActiveSurface] = useState<DesktopSurface>(
+    devImmersive ? "web" : "web",
+  );
   const [showSetBalanceDialog, setShowSetBalanceDialog] = useState(false);
   const [chromeMode, setChromeMode] = useState<DesktopChromeMode>(
-    // isPackaged uses !process.defaultApp which is unreliable in pnpm dev
-    // (process.defaultApp is undefined when Electron is launched directly,
-    //  making it appear packaged). Use buildInfo.source instead.
-    window.nexuHost.bootstrap.buildInfo.source === "local-dev"
-      ? "full"
-      : "immersive",
+    devImmersive
+      ? "immersive"
+      : window.nexuHost.bootstrap.buildInfo.source === "local-dev"
+        ? "full"
+        : "immersive",
   );
   const webSurfaceVersion = 0;
   const [runtimeConfig, setRuntimeConfig] =

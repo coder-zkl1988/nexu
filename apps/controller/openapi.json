@@ -12522,6 +12522,15 @@
                           },
                           "installedAt": {
                             "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "avatarDataUrl": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -12858,6 +12867,107 @@
                   },
                   "required": [
                     "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/custom": {
+      "post": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "avatarDataUrl": {
+                    "type": "string",
+                    "maxLength": 2000000
+                  },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 280
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": []
+                  },
+                  "existingSlug": {
+                    "type": "string"
+                  },
+                  "workspaceFiles": {
+                    "type": "object",
+                    "properties": {
+                      "AGENTS.md": {
+                        "type": "string"
+                      },
+                      "IDENTITY.md": {
+                        "type": "string"
+                      },
+                      "MEMORY.md": {
+                        "type": "string"
+                      },
+                      "SOUL.md": {
+                        "type": "string"
+                      },
+                      "USER.md": {
+                        "type": "string"
+                      }
+                    },
+                    "default": {}
+                  }
+                },
+                "required": [
+                  "name",
+                  "modelId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Custom expert created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "botId",
+                    "slug"
                   ]
                 }
               }

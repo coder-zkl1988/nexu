@@ -4132,6 +4132,9 @@ export type GetApiV1ExperthubCatalogResponses = {
             version: string;
             botId: string;
             installedAt: string;
+            name?: string;
+            avatarDataUrl?: string;
+            description?: string;
         }>;
         meta: {
             version: string;
@@ -4262,6 +4265,40 @@ export type GetApiV1ExperthubExpertsBySlugResponses = {
 };
 
 export type GetApiV1ExperthubExpertsBySlugResponse = GetApiV1ExperthubExpertsBySlugResponses[keyof GetApiV1ExperthubExpertsBySlugResponses];
+
+export type PostApiV1ExperthubCustomData = {
+    body?: {
+        name: string;
+        avatarDataUrl?: string;
+        modelId: string;
+        description?: string;
+        skills?: Array<string>;
+        existingSlug?: string;
+        workspaceFiles?: {
+            'AGENTS.md'?: string;
+            'IDENTITY.md'?: string;
+            'MEMORY.md'?: string;
+            'SOUL.md'?: string;
+            'USER.md'?: string;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/experthub/custom';
+};
+
+export type PostApiV1ExperthubCustomResponses = {
+    /**
+     * Custom expert created
+     */
+    200: {
+        ok: true;
+        botId: string;
+        slug: string;
+    };
+};
+
+export type PostApiV1ExperthubCustomResponse = PostApiV1ExperthubCustomResponses[keyof PostApiV1ExperthubCustomResponses];
 
 export type GetApiV1MeData = {
     body?: never;

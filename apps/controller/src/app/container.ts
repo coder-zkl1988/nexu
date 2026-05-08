@@ -33,6 +33,7 @@ import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
 import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
 import {
   type InstallExpertResult,
+  createCustomExpert,
   installExpert,
 } from "../services/experthub/install-flow.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
@@ -77,6 +78,15 @@ export interface ControllerContainer {
   skillhubService: SkillhubService;
   experthubCatalogManager: ExperthubCatalogManager;
   installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
+  createCustomExpertFn: (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) => Promise<{ ok: true; botId: string; slug: string }>;
   openclawSyncService: OpenClawSyncService;
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
@@ -272,9 +282,70 @@ export async function createContainer(): Promise<ControllerContainer> {
       },
     });
 
+  const createCustomExpertFn = (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) =>
+    createCustomExpert({
+      ...args,
+      deps: {
+        catalog: {
+          readLedger: () => experthubCatalogManager.readLedger(),
+          writeLedger: (ledger) => experthubCatalogManager.writeLedger(ledger),
+        },
+        botService: {
+          createBot: async (input) => {
+            const bot = await agentService.createBot({
+              name: input.name,
+              slug: input.slug,
+              systemPrompt: input.systemPrompt,
+              modelId: input.modelId,
+              expertSlug: input.expertSlug,
+            });
+            return { id: bot.id, slug: bot.slug };
+          },
+          getBotByExpertSlug: async (slug) => {
+            const bots = await agentService.listBots();
+            const match = (
+              bots as Array<{ id: string; expertSlug: string }>
+            ).find((b) => b.expertSlug === slug);
+            return match ? { id: match.id } : null;
+          },
+          deleteBot: async (id) => {
+            await agentService.deleteBot(id);
+          },
+        },
+        skillhub: {
+          install: async (input) => {
+            logger.warn(
+              { input, subsystem: "experthub" },
+              "workspace_skill_install_not_wired_skipping",
+            );
+            return { ok: true };
+          },
+        },
+        sync: openclawSyncService,
+        fs: {
+          writeFile: (p, data) => fsp.writeFile(p, data),
+          mkdir: async (p, opts) => {
+            await fsp.mkdir(p, opts);
+          },
+          rm: async (p, opts) => {
+            await fsp.rm(p, opts ?? { recursive: true });
+          },
+        },
+        agentsDir: path.join(env.openclawStateDir, "agents"),
+      },
+    });
+
   // Wire cloud state change callback to sync refreshed cloud inventory without
   // auto-switching the default model during startup or first-channel connect.
-  configStore.onCloudStateChanged = async (change) => {
+  configStore.onCloudStateChanged = async (_change) => {
     // Auto-select a valid default model: on login, pick a managed model;
     // on logout, fall back to any remaining BYOK/OAuth model (or leave
     // cleared, which surfaces the explicit no-model guidance).
@@ -328,6 +399,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     skillhubService,
     experthubCatalogManager,
     installExpertFn,
+    createCustomExpertFn,
     openclawSyncService,
     openclawAuthService,
     quotaFallbackService,

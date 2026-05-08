@@ -14,10 +14,16 @@ export function ExpertCard({
   expert,
   installed,
   detailTo,
+  isCustom,
+  customEditTo,
+  customAvatarUrl,
 }: {
   expert: MinimalExpert;
   installed: boolean;
   detailTo: string;
+  isCustom?: boolean;
+  customEditTo?: string;
+  customAvatarUrl?: string;
 }) {
   const { t } = useTranslation();
   const installMutation = useInstallExpert();
@@ -67,8 +73,18 @@ export function ExpertCard({
     >
       {/* Header: Emoji + Name + Category */}
       <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-[10px] bg-surface-2 border border-border flex items-center justify-center shrink-0 text-[22px] leading-none">
-          <span aria-hidden>{expert.emoji}</span>
+        <div className="w-10 h-10 rounded-[10px] bg-surface-2 border border-border flex items-center justify-center shrink-0 overflow-hidden">
+          {customAvatarUrl ? (
+            <img
+              src={customAvatarUrl}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span aria-hidden className="text-[22px] leading-none">
+              {expert.emoji}
+            </span>
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[13px] font-semibold text-text-heading truncate">
@@ -102,7 +118,33 @@ export function ExpertCard({
         }}
       >
         <span />
-        {isMutating && pendingAction === "install" ? (
+        {isCustom ? (
+          <div className="flex items-center gap-2">
+            {customEditTo && (
+              <Link
+                to={customEditTo}
+                onClick={(e) => e.stopPropagation()}
+                className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-text-primary hover:bg-surface-2 hover:border-border-hover transition-colors"
+              >
+                {t("experts.edit")}
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleUninstall();
+              }}
+              disabled={isMutating}
+              className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 hover:border-[var(--color-danger)]/30 transition-colors"
+            >
+              {pendingAction === "uninstall"
+                ? t("experts.removing")
+                : t("experts.remove")}
+            </button>
+          </div>
+        ) : isMutating && pendingAction === "install" ? (
           <span className="inline-flex items-center gap-1.5 rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-text-muted cursor-default">
             <Loader2 size={12} className="animate-spin" />
             {t("experts.installing")}
@@ -116,11 +158,11 @@ export function ExpertCard({
               void handleUninstall();
             }}
             disabled={isMutating}
-            className="text-[12px] font-medium text-text-muted hover:text-[var(--color-danger)] transition-colors"
+            className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 hover:border-[var(--color-danger)]/30 transition-colors"
           >
             {pendingAction === "uninstall"
-              ? t("experts.uninstalling")
-              : t("experts.uninstall")}
+              ? t("experts.removing")
+              : t("experts.remove")}
           </button>
         ) : (
           <button

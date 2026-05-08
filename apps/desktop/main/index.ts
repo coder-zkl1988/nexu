@@ -196,6 +196,10 @@ if (needsSetupExtraction) {
   process.env.NEXU_NEEDS_SETUP_ANIMATION = "1";
 }
 
+if (!app.isPackaged && process.env.NEXU_DEV_IMMERSIVE !== "0") {
+  process.env.NEXU_DEV_IMMERSIVE = "1";
+}
+
 const runtimeUnitManifests = createRuntimeUnitManifests(
   electronRoot,
   app.getPath("userData"),
@@ -349,6 +353,8 @@ let launchdQuitOptsForResidentEntry:
   | Parameters<typeof installLaunchdQuitHandler>[0]
   | null = null;
 let diagnosticsReporter: DesktopDiagnosticsReporter | null = null;
+
+let unsubscribeIpc: (() => void) | null = null;
 let systemTray: Tray | null = null;
 let pendingMacResidentEntryPreferences: DesktopShellPreferences | null = null;
 
@@ -562,6 +568,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
 
   try {
     sleepGuard?.dispose(reason);
+    unsubscribeIpc?.();
+    unsubscribeIpc = null;
     await diagnosticsReporter?.flushNow().catch(() => undefined);
     flushRuntimeLoggers();
     flushV8CoverageIfEnabled();
@@ -658,12 +666,9 @@ function installApplicationMenu(): void {
         click: () => sendDesktopCommand("control", "full"),
       },
       {
-        label: "Show Web In Shell",
-        click: () => sendDesktopCommand("web", "full"),
-      },
-      {
-        label: "Show OpenClaw In Shell",
-        click: () => sendDesktopCommand("openclaw", "full"),
+        label: "Hide Desktop Shell",
+        accelerator: "CmdOrCtrl+Shift+H",
+        click: () => sendDesktopCommand("web", "immersive"),
       },
       { type: "separator" },
       {
@@ -1670,6 +1675,10 @@ app.on("web-contents-created", (_event, contents) => {
       windowId: contents.id,
     });
   });
+
+  contents.on("destroyed", () => {
+    diagnosticsReporter?.removeEmbedded(contents.id);
+  });
 });
 
 logLaunchTimeline("electron main module evaluated");
@@ -1723,7 +1732,7 @@ app.whenReady().then(async () => {
     applyResidentEntryPreferences(preferences);
   });
   applyDesktopShellPreferencesOnStartup();
-  registerIpcHandlers(
+  unsubscribeIpc = registerIpcHandlers(
     orchestrator,
     runtimeConfig,
     diagnosticsReporter,

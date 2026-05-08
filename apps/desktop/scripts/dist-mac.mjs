@@ -464,7 +464,7 @@ async function stapleNotarizedAppBundles() {
   }
 
   for (const entry of appBundleDirs) {
-    const appPath = resolve(releaseRoot, entry.name, "Nexu.app");
+    const appPath = resolve(releaseRoot, entry.name, "Tabby.app");
 
     console.log(`[dist:mac] stapling notarized app bundle: ${appPath}`);
     await run("xcrun", ["stapler", "staple", appPath], { cwd: electronRoot });
@@ -485,6 +485,11 @@ const requiredBundledPluginArtifacts = [
     requiredPath: ["node_modules", "dingtalk-stream", "package.json"],
     label: "dingtalk-stream",
   },
+  {
+    pluginId: "tabby-control",
+    requiredPath: ["openclaw.plugin.json"],
+    label: "plugin-manifest",
+  },
 ];
 
 async function validatePackagedBundledPluginDependencies(releaseRoot) {
@@ -502,7 +507,7 @@ async function validatePackagedBundledPluginDependencies(releaseRoot) {
   }
 
   for (const entry of packagedMacBundles) {
-    const appRoot = resolve(releaseRoot, entry.name, "Nexu.app");
+    const appRoot = resolve(releaseRoot, entry.name, "Tabby.app");
     for (const artifact of requiredBundledPluginArtifacts) {
       const pluginRoot = resolve(
         appRoot,

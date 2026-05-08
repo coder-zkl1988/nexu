@@ -13,14 +13,15 @@ import { cn } from "@/lib/utils";
 import {
   Compass,
   Loader2,
-  RefreshCw,
   Search,
   Settings2,
   Sparkles,
+  Wand2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 const PAGE_SIZE = 50;
 
@@ -55,6 +56,22 @@ export default function ExpertsPage() {
   const { tab, tag, q } = viewState;
   const debouncedQuery = useDebounce(q, 150);
 
+  // Default to "yours" tab if user has installed experts and no tab is explicitly set
+  const prevDataRef = useRef(false);
+  useEffect(() => {
+    if (
+      !searchParams.has("tab") &&
+      data &&
+      (data.installedSlugs?.length ?? 0) > 0 &&
+      !prevDataRef.current
+    ) {
+      prevDataRef.current = true;
+      updateViewState({ tab: "yours" });
+    }
+    // Only run once when data first loads
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, searchParams.has("tab")]);
+
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -71,7 +88,45 @@ export default function ExpertsPage() {
     [tab, tag, q, setSearchParams],
   );
 
-  const allExperts = useMemo(() => data?.experts ?? [], [data?.experts]);
+  const allExperts = useMemo(() => {
+    const catalogExperts = data?.experts ?? [];
+    const ledgerEntries = data?.installedExperts ?? [];
+    const catalogSlugs = new Set(catalogExperts.map((e) => e.slug));
+
+    const customExperts = ledgerEntries
+      .filter((entry) => !catalogSlugs.has(entry.slug))
+      .map(
+        (entry: {
+          slug: string;
+          version: string;
+          name?: string;
+          avatarDataUrl?: string;
+          description?: string;
+        }) => ({
+          slug: entry.slug,
+          name: entry.name || "自定义搭子",
+          emoji: entry.avatarDataUrl ? (undefined as unknown as string) : "🤖",
+          avatarDataUrl: entry.avatarDataUrl,
+          category: "自定义",
+          description: entry.description || "",
+          tags: [] as string[],
+          version: entry.version,
+          author: "",
+        }),
+      );
+
+    return [...catalogExperts, ...customExperts];
+  }, [data?.experts, data?.installedExperts]);
+
+  const customSlugs = useMemo(
+    () =>
+      new Set(
+        (data?.installedExperts ?? [])
+          .filter((e) => !(data?.experts ?? []).some((c) => c.slug === e.slug))
+          .map((e) => e.slug),
+      ),
+    [data?.experts, data?.installedExperts],
+  );
   const installedSlugs = useMemo(
     () => new Set(data?.installedSlugs ?? []),
     [data?.installedSlugs],
@@ -96,8 +151,8 @@ export default function ExpertsPage() {
     if (tab === "yours") {
       return allExperts.filter((e) => installedSlugs.has(e.slug));
     }
-    return allExperts;
-  }, [tab, allExperts, installedSlugs]);
+    return allExperts.filter((e) => !customSlugs.has(e.slug));
+  }, [tab, allExperts, installedSlugs, customSlugs]);
 
   // Filter by tag and search
   const filteredExperts = useMemo(() => {
@@ -175,6 +230,9 @@ export default function ExpertsPage() {
   );
 
   function buildDetailTo(slug: string): string {
+    if (customSlugs.has(slug)) {
+      return `/workspace/experts/custom?slug=${encodeURIComponent(slug)}`;
+    }
     const qs = serializeExpertsViewState(viewState);
     const suffix = qs ? `?${qs}` : "";
     return `/workspace/experts/${encodeURIComponent(slug)}${suffix}`;
@@ -254,71 +312,67 @@ export default function ExpertsPage() {
                 className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface-1 text-text-secondary text-[12px] font-medium hover:text-text-primary hover:border-border-hover transition-colors disabled:opacity-50"
-            >
-              {refreshMutation.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <RefreshCw size={12} />
-              )}
-              {t("experts.refresh")}
-            </button>
           </div>
         </div>
 
-        {/* Top-level tabs: Yours / Explore */}
-        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2 mb-4">
-          {(
-            [
-              {
-                id: "yours" as const,
-                label: t("experts.tabs.yours"),
-                icon: Settings2,
-              },
-              {
-                id: "explore" as const,
-                label: t("experts.tabs.explore"),
-                icon: Compass,
-              },
-            ] satisfies readonly {
-              id: ExpertsTab;
-              label: string;
-              icon: typeof Compass;
-            }[]
-          ).map((tabDef) => {
-            const active = tab === tabDef.id;
-            const TabIcon = tabDef.icon;
-            return (
-              <button
-                key={tabDef.id}
-                type="button"
-                onClick={() => {
-                  updateViewState({
-                    tab: tabDef.id,
-                    tag: null,
-                  });
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
-                  active
-                    ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
-                    : "text-text-secondary hover:text-text-primary",
-                )}
-              >
-                <TabIcon size={14} />
-                {tabDef.label}
-                {tabDef.id === "yours" && yoursCount > 0 && active && (
-                  <span className="tabular-nums text-[12px] text-text-secondary">
-                    {yoursCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Top-level tabs: Yours / Explore + Custom button */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2">
+            {(
+              [
+                {
+                  id: "yours" as const,
+                  label: t("experts.tabs.yours"),
+                  icon: Settings2,
+                },
+                {
+                  id: "explore" as const,
+                  label: t("experts.tabs.explore"),
+                  icon: Compass,
+                },
+              ] satisfies readonly {
+                id: ExpertsTab;
+                label: string;
+                icon: typeof Compass;
+              }[]
+            ).map((tabDef) => {
+              const active = tab === tabDef.id;
+              const TabIcon = tabDef.icon;
+              return (
+                <button
+                  key={tabDef.id}
+                  type="button"
+                  onClick={() => {
+                    updateViewState({
+                      tab: tabDef.id,
+                      tag: null,
+                    });
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
+                    active
+                      ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
+                      : "text-text-secondary hover:text-text-primary",
+                  )}
+                >
+                  <TabIcon size={14} />
+                  {tabDef.label}
+                  {tabDef.id === "yours" && yoursCount > 0 && active && (
+                    <span className="tabular-nums text-[12px] text-text-secondary">
+                      {yoursCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <Link
+            to="/workspace/experts/custom"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF5A3C] text-white text-[13px] font-medium hover:opacity-90 transition-opacity"
+          >
+            <Wand2 size={14} />
+            {t("experts.custom_create")}
+          </Link>
         </div>
 
         {/* Category pills */}
@@ -375,6 +429,17 @@ export default function ExpertsPage() {
               }}
               installed={installedSlugs.has(expert.slug)}
               detailTo={buildDetailTo(expert.slug)}
+              isCustom={customSlugs.has(expert.slug)}
+              customAvatarUrl={
+                customSlugs.has(expert.slug)
+                  ? (expert as { avatarDataUrl?: string }).avatarDataUrl
+                  : undefined
+              }
+              customEditTo={
+                customSlugs.has(expert.slug)
+                  ? `/workspace/experts/custom?slug=${encodeURIComponent(expert.slug)}`
+                  : undefined
+              }
             />
           ))}
         </div>

@@ -340,7 +340,7 @@ export class ModelProviderService {
       id: model.id,
       name: model.name || model.id,
       provider: "nexu",
-      description: "Cloud model via Nexu Link",
+      description: "Cloud model via Tabby Link",
     }));
 
     // Exclude OAuth-only providers whose token has expired

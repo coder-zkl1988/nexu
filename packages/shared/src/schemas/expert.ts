@@ -36,6 +36,9 @@ export const installedExpertSchema = z.object({
   version: z.string(),
   botId: z.string(),
   installedAt: z.string(),
+  name: z.string().optional(),
+  avatarDataUrl: z.string().optional(),
+  description: z.string().optional(),
 });
 
 export const experthubCatalogResponseSchema = z.object({
@@ -60,6 +63,29 @@ export const installExpertResponseSchema = z.object({
 export const uninstallExpertRequestSchema = z.object({ slug: z.string() });
 export const uninstallExpertResponseSchema = z.object({ ok: z.literal(true) });
 
+export const createCustomExpertRequestSchema = z.object({
+  name: z.string().min(1).max(80),
+  avatarDataUrl: z.string().max(2_000_000).optional(),
+  modelId: z.string().min(1),
+  description: z.string().max(280).optional(),
+  skills: z.array(z.string()).default([]),
+  existingSlug: z.string().optional(),
+  workspaceFiles: z
+    .object({
+      "AGENTS.md": z.string().optional(),
+      "IDENTITY.md": z.string().optional(),
+      "MEMORY.md": z.string().optional(),
+      "SOUL.md": z.string().optional(),
+      "USER.md": z.string().optional(),
+    })
+    .default({}),
+});
+export const createCustomExpertResponseSchema = z.object({
+  ok: z.literal(true),
+  botId: z.string(),
+  slug: z.string(),
+});
+
 export type ExpertManifest = z.infer<typeof expertManifestSchema>;
 export type MinimalExpert = z.infer<typeof minimalExpertSchema>;
 export type InstalledExpert = z.infer<typeof installedExpertSchema>;
@@ -73,4 +99,10 @@ export type UninstallExpertRequest = z.infer<
 >;
 export type UninstallExpertResponse = z.infer<
   typeof uninstallExpertResponseSchema
+>;
+export type CreateCustomExpertRequest = z.infer<
+  typeof createCustomExpertRequestSchema
+>;
+export type CreateCustomExpertResponse = z.infer<
+  typeof createCustomExpertResponseSchema
 >;

@@ -10,6 +10,7 @@ import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
 import { DevicesPage } from "./pages/devices/index";
 import { DeviceTaskDetailPage } from "./pages/devices/task-detail-page";
 import { DeviceTaskHistoryPage } from "./pages/devices/task-history-page";
+import { ExpertCustomPage } from "./pages/expert-custom";
 import ExpertDetailPage from "./pages/expert-detail";
 import ExpertsPage from "./pages/experts";
 import { FeishuBindPage } from "./pages/feishu-bind";
@@ -108,6 +109,10 @@ export function App() {
                 element={<AutomationsPage />}
               />
               <Route path="/workspace/experts" element={<ExpertsPage />} />
+              <Route
+                path="/workspace/experts/custom"
+                element={<ExpertCustomPage />}
+              />
               <Route
                 path="/workspace/experts/:slug"
                 element={<ExpertDetailPage />}
