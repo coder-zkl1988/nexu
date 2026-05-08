@@ -184,7 +184,11 @@ async function bundlePlugin({ id, npmName, localSource }) {
     const tabbyControlDir =
       process.env.TABBY_CONTROL_DIR ||
       path.resolve(repoRoot, "..", "..", "..", "tabby-control");
-    const tabbyDistNexu = path.join(tabbyControlDir, "dist-nexu", "tabby-control");
+    const tabbyDistNexu = path.join(
+      tabbyControlDir,
+      "dist-nexu",
+      "tabby-control",
+    );
     sourcePackageRoot = await realpath(tabbyDistNexu);
   } else {
     let packageJsonPath;

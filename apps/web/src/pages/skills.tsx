@@ -721,14 +721,12 @@ export function SkillsPage() {
 
   if (isLoading) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-6 sm:pb-8">
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <Loader2 size={24} className="animate-spin text-text-muted" />
-            <p className="text-[13px] text-text-muted">
-              {t("skills.loadingCatalog")}
-            </p>
-          </div>
+      <div className="h-full overflow-y-auto px-6 py-6">
+        <div className="flex flex-col items-center justify-center py-16 gap-2">
+          <Loader2 size={24} className="animate-spin text-text-muted" />
+          <p className="text-[13px] text-text-muted">
+            {t("skills.loadingCatalog")}
+          </p>
         </div>
       </div>
     );
@@ -736,37 +734,32 @@ export function SkillsPage() {
 
   if (isError && allSkills.length === 0) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-6 sm:pb-8">
-          <div className="text-center py-16">
-            <div className="flex justify-center items-center mx-auto mb-3 w-12 h-12 rounded-xl bg-red-500/10">
-              <Zap size={20} className="text-red-500" />
-            </div>
-            <p className="text-[13px] text-text-muted mb-2">
-              {t("skills.catalogUnavailable")}
-            </p>
-            <button
-              type="button"
-              onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
-              className="text-[12px] text-accent hover:underline"
-            >
-              {refreshMutation.isPending
-                ? t("skills.retrying")
-                : t("skills.tryAgain")}
-            </button>
+      <div className="h-full overflow-y-auto px-6 py-6">
+        <div className="text-center py-16">
+          <div className="flex justify-center items-center mx-auto mb-3 w-12 h-12 rounded-xl bg-red-500/10">
+            <Zap size={20} className="text-red-500" />
           </div>
+          <p className="text-[13px] text-text-muted mb-2">
+            {t("skills.catalogUnavailable")}
+          </p>
+          <button
+            type="button"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            className="text-[12px] text-accent hover:underline"
+          >
+            {refreshMutation.isPending
+              ? t("skills.retrying")
+              : t("skills.tryAgain")}
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div
-        className="max-w-4xl mx-auto px-4 sm:px-6 pb-6 sm:pb-8"
-        style={{ paddingTop: isDesktopClient ? "2rem" : "0.5rem" }}
-      >
+    <div className="h-full overflow-y-auto px-6 py-6">
+      <div style={{ paddingTop: isDesktopClient ? "2rem" : "0" }}>
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
@@ -1008,7 +1001,7 @@ export function SkillsPage() {
         {
           <>
             {/* Skill Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))]">
               {visibleSkills.map((skill) => {
                 const firstTag = skill.tags[0];
                 return (
