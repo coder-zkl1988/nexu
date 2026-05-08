@@ -5,11 +5,12 @@ import { getChannelChatUrl } from "@/lib/channel-links";
 import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   CheckCircle2,
   FolderOpen,
+  Loader2,
   MessageSquare,
   WifiOff,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
   postApiV1ChatLocal,
+  postApiV1SessionsByIdReset,
 } from "../../lib/api/sdk.gen";
 
 const BOT_AVATAR = "/images/claw-avatar.png";
@@ -520,8 +522,8 @@ function ChatBubble({
   const hasReplyContext = (replyContextText?.trim().length ?? 0) > 0;
 
   const displayName = senderName ?? "User";
-  const gradient = getAvatarGradient(displayName);
-  const initials = getInitials(displayName);
+  const _gradient = getAvatarGradient(displayName);
+  const _initials = getInitials(displayName);
 
   return (
     <div
@@ -573,6 +575,7 @@ export function SessionsPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const endRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (id) track("session_detail_view");
@@ -593,7 +596,6 @@ export function SessionsPage() {
     data: chatData,
     isLoading: chatLoading,
     isError: chatError,
-    isFetching,
   } = useQuery({
     queryKey: ["chat-history", id],
     queryFn: async () => {
@@ -653,11 +655,50 @@ export function SessionsPage() {
     : null;
 
   // Send message handler
+  const [pendingMessages, setPendingMessages] = useState<
+    { id: string; text: string; timestamp: number }[]
+  >([]);
+  const [waitingForReply, setWaitingForReply] = useState(false);
+  const [newSessionDividerTime, setNewSessionDividerTime] = useState<
+    number | null
+  >(null);
+  const sentAtRef = useRef(0);
+
   const handleSend = useCallback(
     async (text: string) => {
       if (!selectedBot || !id || !session?.sessionKey) return;
-      lastSentTextRef.current = text;
-      setChatSending(true);
+
+      // Intercept /new command
+      const trimmed = text.trim().toLowerCase();
+      if (["/new", "/reset", "/clear"].includes(trimmed)) {
+        try {
+          await postApiV1SessionsByIdReset({ path: { id } });
+          setNewSessionDividerTime(Date.now());
+          setWaitingForReply(false);
+          sentAtRef.current = 0;
+          await queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          toast.success(
+            t("sessions.chat.newSession", { defaultValue: "New conversation" }),
+          );
+        } catch {
+          toast.error(
+            t("sessions.chat.newSession", { defaultValue: "New conversation" }),
+          );
+        }
+        return;
+      }
+
+      const optimisticId = `pending-${Date.now()}`;
+      const now = Date.now();
+      sentAtRef.current = now;
+      setPendingMessages((prev) => [
+        ...prev,
+        { id: optimisticId, text, timestamp: now },
+      ]);
+      setWaitingForReply(true);
+
       try {
         await postApiV1ChatLocal({
           body: {
@@ -666,14 +707,15 @@ export function SessionsPage() {
             message: { type: "text", content: text },
           },
         });
+        await queryClient.invalidateQueries({
+          queryKey: ["chat-history", id],
+        });
       } catch {
-        // error handled silently
-      } finally {
-        setChatSending(false);
-        lastSentTextRef.current = "";
+        setWaitingForReply(false);
+        setPendingMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       }
     },
-    [selectedBot, id, session?.sessionKey],
+    [selectedBot, id, session?.sessionKey, queryClient, t],
   );
 
   // null = not yet loaded, [] = loaded but empty, [...] = loaded with messages
@@ -682,32 +724,62 @@ export function SessionsPage() {
   ) as ChatMessageData[] | null;
   const safeMessages = chatLoading ? [] : (messages ?? []);
 
-  // Optimistic send state
-  const [chatSending, setChatSending] = useState(false);
-  const lastSentTextRef = useRef<string>("");
-  const isWaitingReply =
-    chatSending || (isFetching && lastSentTextRef.current !== "");
+  // Build a set of server user message texts to deduplicate against optimistic messages
+  const serverUserTexts = new Set(
+    safeMessages
+      .filter((m) => m.role === "user")
+      .map((m) => extractMessage(m as unknown as Record<string, unknown>).text),
+  );
 
-  // Optimistic message for the sent message
-  const optimisticMessages: ChatMessageData[] =
-    chatSending && lastSentTextRef.current
-      ? [
-          {
-            id: "optimistic",
-            role: "user",
-            text: lastSentTextRef.current,
-            timestamp: Date.now(),
-          } as unknown as ChatMessageData,
-        ]
-      : [];
+  // Clear optimistic messages that already appear in server data
+  useEffect(() => {
+    if (pendingMessages.length === 0) return;
+    const remaining = pendingMessages.filter(
+      (pm) => !serverUserTexts.has(pm.text),
+    );
+    if (remaining.length < pendingMessages.length) {
+      setPendingMessages(remaining);
+    }
+  }, [serverUserTexts, pendingMessages]);
 
-  const displayMessages = [...optimisticMessages, ...safeMessages];
+  // Detect when assistant reply arrives — clear waiting state
+  const assistantMessages = safeMessages.filter((m) => m.role === "assistant");
+  const lastAssistantMsg =
+    assistantMessages.length > 0
+      ? assistantMessages[assistantMessages.length - 1]
+      : undefined;
+  const lastAssistantTimestamp = lastAssistantMsg?.timestamp ?? 0;
 
-  // Auto-scroll on new messages
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages change
+  useEffect(() => {
+    if (
+      waitingForReply &&
+      sentAtRef.current > 0 &&
+      lastAssistantTimestamp >= sentAtRef.current
+    ) {
+      setWaitingForReply(false);
+      sentAtRef.current = 0;
+    }
+  }, [lastAssistantTimestamp, waitingForReply]);
+
+  // Optimistic messages: use text-based key so React reuses the DOM node
+  // when the server message replaces the optimistic one
+  const optimisticMessages: ChatMessageData[] = pendingMessages
+    .filter((pm) => !serverUserTexts.has(pm.text))
+    .map((pm) => ({
+      id: `user-${pm.text.slice(0, 40)}`, // stable key based on text content
+      role: "user" as const,
+      content: pm.text,
+      timestamp: pm.timestamp,
+      createdAt: new Date(pm.timestamp).toISOString(),
+    }));
+
+  const displayMessages = [...safeMessages, ...optimisticMessages];
+
+  // Auto-scroll on new messages or state changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages or waiting state changes
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "instant" });
-  }, [chatData]);
+  }, [chatData, waitingForReply, pendingMessages.length]);
 
   if (!id) {
     return <EmptyState />;
@@ -888,9 +960,54 @@ export function SessionsPage() {
                     hasToolCall
                   );
                 })
-                .map(({ msg, extracted }) => (
-                  <ChatBubble key={msg.id} msg={msg} extracted={extracted} />
-                ))}
+                .flatMap(({ msg, extracted }, idx, arr) => {
+                  const msgTime = msg.timestamp ?? 0;
+                  const prevTime =
+                    idx > 0 ? (arr[idx - 1]?.msg.timestamp ?? 0) : 0;
+                  const divider =
+                    newSessionDividerTime &&
+                    msgTime >= newSessionDividerTime &&
+                    prevTime < newSessionDividerTime
+                      ? [
+                          <div
+                            key="session-divider"
+                            className="flex items-center gap-3 my-4"
+                          >
+                            <div className="flex-1 h-px bg-border" />
+                            <span className="text-[11px] text-text-muted shrink-0">
+                              {t("sessions.chat.newSession", {
+                                defaultValue: "New conversation",
+                              })}
+                            </span>
+                            <div className="flex-1 h-px bg-border" />
+                          </div>,
+                        ]
+                      : [];
+                  return [
+                    ...divider,
+                    <ChatBubble key={msg.id} msg={msg} extracted={extracted} />,
+                  ];
+                })}
+              {waitingForReply && (
+                <div className="flex gap-3 items-start">
+                  <img
+                    src={BOT_AVATAR}
+                    alt=""
+                    className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+                  />
+                  <div className="inline-flex items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                    <Loader2
+                      size={14}
+                      className="animate-spin text-text-muted"
+                    />
+                    <span className="text-[13px] text-text-muted">
+                      {t("sessions.chat.thinking", {
+                        defaultValue: "Thinking...",
+                      })}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div ref={endRef} />
             </div>
           </div>
@@ -907,8 +1024,8 @@ export function SessionsPage() {
             onSend={(text) => {
               void handleSend(text);
             }}
-            sending={chatSending}
-            waitingReply={isWaitingReply}
+            sending={false}
+            waitingReply={waitingForReply}
             disabled={!session?.botId}
             placeholder={t("localChat.inputPlaceholder")}
             showBotSelector={false}
