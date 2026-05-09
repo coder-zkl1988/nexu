@@ -130,6 +130,7 @@ export function LocalChatPage() {
         const responseData = (await rawRes.json()) as Record<string, unknown>;
 
         setSending(false);
+        setWaitingReply(true);
 
         if (contextKeyRef.current !== ctxKey) return;
 
@@ -183,9 +184,12 @@ export function LocalChatPage() {
           setTimeout(() => {
             window.location.href = target;
           }, 200);
+        } else {
+          setWaitingReply(false);
         }
       } catch {
         setSending(false);
+        setWaitingReply(false);
       }
     },
     [selectedBot, navigate],
@@ -230,11 +234,12 @@ export function LocalChatPage() {
                 selectedBot={selectedBot}
                 onSelectBot={handleSelectBot}
                 onSend={sendMessage}
-                sending={false}
-                waitingReply={false}
+                sending={sending}
+                waitingReply={waitingReply}
                 disabled={!selectedBot || isCreatingBot}
                 placeholder={placeholder}
                 showAddBot
+                modelReadOnly
               />
             </div>
           </div>

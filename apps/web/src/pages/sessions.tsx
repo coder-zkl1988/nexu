@@ -7,6 +7,7 @@ import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { A2UIRenderer } from "@/lib/a2ui";
 import type { A2UIMessage } from "@/lib/a2ui";
+import { type SSEMessage, createSSEClient } from "@/lib/api/event-source";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
@@ -762,7 +763,8 @@ export function SessionsPage() {
     enabled: !!id,
   });
 
-  // Chat history
+  // Chat history — polls at 5s, disabled when SSE is connected
+  const [sseConnected, setSseConnected] = useState(false);
   const {
     data: chatData,
     isLoading: chatLoading,
@@ -777,8 +779,31 @@ export function SessionsPage() {
       return data;
     },
     enabled: !!id,
-    refetchInterval: 5000,
+    refetchInterval: sseConnected ? false : 5000,
   });
+
+  // SSE real-time connection — invalidates chat history on new messages
+  useEffect(() => {
+    if (!id || !session?.botId || !session?.sessionKey) return;
+
+    const client = createSSEClient({
+      botId: session.botId,
+      sessionKey: session.sessionKey,
+      onConnected: () => setSseConnected(true),
+      onMessage: (_msg: SSEMessage) => {
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onError: () => {
+        setSseConnected(false);
+      },
+    });
+
+    client.connect();
+    return () => {
+      client.disconnect();
+      setSseConnected(false);
+    };
+  }, [id, session?.botId, session?.sessionKey, queryClient]);
 
   const { data: channelsData } = useQuery({
     queryKey: ["channels"],
@@ -895,7 +920,7 @@ export function SessionsPage() {
         ...prev,
         {
           id: optimisticId,
-          text: text || isImageOnly ? "[Image]" : "[File]",
+          text: text || (isImageOnly ? "[Image]" : "[File]"),
           timestamp: now,
         },
       ]);
@@ -1262,6 +1287,7 @@ export function SessionsPage() {
             disabled={!session?.botId}
             placeholder={t("localChat.inputPlaceholder")}
             showBotSelector={false}
+            modelReadOnly
           />
         </div>
       </div>

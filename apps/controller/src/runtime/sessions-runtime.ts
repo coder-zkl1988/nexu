@@ -920,6 +920,13 @@ export class SessionsRuntime {
         continue;
       }
 
+      // A2UI interactive content blocks — passed through for frontend rendering.
+      if (blockType === "a2ui") {
+        normalizedBlocks.push(block);
+        hasVisibleContent = true;
+        continue;
+      }
+
       // Media blocks (image / file) are user-visible content — if the user
       // sends just an image with no accompanying text, the text block is
       // reduced to the empty string by the sanitizer and would otherwise
