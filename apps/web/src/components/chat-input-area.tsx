@@ -277,7 +277,7 @@ function BotSelector({
                 className="flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:bg-surface-2 rounded-b-lg transition-colors"
               >
                 <Plus size={13} className="shrink-0" />
-                {t("localChat.addBot", { defaultValue: "添加搭子" })}
+                {t("localChat.addBot", { defaultValue: "添加伙伴" })}
               </button>
             </div>
           )}

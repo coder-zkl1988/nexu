@@ -396,7 +396,7 @@ const AvatarUpload = memo(function AvatarUpload({
       <canvas ref={canvasRef} className="hidden" />
       <div>
         <p className="text-[13px] text-text-primary font-medium">
-          {t("experts.custom.avatar", { defaultValue: "搭子头像" })}
+          {t("experts.custom.avatar", { defaultValue: "伙伴头像" })}
         </p>
         <p className="text-[11px] text-text-muted mt-0.5">
           {t("experts.custom.avatar_hint", {
@@ -922,7 +922,7 @@ export function ExpertCustomPage() {
           <div>
             <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
               {isEditing
-                ? t("experts.custom.edit_title", { defaultValue: "编辑搭子" })
+                ? t("experts.custom.edit_title", { defaultValue: "编辑伙伴" })
                 : t("experts.custom.title")}
             </h1>
             <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
@@ -1006,7 +1006,7 @@ export function ExpertCustomPage() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder={t("experts.custom.description_placeholder", {
-                      defaultValue: "一句话介绍你的搭子...",
+                      defaultValue: "一句话介绍你的伙伴...",
                     })}
                     rows={2}
                     className="w-full max-w-md rounded-lg border border-border bg-surface-0 px-3 py-2 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 transition-colors resize-none"
@@ -1146,7 +1146,7 @@ export function ExpertCustomPage() {
                     isEditing
                       ? "experts.custom.edit_save"
                       : "experts.custom.create",
-                    { defaultValue: isEditing ? "保存修改" : "创建搭子" },
+                    { defaultValue: isEditing ? "保存修改" : "创建伙伴" },
                   )}
                 </button>
                 {saveMutation.isError && (
