@@ -20,7 +20,6 @@ import {
   Search,
   Settings2,
   User,
-  WalletCards,
   Zap,
   ZoomIn,
   ZoomOut,
@@ -35,13 +34,12 @@ import {
   postApiV1ExperthubCustom,
 } from "../../lib/api/sdk.gen";
 
-type TabId = "basic" | "agents" | "identity" | "memory" | "soul" | "user";
+type TabId = "basic" | "agents" | "identity" | "soul" | "user";
 
 const TABS: Array<{ id: TabId; icon: typeof Bot }> = [
   { id: "basic", icon: Bot },
   { id: "agents", icon: FileText },
   { id: "identity", icon: User },
-  { id: "memory", icon: WalletCards },
   { id: "soul", icon: Heart },
   { id: "user", icon: Search },
 ];
@@ -160,37 +158,6 @@ This file defines how I show up and what kind of agent I am becoming.
 - Clarify goals when they are ambiguous
 - Favor steady usefulness over unnecessary flair
 - Let repeated use shape this identity over time`;
-
-const MEMORY_MD_PRESET = `# Capy — Working Memory
-
-This file contains working context and durable notes that are useful across conversations.
-Read this file when it helps you understand ongoing context, recurring needs, or important prior decisions.
-
-## Current Working Context
-
-- Agent "Capy" initialized on 2026-04-30
-- No prior conversations or context
-- Ready to learn and adapt to user needs
-
-## Key Insights
-
-<!-- Update this section with important learnings about the user and tasks -->
-
-- User preferences: (to be discovered)
-- Common tasks: (to be identified)
-- Working patterns: (to be observed)
-
-## Recent Activity
-
-- 2026-04-30: Agent initialization complete
-
-## Important Notes
-
-<!-- Add any critical information that should persist across sessions -->
-
-- Remember to read all core files (SOUL.md, USER.md, IDENTITY.md, AGENTS.md) for full context
-- Update USER.md as you learn about user preferences
-- Update IDENTITY.md as your role becomes more defined`;
 
 const SOUL_MD_PRESET = `# Soul
 
@@ -544,9 +511,81 @@ export function ExpertCustomPage() {
 
   const [agentsMd, setAgentsMd] = useState(AGENTS_MD_PRESET);
   const [identityMd, setIdentityMd] = useState(IDENTITY_MD_PRESET);
-  const [memoryMd, setMemoryMd] = useState(MEMORY_MD_PRESET);
   const [soulMd, setSoulMd] = useState(SOUL_MD_PRESET);
   const [userMd, setUserMd] = useState(USER_MD_PRESET);
+
+  // Load platform template content as default values for file editors
+  const { data: templateAgentsMd } = useQuery({
+    queryKey: ["platform-template", "AGENTS.md"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/experthub/platform-templates/AGENTS.md");
+      if (!res.ok) return null;
+      return res.text();
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const { data: templateIdentityMd } = useQuery({
+    queryKey: ["platform-template", "IDENTITY.md"],
+    queryFn: async () => {
+      const res = await fetch(
+        "/api/v1/experthub/platform-templates/IDENTITY.md",
+      );
+      if (!res.ok) return null;
+      return res.text();
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const { data: templateSoulMd } = useQuery({
+    queryKey: ["platform-template", "SOUL.md"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/experthub/platform-templates/SOUL.md");
+      if (!res.ok) return null;
+      return res.text();
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const { data: templateUserMd } = useQuery({
+    queryKey: ["platform-template", "USER.md"],
+    queryFn: async () => {
+      const res = await fetch("/api/v1/experthub/platform-templates/USER.md");
+      if (!res.ok) return null;
+      return res.text();
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+  // Track whether the user has explicitly edited each file (vs using the default)
+  const identityTouchedRef = useRef(false);
+  const agentsTouchedRef = useRef(false);
+  const soulTouchedRef = useRef(false);
+  const userTouchedRef = useRef(false);
+
+  // Override defaults with platform template content once loaded
+  useEffect(() => {
+    if (templateAgentsMd && !agentsTouchedRef.current) {
+      setAgentsMd(templateAgentsMd);
+    }
+  }, [templateAgentsMd]);
+  useEffect(() => {
+    if (templateIdentityMd && !identityTouchedRef.current) {
+      setIdentityMd(
+        templateIdentityMd.replace(
+          /-\s+\*\*Name:\*\*\s*(_\(.*\)\s*)?/,
+          `- **Name:** ${name || "_pick something you like_"}`,
+        ),
+      );
+    }
+  }, [templateIdentityMd, name]);
+  useEffect(() => {
+    if (templateSoulMd && !soulTouchedRef.current) {
+      setSoulMd(templateSoulMd);
+    }
+  }, [templateSoulMd]);
+  useEffect(() => {
+    if (templateUserMd && !userTouchedRef.current) {
+      setUserMd(templateUserMd);
+    }
+  }, [templateUserMd]);
 
   const { data: modelsData } = useQuery({
     queryKey: ["models"],
@@ -666,7 +705,6 @@ export function ExpertCustomPage() {
       const workspaceFiles: Record<string, string> = {};
       if (agentsMd) workspaceFiles["AGENTS.md"] = agentsMd;
       if (identityMd) workspaceFiles["IDENTITY.md"] = identityMd;
-      if (memoryMd) workspaceFiles["MEMORY.md"] = memoryMd;
       if (soulMd) workspaceFiles["SOUL.md"] = soulMd;
       if (userMd) workspaceFiles["USER.md"] = userMd;
 
@@ -1006,19 +1044,40 @@ export function ExpertCustomPage() {
           )}
 
           {activeTab === "agents" && (
-            <MarkdownEditor value={agentsMd} onChange={setAgentsMd} />
+            <MarkdownEditor
+              value={agentsMd}
+              onChange={(v) => {
+                agentsTouchedRef.current = true;
+                setAgentsMd(v);
+              }}
+            />
           )}
           {activeTab === "identity" && (
-            <MarkdownEditor value={identityMd} onChange={setIdentityMd} />
-          )}
-          {activeTab === "memory" && (
-            <MarkdownEditor value={memoryMd} onChange={setMemoryMd} />
+            <MarkdownEditor
+              value={identityMd}
+              onChange={(v) => {
+                identityTouchedRef.current = true;
+                setIdentityMd(v);
+              }}
+            />
           )}
           {activeTab === "soul" && (
-            <MarkdownEditor value={soulMd} onChange={setSoulMd} />
+            <MarkdownEditor
+              value={soulMd}
+              onChange={(v) => {
+                soulTouchedRef.current = true;
+                setSoulMd(v);
+              }}
+            />
           )}
           {activeTab === "user" && (
-            <MarkdownEditor value={userMd} onChange={setUserMd} />
+            <MarkdownEditor
+              value={userMd}
+              onChange={(v) => {
+                userTouchedRef.current = true;
+                setUserMd(v);
+              }}
+            />
           )}
         </div>
       </div>

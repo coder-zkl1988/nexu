@@ -4300,6 +4300,35 @@ export type PostApiV1ExperthubCustomResponses = {
 
 export type PostApiV1ExperthubCustomResponse = PostApiV1ExperthubCustomResponses[keyof PostApiV1ExperthubCustomResponses];
 
+export type GetApiV1ExperthubPlatformTemplatesByFilenameData = {
+    body?: never;
+    path: {
+        filename: 'AGENTS.md' | 'IDENTITY.md' | 'SOUL.md' | 'USER.md';
+    };
+    query?: never;
+    url: '/api/v1/experthub/platform-templates/{filename}';
+};
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameErrors = {
+    /**
+     * Template file not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameError = GetApiV1ExperthubPlatformTemplatesByFilenameErrors[keyof GetApiV1ExperthubPlatformTemplatesByFilenameErrors];
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameResponses = {
+    /**
+     * Platform template file content
+     */
+    200: string;
+};
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameResponse = GetApiV1ExperthubPlatformTemplatesByFilenameResponses[keyof GetApiV1ExperthubPlatformTemplatesByFilenameResponses];
+
 export type GetApiV1MeData = {
     body?: never;
     path?: never;
