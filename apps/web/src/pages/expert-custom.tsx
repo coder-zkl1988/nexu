@@ -368,13 +368,13 @@ const AvatarUpload = memo(function AvatarUpload({
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="relative w-16 h-16 rounded-2xl border-2 border-dashed border-border hover:border-border-hover bg-surface-1 flex items-center justify-center transition-colors overflow-hidden group"
+        className="relative w-16 h-16 rounded-full border-2 border-dashed border-border hover:border-border-hover bg-surface-1 flex items-center justify-center transition-colors overflow-hidden group"
       >
         {avatarUrl ? (
           <img
             src={avatarUrl}
             alt=""
-            className="w-full h-full object-cover rounded-2xl"
+            className="w-full h-full object-cover rounded-full"
           />
         ) : (
           <Bot
@@ -382,7 +382,7 @@ const AvatarUpload = memo(function AvatarUpload({
             className="text-text-muted group-hover:text-text-secondary transition-colors"
           />
         )}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
           <Camera size={16} className="text-white" />
         </div>
       </button>
@@ -449,12 +449,10 @@ const AvatarUpload = memo(function AvatarUpload({
               <ZoomOut size={14} className="text-text-muted" />
               <input
                 type="range"
-                min={
-                  Math.max(
-                    cropSize / Math.max(rawImage.width, rawImage.height),
-                    0.3,
-                  ) * 100
-                }
+                min={Math.max(
+                  (cropSize / Math.max(rawImage.width, rawImage.height)) * 100,
+                  5,
+                )}
                 max={300}
                 value={scale * 100}
                 onChange={(e) => setScale(Number(e.target.value) / 100)}
@@ -524,7 +522,9 @@ function SkillList({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, displaySkills.length));
+          setVisibleCount((prev) =>
+            Math.min(prev + PAGE_SIZE, displaySkills.length),
+          );
         }
       },
       { rootMargin: "200px" },
@@ -782,7 +782,9 @@ export function ExpertCustomPage() {
   // installed skills bound to this bot's workspace.
   const editLedgerEntry = useMemo(() => {
     if (!editSlug || !catalogData?.installedExperts) return null;
-    return catalogData.installedExperts.find((e) => e.slug === editSlug) ?? null;
+    return (
+      catalogData.installedExperts.find((e) => e.slug === editSlug) ?? null
+    );
   }, [editSlug, catalogData?.installedExperts]);
 
   useEffect(() => {
@@ -1118,16 +1120,14 @@ export function ExpertCustomPage() {
                   noResultsLabel={t("skills.noMatchingSkills")}
                 />
               </div>
-                {selectedSkills.length > 0 && (
-                  <p className="text-[11px] text-text-muted mt-1.5 shrink-0">
-                    {t("experts.custom.skills_selected", {
-                      defaultValue: "已选择 {{count}} 个技能",
-                      count: selectedSkills.length,
-                    })}
-                  </p>
-                )}
-              </div>
-
+              {selectedSkills.length > 0 && (
+                <p className="text-[11px] text-text-muted mt-1.5 shrink-0">
+                  {t("experts.custom.skills_selected", {
+                    defaultValue: "已选择 {{count}} 个技能",
+                    count: selectedSkills.length,
+                  })}
+                </p>
+              )}
               <div className="pt-4 shrink-0">
                 <button
                   type="button"
