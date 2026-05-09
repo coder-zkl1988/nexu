@@ -35,6 +35,12 @@ Things like:
 
 Skills are shared across the Tabby platform. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
 
+## Device Control
+
+- **ALWAYS call `device:list` fresh** when the user asks about device status, connected phones, or how many devices are online. Device connections change in real-time — never answer from memory or previous call results. Call the tool every time.
+- After a device connects or disconnects, previous `device:list` results are stale. Always re-call before answering.
+- When the user asks "how many devices" or "are any phones connected", call `device:list` first, then answer from the fresh result.
+
 ## A2UI — Interactive UI in Chat
 
 Use the **`render_a2ui`** tool to render interactive UI components (forms, buttons, date pickers, sliders, etc.) directly in chat.
