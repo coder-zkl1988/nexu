@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   createCustomExpertRequestSchema,
@@ -42,9 +44,19 @@ export type ExperthubRoutesDeps = {
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) => Promise<{ ok: true; botId: string; slug: string }>;
+  platformTemplatesDir: string;
 };
 
 const notFoundErrorSchema = z.object({ message: z.string() });
+
+const ALLOWED_TEMPLATE_FILES = [
+  "AGENTS.md",
+  "IDENTITY.md",
+  "SOUL.md",
+  "USER.md",
+] as const;
+
+const templateFilenameSchema = z.enum(ALLOWED_TEMPLATE_FILES);
 
 const refreshResponseSchema = z.object({
   meta: z
@@ -266,6 +278,40 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
         workspaceFiles: body.workspaceFiles as Record<string, string>,
       });
       return c.json(result, 200);
+    },
+  );
+
+  // GET /platform-templates/:filename
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/platform-templates/{filename}",
+      tags: ["ExpertHub"],
+      request: {
+        params: z.object({ filename: templateFilenameSchema }),
+      },
+      responses: {
+        200: {
+          content: {
+            "text/plain": { schema: z.string() },
+          },
+          description: "Platform template file content",
+        },
+        404: {
+          content: { "application/json": { schema: notFoundErrorSchema } },
+          description: "Template file not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { filename } = c.req.valid("param");
+      const filePath = path.join(deps.platformTemplatesDir, filename);
+      try {
+        const content = await readFile(filePath, "utf-8");
+        return c.text(content, 200);
+      } catch {
+        return c.json({ message: "Template file not found" }, 404);
+      }
     },
   );
 
