@@ -590,7 +590,7 @@ export function AutomationsPage() {
 
       {/* Content - Card Grid */}
       {filtered.length > 0 ? (
-        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
           {filtered.map((automation) => {
             const Icon = automation.icon;
             return (

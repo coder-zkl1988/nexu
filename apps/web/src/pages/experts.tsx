@@ -405,7 +405,7 @@ export default function ExpertsPage() {
       </div>
 
       {/* Expert Grid */}
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))]">
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(max(160px,calc(25%-9px)),1fr))]">
         {visibleExperts.map((expert) => (
           <ExpertCard
             key={expert.slug}

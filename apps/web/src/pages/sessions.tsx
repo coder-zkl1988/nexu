@@ -1,6 +1,8 @@
 import { type BotItem, ChatInputArea } from "@/components/chat-input-area";
 import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
+import { A2UIRenderer } from "@/lib/a2ui";
+import type { A2UIMessage } from "@/lib/a2ui";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
@@ -106,6 +108,8 @@ interface ExtractedMessage {
   senderName: string | null;
   hasToolCall: boolean;
   toolCallSummary: string | null;
+  hasA2UI: boolean;
+  a2uiMessages: A2UIMessage[] | null;
 }
 
 function extractReplyContextPrefix(raw: string): {
@@ -138,12 +142,14 @@ function extractReplyContextPrefix(raw: string): {
   };
 }
 
-/** Extract display text, sender name, and tool call info from various message content formats. */
+/** Extract display text, sender name, tool call info, and A2UI messages from various message content formats. */
 function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   let raw = "";
   let replyContextText: string | null = null;
   let hasToolCall = false;
   let toolCallSummary: string | null = null;
+  let hasA2UI = false;
+  let a2uiMessages: A2UIMessage[] | null = null;
 
   // Format 1: msg.text (shorthand)
   if (typeof msg.text === "string") {
@@ -167,6 +173,31 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
         hasToolCall = true;
         const name = String(b?.name ?? b?.toolName ?? "tool");
         toolCallSummary = name;
+      } else if (b?.type === "a2ui" && typeof b.data === "object" && b.data) {
+        hasA2UI = true;
+        if (!a2uiMessages) a2uiMessages = [];
+        a2uiMessages.push(b.data as A2UIMessage);
+      } else if (b?.type === "text" && typeof b.text === "string") {
+        // Check for A2UI JSONL embedded in text blocks
+        const lines = b.text.split("\n");
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.trim());
+            if (
+              parsed?.version === "v0.9" &&
+              (parsed.createSurface ||
+                parsed.updateComponents ||
+                parsed.updateDataModel ||
+                parsed.deleteSurface)
+            ) {
+              hasA2UI = true;
+              if (!a2uiMessages) a2uiMessages = [];
+              a2uiMessages.push(parsed as A2UIMessage);
+            }
+          } catch {
+            // Not JSON, skip
+          }
+        }
       }
     }
     raw = textParts.join("\n");
@@ -187,6 +218,8 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     senderName,
     hasToolCall,
     toolCallSummary,
+    hasA2UI,
+    a2uiMessages,
   };
 }
 
@@ -508,14 +541,23 @@ function SessionPlatformBadge({
 function ChatBubble({
   msg,
   extracted,
+  onA2UIAction,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
+  onA2UIAction?: (actionName: string, context: Record<string, unknown>) => void;
 }) {
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
-  const { text, replyContextText, senderName, hasToolCall, toolCallSummary } =
-    resolvedExtracted;
+  const {
+    text,
+    replyContextText,
+    senderName,
+    hasToolCall,
+    toolCallSummary,
+    hasA2UI,
+    a2uiMessages,
+  } = resolvedExtracted;
   const time = formatTs(msg.timestamp);
   const isBot = msg.role === "assistant";
   const hasText = text.trim().length > 0;
@@ -561,6 +603,11 @@ function ChatBubble({
           </div>
         )}
         {isBot && hasToolCall && <ArtifactCard summary={toolCallSummary} />}
+        {isBot && hasA2UI && a2uiMessages && (
+          <div className="mt-1 inline-block max-w-full">
+            <A2UIRenderer messages={a2uiMessages} onAction={onA2UIAction} />
+          </div>
+        )}
         {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
     </div>
@@ -722,7 +769,8 @@ export function SessionsPage() {
   const messages = (
     chatData ? ((chatData as Record<string, unknown>)?.messages ?? []) : null
   ) as ChatMessageData[] | null;
-  const safeMessages = chatLoading ? [] : (messages ?? []);
+  // Keep existing data during refetch so optimistic messages and Thinking remain visible
+  const safeMessages = chatLoading && !chatData ? [] : (messages ?? []);
 
   // Build a set of server user message texts to deduplicate against optimistic messages
   const serverUserTexts = new Set(
@@ -985,7 +1033,28 @@ export function SessionsPage() {
                       : [];
                   return [
                     ...divider,
-                    <ChatBubble key={msg.id} msg={msg} extracted={extracted} />,
+                    <ChatBubble
+                      key={msg.id}
+                      msg={msg}
+                      extracted={extracted}
+                      onA2UIAction={(actionName, context) => {
+                        if (!selectedBot || !id || !session?.sessionKey) return;
+                        void postApiV1ChatLocal({
+                          body: {
+                            botId: selectedBot.id,
+                            sessionKey: session.sessionKey,
+                            message: {
+                              type: "text",
+                              content: JSON.stringify({
+                                type: "a2ui_action",
+                                actionName,
+                                data: context,
+                              }),
+                            },
+                          },
+                        });
+                      }}
+                    />,
                   ];
                 })}
               {waitingForReply && (
