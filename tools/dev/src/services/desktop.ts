@@ -154,6 +154,7 @@ function createDesktopLaunchEnv(): DesktopLaunchEnv {
       // (controller, web, openclaw) started by pnpm dev, instead of starting
       // its own instances on the same ports.
       NEXU_DESKTOP_EXTERNAL_RUNTIME: "1",
+      NEXU_DEV_IMMERSIVE: process.env.NEXU_DEV_IMMERSIVE ?? "1",
     },
   };
 }
@@ -529,6 +530,7 @@ export async function startDesktopDevProcess(options: {
       ...createDesktopInjectedEnv(),
       NEXU_DESKTOP_DEV_INSPECT_TOKEN: sessionId,
       NEXU_DESKTOP_DISABLE_VITE_ELECTRON_STARTUP: "1",
+      NEXU_DEV_IMMERSIVE: process.env.NEXU_DEV_IMMERSIVE ?? "1",
       NEXU_DEV_DESKTOP_RUN_ID: runId,
       NEXU_DEV_SESSION_ID: sessionId,
       NEXU_DEV_SERVICE: "desktop",

@@ -196,6 +196,10 @@ if (needsSetupExtraction) {
   process.env.NEXU_NEEDS_SETUP_ANIMATION = "1";
 }
 
+if (!app.isPackaged && process.env.NEXU_DEV_IMMERSIVE !== "0") {
+  process.env.NEXU_DEV_IMMERSIVE = "1";
+}
+
 const runtimeUnitManifests = createRuntimeUnitManifests(
   electronRoot,
   app.getPath("userData"),
@@ -349,6 +353,8 @@ let launchdQuitOptsForResidentEntry:
   | Parameters<typeof installLaunchdQuitHandler>[0]
   | null = null;
 let diagnosticsReporter: DesktopDiagnosticsReporter | null = null;
+
+let unsubscribeIpc: (() => void) | null = null;
 let systemTray: Tray | null = null;
 let pendingMacResidentEntryPreferences: DesktopShellPreferences | null = null;
 
@@ -562,6 +568,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
 
   try {
     sleepGuard?.dispose(reason);
+    unsubscribeIpc?.();
+    unsubscribeIpc = null;
     await diagnosticsReporter?.flushNow().catch(() => undefined);
     flushRuntimeLoggers();
     flushV8CoverageIfEnabled();
@@ -626,8 +634,8 @@ function showAboutDialog(): void {
   ];
   const options = {
     type: "info" as const,
-    title: "About Nexu",
-    message: "Nexu",
+    title: "About Tabby",
+    message: "Tabby",
     detail: detailLines.join("\n"),
     buttons: ["OK"],
     noLink: true,
@@ -658,12 +666,9 @@ function installApplicationMenu(): void {
         click: () => sendDesktopCommand("control", "full"),
       },
       {
-        label: "Show Web In Shell",
-        click: () => sendDesktopCommand("web", "full"),
-      },
-      {
-        label: "Show OpenClaw In Shell",
-        click: () => sendDesktopCommand("openclaw", "full"),
+        label: "Hide Desktop Shell",
+        accelerator: "CmdOrCtrl+Shift+H",
+        click: () => sendDesktopCommand("web", "immersive"),
       },
       { type: "separator" },
       {
@@ -925,6 +930,9 @@ async function runLaunchdColdStart(): Promise<void> {
   const skillhubStaticSkillsDir = app.isPackaged
     ? resolve(electronRoot, "static/bundled-skills")
     : resolve(repoRoot, "apps/desktop/static/bundled-skills");
+  const experthubStaticExpertsDir = app.isPackaged
+    ? resolve(electronRoot, "static/bundled-experts")
+    : resolve(repoRoot, "apps/desktop/static/bundled-experts");
   const platformTemplatesDir = app.isPackaged
     ? resolve(electronRoot, "static/platform-templates")
     : resolve(repoRoot, "apps/controller/static/platform-templates");
@@ -949,6 +957,7 @@ async function runLaunchdColdStart(): Promise<void> {
     webUrl: runtimeConfig.urls.web,
     openclawSkillsDir,
     skillhubStaticSkillsDir,
+    experthubStaticExpertsDir,
     platformTemplatesDir,
     openclawBinPath,
     openclawExtensionsDir,
@@ -1178,7 +1187,7 @@ function ensureResidentTray(): void {
 
   const tray = new Tray(trayIcon);
   residentTray = tray;
-  tray.setToolTip("nexu");
+  tray.setToolTip("Tabby");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -1225,7 +1234,7 @@ async function ensureWindowsTray(): Promise<void> {
   }
 
   systemTray = new Tray(trayIcon);
-  systemTray.setToolTip("Nexu");
+  systemTray.setToolTip("Tabby");
   updateSystemTrayMenu();
 
   systemTray.on("click", () => {
@@ -1307,7 +1316,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: needsSetupExtraction ? 1280 : 1120,
     minHeight: 720,
     backgroundColor: isMacOS ? "#00000000" : "#0B1020",
-    title: "nexu",
+    title: "tabby",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
     ...(isMacOS
@@ -1666,6 +1675,10 @@ app.on("web-contents-created", (_event, contents) => {
       windowId: contents.id,
     });
   });
+
+  contents.on("destroyed", () => {
+    diagnosticsReporter?.removeEmbedded(contents.id);
+  });
 });
 
 logLaunchTimeline("electron main module evaluated");
@@ -1719,7 +1732,7 @@ app.whenReady().then(async () => {
     applyResidentEntryPreferences(preferences);
   });
   applyDesktopShellPreferencesOnStartup();
-  registerIpcHandlers(
+  unsubscribeIpc = registerIpcHandlers(
     orchestrator,
     runtimeConfig,
     diagnosticsReporter,

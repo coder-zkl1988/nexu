@@ -222,14 +222,31 @@ export function compileChannelsConfig(params: {
     if (channel.channelType === "feishu") {
       const connectionMode =
         secret("connectionMode") === "webhook" ? "webhook" : "websocket";
+
+      // Translate per-channel feishuPermissions into account-level config.
+      // When feishuPermissions is null (historical channels / not configured),
+      // preserve the legacy hardcoded defaults: dmPolicy/groupPolicy="open",
+      // allowFrom=["*"], and no account-level requireMention.
+      const perms = channel.feishuPermissions ?? null;
+      const dmPolicy = perms?.dmPolicy ?? "open";
+      const groupPolicy = perms?.groupPolicy ?? "open";
+      const allowFrom = perms
+        ? perms.allowFrom.length === 0 &&
+          perms.dmPolicy !== "allowlist" &&
+          perms.groupPolicy !== "allowlist"
+          ? ["*"]
+          : perms.allowFrom
+        : ["*"];
+
       feishuAccounts[channel.accountId] = {
         enabled: channel.status === "connected",
         appId: secret("appId") || channel.appId || channel.accountId,
         appSecret: secret("appSecret"),
         connectionMode,
-        dmPolicy: "open",
-        groupPolicy: "open",
-        allowFrom: ["*"],
+        dmPolicy,
+        groupPolicy,
+        allowFrom,
+        ...(perms ? { requireMention: perms.requireMention } : {}),
         ...(connectionMode === "webhook"
           ? {
               webhookPath: `/feishu/events/${channel.accountId}`,

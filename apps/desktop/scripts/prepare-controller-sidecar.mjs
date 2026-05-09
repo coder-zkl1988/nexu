@@ -42,6 +42,11 @@ const requiredBundledPluginArtifacts = [
     requiredPath: join("node_modules", "dingtalk-stream", "package.json"),
     label: "dingtalk-stream",
   },
+  {
+    pluginId: "tabby-control",
+    requiredPath: join("openclaw.plugin.json"),
+    label: "plugin-manifest",
+  },
 ];
 
 function formatDurationMs(durationMs) {

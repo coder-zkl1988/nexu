@@ -23,7 +23,7 @@ function assertSafeRmTarget(targetPath: string): void {
 }
 
 function readBundleExecutableName(appContentsPath: string): string {
-  const fallback = "Nexu";
+  const fallback = "Tabby";
   try {
     const plistPath = path.join(appContentsPath, "Info.plist");
     const raw = readFileSync(plistPath, "utf8");

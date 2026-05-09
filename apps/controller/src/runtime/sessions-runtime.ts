@@ -231,6 +231,7 @@ export class SessionsRuntime {
         const activeFileNames = new Set<string>();
         const subagentFileNames = new Set<string>();
         const heartbeatFileNames = new Set<string>();
+        const fileNameToIndexKey = new Map<string, string>();
         for (const [indexKey, entry] of Object.entries(sessionsIndex)) {
           let fileName: string | null = null;
           if (
@@ -247,6 +248,7 @@ export class SessionsRuntime {
           if (!fileName) {
             continue;
           }
+          fileNameToIndexKey.set(fileName, indexKey);
           activeFileNames.add(fileName);
           if (indexKey.includes(":subagent:")) {
             subagentFileNames.add(fileName);
@@ -294,7 +296,9 @@ export class SessionsRuntime {
           const filePath = path.join(sessionsDir, file.name);
           const metadata = await stat(filePath);
           let extra = await this.readSessionMetadata(filePath);
-          const sessionKey = file.name.replace(/\.jsonl$/, "");
+          const sessionKey =
+            fileNameToIndexKey.get(file.name) ??
+            file.name.replace(/\.jsonl$/, "");
 
           // Read the first user message metadata block and backfill exact
           // Feishu chat targets for existing sessions without touching

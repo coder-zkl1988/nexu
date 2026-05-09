@@ -22,7 +22,9 @@ import type {
   ConnectQqbotInput,
   ConnectSlackInput,
   ConnectTelegramInput,
+  ConnectWechatInput,
   ConnectWecomInput,
+  FeishuPermissions,
 } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
 import { ChannelConnectError } from "../lib/channel-connect-error.js";
@@ -696,6 +698,59 @@ export class ChannelService {
     return this.configStore.getChannel(channelId);
   }
 
+  async updateChannelBot(
+    channelId: string,
+    botId: string,
+  ): Promise<ChannelResponse> {
+    const channel = await this.configStore.getChannel(channelId);
+    if (!channel) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+
+    const bot = await this.configStore.getBot(botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${botId}`);
+    }
+
+    const updated = await this.configStore.updateChannel(channelId, { botId });
+    await this.syncService.syncAll();
+    logger.info(
+      {
+        channelId: updated.id,
+        channelType: updated.channelType,
+        accountId: updated.accountId,
+        botId: updated.botId,
+        workspacePath: this.getWorkspacePath(updated.botId),
+      },
+      "channel_update_bot_success",
+    );
+    return updated;
+  }
+
+  async updateFeishuPermissions(
+    channelId: string,
+    perms: FeishuPermissions,
+  ): Promise<ChannelResponse> {
+    // configStore.updateChannelFeishuPermissions throws
+    // "Channel not found: ..." or "Not a Feishu channel: ..." which the HTTP
+    // layer maps to 404 and 400 respectively.
+    const updated = await this.configStore.updateChannelFeishuPermissions(
+      channelId,
+      perms,
+    );
+    await this.syncService.syncAll();
+    logger.info(
+      {
+        channelId: updated.id,
+        channelType: updated.channelType,
+        accountId: updated.accountId,
+        botId: updated.botId,
+      },
+      "channel_update_feishu_permissions_success",
+    );
+    return updated;
+  }
+
   private getWorkspacePath(botId: string): string {
     return path.join(this.env.openclawStateDir, "agents", botId);
   }
@@ -916,8 +971,9 @@ export class ChannelService {
     return channel;
   }
 
-  async connectWechat(accountId: string) {
-    const channel = await this.configStore.connectWechat({ accountId });
+  async connectWechat(input: ConnectWechatInput) {
+    const { accountId, botId } = input;
+    const channel = await this.configStore.connectWechat({ accountId, botId });
     logger.info(
       {
         accountId,

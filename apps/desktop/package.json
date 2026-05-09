@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "main": "dist-electron/main/bootstrap.js",
-  "description": "Electron desktop shell for Nexu local runtime",
+  "description": "Electron desktop shell for Tabby local runtime",
   "packageManager": "pnpm@10.31.0",
   "scripts": {
     "dev": "vite",
@@ -73,8 +73,8 @@
     "toolsets": {
       "winCodeSign": "1.0.0"
     },
-    "appId": "io.nexu.desktop",
-    "productName": "Nexu",
+    "appId": "io.tabby.desktop",
+    "productName": "Tabby",
     "icon": "build/icon.icns",
     "directories": {
       "output": "release"
@@ -98,6 +98,10 @@
       {
         "from": "static/bundled-skills",
         "to": "static/bundled-skills"
+      },
+      {
+        "from": "static/bundled-experts",
+        "to": "static/bundled-experts"
       },
       {
         "from": "../controller/static/platform-templates",
@@ -178,7 +182,7 @@
       {
         "provider": "github",
         "owner": "nexu-io",
-        "repo": "nexu"
+        "repo": "tabby"
       }
     ]
   }

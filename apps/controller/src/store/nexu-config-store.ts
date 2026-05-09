@@ -12,6 +12,7 @@ import type {
   CreditRechargeRecord,
   DesktopRewardClaimProof,
   DesktopRewardsStatus,
+  FeishuPermissions,
   ModelProviderConfig,
   PersistedModelsConfig,
   RewardTask,
@@ -644,7 +645,7 @@ export class NexuConfigStore {
           analyticsEnabled: true,
         },
         deviceControl: {
-          enabled: false,
+          enabled: true,
           wsPort: 18790,
           rpcPort: 18801,
         },
@@ -981,6 +982,7 @@ export class NexuConfigStore {
     systemPrompt?: string;
     modelId?: string;
     poolId?: string;
+    expertSlug?: string | null;
   }): Promise<BotResponse> {
     const createdAt = now();
     const bot: BotResponse = {
@@ -991,6 +993,7 @@ export class NexuConfigStore {
       status: "active",
       modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
       systemPrompt: input.systemPrompt ?? null,
+      expertSlug: input.expertSlug ?? null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1128,6 +1131,55 @@ export class NexuConfigStore {
     return config.channels.find((channel) => channel.id === channelId) ?? null;
   }
 
+  async updateChannel(
+    channelId: string,
+    patch: Partial<Pick<ChannelResponse, "botId" | "feishuPermissions">>,
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+
+    if (patch.botId !== undefined) {
+      const bot = await this.getBot(patch.botId);
+      if (!bot) {
+        throw new Error(`Bot not found: ${patch.botId}`);
+      }
+    }
+
+    const updated: ChannelResponse = {
+      ...existing,
+      ...(patch.botId !== undefined ? { botId: patch.botId } : {}),
+      ...(patch.feishuPermissions !== undefined
+        ? { feishuPermissions: patch.feishuPermissions }
+        : {}),
+      updatedAt: now(),
+    };
+
+    await this.store.update((config) => ({
+      ...config,
+      channels: config.channels.map((channel) =>
+        channel.id === channelId ? updated : channel,
+      ),
+    }));
+
+    return updated;
+  }
+
+  async updateChannelFeishuPermissions(
+    channelId: string,
+    perms: FeishuPermissions | null,
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+    if (existing.channelType !== "feishu") {
+      throw new Error(`Not a Feishu channel: ${channelId}`);
+    }
+    return this.updateChannel(channelId, { feishuPermissions: perms });
+  }
+
   async connectSlack(
     input: ConnectSlackInput & { botUserId?: string | null },
   ): Promise<ChannelResponse> {
@@ -1210,8 +1262,14 @@ export class NexuConfigStore {
     return channel;
   }
 
-  async connectWechat(input: { accountId: string }): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+  async connectWechat(input: {
+    accountId: string;
+    botId: string;
+  }): Promise<ChannelResponse> {
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1349,7 +1407,10 @@ export class NexuConfigStore {
   }
 
   async connectFeishu(input: ConnectFeishuInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1362,6 +1423,7 @@ export class NexuConfigStore {
       botUserId: null,
       createdAt: connectedAt,
       updatedAt: connectedAt,
+      feishuPermissions: null,
     };
 
     await this.store.update((config) => ({

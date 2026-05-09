@@ -1,3 +1,4 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import {
   formatChannelConnectErrorMessage,
   isAlreadyConnectedError,
@@ -153,8 +154,12 @@ export function ChannelConnectModal({
   );
   const [loading, setLoading] = useState(false);
   const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
+  const [botId, setBotId] = useState<string>("");
 
-  const allFilled = config.fields.every((f) => fieldValues[f.id]?.trim());
+  const requiresBot = channelType === "feishu";
+  const allFilled =
+    config.fields.every((f) => fieldValues[f.id]?.trim()) &&
+    (!requiresBot || !!botId);
 
   const handleClose = useCallback(() => {
     if (!submittedSuccessfully && !loading) {
@@ -185,6 +190,10 @@ export function ChannelConnectModal({
 
   const handleSubmit = async () => {
     if (!allFilled || loading) return;
+    if (requiresBot && !botId) {
+      toast.error(t("channels.errors.botRequired"));
+      return;
+    }
     setLoading(true);
 
     try {
@@ -197,6 +206,7 @@ export function ChannelConnectModal({
           body: {
             appId: fieldValues.appId ?? "",
             appSecret: fieldValues.appSecret ?? "",
+            botId,
           },
         }));
       } else if (channelType === "slack") {
@@ -298,6 +308,14 @@ export function ChannelConnectModal({
 
         {/* Body */}
         <div className="px-6 py-5 space-y-4">
+          {requiresBot ? (
+            <BotPicker
+              value={botId || null}
+              onChange={setBotId}
+              required
+              disabled={loading}
+            />
+          ) : null}
           {/* Credential fields */}
           {config.fields.map((field) => (
             <div key={field.id} className="space-y-1.5">

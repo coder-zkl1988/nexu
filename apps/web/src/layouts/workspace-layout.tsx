@@ -1,4 +1,3 @@
-import { BrandMark } from "@/components/brand-mark";
 import { BudgetWarningBanner } from "@/components/budget-warning-banner";
 import { PlatformIcon } from "@/components/platform-icons";
 import { useAutoUpdate } from "@/hooks/use-auto-update";
@@ -22,18 +21,19 @@ import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  Bot,
   ChevronRight,
   ChevronUp,
   CircleHelp,
-  Gift,
+  CirclePlus,
   Home,
   Info,
   LogOut,
   Mail,
-  Menu,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Puzzle,
   ScrollText,
   Settings,
   Smartphone,
@@ -383,7 +383,6 @@ function WorkspaceLayoutInner() {
     [],
   );
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const {
@@ -540,15 +539,6 @@ function WorkspaceLayoutInner() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showBalancePopup]);
 
-  useEffect(() => {
-    if (!mobileDrawerOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
-  }, [mobileDrawerOpen]);
-
   const { data: sessionsData } = useQuery({
     queryKey: ["sidebar-sessions"],
     queryFn: async (): Promise<SidebarSession[]> => {
@@ -574,6 +564,7 @@ function WorkspaceLayoutInner() {
     location.pathname === "/workspace/home";
   const isRewardsPage = location.pathname.includes("/rewards");
   const isSkillsPage = location.pathname.includes("/skills");
+  const isExpertsPage = location.pathname.includes("/experts");
   const isLocalChatPage = location.pathname === "/workspace/chat";
   const isModelsPage =
     location.pathname.includes("/models") ||
@@ -610,10 +601,6 @@ function WorkspaceLayoutInner() {
     progress: rewardsStatus.progress,
     cloudBalance: rewardsStatus.cloudBalance,
   });
-  const shouldShowRewardsBanner =
-    cloudConnected &&
-    rewardsStatus.progress.totalCount > 0 &&
-    rewardsStatus.progress.claimedCount < rewardsStatus.progress.totalCount;
   const rewardsCardLoading =
     cloudStatusLoading && desktopCloudStatus === undefined;
   const { bannerDismissible, budgetStatus, dismissBanner, shouldShowPrompt } =
@@ -630,32 +617,18 @@ function WorkspaceLayoutInner() {
     !isHomePage &&
     !isRewardsPage &&
     !isSkillsPage &&
+    !isExpertsPage &&
     !isModelsPage &&
+    !isDevicesPage &&
+    !isLocalChatPage &&
+    !location.pathname.includes("/automations") &&
+    !location.pathname.includes("/integrations") &&
+    !location.pathname.includes("/channels") &&
     !selectedSessionId;
 
-  const selectedSession = selectedSessionId
+  const _selectedSession = selectedSessionId
     ? sessions.find((s) => s.id === selectedSessionId)
     : null;
-  const mobileTitle = isHomePage
-    ? t("layout.mobile.home")
-    : isRewardsPage
-      ? t("layout.mobile.rewards")
-      : isSkillsPage
-        ? t("layout.mobile.skills")
-        : isModelsPage
-          ? t("layout.mobile.settings")
-          : selectedSession?.title || t("layout.mobile.conversations");
-  const mobileSubtitle = isHomePage
-    ? t("layout.mobile.homeSubtitle")
-    : isRewardsPage
-      ? t("layout.mobile.rewardsSubtitle")
-      : isSkillsPage
-        ? t("layout.mobile.skillsSubtitle")
-        : isModelsPage
-          ? t("layout.mobile.settingsSubtitle")
-          : selectedSession
-            ? `${getPlatformLabel(selectedSession.channelType)} · ${formatTime(selectedSession.lastTime)}`
-            : `${sessions.length} conversation${sessions.length === 1 ? "" : "s"}`;
   const isWindowsDesktopClient = isDesktopClient && isWindowsDesktopPlatform();
   const isMacDesktopClient = isDesktopClient && isMacDesktopPlatform();
   const desktopGlassTint = isWindowsDesktopClient
@@ -746,7 +719,9 @@ function WorkspaceLayoutInner() {
             ...(!collapsed ? { width: sidebarWidth } : {}),
             transition: isResizing.current ? "none" : "width 200ms",
             WebkitAppRegion: "drag",
-            background: isDesktopClient ? desktopGlassTint : "transparent",
+            background: isDesktopClient
+              ? desktopGlassTint
+              : "var(--color-tabby-sidebar)",
           } as React.CSSProperties
         }
       >
@@ -766,9 +741,9 @@ function WorkspaceLayoutInner() {
             {isDesktopClient ? (
               <>
                 <img
-                  src="/brand/logo-black-1.svg"
-                  alt="nexu"
-                  className="h-6 object-contain"
+                  src="/images/happytabby-logo.png"
+                  alt="Tabby"
+                  className="h-10 object-contain"
                 />
                 <div className="flex items-center gap-2">
                   {hasUpdate && updateDismissed && (
@@ -794,15 +769,11 @@ function WorkspaceLayoutInner() {
               </>
             ) : (
               <>
-                <BrandMark className="w-7 h-7 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-text-primary whitespace-nowrap">
-                    Nexu <span className="text-[11px]">🦞</span>
-                  </div>
-                  <div className="text-[10px] text-text-tertiary whitespace-nowrap">
-                    {t("layout.brand")}
-                  </div>
-                </div>
+                <img
+                  src="/images/happytabby-logo.png"
+                  alt="Tabby"
+                  className="h-10 w-auto shrink-0"
+                />
               </>
             )}
           </div>
@@ -832,6 +803,19 @@ function WorkspaceLayoutInner() {
               {t("layout.nav.home")}
             </Link>
             <Link
+              to="/workspace/chat"
+              onClick={() => {
+                track("workspace_sidebar_click", { target: "local-chat" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isLocalChatPage && "nav-item-active",
+              )}
+            >
+              <CirclePlus size={16} className="shrink-0" />
+              {t("layout.nav.newChat")}
+            </Link>
+            <Link
               to="/workspace/skills"
               onClick={() => {
                 track("workspace_skills_click");
@@ -842,8 +826,8 @@ function WorkspaceLayoutInner() {
                 isSkillsPage && "nav-item-active",
               )}
             >
-              <Sparkles size={16} className="shrink-0" />
-              {t("layout.nav.skills")}
+              <Puzzle size={16} className="shrink-0" />
+              {t("layout.nav.skillStore")}
               {installedSkillsCount > 0 && (
                 <span className="ml-auto text-[10px] text-text-tertiary font-normal">
                   {installedSkillsCount}
@@ -851,17 +835,34 @@ function WorkspaceLayoutInner() {
               )}
             </Link>
             <Link
-              to="/workspace/chat"
+              to="/workspace/automations"
               onClick={() => {
-                track("workspace_sidebar_click", { target: "local-chat" });
+                track("workspace_sidebar_click", { target: "automations" });
               }}
               className={cn(
                 "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isLocalChatPage && "nav-item-active",
+                location.pathname.includes("/automations") && "nav-item-active",
               )}
             >
-              <MessageSquare size={16} className="shrink-0" />
-              {t("layout.nav.localChat")}
+              <Sparkles size={16} className="shrink-0" />
+              {t("layout.nav.automations")}
+              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-tabby-sidebar-active)] text-text-muted font-medium">
+                Beta
+              </span>
+            </Link>
+            <Link
+              to="/workspace/experts"
+              onClick={() => {
+                track("workspace_experts_click");
+                track("workspace_sidebar_click", { target: "experts" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isExpertsPage && "nav-item-active",
+              )}
+            >
+              <Bot size={16} className="shrink-0" />
+              {t("layout.nav.agents")}
             </Link>
             <Link
               to="/workspace/devices"
@@ -991,8 +992,8 @@ function WorkspaceLayoutInner() {
                     />
                   ) : (
                     <img
-                      src="/brand/logo-black-1.svg"
-                      alt="nexu"
+                      src="/images/happytabby-logo.png"
+                      alt="Tabby"
                       className="h-3.5 w-3.5"
                     />
                   )}
@@ -1015,29 +1016,6 @@ function WorkspaceLayoutInner() {
             </div>
           ) : (
             <div>
-              {shouldShowRewardsBanner && (
-                <Link
-                  to="/workspace/rewards"
-                  data-sidebar-growth-card="rewards"
-                  className="group mx-3 mb-2 flex items-center gap-3 rounded-[12px] border border-[#F5DFC0]/50 bg-gradient-to-br from-[#FFF8F0] via-[#FFFAF5] to-[#FFF5EB] px-3.5 py-3 shadow-[0_1px_3px_rgba(245,200,120,0.08)] transition-all duration-200 hover:border-[#F0D0A0]/60 hover:shadow-[0_2px_8px_rgba(245,200,120,0.15)]"
-                  onClick={() => {
-                    track("workspace_growth_rewards_click");
-                    track("workspace_rewards_click");
-                    track("workspace_sidebar_click", { target: "rewards" });
-                  }}
-                >
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-[linear-gradient(135deg,#fbbf24_0%,#fb923c_100%)] text-white shadow-[0_1px_3px_rgba(245,158,11,0.25)]">
-                    <Gift size={14} />
-                  </div>
-                  <span className="min-w-0 flex-1 text-[12px] font-medium leading-[1.3] text-text-primary">
-                    {t("layout.sidebar.rewardsTitle")}
-                  </span>
-                  <ChevronRight
-                    size={14}
-                    className="shrink-0 text-text-muted transition-transform duration-200 group-hover:translate-x-0.5"
-                  />
-                </Link>
-              )}
               <div className="px-3 mb-1.5 relative" ref={balanceRef}>
                 <button
                   type="button"
@@ -1334,257 +1312,6 @@ function WorkspaceLayoutInner() {
         )}
       </div>
 
-      {/* Mobile drawer */}
-      {mobileDrawerOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="absolute inset-0 bg-black/30"
-            onClick={() => {
-              setMobileDrawerOpen(false);
-              setShowLogoutConfirm(false);
-            }}
-          />
-          <div className="absolute inset-y-0 left-0 w-[84%] max-w-[320px] sidebar-vibrancy border-r border-border shadow-xl">
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <BrandMark className="w-7 h-7 shrink-0" />
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-text-primary truncate">
-                      Nexu <span className="text-[11px]">🦞</span>
-                    </div>
-                    <div className="text-[10px] text-text-tertiary">
-                      {t("layout.brand")}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMobileDrawerOpen(false)}
-                  className="p-1.5 rounded-lg transition-colors text-text-muted hover:text-text-primary hover:bg-surface-3"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {/* Nav items */}
-                <div className="px-3 pt-3 pb-1">
-                  <Link
-                    to="/workspace/home"
-                    onClick={() => {
-                      track("workspace_home_click");
-                      track("workspace_sidebar_click", { target: "home" });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
-                      isHomePage
-                        ? "bg-accent/10 text-accent"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
-                    )}
-                  >
-                    <Home size={14} />
-                    {t("layout.nav.home")}
-                  </Link>
-                  <Link
-                    to="/workspace/skills"
-                    onClick={() => {
-                      track("workspace_skills_click");
-                      track("workspace_sidebar_click", { target: "skills" });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className={cn(
-                      "flex items-center justify-between w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
-                      isSkillsPage
-                        ? "bg-accent/10 text-accent"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
-                    )}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Sparkles size={14} />
-                      {t("layout.nav.skills")}
-                    </span>
-                  </Link>
-                  <Link
-                    to="/workspace/chat"
-                    onClick={() => {
-                      track("workspace_sidebar_click", {
-                        target: "local-chat",
-                      });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
-                      isLocalChatPage
-                        ? "bg-accent/10 text-accent"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
-                    )}
-                  >
-                    <MessageSquare size={14} />
-                    {t("layout.nav.localChat")}
-                  </Link>
-                  <Link
-                    to="/workspace/devices"
-                    onClick={() => {
-                      track("workspace_sidebar_click", { target: "devices" });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
-                      isDevicesPage
-                        ? "bg-accent/10 text-accent"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
-                    )}
-                  >
-                    <Smartphone size={14} />
-                    {t("layout.nav.devices")}
-                  </Link>
-                  <Link
-                    to="/workspace/settings"
-                    onClick={() => {
-                      track("workspace_settings_click");
-                      track("workspace_sidebar_click", {
-                        target: "settings_mobile",
-                      });
-                      setMobileDrawerOpen(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 w-full rounded-lg text-[12px] font-medium transition-colors cursor-pointer mt-0.5 px-3 py-2",
-                      isModelsPage
-                        ? "bg-accent/10 text-accent"
-                        : "text-text-muted hover:text-text-primary hover:bg-surface-3",
-                    )}
-                  >
-                    <Settings size={14} />
-                    {t("layout.nav.settings")}
-                  </Link>
-                </div>
-
-                {/* Conversations section */}
-                <div className="px-3 pt-2 pb-3">
-                  <div className="border-t border-border pt-2 mb-1.5" />
-                  <div className="px-3 mb-1.5 text-[10px] font-medium text-text-muted uppercase tracking-wider">
-                    {t("layout.conversations")}
-                  </div>
-                  <div className="space-y-0.5">
-                    {sessions.map((s) => {
-                      const isActive = selectedSessionId === s.id;
-                      return (
-                        <button
-                          type="button"
-                          key={s.id}
-                          data-sidebar-session-row={s.id}
-                          data-session-channel-type={s.channelType ?? "web"}
-                          data-session-state={s.status || "idle"}
-                          onClick={() => {
-                            const channel = normalizeChannel(s.channelType);
-                            track("workspace_channel_click", {
-                              channel_type: s.channelType,
-                            });
-                            track("workspace_sidebar_click", {
-                              target: "conversations",
-                              ...(channel ? { channel } : {}),
-                            });
-                            setMobileDrawerOpen(false);
-                            navigate(`/workspace/sessions/${s.id}`);
-                          }}
-                          className={cn(
-                            "flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-2.5 py-2 text-left",
-                            isActive
-                              ? "bg-accent/10 text-accent"
-                              : "text-text-secondary hover:text-text-primary hover:bg-surface-3",
-                          )}
-                        >
-                          <SidebarPlatformIcon
-                            platform={s.channelType ?? "web"}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="text-[13px] truncate font-medium">
-                                {s.title}
-                              </div>
-                              {s.status === "active" && (
-                                <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                  Live
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate">
-                              <span>
-                                {getPlatformLabel(s.channelType ?? "web")}
-                              </span>
-                              <span className="text-border">·</span>
-                              <span>{formatTime(s.lastTime)}</span>
-                            </div>
-                          </div>
-                          {s.status === "active" ? (
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--color-success)]" />
-                          ) : (
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-text-muted/30" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className="relative border-t border-border p-2"
-                ref={logoutRef}
-              >
-                {showLogoutConfirm && (
-                  <div className="absolute bottom-full left-2 right-2 mb-2 z-20">
-                    <div className="rounded-xl border bg-surface-1 border-border shadow-xl shadow-black/10 overflow-hidden">
-                      <div className="px-3.5 py-3 border-b border-border">
-                        <div className="text-[12px] font-medium text-text-primary truncate">
-                          {userEmail}
-                        </div>
-                      </div>
-                      <div className="p-1.5">
-                        <button
-                          type="button"
-                          onClick={handleLogout}
-                          className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-[12px] font-medium text-text-muted hover:text-red-500 hover:bg-red-500/5 transition-all cursor-pointer"
-                        >
-                          <LogOut size={13} />
-                          {t("layout.signOut")}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutConfirm(!showLogoutConfirm)}
-                  className="flex gap-2.5 items-center w-full px-2 py-2 rounded-lg transition-all hover:bg-surface-3 cursor-pointer"
-                >
-                  <div className="flex justify-center items-center w-7 h-7 rounded-md bg-gradient-to-br from-accent/20 to-accent/5 text-[10px] font-bold text-accent ring-1 ring-accent/10 shrink-0">
-                    {userInitial}
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <div className="text-[12px] text-text-primary truncate font-medium">
-                      {userEmail}
-                    </div>
-                  </div>
-                  <ChevronUp
-                    size={12}
-                    className={cn(
-                      "text-text-muted/50 shrink-0 transition-transform duration-150",
-                      showLogoutConfirm ? "rotate-0" : "rotate-180",
-                    )}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Resize handle */}
       {!collapsed && (
         <div
@@ -1601,36 +1328,15 @@ function WorkspaceLayoutInner() {
         </div>
       )}
 
-      {/* Main content — elevated surface with rounded left edge */}
+      {/* Main content */}
       <div className="relative flex-1 min-w-0">
         <div
           className={cn(
-            "relative flex h-full min-w-0 flex-col bg-surface-1 rounded-l-[12px]",
+            "relative flex h-full min-w-0 flex-col bg-surface-1 rounded-l-[20px]",
           )}
+          style={{ background: "var(--color-tabby-bg)" }}
         >
-          <div className="md:hidden sticky top-0 z-30 border-b border-border bg-surface-0/95 backdrop-blur px-3 py-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => setMobileDrawerOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-                aria-label="Open menu"
-              >
-                <Menu size={16} />
-              </button>
-              <div className="min-w-0 flex-1 text-center leading-tight">
-                <div className="text-[13px] font-semibold text-text-primary truncate">
-                  {mobileTitle}
-                </div>
-                <div className="text-[10px] text-text-muted truncate mt-0.5">
-                  {mobileSubtitle}
-                </div>
-              </div>
-              <div className="w-9" />
-            </div>
-          </div>
-
-          <main className="flex-1 overflow-y-auto min-h-0">
+          <main className="flex-1 overflow-y-auto min-h-0 p-0 md:p-3">
             {budgetBannerRouteVariant === "global" &&
             shouldShowPrompt &&
             budgetStatus !== "healthy" ? (

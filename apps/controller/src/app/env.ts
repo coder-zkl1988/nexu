@@ -90,6 +90,15 @@ const envSchema = z.object({
   OPENCLAW_SKILLS_DIR: z.string().optional(),
   OPENCLAW_EXTENSIONS_DIR: z.string().optional(),
   SKILLHUB_STATIC_SKILLS_DIR: z.string().optional(),
+  EXPERTHUB_STATIC_EXPERTS_DIR: z.string().optional(),
+  EXPERTHUB_VERSION_URL: z
+    .string()
+    .url()
+    .default("https://hub.nexu.dev/experts/version.json"),
+  EXPERTHUB_DOWNLOAD_URL: z
+    .string()
+    .url()
+    .default("https://hub.nexu.dev/experts/install/latest.tar.gz"),
   PLATFORM_TEMPLATES_DIR: z.string().optional(),
   OPENCLAW_GATEWAY_PORT: z.coerce.number().int().positive().default(18789),
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
@@ -179,11 +188,20 @@ export const env = {
   ),
   skillhubCacheDir: path.join(nexuHomeDir, "skillhub-cache"),
   skillDbPath: path.join(nexuHomeDir, "skill-ledger.json"),
+  experthubCacheDir: path.join(nexuHomeDir, "experthub-cache"),
+  expertDbPath: path.join(nexuHomeDir, "expert-ledger.json"),
+  experthubVersionUrl: parsed.EXPERTHUB_VERSION_URL,
+  experthubDownloadUrl: parsed.EXPERTHUB_DOWNLOAD_URL,
   analyticsStatePath: path.join(nexuHomeDir, "analytics-state.json"),
   staticSkillsDir: parsed.SKILLHUB_STATIC_SKILLS_DIR
     ? expandHomeDir(parsed.SKILLHUB_STATIC_SKILLS_DIR)
     : workspaceRoot
       ? path.join(workspaceRoot, "apps", "desktop", "static", "bundled-skills")
+      : undefined,
+  staticExpertsDir: parsed.EXPERTHUB_STATIC_EXPERTS_DIR
+    ? expandHomeDir(parsed.EXPERTHUB_STATIC_EXPERTS_DIR)
+    : workspaceRoot
+      ? path.join(workspaceRoot, "apps", "desktop", "static", "bundled-experts")
       : undefined,
   platformTemplatesDir: parsed.PLATFORM_TEMPLATES_DIR
     ? expandHomeDir(parsed.PLATFORM_TEMPLATES_DIR)

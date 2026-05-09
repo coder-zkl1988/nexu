@@ -313,7 +313,7 @@ function compilePlugins(
       ...connectedPluginIds,
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
-      ...(deviceControlEnabled ? ["lobster-device-control"] : []),
+      ...(deviceControlEnabled ? ["tabby-control"] : []),
     ]),
   ).sort();
 
@@ -371,7 +371,7 @@ function compilePlugins(
         : {}),
       ...(deviceControlEnabled
         ? {
-            "lobster-device-control": {
+            "tabby-control": {
               enabled: true,
               config: {
                 wsPort: config.deviceControl.wsPort,

@@ -8,9 +8,9 @@ import type {
 
 const FEISHU_FALLBACK_TEMPLATES: FallbackTemplateMap = {
   unknown: {
-    en: "🤖 Sorry, I can't handle your request right now. Please try again later, or contact the NexU team for support: https://docs.nexu.io/guide/contact",
+    en: "🤖 Sorry, I can't handle your request right now. Please try again later, or contact the Tabby team for support: https://docs.nexu.io/guide/contact",
     "zh-CN":
-      "🤖 抱歉，我暂时无法处理你的请求，请稍后重试，或联系 NexU 工作人员获取支持：https://docs.nexu.io/zh/guide/contact",
+      "🤖 抱歉，我暂时无法处理你的请求，请稍后重试，或联系 Tabby 工作人员获取支持：https://docs.nexu.io/zh/guide/contact",
   },
   internal_error: {
     en: "Sorry, I hit an internal error while replying. Please try again in a moment.",
@@ -25,8 +25,8 @@ const FEISHU_FALLBACK_TEMPLATES: FallbackTemplateMap = {
     "zh-CN": "抱歉，我刚刚没有完整完成上一条回复。请稍后再试。",
   },
   synthetic_pre_llm_failure: {
-    en: "Sorry, Nexu intentionally interrupted this reply for diagnostics.",
-    "zh-CN": "抱歉，这条回复被 Nexu 为诊断目的主动中断。",
+    en: "Sorry, Tabby intentionally interrupted this reply for diagnostics.",
+    "zh-CN": "抱歉，这条回复被 Tabby 为诊断目的主动中断。",
   },
 };
 

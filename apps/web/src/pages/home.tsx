@@ -7,7 +7,6 @@ import { TelegramSetupView } from "@/components/channel-setup/telegram-setup-vie
 import { WechatSetupView } from "@/components/channel-setup/wechat-setup-view";
 import { WecomSetupView } from "@/components/channel-setup/wecom-setup-view";
 import { WhatsappSetupView } from "@/components/channel-setup/whatsapp-setup-view";
-import { GitHubStarCta } from "@/components/github-star-cta";
 import { InlineModelSelector } from "@/components/inline-model-selector";
 import {
   DingtalkIcon,
@@ -18,16 +17,10 @@ import {
   WhatsAppIcon,
 } from "@/components/platform-icons";
 import {
-  SEEDANCE_PROMO_DISMISS_KEY,
-  SeedancePromoBanner,
-  SeedancePromoModal,
-} from "@/components/seedance-promo";
-import {
   getBudgetBannerRouteVariant,
   useDesktopBudgetGuard,
 } from "@/hooks/use-desktop-budget-guard";
 import { useDesktopRewardsStatus } from "@/hooks/use-desktop-rewards";
-import { useGitHubStars } from "@/hooks/use-github-stars";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import {
   type ChannelLiveStatus,
@@ -328,7 +321,6 @@ function getChannelStatusMeta(
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { stars } = useGitHubStars();
   const isDesktopClient = useMemo(
     () =>
       typeof navigator !== "undefined" &&
@@ -373,17 +365,8 @@ export function HomePage() {
   const [dingtalkOpen, setDingtalkOpen] = useState(false);
   const [qqbotOpen, setQqbotOpen] = useState(false);
   const [wecomOpen, setWecomOpen] = useState(false);
-  const [seedancePromoOpen, setSeedancePromoOpen] = useState(false);
-  const [showSeedancePromo, setShowSeedancePromo] = useState(() => {
-    try {
-      return sessionStorage.getItem(SEEDANCE_PROMO_DISMISS_KEY) !== "1";
-    } catch {
-      return true;
-    }
-  });
+
   const queryClient = useQueryClient();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoHover, setVideoHover] = useState(false);
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
   const connectingToastIdRef = useRef<string | number | null>(null);
   const previousLiveStatusesRef = useRef<Record<string, ChannelLiveStatus>>({});
@@ -640,15 +623,6 @@ export function HomePage() {
   const budgetBannerRouteVariant =
     getBudgetBannerRouteVariant("/workspace/home");
 
-  const dismissSeedancePromo = useCallback(() => {
-    setShowSeedancePromo(false);
-    try {
-      sessionStorage.setItem(SEEDANCE_PROMO_DISMISS_KEY, "1");
-    } catch {
-      // noop
-    }
-  }, []);
-
   const handleChannelCreated = useCallback(
     (channelId: string) => {
       setPendingChannelId(channelId);
@@ -708,33 +682,6 @@ export function HomePage() {
     }
   }, [liveStatus, pendingChannelId, t]);
 
-  // Video playback effects — reset when channel state changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasChannel triggers reset intentionally
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = 0;
-    v.loop = false;
-    v.play().catch(() => {});
-    const onEnded = () => {
-      v.pause();
-    };
-    v.addEventListener("ended", onEnded);
-    return () => v.removeEventListener("ended", onEnded);
-  }, [hasChannel]);
-
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (videoHover) {
-      v.currentTime = 0;
-      v.loop = true;
-      v.play().catch(() => {});
-    } else {
-      v.loop = false;
-    }
-  }, [videoHover]);
-
   /* ══════════════════════════════════════════════════════════════════════
      Scene A: First-run — No channels connected (Idle state)
      ══════════════════════════════════════════════════════════════════════ */
@@ -744,28 +691,23 @@ export function HomePage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
           {/* ═══ TOP: Hero — Bot idle, waiting to be activated ═══ */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="relative w-32 h-32 mb-5 cursor-default"
-              onMouseEnter={() => setVideoHover(true)}
-              onMouseLeave={() => setVideoHover(false)}
-            >
-              <video
-                ref={videoRef}
-                src="/nexu-alpha.mp4"
-                poster="/nexu-alpha-poster.jpg"
-                preload="auto"
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-contain"
+            <div className="relative w-32 h-32 mb-5 cursor-default">
+              <img
+                src="/images/tabby-mascot.png"
+                alt="Tabby"
+                className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+              />
+              <img
+                src="/images/tabby-mascot-colorful.png"
+                alt="Tabby colorful"
+                className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
               />
             </div>
             <h2
-              className="text-[26px] font-normal tracking-tight text-text-primary mb-1.5"
+              className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)] mb-1.5"
               style={{ fontFamily: "var(--font-script)" }}
             >
-              nexu alpha
+              Happy Tabby
             </h2>
             <div className="flex items-center gap-3 text-[11px] text-text-muted">
               <span
@@ -861,14 +803,6 @@ export function HomePage() {
               </div>
             </div>
           </div>
-
-          {showSeedancePromo ? (
-            <SeedancePromoBanner
-              isDismissed={false}
-              onOpen={() => setSeedancePromoOpen(true)}
-              onDismiss={dismissSeedancePromo}
-            />
-          ) : null}
         </div>
         {modalChannel && (
           <ChannelConnectModal
@@ -940,12 +874,6 @@ export function HomePage() {
             }}
           />
         )}
-
-        <SeedancePromoModal
-          open={seedancePromoOpen}
-          onClose={() => setSeedancePromoOpen(false)}
-          shouldAutoAdvanceAfterStar={false}
-        />
       </div>
     );
   }
@@ -961,30 +889,25 @@ export function HomePage() {
       >
         {/* ═══ TOP: Hero — Bot running (horizontal layout) ═══ */}
         <div className="flex items-center gap-4">
-          <div
-            className="relative w-28 h-28 cursor-default shrink-0"
-            onMouseEnter={() => setVideoHover(true)}
-            onMouseLeave={() => setVideoHover(false)}
-          >
-            <video
-              ref={videoRef}
-              src="/nexu-alpha.mp4"
-              poster="/nexu-alpha-poster.jpg"
-              preload="auto"
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-contain"
+          <div className="relative w-28 h-28 cursor-default shrink-0">
+            <img
+              src="/images/tabby-mascot.png"
+              alt="Tabby"
+              className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+            />
+            <img
+              src="/images/tabby-mascot-colorful.png"
+              alt="Tabby colorful"
+              className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
             />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5">
               <h2
-                className="text-[26px] font-normal tracking-tight text-text-primary"
+                className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)]"
                 style={{ fontFamily: "var(--font-script)" }}
               >
-                nexu alpha
+                Happy Tabby
               </h2>
               <span
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
@@ -999,15 +922,6 @@ export function HomePage() {
                 />
                 {runtimeDisplay.label}
               </span>
-              <GitHubStarCta
-                label={t("home.starGithub")}
-                stars={stars}
-                variant="inline"
-                className="ml-auto shrink-0"
-                onClick={() =>
-                  track("workspace_github_click", { source: "home_card" })
-                }
-              />
             </div>
             <div className="flex items-center gap-2 mt-1.5">
               <InlineModelSelector />
@@ -1044,14 +958,6 @@ export function HomePage() {
             status={budgetStatus}
             dismissible={bannerDismissible}
             onDismiss={dismissBanner}
-          />
-        ) : null}
-
-        {showSeedancePromo ? (
-          <SeedancePromoBanner
-            isDismissed={false}
-            onOpen={() => setSeedancePromoOpen(true)}
-            onDismiss={dismissSeedancePromo}
           />
         ) : null}
 
@@ -1268,17 +1174,6 @@ export function HomePage() {
 
         {/* Activity Feed */}
         <ActivityFeed />
-
-        <GitHubStarCta
-          label={t("home.starNexu")}
-          description={t("home.starCta")}
-          badgeLabel="GitHub"
-          stars={stars}
-          variant="banner"
-          onClick={() =>
-            track("workspace_github_click", { source: "home_card" })
-          }
-        />
       </div>
       {modalChannel && (
         <ChannelConnectModal
@@ -1349,12 +1244,6 @@ export function HomePage() {
           }}
         />
       )}
-
-      <SeedancePromoModal
-        open={seedancePromoOpen}
-        onClose={() => setSeedancePromoOpen(false)}
-        shouldAutoAdvanceAfterStar={!hasChannel}
-      />
     </div>
   );
 }

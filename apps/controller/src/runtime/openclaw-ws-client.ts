@@ -429,6 +429,11 @@ export class OpenClawWsClient {
       logger.warn({}, "openclaw_ws_error");
       // Native WebSocket does NOT fire onclose after a connection-refused error
       // (unlike the `ws` npm package). Force cleanup + reconnect here.
+      try {
+        ws.close();
+      } catch {
+        /* already closed */
+      }
       cleanupOnce();
     };
   }
@@ -830,6 +835,13 @@ export class OpenClawWsClient {
   private scheduleReconnect(): void {
     if (this.closed) {
       return;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        /* ignore */
+      }
     }
     this.ws = null;
     const delay = this.backoffMs;

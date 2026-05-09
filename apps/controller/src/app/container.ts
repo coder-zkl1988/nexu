@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import fsp from "node:fs/promises";
+import path from "node:path";
 import { logger } from "../lib/logger.js";
 import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
 import { CreditGuardStateWriter } from "../runtime/credit-guard-state-writer.js";
@@ -27,6 +30,12 @@ import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
 import { DeviceControlService } from "../services/device-control-service.js";
 import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
+import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
+import {
+  type InstallExpertResult,
+  createCustomExpert,
+  installExpert,
+} from "../services/experthub/install-flow.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
@@ -67,6 +76,17 @@ export interface ControllerContainer {
   attachmentStore: AttachmentStore;
   templateService: TemplateService;
   skillhubService: SkillhubService;
+  experthubCatalogManager: ExperthubCatalogManager;
+  installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
+  createCustomExpertFn: (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) => Promise<{ ok: true; botId: string; slug: string }>;
   openclawSyncService: OpenClawSyncService;
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
@@ -190,6 +210,141 @@ export async function createContainer(): Promise<ControllerContainer> {
     );
   });
 
+  // Experts (ExpertHub): catalog manager + install flow.
+  // The catalog manager reads bundled manifests from the static dir and
+  // managed manifests from the cache dir; if staticExpertsDir is undefined
+  // (e.g. when SKILLHUB_STATIC_SKILLS_DIR is unset and no workspaceRoot was
+  // detected), we pass an empty string which the manager treats as "no
+  // bundled entries" via its existsSync guard.
+  const experthubCatalogManager = new ExperthubCatalogManager({
+    cacheDir: env.experthubCacheDir,
+    ledgerPath: env.expertDbPath,
+    staticDir: env.staticExpertsDir ?? "",
+    versionUrl: env.experthubVersionUrl,
+    downloadUrl: env.experthubDownloadUrl,
+    log: (level, message) => {
+      logger[level === "error" ? "error" : level === "warn" ? "warn" : "info"](
+        { subsystem: "experthub" },
+        message,
+      );
+    },
+  });
+
+  // AgentService is used by both the return block and the experthub install
+  // flow. Construct it once so both paths share the same cache/syncAll semantics.
+  const agentService = new AgentService(configStore, openclawSyncService);
+
+  const installExpertFn = (args: { slug: string }) =>
+    installExpert({
+      slug: args.slug,
+      deps: {
+        catalog: {
+          resolveExpert: (slug) => experthubCatalogManager.resolveExpert(slug),
+          readLedger: () => experthubCatalogManager.readLedger(),
+          writeLedger: (ledger) => experthubCatalogManager.writeLedger(ledger),
+        },
+        botService: {
+          createBot: async (input) => {
+            const bot = await agentService.createBot({
+              name: input.name,
+              slug: input.slug,
+              systemPrompt: input.systemPrompt,
+              modelId: input.modelId,
+              expertSlug: input.expertSlug,
+            });
+            return { id: bot.id, slug: bot.slug };
+          },
+        },
+        // Option C (temporary adapter): the existing SkillhubService does not
+        // yet accept an agent-scoped workspace install. Seed experts in
+        // Task 8 all have empty `requiredSkills`, so this no-op unblocks the
+        // end-to-end flow. Follow-up: extend SkillhubService with a
+        // workspace-scoped install API and replace this adapter.
+        skillhub: {
+          install: async (input) => {
+            logger.warn(
+              { input, subsystem: "experthub" },
+              "workspace_skill_install_not_wired_skipping",
+            );
+            return { ok: true };
+          },
+        },
+        sync: openclawSyncService,
+        fs: {
+          writeFile: (p, data) => fsp.writeFile(p, data),
+          mkdir: async (p, opts) => {
+            await fsp.mkdir(p, opts);
+          },
+        },
+        agentsDir: path.join(env.openclawStateDir, "agents"),
+        genBotSlug: (expertSlug) =>
+          `${expertSlug}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+      },
+    });
+
+  const createCustomExpertFn = (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) =>
+    createCustomExpert({
+      ...args,
+      deps: {
+        catalog: {
+          readLedger: () => experthubCatalogManager.readLedger(),
+          writeLedger: (ledger) => experthubCatalogManager.writeLedger(ledger),
+        },
+        botService: {
+          createBot: async (input) => {
+            const bot = await agentService.createBot({
+              name: input.name,
+              slug: input.slug,
+              systemPrompt: input.systemPrompt,
+              modelId: input.modelId,
+              expertSlug: input.expertSlug,
+            });
+            return { id: bot.id, slug: bot.slug };
+          },
+          getBotByExpertSlug: async (slug) => {
+            const bots = await agentService.listBots();
+            const match = (
+              bots as Array<{ id: string; expertSlug: string }>
+            ).find((b) => b.expertSlug === slug);
+            return match ? { id: match.id } : null;
+          },
+          deleteBot: async (id) => {
+            await agentService.deleteBot(id);
+          },
+        },
+        skillhub: {
+          install: async (input) => {
+            logger.warn(
+              { input, subsystem: "experthub" },
+              "workspace_skill_install_not_wired_skipping",
+            );
+            return { ok: true };
+          },
+        },
+        sync: openclawSyncService,
+        fs: {
+          writeFile: (p, data) => fsp.writeFile(p, data),
+          mkdir: async (p, opts) => {
+            await fsp.mkdir(p, opts);
+          },
+          rm: async (p, opts) => {
+            await fsp.rm(p, opts ?? { recursive: true });
+          },
+        },
+        agentsDir: path.join(env.openclawStateDir, "agents"),
+      },
+    });
+
+  // Wire cloud state change callback to sync refreshed cloud inventory without
+  // auto-switching the default model during startup or first-channel connect.
   configStore.onCloudStateChanged = async (_change) => {
     // Auto-select a valid default model: on login, pick a managed model;
     // on logout, fall back to any remaining BYOK/OAuth model (or leave
@@ -211,7 +366,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     gatewayClient,
     controlPlaneHealth,
     openclawProcess,
-    agentService: new AgentService(configStore, openclawSyncService),
+    agentService,
     channelService: new ChannelService(
       env,
       configStore,
@@ -242,6 +397,9 @@ export async function createContainer(): Promise<ControllerContainer> {
     attachmentStore,
     templateService: new TemplateService(configStore, openclawSyncService),
     skillhubService,
+    experthubCatalogManager,
+    installExpertFn,
+    createCustomExpertFn,
     openclawSyncService,
     openclawAuthService,
     quotaFallbackService,

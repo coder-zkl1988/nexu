@@ -50,6 +50,18 @@
   --color-warm-surface: #f6f3ec;
   --color-warm-surface-hover: #f2eee4;
 
+  /* ── Tabby brand colors — new UI palette ── */
+  --color-tabby-bg: #fcfcf8;
+  --color-tabby-sidebar: oklch(40 18% 96%);
+  --color-tabby-sidebar-hover: oklch(38 10% 93%);
+  --color-tabby-sidebar-active: oklch(38 8% 90%);
+  --color-tabby-canvas: oklch(40 10% 96%);
+  --color-tabby-orange: #fb923c;
+  --color-tabby-orange-hover: #f97316;
+  --color-tabby-border: #eae9e6;
+  --color-tabby-foreground: oklch(0 5% 17%);
+  --color-tabby-muted: oklch(0 0% 40%);
+
   /* ── Alpha Border ── */
   --color-border-subtle: rgba(0, 0, 0, 0.06);
   --color-border-strong: rgba(0, 0, 0, 0.12);

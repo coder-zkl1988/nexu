@@ -154,14 +154,7 @@ export function listModelProviderRuntimeDescriptorsFromProviders(
       const normalizedProviderBaseUrl = normalizeProviderBaseUrl(
         provider.baseUrl,
       );
-      const resolvedBaseUrl =
-        normalizedProviderBaseUrl &&
-        defaultBaseUrls.some(
-          (value) =>
-            normalizeProviderBaseUrl(value) === normalizedProviderBaseUrl,
-        )
-          ? (fallbackBaseUrl ?? normalizedProviderBaseUrl)
-          : (normalizedProviderBaseUrl ?? fallbackBaseUrl);
+      const resolvedBaseUrl = normalizedProviderBaseUrl ?? fallbackBaseUrl;
       if (resolvedBaseUrl === null) {
         return [];
       }

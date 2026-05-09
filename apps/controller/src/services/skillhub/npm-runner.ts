@@ -45,7 +45,7 @@ export async function ensureNpmAvailable(): Promise<void> {
   if (!ok) {
     availabilityProbe = null;
     throw new Error(
-      "NPM_MISSING: npm is not available on this system. Please install Node.js (which includes npm) from https://nodejs.org/ and restart Nexu.",
+      "NPM_MISSING: npm is not available on this system. Please install Node.js (which includes npm) from https://nodejs.org/ and restart Tabby.",
     );
   }
 }

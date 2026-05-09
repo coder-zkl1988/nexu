@@ -10,6 +10,7 @@ import { registerDesktopRewardsRoutes } from "../routes/desktop-rewards-routes.j
 import { registerDesktopRoutes } from "../routes/desktop-routes.js";
 import { registerDeviceControlRoutes } from "../routes/device-control-routes.js";
 import { registerDeviceTaskHistoryRoutes } from "../routes/device-task-history-routes.js";
+import { buildExperthubRoutes } from "../routes/experthub-routes.js";
 import { registerIntegrationRoutes } from "../routes/integration-routes.js";
 import { registerMediaRoutes } from "../routes/media-routes.js";
 import { registerMiscCompatRoutes } from "../routes/misc-compat-routes.js";
@@ -51,6 +52,14 @@ export function createApp(container: ControllerContainer) {
   registerIntegrationRoutes(app, container);
   registerArtifactRoutes(app, container);
   registerSkillhubRoutes(app, container);
+  app.route(
+    "/api/v1/experthub",
+    buildExperthubRoutes({
+      catalog: container.experthubCatalogManager,
+      installExpert: container.installExpertFn,
+      createCustomExpert: container.createCustomExpertFn,
+    }),
+  );
   registerUserRoutes(app, container);
   registerRuntimeConfigRoutes(app, container);
   registerWorkspaceTemplateRoutes(app, container);
@@ -61,7 +70,7 @@ export function createApp(container: ControllerContainer) {
   app.doc("/openapi.json", {
     openapi: "3.1.0",
     info: {
-      title: "Nexu Controller API",
+      title: "Tabby Controller API",
       version: "0.1.0",
     },
   });

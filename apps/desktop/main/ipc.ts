@@ -389,10 +389,10 @@ export function registerIpcHandlers(
   runtimeConfig: DesktopRuntimeConfig,
   diagnosticsReporter: DesktopDiagnosticsReporter | null,
   coldStartReady?: Promise<void>,
-): void {
+): () => void {
   ensureDesktopDevRendererLogTracking();
 
-  orchestrator.subscribe((runtimeEvent) => {
+  const unsubscribeOrchestrator = orchestrator.subscribe((runtimeEvent) => {
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send("host:runtime-event", runtimeEvent);
     }
@@ -907,4 +907,6 @@ export function registerIpcHandlers(
       line: typedPayload.line,
     });
   });
+
+  return unsubscribeOrchestrator;
 }

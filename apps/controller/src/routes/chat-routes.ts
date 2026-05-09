@@ -127,28 +127,31 @@ export function registerChatRoutes(
       },
     }),
     async (c) => {
-      const { botId, message } = c.req.valid("json");
+      const { botId, message, sessionKey } = c.req.valid("json");
 
-      // Send message to agent main session — do NOT pre-create the session
-      // here.  Pre-creating writes an empty key-based .jsonl file that
-      // appears as a ghost entry in the sessions list.  OpenClaw will create
-      // the real UUID-named JSONL and register it in sessions.json as part of
-      // processing chat.send, so we look it up afterwards.
-      const result = await chatService.sendLocalMessage(botId, message);
-
-      // Best-effort session lookup immediately after send.  sessions.json is
-      // flushed asynchronously by OpenClaw, so this may return null on the
-      // very first message.  The frontend handles that case with its own
-      // 3-second discovery retry loop — no server-side sleep needed here.
-      //
-      // Always look up via the main session key — chat.send always targets
-      // agent:{botId}:main regardless of which channel key the frontend
-      // sends in the body (the body's sessionKey is informational only).
-      const mainSessionKey = `agent:${botId}:main`;
-      const session = await container.sessionService.getSessionBySessionKey(
+      const result = await chatService.sendLocalMessage(
         botId,
-        mainSessionKey,
+        message,
+        sessionKey,
       );
+
+      // OpenClaw writes sessions.json asynchronously after chat.send returns.
+      // Give it up to ~1 s (2 attempts × 500 ms) to flush the index before
+      // returning null to the client (which then runs its own discovery loop).
+      const lookupKey = sessionKey || `agent:${botId}:main`;
+      let session: Awaited<
+        ReturnType<typeof container.sessionService.getSessionBySessionKey>
+      > = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        session = await container.sessionService.getSessionBySessionKey(
+          botId,
+          lookupKey,
+        );
+        if (session) break;
+      }
 
       return c.json({
         session,
