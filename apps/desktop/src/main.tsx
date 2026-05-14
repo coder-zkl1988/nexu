@@ -10,8 +10,7 @@ import React, {
 } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { Toaster, toast } from "sonner";
-import setupLoopVideoUrl from "../assets/setup-animation-loop.mp4";
-import setupVideoUrl from "../assets/setup-animation.mp4";
+import setupVideoUrl from "../assets/init-vedio.mp4";
 import type {
   AppInfo,
   DesktopChromeMode,
@@ -1097,13 +1096,26 @@ function DesktopShell() {
   const update = useAutoUpdate({ experience: updateExperience });
 
   // Setup animation phases:
-  // "playing" → main video (23s) plays once
-  // "looping" → short loop video repeats until cold-start is ready
+  // "active" → video looping + progress overlay visible
   // "fading" → overlay fades out (0.6s CSS transition)
   // "done" → overlay removed from DOM
-  const [setupPhase, setSetupPhase] = useState<
-    "playing" | "looping" | "fading" | "done"
-  >(window.nexuHost.bootstrap.needsSetupAnimation ? "playing" : "done");
+  const [setupPhase, setSetupPhase] = useState<"active" | "fading" | "done">(
+    window.nexuHost.bootstrap.needsSetupAnimation ? "active" : "done",
+  );
+
+  const [setupCurrentStage, setSetupCurrentStage] = useState<string | null>(
+    null,
+  );
+
+  const STAGE_LABELS: Record<string, string> = {
+    extracting: "正在解压组件...",
+    launchd_bootstrap: "正在启动后台服务...",
+    starting_controller: "正在启动控制服务...",
+    waiting_controller: "等待控制服务就绪...",
+    attaching_external: "正在连接运行时...",
+    starting_web: "正在启动网页服务...",
+    complete: "准备就绪...",
+  };
 
   // When animation finishes, notify main process to restore vibrancy
   useEffect(() => {
@@ -1119,10 +1131,8 @@ function DesktopShell() {
     void getRuntimeConfig()
       .then((config) => {
         setRuntimeConfig(config);
-        // Cold-start is done — if we're still in the looping phase, fade out.
-        // If main video hasn't finished yet, it will transition to fade on its
-        // own via onEnded (the main video is the minimum guaranteed animation).
-        setSetupPhase((prev) => (prev === "looping" ? "fading" : prev));
+        // Cold-start is done — if we're still in active phase, start fading.
+        setSetupPhase((prev) => (prev === "active" ? "fading" : prev));
       })
       .catch(() => null);
 
@@ -1153,6 +1163,10 @@ function DesktopShell() {
       }
       if (command.type === "develop:open-set-balance") {
         setShowSetBalanceDialog(true);
+        return;
+      }
+      if (command.type === "setup:progress") {
+        setSetupCurrentStage(command.stage);
         return;
       }
       if (command.type === "setup:complete") {
@@ -1446,10 +1460,8 @@ function DesktopShell() {
       />
 
       {/* Setup animation overlay — shown during first install / post-update extraction.
-          Phase flow: "playing" (main 23s video) → "looping" (4s loop until ready)
-                      → "fading" (0.6s opacity transition) → "done" (removed from DOM).
-          If cold-start finishes during the main video, it skips straight to "fading"
-          when the main video ends (no loop needed). */}
+          Single video loops until cold-start is ready, then fades out.
+          Progress panel shows current cold-start stage at bottom. */}
       {setupPhase !== "done" && (
         <div
           style={{
@@ -1481,46 +1493,106 @@ function DesktopShell() {
             }}
           />
 
-          {/* Both videos are mounted simultaneously. The loop video preloads
-              in the background while the main video plays, so the transition
-              is instant — no blank gap waiting for the loop video to buffer.
-              Visibility is controlled via CSS (display none/block). */}
-          <video
-            autoPlay
-            muted
-            playsInline
-            src={setupVideoUrl}
-            onEnded={() => {
-              setSetupPhase((prev) =>
-                prev === "playing"
-                  ? runtimeConfig
-                    ? "fading"
-                    : "looping"
-                  : prev,
-              );
-            }}
-            onError={() => setSetupPhase("done")}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              display: setupPhase === "playing" ? "block" : "none",
-            }}
-          />
           <video
             autoPlay
             muted
             playsInline
             loop
-            src={setupLoopVideoUrl}
+            src={setupVideoUrl}
             onError={() => setSetupPhase("fading")}
             style={{
               width: "100%",
               height: "100%",
               objectFit: "contain",
-              display: setupPhase === "looping" ? "block" : "none",
             }}
           />
+
+          {/* Progress panel */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 48,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "rgba(0, 0, 0, 0.75)",
+              backdropFilter: "blur(12px)",
+              borderRadius: 12,
+              padding: "16px 24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              minWidth: 220,
+            }}
+          >
+            {Object.entries(STAGE_LABELS).map(([stage, label]) => {
+              const stageOrder = Object.keys(STAGE_LABELS);
+              const currentIdx = stageOrder.indexOf(setupCurrentStage ?? "");
+              const thisIdx = stageOrder.indexOf(stage);
+              const isComplete = currentIdx >= 0 && thisIdx <= currentIdx;
+              const isCurrent = stage === setupCurrentStage;
+
+              return (
+                <div
+                  key={stage}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    opacity: isComplete ? 1 : 0.35,
+                    transition: "opacity 0.3s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      background: isComplete
+                        ? "rgba(255, 255, 255, 0.2)"
+                        : "rgba(255, 255, 255, 0.08)",
+                      border: isCurrent
+                        ? "2px solid rgba(255, 255, 255, 0.9)"
+                        : isComplete
+                          ? "2px solid rgba(255, 255, 255, 0.3)"
+                          : "2px solid rgba(255, 255, 255, 0.1)",
+                    }}
+                  >
+                    {isComplete && (
+                      <svg
+                        width={10}
+                        height={10}
+                        viewBox="0 0 10 10"
+                        fill="none"
+                      >
+                        <path
+                          d="M2 5L4 7L8 3"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      color: isComplete ? "#fff" : "rgba(255,255,255,0.45)",
+                      fontSize: 13,
+                      fontWeight: isCurrent ? 600 : 400,
+                      lineHeight: "18px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
