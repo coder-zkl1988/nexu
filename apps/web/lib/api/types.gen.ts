@@ -4125,6 +4125,7 @@ export type GetApiV1ExperthubCatalogResponses = {
             tags?: Array<string>;
             version: string;
             author?: string;
+            avatarDataUrl?: string;
         }>;
         installedSlugs: Array<string>;
         installedExperts: Array<{
@@ -4261,6 +4262,7 @@ export type GetApiV1ExperthubExpertsBySlugResponses = {
         workspaceFiles?: {
             [key: string]: string;
         };
+        avatarDataUrl?: string;
     };
 };
 

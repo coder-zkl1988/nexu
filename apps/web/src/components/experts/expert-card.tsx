@@ -2,13 +2,146 @@ import {
   useInstallExpert,
   useUninstallExpert,
 } from "@/hooks/use-experthub-catalog";
-import { cn } from "@/lib/utils";
 import type { MinimalExpert } from "@nexu/shared";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+
+// ── Theme palette ──────────────────────────────────────────────────────────
+
+interface ThemePalette {
+  gradient: string;
+  infoBg: string;
+  tagBg: string;
+  tagText: string;
+  tagBorder: string;
+  footerBg: string;
+  barcodeColor: string;
+}
+
+const THEMES: ThemePalette[] = [
+  {
+    gradient: "linear-gradient(150deg, #f9d77e 0%, #e8945a 50%, #c05c28 100%)",
+    infoBg: "#fdf6ee",
+    tagBg: "#fcebd3",
+    tagText: "#7a3a10",
+    tagBorder: "#e8a870",
+    footerBg: "#fdf0e0",
+    barcodeColor: "#a04820",
+  },
+  {
+    gradient: "linear-gradient(150deg, #a8ddf8 0%, #3eb0e0 50%, #0075b0 100%)",
+    infoBg: "#f0f9ff",
+    tagBg: "#d8f0fc",
+    tagText: "#004870",
+    tagBorder: "#6cc4f0",
+    footerBg: "#e8f5fd",
+    barcodeColor: "#005890",
+  },
+  {
+    gradient: "linear-gradient(150deg, #d4b483 0%, #9a7040 50%, #5c3810 100%)",
+    infoBg: "#fdf8f0",
+    tagBg: "#f5e8d0",
+    tagText: "#4a2808",
+    tagBorder: "#c09050",
+    footerBg: "#fbf4e8",
+    barcodeColor: "#6a3818",
+  },
+  {
+    gradient: "linear-gradient(150deg, #ffc8e8 0%, #d860a0 50%, #980060 100%)",
+    infoBg: "#fff5fa",
+    tagBg: "#ffe0f0",
+    tagText: "#780050",
+    tagBorder: "#e880c0",
+    footerBg: "#fff0f8",
+    barcodeColor: "#a00060",
+  },
+  {
+    gradient: "linear-gradient(150deg, #d8c8f8 0%, #8060e0 50%, #4020a0 100%)",
+    infoBg: "#f8f5ff",
+    tagBg: "#ece0ff",
+    tagText: "#300880",
+    tagBorder: "#a080e0",
+    footerBg: "#f5f0ff",
+    barcodeColor: "#5030b0",
+  },
+  {
+    gradient: "linear-gradient(150deg, #b8f0c8 0%, #30c870 50%, #008840 100%)",
+    infoBg: "#f0fff5",
+    tagBg: "#d0f8e0",
+    tagText: "#005828",
+    tagBorder: "#60d090",
+    footerBg: "#e8fdf0",
+    barcodeColor: "#007838",
+  },
+  {
+    gradient: "linear-gradient(150deg, #ffe080 0%, #ff8c38 50%, #d04800 100%)",
+    infoBg: "#fff8f0",
+    tagBg: "#ffecd0",
+    tagText: "#882000",
+    tagBorder: "#ffb060",
+    footerBg: "#fff4e8",
+    barcodeColor: "#c05000",
+  },
+  {
+    gradient: "linear-gradient(150deg, #80e8ff 0%, #1090e0 50%, #0040a0 100%)",
+    infoBg: "#f0f8ff",
+    tagBg: "#d0eeff",
+    tagText: "#002870",
+    tagBorder: "#50b0f0",
+    footerBg: "#e8f5ff",
+    barcodeColor: "#0050b8",
+  },
+  {
+    gradient:
+      "linear-gradient(150deg, #ffdc80 0%, #ff8080 35%, #d060d0 70%, #6080ff 100%)",
+    infoBg: "#fff8fd",
+    tagBg: "#fde8f8",
+    tagText: "#700060",
+    tagBorder: "#e090d0",
+    footerBg: "#fdf0fc",
+    barcodeColor: "#9030a0",
+  },
+  {
+    gradient: "linear-gradient(150deg, #b0f8d8 0%, #20c880 50%, #007850 100%)",
+    infoBg: "#f0fff8",
+    tagBg: "#d0f8ec",
+    tagText: "#005038",
+    tagBorder: "#50d0a0",
+    footerBg: "#e8fdf4",
+    barcodeColor: "#008858",
+  },
+];
+
+// ── Barcode decoration ─────────────────────────────────────────────────────
+
+function BarcodeLines({ color }: { color: string }) {
+  // CSS-rendered barcode pattern — static decorative element
+  return (
+    <div
+      className="h-4 w-[50px] opacity-45"
+      aria-hidden
+      style={{
+        backgroundImage: `repeating-linear-gradient(
+          90deg,
+          ${color} 0px,
+          ${color} 1.5px,
+          transparent 1.5px,
+          transparent 3px
+        )`,
+        backgroundSize: "50px 16px",
+        maskImage:
+          "linear-gradient(to top, transparent 0%, black 20%, black 80%, transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to top, transparent 0%, black 20%, black 80%, transparent 100%)",
+      }}
+    />
+  );
+}
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 export function ExpertCard({
   expert,
@@ -26,6 +159,7 @@ export function ExpertCard({
   customAvatarUrl?: string;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const installMutation = useInstallExpert();
   const uninstallMutation = useUninstallExpert();
   const [pendingAction, setPendingAction] = useState<
@@ -33,12 +167,16 @@ export function ExpertCard({
   >(null);
 
   const isMutating = pendingAction !== null;
+  // biome-ignore lint/style/noNonNullAssertion: THEMES is fixed-length, index bounded 0–9
+  const theme = THEMES[expert.slug.charCodeAt(0) % THEMES.length]!;
+  const avatarUrl = customAvatarUrl || expert.avatarDataUrl;
 
   async function handleInstall() {
     setPendingAction("install");
     try {
-      await installMutation.mutateAsync(expert.slug);
+      const result = await installMutation.mutateAsync(expert.slug);
       toast.success(t("experts.install_success", { botName: expert.name }));
+      navigate(`/workspace/chat?botId=${encodeURIComponent(result.botId)}`);
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -69,115 +207,167 @@ export function ExpertCard({
     <Link
       to={detailTo}
       draggable={false}
-      className={cn("card flex flex-col p-4")}
+      className="flex flex-col items-center h-full filter drop-shadow-[0_16px_32px_rgba(0,0,0,0.45)] transition-transform duration-250 ease-[cubic-bezier(.34,1.56,.64,1)] hover:-translate-y-2 hover:scale-[1.02]"
     >
-      {/* Header: Emoji + Name + Category */}
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-[10px] bg-surface-2 border border-border flex items-center justify-center shrink-0 overflow-hidden">
-          {customAvatarUrl ? (
+      <div className="w-full h-full rounded-[20px] overflow-hidden flex flex-col border-2 border-white/10">
+        {/* Image zone */}
+        <div
+          className="w-full h-48 relative overflow-hidden shrink-0"
+          style={{ background: theme.gradient }}
+        >
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)",
+              backgroundSize: "13px 13px",
+            }}
+          />
+          {avatarUrl ? (
             <img
-              src={customAvatarUrl}
+              src={avatarUrl}
               alt=""
-              className="w-full h-full object-cover"
+              className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[96%] w-auto object-contain object-bottom z-[2]"
             />
           ) : (
-            <span aria-hidden className="text-[22px] leading-none">
+            <span
+              aria-hidden
+              className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[72px] leading-none z-[2]"
+            >
               {expert.emoji}
             </span>
           )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold text-text-heading truncate">
-            {expert.name}
-          </div>
           {expert.category && (
-            <span className="text-[11px] text-text-muted">
+            <span className="absolute top-3 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/35 backdrop-blur-[6px] border border-white/20 text-white text-[9px] font-black tracking-[2px] uppercase px-3 py-1 rounded-[20px] z-10">
               {expert.category}
             </span>
           )}
         </div>
-      </div>
 
-      {/* Description */}
-      <p className="text-[12px] text-text-tertiary leading-[1.5] line-clamp-2 mb-3">
-        {expert.description}
-      </p>
+        {/* Info zone */}
+        <div
+          className="px-3.5 pt-[30px] pb-3 flex flex-col items-center gap-[7px] -mt-[30px] relative z-[4] flex-1"
+          style={{
+            background: `linear-gradient(to bottom, transparent 0px, ${theme.infoBg} 30px)`,
+          }}
+        >
+          <div
+            className="text-sm font-black tracking-[0.5px] text-center"
+            style={{ color: "#111" }}
+          >
+            {expert.name}
+          </div>
+          {expert.description && (
+            <p
+              className="text-[11px] text-[#666] text-center leading-[1.5] px-1 line-clamp-2"
+              title={expert.description}
+            >
+              {expert.description}
+            </p>
+          )}
+          {expert.tags && expert.tags.length > 0 && (
+            <div className="flex gap-1 mt-0.5 overflow-x-auto no-scrollbar max-w-full">
+              {expert.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag}
+                  className="text-[9px] font-extrabold px-2 py-[3px] rounded-[20px] tracking-[0.2px] shrink-0"
+                  style={{
+                    background: theme.tagBg,
+                    color: theme.tagText,
+                    border: `1.5px solid ${theme.tagBorder}`,
+                  }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
 
-      {/* Footer */}
-      <div
-        className="mt-auto flex items-center justify-between"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }}
-      >
-        <span />
-        {isCustom ? (
-          <div className="flex items-center gap-2">
-            {customEditTo && (
-              <Link
-                to={customEditTo}
-                onClick={(e) => e.stopPropagation()}
-                className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-text-primary hover:bg-surface-2 hover:border-border-hover transition-colors"
-              >
-                {t("experts.edit")}
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={(e) => {
+        {/* Footer */}
+        <div
+          className="border-t border-black/[0.07] px-3.5 py-2 flex items-center justify-between gap-1.5 relative z-[4]"
+          style={{ background: theme.footerBg }}
+        >
+          <span className="text-[9px] font-extrabold text-[#999] tracking-[0.4px]">
+            {expert.category ?? ""}
+          </span>
+          <BarcodeLines color={theme.barcodeColor} />
+          <div
+            className="flex items-center gap-1 shrink-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 e.stopPropagation();
-                void handleUninstall();
-              }}
-              disabled={isMutating}
-              className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 hover:border-[var(--color-danger)]/30 transition-colors"
-            >
-              {pendingAction === "uninstall"
-                ? t("experts.removing")
-                : t("experts.remove")}
-            </button>
+              }
+            }}
+          >
+            {isCustom ? (
+              <>
+                {customEditTo && (
+                  <Link
+                    to={customEditTo}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded-md px-2 py-0.5 text-[10px] font-medium border border-border text-text-primary hover:bg-surface-2 transition-colors"
+                  >
+                    {t("experts.edit")}
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void handleUninstall();
+                  }}
+                  disabled={isMutating}
+                  className="rounded-md px-2 py-0.5 text-[10px] font-medium border border-border text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 transition-colors"
+                >
+                  {pendingAction === "uninstall"
+                    ? t("experts.removing")
+                    : t("experts.remove")}
+                </button>
+              </>
+            ) : installed ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void handleUninstall();
+                }}
+                disabled={isMutating}
+                className="rounded-md px-2 py-0.5 text-[10px] font-medium border border-border text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 transition-colors"
+              >
+                {pendingAction === "uninstall"
+                  ? t("experts.removing")
+                  : t("experts.remove")}
+              </button>
+            ) : isMutating ? (
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium border border-border text-text-muted cursor-default">
+                <Loader2 size={10} className="animate-spin" />
+                {t("experts.installing")}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void handleInstall();
+                }}
+                disabled={isMutating}
+                className="rounded-md px-2 py-0.5 text-[10px] font-medium border border-border text-text-primary hover:bg-surface-2 transition-colors"
+              >
+                {t("experts.install")}
+              </button>
+            )}
           </div>
-        ) : isMutating && pendingAction === "install" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-text-muted cursor-default">
-            <Loader2 size={12} className="animate-spin" />
-            {t("experts.installing")}
-          </span>
-        ) : installed ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void handleUninstall();
-            }}
-            disabled={isMutating}
-            className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 hover:border-[var(--color-danger)]/30 transition-colors"
-          >
-            {pendingAction === "uninstall"
-              ? t("experts.removing")
-              : t("experts.remove")}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void handleInstall();
-            }}
-            disabled={isMutating}
-            className="rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-text-primary hover:bg-surface-2 hover:border-border-hover transition-colors"
-          >
-            {t("experts.install")}
-          </button>
-        )}
+        </div>
       </div>
     </Link>
   );

@@ -299,6 +299,7 @@ function compilePlugins(
     // toggle its `enabled` flag (hot-reload) instead of mutating
     // plugins.allow which triggers a full gateway restart (~11s).
     "langfuse-tracer",
+    "nexu-a2ui",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -361,6 +362,9 @@ function compilePlugins(
         config: {
           contactUrl: "https://nexu.app/contact",
         },
+      },
+      "nexu-a2ui": {
+        enabled: true,
       },
       ...(resolvedMiniMaxOauth
         ? {

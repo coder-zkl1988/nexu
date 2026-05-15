@@ -1,0 +1,107 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Tabby" [ref=e7]
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - link "首页" [ref=e10] [cursor=pointer]:
+            - /url: /workspace/home
+            - img [ref=e11]
+            - text: 首页
+          - link "新对话" [ref=e14] [cursor=pointer]:
+            - /url: /workspace/chat
+            - img [ref=e15]
+            - text: 新对话
+          - link "技能商店 10" [ref=e229] [cursor=pointer]:
+            - /url: /workspace/skills
+            - img [ref=e18]
+            - text: 技能商店
+            - generic [ref=e230]: "10"
+          - link "自动化 Beta" [ref=e20] [cursor=pointer]:
+            - /url: /workspace/automations
+            - img [ref=e21]
+            - text: 自动化
+            - generic [ref=e23]: Beta
+          - link "AI·伙伴" [ref=e24] [cursor=pointer]:
+            - /url: /workspace/experts
+            - img [ref=e25]
+            - text: AI·伙伴
+          - link "设备" [ref=e28] [cursor=pointer]:
+            - /url: /workspace/devices
+            - img [ref=e29]
+            - text: 设备
+        - generic [ref=e31]:
+          - generic [ref=e32]: 对话
+          - button "Web gateway-client · webchat Live Web · 41m ago" [ref=e266] [cursor=pointer]:
+            - img "Web" [ref=e236]
+            - generic [ref=e239]:
+              - generic [ref=e240]:
+                - generic [ref=e241]: gateway-client · webchat
+                - generic [ref=e242]: Live
+              - generic [ref=e243]:
+                - generic [ref=e244]: Web
+                - generic [ref=e245]: ·
+                - generic [ref=e246]: 41m ago
+      - button "✦ 积分余额 0 积分" [ref=e249] [cursor=pointer]:
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: ✦
+            - generic [ref=e40]: 积分余额
+          - generic [ref=e41]: 0 积分
+      - generic [ref=e42]:
+        - button "设置" [ref=e43] [cursor=pointer]:
+          - img [ref=e44]
+          - generic [ref=e47]: 设置
+        - generic [ref=e48]:
+          - button "Help" [ref=e50] [cursor=pointer]:
+            - img [ref=e51]
+          - link "GitHub" [ref=e54] [cursor=pointer]:
+            - /url: https://github.com/nexu-io/nexu
+            - img "GitHub" [ref=e55]
+      - button "D Desktop User desktop@nexu.local" [ref=e59] [cursor=pointer]:
+        - generic [ref=e60]: D
+        - generic [ref=e61]:
+          - generic [ref=e62]: Desktop User
+          - generic [ref=e63]: desktop@nexu.local
+        - img [ref=e64]
+    - main [ref=e70]:
+      - main [ref=e268]:
+        - generic [ref=e270]:
+          - generic [ref=e271]:
+            - img "Tabby mascot" [ref=e272]
+            - img "Tabby mascot colorful" [ref=e273]
+          - heading "Happy Tabby" [level=2] [ref=e274]
+          - generic [ref=e277]:
+            - textbox "问问 Tabby（Enter 发送，Shift+Enter 换行）" [ref=e279]
+            - generic [ref=e280]:
+              - generic [ref=e281]:
+                - button [ref=e282] [cursor=pointer]:
+                  - img [ref=e283]
+                - button "Skills" [ref=e285] [cursor=pointer]:
+                  - img [ref=e286]
+                  - text: Skills
+              - generic [ref=e288]:
+                - generic [ref=e289]:
+                  - button "Local Ch" [active] [ref=e290] [cursor=pointer]:
+                    - text: Local Ch
+                    - img [ref=e291]
+                  - generic [ref=e297]:
+                    - button "Local Chat" [ref=e298] [cursor=pointer]:
+                      - img [ref=e299]
+                      - generic [ref=e301]: Local Chat
+                    - button "娜娜" [ref=e302] [cursor=pointer]:
+                      - img [ref=e303]
+                      - generic [ref=e305]: 娜娜
+                    - button "人类学家" [ref=e306] [cursor=pointer]:
+                      - img [ref=e307]
+                      - generic [ref=e309]: 人类学家
+                    - button "历史学家" [ref=e310] [cursor=pointer]:
+                      - img [ref=e311]
+                      - generic [ref=e313]: 历史学家
+                    - button "添加伙伴" [ref=e315] [cursor=pointer]:
+                      - img [ref=e316]
+                      - text: 添加伙伴
+                - generic [ref=e293]: MiniMax-M2.7-highspeed
+                - button [disabled] [ref=e294]:
+                  - img [ref=e295]
+  - region "Notifications alt+T"

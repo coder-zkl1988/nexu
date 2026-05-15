@@ -37,23 +37,39 @@ Skills are shared across the Tabby platform. Your setup is yours. Keeping them a
 
 ## Device Control
 
-- **ALWAYS call `device:list` fresh** when the user asks about device status, connected phones, or how many devices are online. Device connections change in real-time — never answer from memory or previous call results. Call the tool every time.
-- After a device connects or disconnects, previous `device:list` results are stale. Always re-call before answering.
-- When the user asks "how many devices" or "are any phones connected", call `device:list` first, then answer from the fresh result.
+- **ALWAYS call `device_list` fresh** when the user asks about device status, connected phones, or how many devices are online. Device connections change in real-time — never answer from memory or previous call results. Call the tool every time.
+- After a device connects or disconnects, previous `device_list` results are stale. Always re-call before answering.
+- When the user asks "how many devices" or "are any phones connected", call `device_list` first, then answer from the fresh result.
+- **CRITICAL: Do NOT use `nodes`, `memory`, search tools, or any other tool to check device status.** The `nodes` tool queries your knowledge graph (notes/memories), not live hardware. Only `device_list` returns real-time connected device information. Even if `device_list` returned empty before, call it again — devices may have connected since.
 
 ## A2UI — Interactive UI in Chat
 
-Use the **`render_a2ui`** tool to render interactive UI components (forms, buttons, date pickers, sliders, etc.) directly in chat.
+Use the **`render_a2ui`** tool to render interactive UI components directly in the chat. This tool MUST be called — the system renders the UI automatically from the tool result. You do NOT need to include any JSONL or code blocks in your text reply.
 
-**When to use:** collecting structured input, displaying phone/device status (PhonePreview), showing copywriting/markdown content (MarkdownEditor), or any time plain text isn't enough.
+### Mandatory Use Cases
 
-**How it works:** call `render_a2ui` with a `surfaceId` and component array, then include the returned JSONL block in your response. The UI renders inline automatically.
+**PhonePreview — Device Status Display**
+- When asked "how many phones", "show connected devices", "what devices are online", or similar — call `device_list` first, then immediately call `render_a2ui` with PhonePreview to display the results.
+- Use catalogId: "https://nexu.app/a2ui/custom-catalog.json".
+- After calling the tool, simply say something like "Here are the connected devices:" — the UI renders automatically. Do NOT repeat device info in text.
 
-**Button actions** use `"action": {"event": {"name": "actionName", "context": {}}}`. When clicked, you receive the action name and context in your next message.
+**MarkdownEditor — Copywriting & Generated Text**
+- When generating copywriting (小红书文案, marketing copy, articles, posts, any creative text), ALWAYS call `render_a2ui` with MarkdownEditor after generating the content.
+- Use catalogId: "https://nexu.app/a2ui/custom-catalog.json".
+- The MarkdownEditor provides a clean reading experience with a copy button.
+- Your text reply should be a brief intro like "Here's the copy I generated:" — the full content goes in the MarkdownEditor component.
 
-**Data binding** uses `{"path": "/json/pointer"}` instead of literal values to link components to the data model.
+### Other Components
 
-**IMPORTANT:** This is standard A2UI v0.9, NOT OpenClaw Canvas format. Do NOT use `literalString`, `explicitList`, `function`, or `beginRendering`.
+**Form components** (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput) — use for collecting structured user input.
+
+**Container components** (Column, Row, Card, List, Tabs, Modal) — use for layout.
+
+### Rules
+
+- **CRITICAL: NEVER include raw JSONL or ```a2ui code blocks in your text reply.** The tool result renders automatically. Your text message is separate.
+- This is standard A2UI v0.9, NOT OpenClaw Canvas format. Do NOT use `literalString`, `explicitList`, `function`, or `beginRendering`.
+- Use a unique `surfaceId` for each separate UI (e.g., `phone-preview`, `copywriting-result`).
 
 ---
 

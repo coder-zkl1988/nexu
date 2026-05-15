@@ -6,7 +6,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getApiV1Bots, getApiV1BotsDefault } from "../../lib/api/sdk.gen";
 
 // Every local chat message targets the agent main webchat session.
@@ -14,19 +14,21 @@ function buildMainSessionKey(botId: string): string {
   return `agent:${botId}:main`;
 }
 
-const SESSION_DISCOVERY_MAX_ATTEMPTS = 30;
-const SESSION_DISCOVERY_INTERVAL_MS = 100;
+const SESSION_DISCOVERY_MAX_ATTEMPTS = 120;
+const SESSION_DISCOVERY_INTERVAL_MS = 500;
 
 export function LocalChatPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlBotId = searchParams.get("botId");
 
   const [selectedBot, setSelectedBot] = useState<BotItem | null>(null);
-  const [sending, setSending] = useState(false);
   const [waitingReply, setWaitingReply] = useState(false);
 
   const contextKeyRef = useRef<string>("");
+  const urlBotResolvedRef = useRef(false);
 
   // Fetch bots
   const { data: botsData, isLoading: botsLoading } = useQuery({
@@ -67,12 +69,25 @@ export function LocalChatPage() {
     }
   }, [noActiveBots, botsLoading, createDefaultBot, createError]);
 
-  // Auto-select the first active bot
+  // Auto-select bot: prefer URL botId, then first active bot
   useEffect(() => {
-    if (activeBots.length > 0 && !selectedBot && activeBots[0]) {
+    if (activeBots.length === 0 || selectedBot) return;
+
+    // Resolve URL botId once
+    if (urlBotId && !urlBotResolvedRef.current) {
+      const target = activeBots.find((b) => b.id === urlBotId);
+      if (target) {
+        urlBotResolvedRef.current = true;
+        setSelectedBot(target);
+        return;
+      }
+    }
+
+    // Fall back to first active bot
+    if (activeBots[0]) {
       setSelectedBot(activeBots[0]);
     }
-  }, [activeBots, selectedBot]);
+  }, [activeBots, selectedBot, urlBotId]);
 
   // Bot selection
   const handleSelectBot = useCallback((bot: BotItem) => {
@@ -88,8 +103,6 @@ export function LocalChatPage() {
       const ctxKey = botId;
       contextKeyRef.current = ctxKey;
       const mainSessionKey = buildMainSessionKey(botId);
-
-      setSending(true);
 
       try {
         const onlyImage = atts[0];
@@ -129,7 +142,6 @@ export function LocalChatPage() {
         });
         const responseData = (await rawRes.json()) as Record<string, unknown>;
 
-        setSending(false);
         setWaitingReply(true);
 
         if (contextKeyRef.current !== ctxKey) return;
@@ -188,7 +200,6 @@ export function LocalChatPage() {
           setWaitingReply(false);
         }
       } catch {
-        setSending(false);
         setWaitingReply(false);
       }
     },
@@ -234,7 +245,7 @@ export function LocalChatPage() {
                 selectedBot={selectedBot}
                 onSelectBot={handleSelectBot}
                 onSend={sendMessage}
-                sending={sending}
+                sending={false}
                 waitingReply={waitingReply}
                 disabled={!selectedBot || isCreatingBot}
                 placeholder={placeholder}

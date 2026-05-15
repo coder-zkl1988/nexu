@@ -441,8 +441,8 @@ WHEN TO USE:
 
 HOW TO USE:
 1. Call this tool with a unique surfaceId and an array of component definitions.
-2. Include the returned JSONL in your response inside a \`\`\`a2ui fenced code block.
-3. The UI will render inline in the chat automatically.
+2. The tool result is automatically rendered as interactive UI. Do NOT copy, repeat, or echo the JSONL in your text response. Just reply naturally — the UI appears alongside your message.
+3. CRITICAL: NEVER include raw JSONL or \`\`\`a2ui code blocks in your text output. The system renders UI automatically. Your text and A2UI are separate.
 
 BUTTON ACTIONS:
 - Use \`"action": {"event": {"name": "actionName", "context": {}}}\` for buttons.
@@ -459,8 +459,8 @@ COMPONENT TREE:
 NOTE: This is standard A2UI v0.9 format. It is NOT OpenClaw Canvas format — do not use "literalString", "explicitList", "function", or "beginRendering".
 
 CUSTOM COMPONENTS:
-- PhonePreview: Show connected phone devices with name, model, status, and screenshot. Use `catalogId: "https://nexu.app/a2ui/custom-catalog.json"` when using this.
-- MarkdownEditor: Display markdown/copywriting content with a copy button. Use `catalogId: "https://nexu.app/a2ui/custom-catalog.json"` when using this.`,
+- PhonePreview: Show connected phone devices with name, model, status, and screenshot. Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using this.
+- MarkdownEditor: Display markdown/copywriting content with a copy button. Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using this.`,
 
             parameters: {
               type: "object",
@@ -475,46 +475,45 @@ CUSTOM COMPONENTS:
                   description:
                     "Catalog ID for custom components. Use 'https://nexu.app/a2ui/custom-catalog.json' when using PhonePreview or MarkdownEditor components. Omit for standard components.",
                 },
-          },
-          components: {
-            type: "array",
-            description:
-              "Array of component definitions. Each component must have a unique 'id' and a 'type'. Container components reference children by ID.",
-            items: {
-              oneOf: COMPONENT_SCHEMAS.map((s) => ({
+              components: {
+                type: "array",
+                description:
+                  "Array of component definitions. Each component must have a unique 'id' and a 'type'. Container components reference children by ID.",
+                items: {
+                  oneOf: COMPONENT_SCHEMAS.map((s) => ({
+                    type: "object",
+                    properties: s.properties,
+                    required: s.required,
+                    additionalProperties: false,
+                  })),
+                },
+              },
+              initialData: {
                 type: "object",
-                properties: s.properties,
-                required: s.required,
-                additionalProperties: false,
-              })),
+                description:
+                  "Optional initial data model values. Each key becomes a top-level path in the data model. Use this to pre-fill form values.",
+              },
             },
+            required: ["surfaceId", "components"],
           },
-          initialData: {
-            type: "object",
-            description:
-              "Optional initial data model values. Each key becomes a top-level path in the data model. Use this to pre-fill form values.",
+
+          async execute(_toolCallId, params) {
+            const jsonl = generateA2UIJSONL(
+              params.surfaceId,
+              params.components,
+              params.initialData,
+              params.catalogId,
+            );
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: ["```a2ui", jsonl, "```"].join("\n"),
+                },
+              ],
+            };
           },
-        },
-        required: ["surfaceId", "components"],
-      },
-
-      async execute(_toolCallId, params) {
-        const jsonl = generateA2UIJSONL(
-          params.surfaceId,
-          params.components,
-          params.initialData,
-          params.catalogId,
-        );
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: ["```a2ui", jsonl, "```"].join("\n"),
-            },
-          ],
-        };
-      },
     });
   },
 };

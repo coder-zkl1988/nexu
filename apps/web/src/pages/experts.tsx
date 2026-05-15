@@ -56,7 +56,18 @@ export default function ExpertsPage() {
   const { tab, tag, q } = viewState;
   const debouncedQuery = useDebounce(q, 150);
 
-  // Default to "yours" tab if user has installed experts and no tab is explicitly set
+  // Resolve the effective tab during render so the correct content is painted in
+  // a single commit. Without this, the "explore" grid renders first (because the
+  // URL has no explicit tab) and then an effect switches to "yours" — causing a
+  // visible flash even with useLayoutEffect.
+  const effectiveTab: ExpertsTab = useMemo(() => {
+    if (searchParams.has("tab")) return tab;
+    if (data && (data.installedSlugs?.length ?? 0) > 0) return "yours";
+    return tab;
+  }, [tab, data, searchParams.has("tab")]);
+
+  // Sync the URL when auto-defaulting to "yours" (one-shot, render-time decision
+  // already applied via effectiveTab — this just makes the URL bookmarkable).
   const prevDataRef = useRef(false);
   useEffect(() => {
     if (
@@ -68,7 +79,6 @@ export default function ExpertsPage() {
       prevDataRef.current = true;
       updateViewState({ tab: "yours" });
     }
-    // Only run once when data first loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, searchParams.has("tab")]);
 
@@ -132,34 +142,32 @@ export default function ExpertsPage() {
     [data?.installedSlugs],
   );
 
-  // Compute all tags (union of tags + categories for a richer filter set)
+  // Compute department category chips
   const tagChips = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const expert of allExperts) {
-      for (const tg of expert.tags ?? []) {
-        counts[tg] = (counts[tg] ?? 0) + 1;
-      }
+      const cat = expert.category;
+      if (cat) counts[cat] = (counts[cat] ?? 0) + 1;
     }
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
       .map(([t, count]) => ({ id: t, label: t, count }));
   }, [allExperts]);
 
   // Base list depending on tab
   const baseList = useMemo(() => {
-    if (tab === "yours") {
+    if (effectiveTab === "yours") {
       return allExperts.filter((e) => installedSlugs.has(e.slug));
     }
     return allExperts.filter((e) => !customSlugs.has(e.slug));
-  }, [tab, allExperts, installedSlugs, customSlugs]);
+  }, [effectiveTab, allExperts, installedSlugs, customSlugs]);
 
   // Filter by tag and search
   const filteredExperts = useMemo(() => {
     let list = [...baseList];
 
     if (tag) {
-      list = list.filter((e) => (e.tags ?? []).includes(tag));
+      list = list.filter((e) => e.category === tag);
     }
 
     if (debouncedQuery.trim()) {
@@ -179,7 +187,7 @@ export default function ExpertsPage() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset triggers
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [debouncedQuery, tag, tab]);
+  }, [debouncedQuery, tag, effectiveTab]);
 
   // Intersection Observer for lazy loading
   const loadMore = useCallback(() => {
@@ -207,7 +215,7 @@ export default function ExpertsPage() {
 
   const visibleExperts = filteredExperts.slice(0, visibleCount);
 
-  // Category tabs (pills) — "All" + top tags that match current base list
+  // Category tabs (pills) — "All" + department categories
   const categoryPills = useMemo(() => {
     const all = {
       id: "all",
@@ -215,11 +223,11 @@ export default function ExpertsPage() {
       count: baseList.length,
     };
     const others = tagChips
-      .filter((tc) => baseList.some((e) => (e.tags ?? []).includes(tc.id)))
+      .filter((tc) => baseList.some((e) => e.category === tc.id))
       .map((tc) => ({
         id: tc.id,
         label: tc.label,
-        count: baseList.filter((e) => (e.tags ?? []).includes(tc.id)).length,
+        count: baseList.filter((e) => e.category === tc.id).length,
       }));
     return [all, ...others];
   }, [baseList, tagChips, t]);
@@ -279,181 +287,189 @@ export default function ExpertsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-10">
-        <div>
-          <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
-            {t("experts.title")}
-          </h1>
-          <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
-            {t("experts.subtitle")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-            />
-            <input
-              type="text"
-              value={q}
-              onChange={(e) => updateViewState({ q: e.target.value })}
-              placeholder={t("experts.search.placeholder")}
-              className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
-            />
+    <div className="h-full flex flex-col">
+      {/* Fixed header area */}
+      <div className="shrink-0 px-6 pt-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-10">
+          <div>
+            <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
+              {t("experts.title")}
+            </h1>
+            <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
+              {t("experts.subtitle")}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+              />
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => updateViewState({ q: e.target.value })}
+                placeholder={t("experts.search.placeholder")}
+                className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Top-level tabs: Yours / Explore + Custom button */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2">
-          {(
-            [
-              {
-                id: "yours" as const,
-                label: t("experts.tabs.yours"),
-                icon: Settings2,
-              },
-              {
-                id: "explore" as const,
-                label: t("experts.tabs.explore"),
-                icon: Compass,
-              },
-            ] satisfies readonly {
-              id: ExpertsTab;
-              label: string;
-              icon: typeof Compass;
-            }[]
-          ).map((tabDef) => {
-            const active = tab === tabDef.id;
-            const TabIcon = tabDef.icon;
-            return (
-              <button
-                key={tabDef.id}
-                type="button"
-                onClick={() => {
-                  updateViewState({
-                    tab: tabDef.id,
-                    tag: null,
-                  });
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
-                  active
-                    ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
-                    : "text-text-secondary hover:text-text-primary",
-                )}
-              >
-                <TabIcon size={14} />
-                {tabDef.label}
-                {tabDef.id === "yours" && yoursCount > 0 && active && (
-                  <span className="tabular-nums text-[12px] text-text-secondary">
-                    {yoursCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <Link
-          to="/workspace/experts/custom"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF5A3C] text-white text-[13px] font-medium hover:opacity-90 transition-opacity"
-        >
-          <Wand2 size={14} />
-          {t("experts.custom_create")}
-        </Link>
-      </div>
-
-      {/* Category pills */}
-      <div className="relative mb-5">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
-          {categoryPills.map((pill) => {
-            const active =
-              (tag === null && pill.id === "all") || tag === pill.id;
-            return (
-              <button
-                key={pill.id}
-                type="button"
-                onClick={() =>
-                  updateViewState({
-                    tag: pill.id === "all" ? null : pill.id,
-                  })
-                }
-                className={cn(
-                  "shrink-0 inline-flex items-center justify-center rounded-full h-7 px-3 text-[11px] leading-none font-medium transition-all",
-                  active
-                    ? "bg-[var(--color-accent)] text-white"
-                    : "border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-border-hover",
-                )}
-              >
-                {pill.label}
-                <span
+        {/* Top-level tabs: Yours / Explore + Custom button */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2">
+            {(
+              [
+                {
+                  id: "yours" as const,
+                  label: t("experts.tabs.yours"),
+                  icon: Settings2,
+                },
+                {
+                  id: "explore" as const,
+                  label: t("experts.tabs.explore"),
+                  icon: Compass,
+                },
+              ] satisfies readonly {
+                id: ExpertsTab;
+                label: string;
+                icon: typeof Compass;
+              }[]
+            ).map((tabDef) => {
+              const active = effectiveTab === tabDef.id;
+              const TabIcon = tabDef.icon;
+              return (
+                <button
+                  key={tabDef.id}
+                  type="button"
+                  onClick={() => {
+                    updateViewState({
+                      tab: tabDef.id,
+                      tag: null,
+                    });
+                  }}
                   className={cn(
-                    "ml-1 tabular-nums",
-                    active ? "opacity-80" : "opacity-50",
+                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
+                    active
+                      ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
+                      : "text-text-secondary hover:text-text-primary",
                   )}
                 >
-                  {pill.count}
-                </span>
-              </button>
-            );
-          })}
+                  <TabIcon size={14} />
+                  {tabDef.label}
+                  {tabDef.id === "yours" && yoursCount > 0 && active && (
+                    <span className="tabular-nums text-[12px] text-text-secondary">
+                      {yoursCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <Link
+            to="/workspace/experts/custom"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF5A3C] text-white text-[13px] font-medium hover:opacity-90 transition-opacity"
+          >
+            <Wand2 size={14} />
+            {t("experts.custom_create")}
+          </Link>
         </div>
-      </div>
 
-      {/* Expert Grid */}
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(max(160px,calc(25%-9px)),1fr))]">
-        {visibleExperts.map((expert) => (
-          <ExpertCard
-            key={expert.slug}
-            expert={{
-              slug: expert.slug,
-              name: expert.name,
-              emoji: expert.emoji,
-              category: expert.category,
-              description: expert.description,
-              tags: expert.tags ?? [],
-              version: expert.version,
-              author: expert.author ?? "",
-            }}
-            installed={installedSlugs.has(expert.slug)}
-            detailTo={buildDetailTo(expert.slug)}
-            isCustom={customSlugs.has(expert.slug)}
-            customAvatarUrl={
-              customSlugs.has(expert.slug)
-                ? (expert as { avatarDataUrl?: string }).avatarDataUrl
-                : undefined
-            }
-            customEditTo={
-              customSlugs.has(expert.slug)
-                ? `/workspace/experts/custom?slug=${encodeURIComponent(expert.slug)}`
-                : undefined
-            }
-          />
-        ))}
-      </div>
-
-      {/* Sentinel for infinite scroll */}
-      {visibleCount < filteredExperts.length && (
-        <div ref={sentinelRef} className="flex justify-center py-8">
-          <Loader2 size={20} className="animate-spin text-text-muted" />
-        </div>
-      )}
-
-      {/* Empty state */}
-      {filteredExperts.length === 0 && (
-        <div className="text-center py-12">
-          <Sparkles size={24} className="mx-auto text-text-muted mb-3" />
-          <div className="text-[13px] text-text-muted">
-            {tab === "yours"
-              ? t("experts.empty.yours")
-              : t("experts.empty.explore")}
+        {/* Category pills */}
+        <div className="relative mb-5">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+            {categoryPills.map((pill) => {
+              const active =
+                (tag === null && pill.id === "all") || tag === pill.id;
+              return (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() =>
+                    updateViewState({
+                      tag: pill.id === "all" ? null : pill.id,
+                    })
+                  }
+                  className={cn(
+                    "shrink-0 inline-flex items-center justify-center rounded-full h-7 px-3 text-[11px] leading-none font-medium transition-all",
+                    active
+                      ? "bg-[var(--color-accent)] text-white"
+                      : "border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-border-hover",
+                  )}
+                >
+                  {pill.label}
+                  <span
+                    className={cn(
+                      "ml-1 tabular-nums",
+                      active ? "opacity-80" : "opacity-50",
+                    )}
+                  >
+                    {pill.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Scrollable grid area */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {/* Expert Grid */}
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(192px,1fr))]">
+          {visibleExperts.map((expert) => (
+            <ExpertCard
+              key={expert.slug}
+              expert={{
+                slug: expert.slug,
+                name: expert.name,
+                emoji: expert.emoji,
+                category: expert.category,
+                description: expert.description,
+                tags: expert.tags ?? [],
+                version: expert.version,
+                author: expert.author ?? "",
+                avatarDataUrl: (expert as { avatarDataUrl?: string })
+                  .avatarDataUrl,
+              }}
+              installed={installedSlugs.has(expert.slug)}
+              detailTo={buildDetailTo(expert.slug)}
+              isCustom={customSlugs.has(expert.slug)}
+              customAvatarUrl={
+                customSlugs.has(expert.slug)
+                  ? (expert as { avatarDataUrl?: string }).avatarDataUrl
+                  : undefined
+              }
+              customEditTo={
+                customSlugs.has(expert.slug)
+                  ? `/workspace/experts/custom?slug=${encodeURIComponent(expert.slug)}`
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+
+        {/* Sentinel for infinite scroll */}
+        {visibleCount < filteredExperts.length && (
+          <div ref={sentinelRef} className="flex justify-center py-8">
+            <Loader2 size={20} className="animate-spin text-text-muted" />
+          </div>
+        )}
+
+        {/* Empty state */}
+        {filteredExperts.length === 0 && (
+          <div className="text-center py-12">
+            <Sparkles size={24} className="mx-auto text-text-muted mb-3" />
+            <div className="text-[13px] text-text-muted">
+              {effectiveTab === "yours"
+                ? t("experts.empty.yours")
+                : t("experts.empty.explore")}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
