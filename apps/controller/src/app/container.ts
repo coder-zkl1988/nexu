@@ -275,10 +275,12 @@ export async function createContainer(): Promise<ControllerContainer> {
           mkdir: async (p, opts) => {
             await fsp.mkdir(p, opts);
           },
+          rm: (p) => fsp.rm(p, { force: true }),
         },
         agentsDir: path.join(env.openclawStateDir, "agents"),
         genBotSlug: (expertSlug) =>
           `${expertSlug}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+        defaultModelId: env.defaultModelId,
       },
     });
 

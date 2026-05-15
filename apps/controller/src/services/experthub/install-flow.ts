@@ -36,9 +36,11 @@ export type InstallExpertDeps = {
   fs: {
     writeFile: (p: string, data: string) => Promise<void>;
     mkdir: (p: string, opts?: { recursive: boolean }) => Promise<void>;
+    rm: (p: string) => Promise<void>;
   };
   agentsDir: string;
   genBotSlug: (expertSlug: string) => string;
+  defaultModelId: string;
 };
 
 export type InstallExpertResult = {
@@ -92,11 +94,17 @@ export async function installExpert(args: {
     assertSafeWorkspacePath(relPath);
   }
 
+  // Use global default model when expert doesn't specify a real model
+  const modelId =
+    manifest.modelId && manifest.modelId !== "gpt-4o"
+      ? manifest.modelId
+      : deps.defaultModelId;
+
   const bot = await deps.botService.createBot({
     name: manifest.name,
     slug: deps.genBotSlug(manifest.slug),
     systemPrompt: manifest.systemPrompt,
-    modelId: manifest.modelId,
+    modelId,
     expertSlug: manifest.slug,
   });
 
@@ -115,6 +123,14 @@ export async function installExpert(args: {
     const target = path.join(workspaceRoot, safeRel);
     await deps.fs.mkdir(path.dirname(target), { recursive: true });
     await deps.fs.writeFile(target, content);
+  }
+
+  // Experts carry their own identity; remove the platform BOOTSTRAP.md so it
+  // doesn't override the expert persona with a generic "Tabby agent" overlay.
+  try {
+    await deps.fs.rm(path.join(workspaceRoot, "BOOTSTRAP.md"));
+  } catch {
+    // May not exist — fine.
   }
 
   const ledger = await deps.catalog.readLedger();
