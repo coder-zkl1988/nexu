@@ -58,6 +58,7 @@ export function createApp(container: ControllerContainer) {
       catalog: container.experthubCatalogManager,
       installExpert: container.installExpertFn,
       createCustomExpert: container.createCustomExpertFn,
+      platformTemplatesDir: container.env.platformTemplatesDir ?? "",
     }),
   );
   registerUserRoutes(app, container);

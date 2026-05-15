@@ -1,6 +1,13 @@
-import { type BotItem, ChatInputArea } from "@/components/chat-input-area";
+import {
+  type BotItem,
+  ChatInputArea,
+  type PendingAttachment,
+} from "@/components/chat-input-area";
 import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
+import { A2UIRenderer } from "@/lib/a2ui";
+import type { A2UIMessage } from "@/lib/a2ui";
+import { type SSEMessage, createSSEClient } from "@/lib/api/event-source";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
@@ -9,6 +16,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   CheckCircle2,
+  FileImage,
+  FileText,
   FolderOpen,
   Loader2,
   MessageSquare,
@@ -100,12 +109,27 @@ function extractSenderName(raw: string): string | null {
   return null;
 }
 
+interface ImageBlockInfo {
+  mimeType: string;
+  data: string;
+}
+
+interface FileCardInfo {
+  name: string;
+  mimeType: string;
+  size?: number;
+}
+
 interface ExtractedMessage {
   text: string;
   replyContextText: string | null;
   senderName: string | null;
   hasToolCall: boolean;
   toolCallSummary: string | null;
+  hasA2UI: boolean;
+  a2uiMessages: A2UIMessage[] | null;
+  images: ImageBlockInfo[];
+  fileCards: FileCardInfo[];
 }
 
 function extractReplyContextPrefix(raw: string): {
@@ -138,12 +162,44 @@ function extractReplyContextPrefix(raw: string): {
   };
 }
 
+/** Extract display text, sender name, tool call info, and A2UI messages from various message content formats. */
+function parseFileBlocksFromText(text: string): {
+  cleanText: string;
+  fileCards: FileCardInfo[];
+} {
+  const fileCards: FileCardInfo[] = [];
+  const fileRegex = /<file\s+([^>]*)>([\s\S]*?)<\/file>/g;
+  let cleanText = text;
+  let match = fileRegex.exec(text);
+  while (match !== null) {
+    const attrs = match[1] ?? "";
+    const innerText = match[2] ?? "";
+    const nameMatch = attrs.match(/name="([^"]*)"/);
+    const mimeMatch = attrs.match(/mime="([^"]*)"/);
+    const sizeMatch = attrs.match(/size="([^"]*)"/);
+    if (nameMatch?.[1]) {
+      fileCards.push({
+        name: nameMatch[1],
+        mimeType: mimeMatch?.[1] ?? "application/octet-stream",
+        size: sizeMatch?.[1] ? Number(sizeMatch[1]) : undefined,
+      });
+    }
+    cleanText = cleanText.replace(match[0], innerText);
+    match = fileRegex.exec(text);
+  }
+  return { cleanText, fileCards };
+}
+
 /** Extract display text, sender name, and tool call info from various message content formats. */
 function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   let raw = "";
   let replyContextText: string | null = null;
   let hasToolCall = false;
   let toolCallSummary: string | null = null;
+  let hasA2UI = false;
+  let a2uiMessages: A2UIMessage[] | null = null;
+  const images: ImageBlockInfo[] = [];
+  const fileCards: FileCardInfo[] = [];
 
   // Format 1: msg.text (shorthand)
   if (typeof msg.text === "string") {
@@ -167,6 +223,57 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
         hasToolCall = true;
         const name = String(b?.name ?? b?.toolName ?? "tool");
         toolCallSummary = name;
+      } else if (b?.type === "a2ui" && typeof b.data === "object" && b.data) {
+        hasA2UI = true;
+        if (!a2uiMessages) a2uiMessages = [];
+        a2uiMessages.push(b.data as A2UIMessage);
+      } else if (b?.type === "text" && typeof b.text === "string") {
+        // Check for A2UI JSONL embedded in text blocks
+        const lines = b.text.split("\n");
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.trim());
+            if (
+              parsed?.version === "v0.9" &&
+              (parsed.createSurface ||
+                parsed.updateComponents ||
+                parsed.updateDataModel ||
+                parsed.deleteSurface)
+            ) {
+              hasA2UI = true;
+              if (!a2uiMessages) a2uiMessages = [];
+              a2uiMessages.push(parsed as A2UIMessage);
+            }
+          } catch {
+            // Not JSON, skip
+          }
+        }
+      } else if (b?.type === "image") {
+        const source = b?.source as Record<string, unknown> | undefined;
+        const sourceData = typeof source?.data === "string" ? source.data : "";
+        if (sourceData.length > 0) {
+          const mimeType = String(source?.media_type ?? "image/png");
+          const base64 = sourceData.includes(",")
+            ? sourceData.slice(sourceData.indexOf(",") + 1)
+            : sourceData;
+          images.push({ mimeType, data: base64 });
+        }
+      } else if (b?.type === "file") {
+        const metadata = (b?.metadata ?? b) as Record<string, unknown>;
+        const filename =
+          typeof metadata?.filename === "string"
+            ? metadata.filename
+            : typeof b?.filename === "string"
+              ? b.filename
+              : "file";
+        fileCards.push({
+          name: filename,
+          mimeType:
+            typeof metadata?.mimeType === "string"
+              ? metadata.mimeType
+              : "application/octet-stream",
+          size: typeof metadata?.size === "number" ? metadata.size : undefined,
+        });
       }
     }
     raw = textParts.join("\n");
@@ -181,12 +288,19 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   const text = extractedReply.text;
   replyContextText ??= extractedReply.replyContextText;
 
+  // Parse <file> XML blocks from text so they render as file cards instead of raw markup
+  const parsedFiles = parseFileBlocksFromText(text);
+
   return {
-    text,
+    text: parsedFiles.cleanText,
     replyContextText,
     senderName,
     hasToolCall,
     toolCallSummary,
+    hasA2UI,
+    a2uiMessages,
+    images,
+    fileCards: [...fileCards, ...parsedFiles.fileCards],
   };
 }
 
@@ -338,37 +452,6 @@ function getPlatformConfig(platform: string): PlatformConfig {
   return PLATFORM_CONFIG[platform as Platform] ?? DEFAULT_PLATFORM_CONFIG;
 }
 
-/** Deterministic gradient for user avatar based on name string */
-const AVATAR_GRADIENTS = [
-  "from-violet-500 to-purple-600",
-  "from-blue-500 to-cyan-500",
-  "from-[var(--color-success)] to-teal-500",
-  "from-orange-400 to-rose-500",
-  "from-pink-500 to-fuchsia-500",
-  "from-amber-400 to-orange-500",
-  "from-sky-400 to-indigo-500",
-  "from-lime-400 to-[var(--color-success)]",
-];
-
-function getAvatarGradient(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  const idx = Math.abs(hash) % AVATAR_GRADIENTS.length;
-  return AVATAR_GRADIENTS[idx] as string;
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2 && parts[0] && parts[parts.length - 1]) {
-    return (
-      (parts[0][0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")
-    ).toUpperCase();
-  }
-  return name.slice(0, 1).toUpperCase();
-}
-
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
@@ -505,25 +588,99 @@ function SessionPlatformBadge({
   );
 }
 
+function InlineImage({ mimeType, data }: ImageBlockInfo) {
+  const [expanded, setExpanded] = useState(false);
+  const src = `data:${mimeType};base64,${data}`;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="block max-w-[240px] cursor-pointer rounded-xl overflow-hidden border border-border hover:opacity-90 transition-opacity"
+      >
+        <img
+          src={src}
+          alt=""
+          className="w-full h-auto max-h-[200px] object-cover"
+        />
+      </button>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setExpanded(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setExpanded(false);
+          }}
+        >
+          <img
+            src={src}
+            alt=""
+            className="max-w-full max-h-full rounded-xl object-contain"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function MessageFileCard({ name, mimeType, size }: FileCardInfo) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const isImage = mimeType.startsWith("image/");
+  return (
+    <div className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-1 px-3 py-2 max-w-[240px]">
+      <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-surface-2">
+        {isImage ? (
+          <FileImage size={14} className="text-purple-500" />
+        ) : (
+          <FileText size={14} className="text-text-muted" />
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[12px] text-text-primary truncate font-medium">
+          {name}
+        </div>
+        <div className="text-[10px] text-text-muted">
+          {ext.toUpperCase()}
+          {size !== undefined && ` · ${formatBytes(size)}`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function ChatBubble({
   msg,
   extracted,
+  onA2UIAction,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
+  onA2UIAction?: (actionName: string, context: Record<string, unknown>) => void;
 }) {
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
-  const { text, replyContextText, senderName, hasToolCall, toolCallSummary } =
-    resolvedExtracted;
+  const {
+    text,
+    replyContextText,
+    senderName,
+    hasToolCall,
+    toolCallSummary,
+    hasA2UI,
+    a2uiMessages,
+    images,
+    fileCards,
+  } = resolvedExtracted;
   const time = formatTs(msg.timestamp);
   const isBot = msg.role === "assistant";
   const hasText = text.trim().length > 0;
   const hasReplyContext = (replyContextText?.trim().length ?? 0) > 0;
-
-  const displayName = senderName ?? "User";
-  const _gradient = getAvatarGradient(displayName);
-  const _initials = getInitials(displayName);
+  const hasMedia = images.length > 0 || fileCards.length > 0;
 
   return (
     <div
@@ -548,6 +705,16 @@ function ChatBubble({
         {hasReplyContext && replyContextText && (
           <ReplyContextCard text={replyContextText} isBot={isBot} />
         )}
+        {hasMedia && (
+          <div className="flex flex-col gap-1.5">
+            {images.map((img, i) => (
+              <InlineImage key={`img-${img.mimeType}-${i}`} {...img} />
+            ))}
+            {fileCards.map((fc, i) => (
+              <MessageFileCard key={`fc-${fc.name}-${i}`} {...fc} />
+            ))}
+          </div>
+        )}
         {hasText && (
           <div
             className={cn(
@@ -561,6 +728,11 @@ function ChatBubble({
           </div>
         )}
         {isBot && hasToolCall && <ArtifactCard summary={toolCallSummary} />}
+        {isBot && hasA2UI && a2uiMessages && (
+          <div className="mt-1 inline-block max-w-full">
+            <A2UIRenderer messages={a2uiMessages} onAction={onA2UIAction} />
+          </div>
+        )}
         {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
     </div>
@@ -591,7 +763,8 @@ export function SessionsPage() {
     enabled: !!id,
   });
 
-  // Chat history
+  // Chat history — polls at 5s, disabled when SSE is connected
+  const [sseConnected, setSseConnected] = useState(false);
   const {
     data: chatData,
     isLoading: chatLoading,
@@ -606,8 +779,31 @@ export function SessionsPage() {
       return data;
     },
     enabled: !!id,
-    refetchInterval: 5000,
+    refetchInterval: sseConnected ? false : 5000,
   });
+
+  // SSE real-time connection — invalidates chat history on new messages
+  useEffect(() => {
+    if (!id || !session?.botId || !session?.sessionKey) return;
+
+    const client = createSSEClient({
+      botId: session.botId,
+      sessionKey: session.sessionKey,
+      onConnected: () => setSseConnected(true),
+      onMessage: (_msg: SSEMessage) => {
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onError: () => {
+        setSseConnected(false);
+      },
+    });
+
+    client.connect();
+    return () => {
+      client.disconnect();
+      setSseConnected(false);
+    };
+  }, [id, session?.botId, session?.sessionKey, queryClient]);
 
   const { data: channelsData } = useQuery({
     queryKey: ["channels"],
@@ -665,7 +861,7 @@ export function SessionsPage() {
   const sentAtRef = useRef(0);
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, attachments: PendingAttachment[]) => {
       if (!selectedBot || !id || !session?.sessionKey) return;
 
       // Intercept /new command
@@ -690,12 +886,43 @@ export function SessionsPage() {
         return;
       }
 
+      // Format message payload with attachment support (mirrors local-chat.tsx)
+      const onlyImage = attachments[0];
+      const isImageOnly =
+        attachments.length === 1 && onlyImage?.type === "image" && !text.trim();
+      const msgContent = isImageOnly
+        ? {
+            type: "image" as const,
+            content: onlyImage?.content ?? "",
+            metadata: { mimeType: onlyImage?.mimeType ?? "image/png" },
+          }
+        : {
+            type: "text" as const,
+            content: text,
+            attachments:
+              attachments.length > 0
+                ? attachments.map((a) => ({
+                    type: a.type,
+                    content: a.content,
+                    metadata: {
+                      mimeType: a.mimeType,
+                      filename: a.filename,
+                      size: a.size,
+                    },
+                  }))
+                : undefined,
+          };
+
       const optimisticId = `pending-${Date.now()}`;
       const now = Date.now();
       sentAtRef.current = now;
       setPendingMessages((prev) => [
         ...prev,
-        { id: optimisticId, text, timestamp: now },
+        {
+          id: optimisticId,
+          text: text || (isImageOnly ? "[Image]" : "[File]"),
+          timestamp: now,
+        },
       ]);
       setWaitingForReply(true);
 
@@ -704,7 +931,7 @@ export function SessionsPage() {
           body: {
             botId: selectedBot.id,
             sessionKey: session.sessionKey,
-            message: { type: "text", content: text },
+            message: msgContent,
           },
         });
         await queryClient.invalidateQueries({
@@ -722,7 +949,8 @@ export function SessionsPage() {
   const messages = (
     chatData ? ((chatData as Record<string, unknown>)?.messages ?? []) : null
   ) as ChatMessageData[] | null;
-  const safeMessages = chatLoading ? [] : (messages ?? []);
+  // Keep existing data during refetch so optimistic messages and Thinking remain visible
+  const safeMessages = chatLoading && !chatData ? [] : (messages ?? []);
 
   // Build a set of server user message texts to deduplicate against optimistic messages
   const serverUserTexts = new Set(
@@ -758,6 +986,7 @@ export function SessionsPage() {
     ) {
       setWaitingForReply(false);
       sentAtRef.current = 0;
+      setPendingMessages([]);
     }
   }, [lastAssistantTimestamp, waitingForReply]);
 
@@ -953,11 +1182,19 @@ export function SessionsPage() {
                   ),
                 }))
                 .filter(({ extracted }) => {
-                  const { text, replyContextText, hasToolCall } = extracted;
+                  const {
+                    text,
+                    replyContextText,
+                    hasToolCall,
+                    images,
+                    fileCards,
+                  } = extracted;
                   return (
                     text.trim().length > 0 ||
                     (replyContextText?.trim().length ?? 0) > 0 ||
-                    hasToolCall
+                    hasToolCall ||
+                    images.length > 0 ||
+                    fileCards.length > 0
                   );
                 })
                 .flatMap(({ msg, extracted }, idx, arr) => {
@@ -985,7 +1222,28 @@ export function SessionsPage() {
                       : [];
                   return [
                     ...divider,
-                    <ChatBubble key={msg.id} msg={msg} extracted={extracted} />,
+                    <ChatBubble
+                      key={msg.id}
+                      msg={msg}
+                      extracted={extracted}
+                      onA2UIAction={(actionName, context) => {
+                        if (!selectedBot || !id || !session?.sessionKey) return;
+                        void postApiV1ChatLocal({
+                          body: {
+                            botId: selectedBot.id,
+                            sessionKey: session.sessionKey,
+                            message: {
+                              type: "text",
+                              content: JSON.stringify({
+                                type: "a2ui_action",
+                                actionName,
+                                data: context,
+                              }),
+                            },
+                          },
+                        });
+                      }}
+                    />,
                   ];
                 })}
               {waitingForReply && (
@@ -1021,14 +1279,15 @@ export function SessionsPage() {
             bots={bots}
             selectedBot={selectedBot}
             onSelectBot={() => {}}
-            onSend={(text) => {
-              void handleSend(text);
+            onSend={(text, attachments) => {
+              void handleSend(text, attachments);
             }}
             sending={false}
             waitingReply={waitingForReply}
             disabled={!session?.botId}
             placeholder={t("localChat.inputPlaceholder")}
             showBotSelector={false}
+            modelReadOnly
           />
         </div>
       </div>

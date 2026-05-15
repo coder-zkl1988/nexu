@@ -58,6 +58,8 @@ export interface ChatInputAreaProps {
   showBotSelector?: boolean;
   /** Show model selector dropdown (default true, false for session page) */
   showModelSelector?: boolean;
+  /** Show model as read-only label instead of changeable dropdown */
+  modelReadOnly?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +277,7 @@ function BotSelector({
                 className="flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:bg-surface-2 rounded-b-lg transition-colors"
               >
                 <Plus size={13} className="shrink-0" />
-                {t("localChat.addBot", { defaultValue: "添加搭子" })}
+                {t("localChat.addBot", { defaultValue: "添加伙伴" })}
               </button>
             </div>
           )}
@@ -301,6 +303,7 @@ export function ChatInputArea({
   showAddBot,
   showBotSelector = true,
   showModelSelector = true,
+  modelReadOnly = false,
 }: ChatInputAreaProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
@@ -564,75 +567,82 @@ export function ChatInputArea({
                 {selectedBot.name}
               </span>
             ) : null}
-            {showModelSelector && (
-              <div className="relative" ref={modelDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                  className="flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
-                >
+            {showModelSelector &&
+              (modelReadOnly ? (
+                <span className="text-[12px] text-text-muted">
                   {models.find((m) => m.id === selectedBot?.modelId)?.name ??
                     selectedBot?.modelId ??
                     "Default"}
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-                {modelDropdownOpen && (
-                  <div className="absolute bottom-full right-0 mb-1 w-52 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
-                    {(() => {
-                      const filtered = models.filter((m) => m.id && m.name);
-                      const groups = new Map<string, typeof filtered>();
-                      for (const m of filtered) {
-                        const provider = m.provider || "Other";
-                        if (!groups.has(provider)) groups.set(provider, []);
-                        groups.get(provider)?.push(m);
-                      }
-                      return Array.from(groups.entries()).map(
-                        ([provider, providerModels], gi) => (
-                          <div key={provider}>
-                            <div
-                              className={cn(
-                                "px-3 py-1.5 text-[10px] font-semibold text-[var(--color-tabby-muted)] uppercase tracking-wide",
-                                gi > 0 &&
-                                  "border-t border-[var(--color-tabby-border)]",
-                              )}
-                            >
-                              {provider}
-                            </div>
-                            {providerModels.map((m) => (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => {
-                                  if (!selectedBot) return;
-                                  onSelectBot({
-                                    ...selectedBot,
-                                    modelId: m.id ?? "",
-                                  });
-                                  setModelDropdownOpen(false);
-                                }}
-                                className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
-                                    {m.name}
-                                  </div>
-                                </div>
-                                {selectedBot?.modelId === m.id && (
-                                  <Check
-                                    size={14}
-                                    className="text-[var(--color-tabby-orange)] shrink-0"
-                                  />
+                </span>
+              ) : (
+                <div className="relative" ref={modelDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                    className="flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
+                  >
+                    {models.find((m) => m.id === selectedBot?.modelId)?.name ??
+                      selectedBot?.modelId ??
+                      "Default"}
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </button>
+                  {modelDropdownOpen && (
+                    <div className="absolute bottom-full right-0 mb-1 w-52 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
+                      {(() => {
+                        const filtered = models.filter((m) => m.id && m.name);
+                        const groups = new Map<string, typeof filtered>();
+                        for (const m of filtered) {
+                          const provider = m.provider || "Other";
+                          if (!groups.has(provider)) groups.set(provider, []);
+                          groups.get(provider)?.push(m);
+                        }
+                        return Array.from(groups.entries()).map(
+                          ([provider, providerModels], gi) => (
+                            <div key={provider}>
+                              <div
+                                className={cn(
+                                  "px-3 py-1.5 text-[10px] font-semibold text-[var(--color-tabby-muted)] uppercase tracking-wide",
+                                  gi > 0 &&
+                                    "border-t border-[var(--color-tabby-border)]",
                                 )}
-                              </button>
-                            ))}
-                          </div>
-                        ),
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-            )}
+                              >
+                                {provider}
+                              </div>
+                              {providerModels.map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (!selectedBot) return;
+                                    onSelectBot({
+                                      ...selectedBot,
+                                      modelId: m.id ?? "",
+                                    });
+                                    setModelDropdownOpen(false);
+                                  }}
+                                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
+                                >
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
+                                      {m.name}
+                                    </div>
+                                  </div>
+                                  {selectedBot?.modelId === m.id && (
+                                    <Check
+                                      size={14}
+                                      className="text-[var(--color-tabby-orange)] shrink-0"
+                                    />
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          ),
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              ))}
           </>
         }
       />

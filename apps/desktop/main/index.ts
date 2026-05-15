@@ -624,6 +624,10 @@ function sendHostDesktopCommand(command: HostDesktopCommand): void {
   mainWindow?.webContents.send("host:desktop-command", command);
 }
 
+function sendSetupProgress(stage: string, detail?: string): void {
+  sendHostDesktopCommand({ type: "setup:progress", stage, detail });
+}
+
 function showAboutDialog(): void {
   const version = app.getVersion();
   const detailLines = [
@@ -865,26 +869,31 @@ async function waitForControllerReadiness(): Promise<void> {
 async function runDesktopColdStart(): Promise<void> {
   diagnosticsReporter?.markColdStartRunning("starting controller");
   logColdStart("starting controller");
+  sendSetupProgress("starting_controller");
   await orchestrator.startOne("controller");
 
   diagnosticsReporter?.markColdStartRunning("waiting for controller readiness");
   logColdStart("waiting for controller readiness");
+  sendSetupProgress("waiting_controller");
   await waitForControllerReadiness();
 
   diagnosticsReporter?.markColdStartRunning("starting web");
   logColdStart("starting web");
+  sendSetupProgress("starting_web");
   await orchestrator.startOne("web");
 
   const sessionId = rotateDesktopLogSession();
   logColdStart(`cold start session ready sessionId=${sessionId}`);
 
   logColdStart("cold start complete");
+  sendSetupProgress("complete");
   diagnosticsReporter?.markColdStartSucceeded();
 }
 
 async function runLaunchdColdStart(): Promise<void> {
   diagnosticsReporter?.markColdStartRunning("launchd bootstrap");
   logColdStart("starting launchd bootstrap");
+  sendSetupProgress("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
   const paths = await resolveLaunchdPaths(
@@ -1018,11 +1027,13 @@ async function runLaunchdColdStart(): Promise<void> {
     logColdStart(
       `attached to running services (controller=${controllerPort} openclaw=${openclawPort} web=${webPort})`,
     );
+    sendSetupProgress("attached");
   } else {
     logColdStart("launchd services started, waiting for controller readiness");
     diagnosticsReporter?.markColdStartRunning(
       "waiting for controller readiness",
     );
+    sendSetupProgress("waiting_controller");
   }
 
   const controllerReady = await launchdResult.controllerReady;
@@ -1035,6 +1046,7 @@ async function runLaunchdColdStart(): Promise<void> {
 
   const sessionId = rotateDesktopLogSession();
   logColdStart(`launchd cold start complete sessionId=${sessionId}`);
+  sendSetupProgress("complete");
   diagnosticsReporter?.markColdStartSucceeded();
 }
 
@@ -1775,11 +1787,13 @@ app.whenReady().then(async () => {
         diagnosticsReporter?.markColdStartRunning(
           "extracting openclaw sidecar",
         );
+        sendSetupProgress("extracting", "解压OpenClaw运行时...");
         await extractOpenclawSidecarAsync(
           electronRoot,
           app.getPath("userData"),
         );
         logColdStart("openclaw sidecar extraction complete");
+        sendSetupProgress("extracted");
       }
 
       logColdStart(
@@ -1797,6 +1811,7 @@ app.whenReady().then(async () => {
           logStartupStep: logLaunchTimeline,
           rotateDesktopLogSession,
           waitForControllerReadiness,
+          onProgress: sendSetupProgress,
         });
       } else if (useLaunchdMode) {
         await runLaunchdColdStart();
@@ -1807,11 +1822,14 @@ app.whenReady().then(async () => {
           "attaching to external runtime",
         );
         logColdStart("attaching to external runtime");
+        sendSetupProgress("attaching_external");
         logColdStart("waiting for external controller readiness");
+        sendSetupProgress("waiting_controller");
         await waitForControllerReadiness();
         const sessionId = rotateDesktopLogSession();
         logColdStart(`cold start session ready sessionId=${sessionId}`);
         logColdStart("cold start complete");
+        sendSetupProgress("complete");
         diagnosticsReporter?.markColdStartSucceeded();
       } else {
         await runDesktopColdStart();

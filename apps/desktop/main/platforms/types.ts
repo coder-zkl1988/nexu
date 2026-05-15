@@ -178,6 +178,7 @@ export type RunPlatformColdStartArgs = {
   logStartupStep: (message: string) => void;
   rotateDesktopLogSession: () => string;
   waitForControllerReadiness: () => Promise<void>;
+  onProgress?: (stage: string, detail?: string) => void;
 };
 
 export type PrepareForUpdateInstallArgs = {

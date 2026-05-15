@@ -210,6 +210,66 @@ export type CreateCustomExpertDeps = {
   agentsDir: string;
 };
 
+function injectIdentityInfo(
+  content: string,
+  name: string,
+  description: string | null,
+): string {
+  const nameLine = `- **Name:** ${name}`;
+  const lines = content.split("\n");
+
+  // Replace the template placeholder line or inject name after the heading
+  let replaced = false;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]?.trim() ?? "";
+    // Replace placeholder "(pick something you like)" or any empty "Name:" line
+    if (/^-\s+\*\*Name:\*\*\s*(_\(.*\)\s*)?$/.test(trimmed)) {
+      lines[i] = nameLine;
+      replaced = true;
+      break;
+    }
+    // If the name is already filled in (not a placeholder), preserve it
+    if (/^-\s+\*\*Name:\*\*\s+\S/.test(trimmed)) {
+      replaced = true;
+      break;
+    }
+  }
+
+  if (!replaced) {
+    // Inject after the first heading
+    const headingIdx = lines.findIndex((l) => l.trim().startsWith("#"));
+    if (headingIdx >= 0) {
+      lines.splice(headingIdx + 2, 0, nameLine);
+    } else {
+      lines.unshift(nameLine);
+    }
+  }
+
+  if (description) {
+    const descLine = `- **Description:** ${description}`;
+    let descReplaced = false;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]?.trim() ?? "";
+      if (/^-\s+\*\*Description:\*\*/.test(trimmed)) {
+        lines[i] = descLine;
+        descReplaced = true;
+        break;
+      }
+    }
+    if (!descReplaced) {
+      // Insert directly after the name line
+      const nameIdx = lines.findIndex(
+        (l) => l.includes(`**Name:** ${name}`) || l.includes(`**Name:**`),
+      );
+      if (nameIdx >= 0) {
+        lines.splice(nameIdx + 1, 0, descLine);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
 export async function createCustomExpert(args: {
   name: string;
   avatarDataUrl?: string;
@@ -282,12 +342,32 @@ export async function createCustomExpert(args: {
     await deps.fs.writeFile(avatarPath, args.avatarDataUrl);
   }
 
+  // Inject bot name and description into IDENTITY.md so the agent's identity
+  // reflects the user's choices from day one.
+  if (workspaceFiles["IDENTITY.md"]) {
+    workspaceFiles["IDENTITY.md"] = injectIdentityInfo(
+      workspaceFiles["IDENTITY.md"],
+      name,
+      description ?? null,
+    );
+  }
+
   for (const [relPath, content] of Object.entries(workspaceFiles)) {
     if (!content) continue;
     const safeRel = normalizeWorkspacePath(relPath);
     const target = path.join(workspaceRoot, safeRel);
     await deps.fs.mkdir(path.dirname(target), { recursive: true });
     await deps.fs.writeFile(target, content);
+  }
+
+  // Custom experts have their identity fully specified — the bootstrap script
+  // telling the agent to "introduce yourself" is unnecessary and would
+  // conflict with the user's pre-configured identity.
+  const bootstrapPath = path.join(workspaceRoot, "BOOTSTRAP.md");
+  try {
+    await deps.fs.rm(bootstrapPath);
+  } catch {
+    // File may not exist or may have already been deleted — either is fine.
   }
 
   const installedAt = new Date().toISOString();

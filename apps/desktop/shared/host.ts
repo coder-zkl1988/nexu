@@ -581,6 +581,11 @@ export type HostDesktopCommand =
       type: "desktop:rewards-updated";
     }
   | {
+      type: "setup:progress";
+      stage: string;
+      detail?: string;
+    }
+  | {
       type: "setup:complete";
     };
 

@@ -1,0 +1,565 @@
+/* ── A2UI Interactive Components ──────────────────────────────
+   Aligned with Nexu Design System 2.0 (apps/web/src/index.css) */
+
+/* ── Surfaces ────────────────────────────────────────────────── */
+.a2ui-surfaces {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.a2ui-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Text ────────────────────────────────────────────────────── */
+.a2ui-text {
+  margin: 0;
+  word-break: break-word;
+}
+.a2ui-text--h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-text-heading);
+}
+.a2ui-text--h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text-heading);
+}
+.a2ui-text--h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text-heading);
+}
+.a2ui-text--h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text-heading);
+}
+.a2ui-text--h5 {
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--color-text-heading);
+}
+.a2ui-text--body {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+.a2ui-text--caption {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+.a2ui-text--code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--color-surface-3);
+  padding: 2px 6px;
+  border-radius: var(--radius-4);
+  color: var(--color-text-primary);
+}
+
+/* ── Button ────────────────────────────────────────────────────
+   Mirrors the design-system button: dark accent primary,
+   surface-2 secondary, border-only outline, ghost text. */
+.a2ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: var(--radius-8);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.2s ease;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.a2ui-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.a2ui-button--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+.a2ui-button--primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.a2ui-button--secondary {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+.a2ui-button--secondary:hover:not(:disabled) {
+  background: var(--color-surface-3);
+}
+
+.a2ui-button--outlined {
+  background: transparent;
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+.a2ui-button--outlined:hover:not(:disabled) {
+  background: var(--color-accent-subtle);
+}
+
+.a2ui-button--text {
+  background: transparent;
+  color: var(--color-text-primary);
+}
+.a2ui-button--text:hover:not(:disabled) {
+  background: var(--color-accent-subtle);
+}
+
+/* ── TextField ───────────────────────────────────────────────── */
+.a2ui-textfield-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.a2ui-textfield-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.a2ui-textfield {
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-8);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  outline: none;
+  color: var(--color-text-primary);
+  background: var(--color-surface-1);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  resize: vertical;
+  min-height: 34px;
+  font-family: inherit;
+}
+.a2ui-textfield:focus {
+  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-focus);
+}
+.a2ui-textfield--error {
+  border-color: var(--color-error);
+}
+.a2ui-textfield--error:focus {
+  box-shadow: 0 0 0 2px var(--color-error-subtle);
+}
+.a2ui-textfield-hint {
+  font-size: 0.7rem;
+  color: var(--color-text-tertiary);
+}
+.a2ui-textfield-error {
+  font-size: 0.7rem;
+  color: var(--color-error);
+}
+
+/* ── CheckBox ────────────────────────────────────────────────── */
+.a2ui-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+}
+.a2ui-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-brand-primary);
+  cursor: pointer;
+  margin: 0;
+}
+
+/* ── ChoicePicker ────────────────────────────────────────────── */
+.a2ui-choice-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.a2ui-choice-picker__label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.a2ui-choice-picker__select {
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-8);
+  font-size: 0.8125rem;
+  background: var(--color-surface-1);
+  color: var(--color-text-primary);
+  outline: none;
+  cursor: pointer;
+  min-height: 34px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.a2ui-choice-picker__select:focus {
+  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Slider ──────────────────────────────────────────────────── */
+.a2ui-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.a2ui-slider__label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.a2ui-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--color-brand-primary);
+  height: 4px;
+}
+.a2ui-slider__value {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+  min-width: 2em;
+  text-align: right;
+}
+
+/* ── DateTimeInput ───────────────────────────────────────────── */
+.a2ui-datetime-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.a2ui-datetime-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.a2ui-datetime {
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-8);
+  font-size: 0.8125rem;
+  background: var(--color-surface-1);
+  color: var(--color-text-primary);
+  outline: none;
+  min-height: 34px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.a2ui-datetime:focus {
+  border-color: var(--color-brand-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+/* ── Layout: Column / Row ────────────────────────────────────── */
+.a2ui-column {
+  display: flex;
+  flex-direction: column;
+}
+.a2ui-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── Card ──────────────────────────────────────────────────────
+   Mirror of .card from index.css */
+.a2ui-card {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-16);
+  box-shadow: var(--shadow-rest);
+  overflow: hidden;
+}
+
+/* ── List ────────────────────────────────────────────────────── */
+.a2ui-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────── */
+.a2ui-tabs {
+  display: flex;
+  flex-direction: column;
+}
+.a2ui-tabs__header {
+  display: flex;
+  border-bottom: 2px solid var(--color-border);
+}
+.a2ui-tabs__tab {
+  padding: 8px 16px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+}
+.a2ui-tabs__tab:hover {
+  color: var(--color-text-primary);
+}
+.a2ui-tabs__tab--active {
+  color: var(--color-brand-primary);
+  border-bottom-color: var(--color-brand-primary);
+}
+.a2ui-tabs__content {
+  padding: 12px 0;
+}
+
+/* ── Modal ───────────────────────────────────────────────────── */
+.a2ui-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.a2ui-modal {
+  background: var(--color-surface-1);
+  border-radius: var(--radius-24);
+  box-shadow: var(--shadow-elevated);
+  max-width: 480px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.a2ui-modal__title {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 20px 24px 0;
+  margin: 0;
+  color: var(--color-text-heading);
+}
+.a2ui-modal__content {
+  padding: 16px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Divider ─────────────────────────────────────────────────── */
+.a2ui-divider {
+  border: none;
+}
+.a2ui-divider--horizontal {
+  width: 100%;
+  height: 1px;
+  background: var(--color-border);
+}
+.a2ui-divider--vertical {
+  width: 1px;
+  align-self: stretch;
+  background: var(--color-border);
+}
+
+/* ── Image / Icon / Video / Audio ────────────────────────────── */
+.a2ui-image img {
+  max-width: 100%;
+  border-radius: var(--radius-8);
+}
+.a2ui-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.a2ui-video video {
+  max-width: 100%;
+  border-radius: var(--radius-8);
+}
+.a2ui-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.a2ui-audio__title {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+.a2ui-audio__player audio {
+  width: 100%;
+  min-width: 240px;
+}
+
+/* ── Error / Unknown fallback ────────────────────────────────── */
+.a2ui-error {
+  border: 1px solid var(--color-error-subtle);
+  background: var(--color-error-subtle);
+  color: var(--color-error);
+  font-size: 0.75rem;
+  padding: 6px 12px;
+  border-radius: var(--radius-8);
+}
+.a2ui-unknown {
+  padding: 8px 12px;
+  border: 1px dashed var(--color-warning);
+  border-radius: var(--radius-8);
+  background: var(--color-warning-subtle);
+  font-size: 0.7rem;
+  color: #92400e;
+  font-family: var(--font-mono);
+  overflow-x: auto;
+}
+
+/* ── PhonePreview ────────────────────────────────────────────── */
+.a2ui-phone-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.a2ui-phone-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-8);
+  background: var(--color-surface-2);
+  color: var(--color-text-tertiary);
+  font-size: 0.75rem;
+}
+.a2ui-phone-empty__icon {
+  color: var(--color-text-tertiary);
+}
+.a2ui-phone-card {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-12);
+  background: var(--color-surface-1);
+  box-shadow: var(--shadow-rest);
+  overflow: hidden;
+}
+.a2ui-phone-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+.a2ui-phone-card__header:hover {
+  background: var(--color-surface-2);
+}
+.a2ui-phone-card__info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.a2ui-phone-card__status-icon--online {
+  color: var(--color-success);
+  flex-shrink: 0;
+}
+.a2ui-phone-card__status-icon--offline {
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+.a2ui-phone-card__name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+.a2ui-phone-card__model {
+  font-size: 0.7rem;
+  color: var(--color-text-tertiary);
+}
+.a2ui-phone-card__status {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+.a2ui-phone-card__status--online {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+.a2ui-phone-card__status--offline {
+  background: var(--color-surface-3);
+  color: var(--color-text-tertiary);
+}
+.a2ui-phone-card__screenshot {
+  border-top: 1px solid var(--color-border-subtle);
+  padding: 8px;
+}
+.a2ui-phone-card__screenshot img {
+  width: 100%;
+  border-radius: var(--radius-8);
+  border: 1px solid var(--color-border);
+}
+
+/* ── MarkdownEditor ──────────────────────────────────────────── */
+.a2ui-markdown-editor {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-12);
+  background: var(--color-surface-1);
+  box-shadow: var(--shadow-rest);
+  overflow: hidden;
+}
+.a2ui-markdown-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-2);
+}
+.a2ui-markdown-editor__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.a2ui-markdown-editor__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-6);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-1);
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.a2ui-markdown-editor__copy:hover {
+  background: var(--color-surface-3);
+  color: var(--color-text-primary);
+}
+.a2ui-markdown-editor__preview {
+  padding: 14px;
+}
+.a2ui-markdown-editor__content {
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+}
