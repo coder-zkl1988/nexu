@@ -145,9 +145,6 @@ export function DevicesPage() {
                   <p className="text-[11px] text-text-muted mt-2 text-center leading-relaxed">
                     扫描下载 Tabby App
                   </p>
-                  <p className="text-[10px] text-text-muted/60 mt-1 text-center leading-relaxed">
-                    jsDelivr CDN · 免费无限流量
-                  </p>
                 </div>
               </div>
               {qrUrl && (
