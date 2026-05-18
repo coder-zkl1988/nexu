@@ -18,6 +18,7 @@ export const expertManifestSchema = z.object({
   modelId: z.string().min(1).default("gpt-4o"),
   requiredSkills: z.array(z.string().regex(/^[a-z0-9-]+$/)).default([]),
   workspaceFiles: z.record(z.string(), z.string()).default({}),
+  avatarDataUrl: z.string().max(200_000).optional(),
 });
 
 export const minimalExpertSchema = expertManifestSchema.pick({
@@ -29,6 +30,7 @@ export const minimalExpertSchema = expertManifestSchema.pick({
   tags: true,
   version: true,
   author: true,
+  avatarDataUrl: true,
 });
 
 export const installedExpertSchema = z.object({

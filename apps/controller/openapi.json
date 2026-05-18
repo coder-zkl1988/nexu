@@ -12488,6 +12488,10 @@
                             "type": "string",
                             "maxLength": 80,
                             "default": ""
+                          },
+                          "avatarDataUrl": {
+                            "type": "string",
+                            "maxLength": 200000
                           }
                         },
                         "required": [
@@ -12838,6 +12842,10 @@
                         "type": "string"
                       },
                       "default": {}
+                    },
+                    "avatarDataUrl": {
+                      "type": "string",
+                      "maxLength": 200000
                     }
                   },
                   "required": [

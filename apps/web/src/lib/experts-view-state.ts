@@ -20,7 +20,7 @@ export function parseExpertsViewState(
 
 export function serializeExpertsViewState(state: ExpertsViewState): string {
   const params = new URLSearchParams();
-  if (state.tab !== "explore") params.set("tab", state.tab);
+  params.set("tab", state.tab);
   if (state.tag) params.set("tag", state.tag);
   if (state.q) params.set("q", state.q);
   return params.toString();

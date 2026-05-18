@@ -115,7 +115,7 @@ const zhCN = {
   "title.linkFeishu": "绑定飞书 · nexu",
   "title.connecting": "连接中 · nexu",
   "title.default": "nexu",
-  "title.devices": "设备 · nexu",
+  "title.devices": "设备",
 
   // ── Workspace Layout ──
   "layout.brand": "你的数字同事",

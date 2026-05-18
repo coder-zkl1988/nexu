@@ -117,7 +117,7 @@ const en = {
   "title.settings": "Settings · nexu",
   "title.linkFeishu": "Link Feishu · nexu",
   "title.connecting": "Connecting · nexu",
-  "title.devices": "Devices · nexu",
+  "title.devices": "Devices",
   "title.default": "nexu",
 
   // ── Workspace Layout ──

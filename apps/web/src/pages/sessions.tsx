@@ -109,6 +109,35 @@ function extractSenderName(raw: string): string | null {
   return null;
 }
 
+/** Strip ```a2ui fenced code blocks from text, extracting A2UI JSONL messages. */
+function stripA2UIBlock(text: string): {
+  cleanText: string;
+  a2uiMessages: A2UIMessage[];
+} {
+  const a2uiMessages: A2UIMessage[] = [];
+  const a2uiBlockRegex = /```a2ui\n([\s\S]*?)```/g;
+  const cleanText = text.replace(a2uiBlockRegex, (_match, content: string) => {
+    for (const line of content.split("\n")) {
+      try {
+        const parsed = JSON.parse(line.trim());
+        if (
+          parsed?.version === "v0.9" &&
+          (parsed.createSurface ||
+            parsed.updateComponents ||
+            parsed.updateDataModel ||
+            parsed.deleteSurface)
+        ) {
+          a2uiMessages.push(parsed as A2UIMessage);
+        }
+      } catch {
+        // skip non-JSON lines (blank lines, malformed)
+      }
+    }
+    return "";
+  });
+  return { cleanText, a2uiMessages };
+}
+
 interface ImageBlockInfo {
   mimeType: string;
   data: string;
@@ -203,17 +232,36 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
 
   // Format 1: msg.text (shorthand)
   if (typeof msg.text === "string") {
-    raw = msg.text;
+    const stripped = stripA2UIBlock(msg.text);
+    raw = stripped.cleanText;
+    if (stripped.a2uiMessages.length > 0) {
+      hasA2UI = true;
+      if (!a2uiMessages) a2uiMessages = [];
+      a2uiMessages.push(...stripped.a2uiMessages);
+    }
   } else if (typeof msg.content === "string") {
     // Format 2: msg.content (string)
-    raw = msg.content;
+    const stripped = stripA2UIBlock(msg.content);
+    raw = stripped.cleanText;
+    if (stripped.a2uiMessages.length > 0) {
+      hasA2UI = true;
+      if (!a2uiMessages) a2uiMessages = [];
+      a2uiMessages.push(...stripped.a2uiMessages);
+    }
   } else if (Array.isArray(msg.content)) {
     // Format 3: msg.content (array of blocks)
     const blocks = msg.content as Record<string, unknown>[];
     const textParts: string[] = [];
     for (const b of blocks) {
       if (b?.type === "text") {
-        textParts.push(String(b?.text ?? ""));
+        const textContent = String(b?.text ?? "");
+        const stripped = stripA2UIBlock(textContent);
+        textParts.push(stripped.cleanText);
+        if (stripped.a2uiMessages.length > 0) {
+          hasA2UI = true;
+          if (!a2uiMessages) a2uiMessages = [];
+          a2uiMessages.push(...stripped.a2uiMessages);
+        }
       } else if (b?.type === "replyContext") {
         const candidate = String(b?.text ?? "").trim();
         if (candidate.length > 0) {
@@ -227,27 +275,6 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
         hasA2UI = true;
         if (!a2uiMessages) a2uiMessages = [];
         a2uiMessages.push(b.data as A2UIMessage);
-      } else if (b?.type === "text" && typeof b.text === "string") {
-        // Check for A2UI JSONL embedded in text blocks
-        const lines = b.text.split("\n");
-        for (const line of lines) {
-          try {
-            const parsed = JSON.parse(line.trim());
-            if (
-              parsed?.version === "v0.9" &&
-              (parsed.createSurface ||
-                parsed.updateComponents ||
-                parsed.updateDataModel ||
-                parsed.deleteSurface)
-            ) {
-              hasA2UI = true;
-              if (!a2uiMessages) a2uiMessages = [];
-              a2uiMessages.push(parsed as A2UIMessage);
-            }
-          } catch {
-            // Not JSON, skip
-          }
-        }
       } else if (b?.type === "image") {
         const source = b?.source as Record<string, unknown> | undefined;
         const sourceData = typeof source?.data === "string" ? source.data : "";
@@ -763,8 +790,7 @@ export function SessionsPage() {
     enabled: !!id,
   });
 
-  // Chat history — polls at 5s, disabled when SSE is connected
-  const [sseConnected, setSseConnected] = useState(false);
+  // Chat history — polls every 5s as reliable fallback. SSE invalidates for instant updates.
   const {
     data: chatData,
     isLoading: chatLoading,
@@ -779,29 +805,31 @@ export function SessionsPage() {
       return data;
     },
     enabled: !!id,
-    refetchInterval: sseConnected ? false : 5000,
+    refetchInterval: 5000,
   });
 
-  // SSE real-time connection — invalidates chat history on new messages
+  // SSE real-time connection — invalidates chat history on new messages.
+  // Polling (5s refetchInterval above) handles the fallback regardless of SSE state.
   useEffect(() => {
     if (!id || !session?.botId || !session?.sessionKey) return;
 
     const client = createSSEClient({
       botId: session.botId,
       sessionKey: session.sessionKey,
-      onConnected: () => setSseConnected(true),
-      onMessage: (_msg: SSEMessage) => {
+      onMessage: (msg: SSEMessage) => {
+        // Clear waiting state immediately when assistant reply arrives via SSE
+        if (msg.role === "assistant" && sentAtRef.current > 0) {
+          setWaitingForReply(false);
+          sentAtRef.current = 0;
+          setPendingMessages([]);
+        }
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
-      },
-      onError: () => {
-        setSseConnected(false);
       },
     });
 
     client.connect();
     return () => {
       client.disconnect();
-      setSseConnected(false);
     };
   }, [id, session?.botId, session?.sessionKey, queryClient]);
 
@@ -859,6 +887,13 @@ export function SessionsPage() {
     number | null
   >(null);
   const sentAtRef = useRef(0);
+
+  // Reset waiting state when switching sessions
+  useEffect(() => {
+    setWaitingForReply(false);
+    sentAtRef.current = 0;
+    setPendingMessages([]);
+  }, [id]);
 
   const handleSend = useCallback(
     async (text: string, attachments: PendingAttachment[]) => {
@@ -990,6 +1025,24 @@ export function SessionsPage() {
     }
   }, [lastAssistantTimestamp, waitingForReply]);
 
+  // Safety timeout: clear waitingForReply after 2 minutes regardless of SSE/polling state
+  const waitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (waitingForReply) {
+      waitingTimerRef.current = setTimeout(() => {
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+        setPendingMessages([]);
+      }, 120_000);
+    }
+    return () => {
+      if (waitingTimerRef.current) {
+        clearTimeout(waitingTimerRef.current);
+        waitingTimerRef.current = null;
+      }
+    };
+  }, [waitingForReply]);
+
   // Optimistic messages: use text-based key so React reuses the DOM node
   // when the server message replaces the optimistic one
   const optimisticMessages: ChatMessageData[] = pendingMessages
@@ -1003,6 +1056,60 @@ export function SessionsPage() {
     }));
 
   const displayMessages = [...safeMessages, ...optimisticMessages];
+
+  // Enrich assistant messages with A2UI from matching render_a2ui toolResults.
+  // render_a2ui results contain A2UI JSONL in ```a2ui code blocks, but
+  // ChatBubble only renders A2UI for assistant (bot) messages.
+  // Inject the A2UI into the assistant message that called render_a2ui.
+  const a2uiFromToolResults = new Map<string, A2UIMessage[]>();
+  for (const m of displayMessages) {
+    const rm = m as unknown as Record<string, unknown>;
+    if (rm.role === "toolResult" && rm.toolName === "render_a2ui") {
+      const te = extractMessage(rm);
+      if (te.a2uiMessages?.length) {
+        a2uiFromToolResults.set(String(rm.toolCallId ?? ""), te.a2uiMessages);
+      }
+    }
+  }
+  const enrichedMessages = displayMessages
+    .map((msg) => {
+      const rm = msg as unknown as Record<string, unknown>;
+      const extracted = extractMessage(rm);
+
+      // Inject A2UI from matching render_a2ui toolResult
+      if (rm.role === "assistant" && !extracted.hasA2UI) {
+        const content = rm.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === "toolCall" && block?.name === "render_a2ui") {
+              const a2uiFromResult = a2uiFromToolResults.get(
+                String(block.id ?? ""),
+              );
+              if (a2uiFromResult?.length) {
+                extracted.hasA2UI = true;
+                extracted.a2uiMessages = a2uiFromResult;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      return { msg, extracted };
+    })
+    .filter(({ msg, extracted }) => {
+      const rm = msg as unknown as Record<string, unknown>;
+      // Hide render_a2ui toolResult — A2UI shown on parent assistant msg
+      if (rm.role === "toolResult" && rm.toolName === "render_a2ui") {
+        return false;
+      }
+      if (extracted.text.trim().length > 0) return true;
+      if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
+      if (extracted.hasToolCall) return true;
+      if (extracted.images.length > 0) return true;
+      if (extracted.fileCards.length > 0) return true;
+      return false;
+    });
 
   // Auto-scroll on new messages or state changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages or waiting state changes
@@ -1174,78 +1281,55 @@ export function SessionsPage() {
               data-chat-layout="centered"
               className="mx-auto flex max-w-[800px] flex-col gap-5"
             >
-              {displayMessages
-                .map((msg) => ({
-                  msg,
-                  extracted: extractMessage(
-                    msg as unknown as Record<string, unknown>,
-                  ),
-                }))
-                .filter(({ extracted }) => {
-                  const {
-                    text,
-                    replyContextText,
-                    hasToolCall,
-                    images,
-                    fileCards,
-                  } = extracted;
-                  return (
-                    text.trim().length > 0 ||
-                    (replyContextText?.trim().length ?? 0) > 0 ||
-                    hasToolCall ||
-                    images.length > 0 ||
-                    fileCards.length > 0
-                  );
-                })
-                .flatMap(({ msg, extracted }, idx, arr) => {
-                  const msgTime = msg.timestamp ?? 0;
-                  const prevTime =
-                    idx > 0 ? (arr[idx - 1]?.msg.timestamp ?? 0) : 0;
-                  const divider =
-                    newSessionDividerTime &&
-                    msgTime >= newSessionDividerTime &&
-                    prevTime < newSessionDividerTime
-                      ? [
-                          <div
-                            key="session-divider"
-                            className="flex items-center gap-3 my-4"
-                          >
-                            <div className="flex-1 h-px bg-border" />
-                            <span className="text-[11px] text-text-muted shrink-0">
-                              {t("sessions.chat.newSession", {
-                                defaultValue: "New conversation",
-                              })}
-                            </span>
-                            <div className="flex-1 h-px bg-border" />
-                          </div>,
-                        ]
-                      : [];
-                  return [
-                    ...divider,
-                    <ChatBubble
-                      key={msg.id}
-                      msg={msg}
-                      extracted={extracted}
-                      onA2UIAction={(actionName, context) => {
-                        if (!selectedBot || !id || !session?.sessionKey) return;
-                        void postApiV1ChatLocal({
-                          body: {
-                            botId: selectedBot.id,
-                            sessionKey: session.sessionKey,
-                            message: {
-                              type: "text",
-                              content: JSON.stringify({
-                                type: "a2ui_action",
-                                actionName,
-                                data: context,
-                              }),
-                            },
+              {enrichedMessages.flatMap(({ msg, extracted }, idx, arr) => {
+                const msgTime = msg.timestamp ?? 0;
+                const prevTime =
+                  idx > 0 ? (arr[idx - 1]?.msg.timestamp ?? 0) : 0;
+                const divider =
+                  newSessionDividerTime &&
+                  msgTime >= newSessionDividerTime &&
+                  prevTime < newSessionDividerTime
+                    ? [
+                        <div
+                          key="session-divider"
+                          className="flex items-center gap-3 my-4"
+                        >
+                          <div className="flex-1 h-px bg-border" />
+                          <span className="text-[11px] text-text-muted shrink-0">
+                            {t("sessions.chat.newSession", {
+                              defaultValue: "New conversation",
+                            })}
+                          </span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>,
+                      ]
+                    : [];
+                return [
+                  ...divider,
+                  <ChatBubble
+                    key={msg.id}
+                    msg={msg}
+                    extracted={extracted}
+                    onA2UIAction={(actionName, context) => {
+                      if (!selectedBot || !id || !session?.sessionKey) return;
+                      void postApiV1ChatLocal({
+                        body: {
+                          botId: selectedBot.id,
+                          sessionKey: session.sessionKey,
+                          message: {
+                            type: "text",
+                            content: JSON.stringify({
+                              type: "a2ui_action",
+                              actionName,
+                              data: context,
+                            }),
                           },
-                        });
-                      }}
-                    />,
-                  ];
-                })}
+                        },
+                      });
+                    }}
+                  />,
+                ];
+              })}
               {waitingForReply && (
                 <div className="flex gap-3 items-start">
                   <img

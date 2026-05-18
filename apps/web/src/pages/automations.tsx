@@ -520,199 +520,205 @@ export function AutomationsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-6 py-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
-            {t("layout.nav.automations")}
-          </h1>
-          <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
-            {t("automations.subtitle")}
-          </p>
+    <div className="h-full flex flex-col">
+      {/* Fixed header area */}
+      <div className="shrink-0 px-6 pt-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
+              {t("layout.nav.automations")}
+            </h1>
+            <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
+              {t("automations.subtitle")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleNew}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black text-white text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            <Plus className="w-4 h-4" />
+            {t("automations.newAutomation")}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={handleNew}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black text-white text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          <Plus className="w-4 h-4" />
-          {t("automations.newAutomation")}
-        </button>
-      </div>
 
-      {/* Filter tabs */}
-      <div className="flex items-center justify-between mb-5 border-b border-[var(--color-tabby-border)]">
-        <div className="flex items-center gap-6">
-          {(
-            [
-              {
-                id: "all" as const,
-                label: t("automations.all"),
-                count: mockAutomations.length,
-              },
-              {
-                id: "active" as const,
-                label: t("automations.active"),
-                count: mockAutomations.filter((a) => a.status === "active")
-                  .length,
-              },
-              {
-                id: "paused" as const,
-                label: t("automations.paused"),
-                count: mockAutomations.filter((a) => a.status === "paused")
-                  .length,
-              },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setFilter(tab.id)}
-              className={cn(
-                "relative pb-2.5 text-sm font-medium transition-colors",
-                filter === tab.id
-                  ? "text-[var(--color-tabby-foreground)]"
-                  : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)]",
-              )}
-            >
-              {tab.label}
-              <span className="ml-1 text-[var(--color-tabby-muted)]">
-                {tab.count}
-              </span>
-              {filter === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-tabby-foreground)] rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content - Card Grid */}
-      {filtered.length > 0 ? (
-        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
-          {filtered.map((automation) => {
-            const Icon = automation.icon;
-            return (
-              <div
-                key={automation.id}
-                className="bg-white rounded-xl border border-[var(--color-tabby-border)] p-4 hover:border-[var(--color-tabby-foreground)]/30 transition-colors cursor-pointer"
+        {/* Filter tabs */}
+        <div className="flex items-center justify-between mb-5 border-b border-[var(--color-tabby-border)]">
+          <div className="flex items-center gap-6">
+            {(
+              [
+                {
+                  id: "all" as const,
+                  label: t("automations.all"),
+                  count: mockAutomations.length,
+                },
+                {
+                  id: "active" as const,
+                  label: t("automations.active"),
+                  count: mockAutomations.filter((a) => a.status === "active")
+                    .length,
+                },
+                {
+                  id: "paused" as const,
+                  label: t("automations.paused"),
+                  count: mockAutomations.filter((a) => a.status === "paused")
+                    .length,
+                },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilter(tab.id)}
+                className={cn(
+                  "relative pb-2.5 text-sm font-medium transition-colors",
+                  filter === tab.id
+                    ? "text-[var(--color-tabby-foreground)]"
+                    : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)]",
+                )}
               >
-                {/* Header */}
-                <div className="flex items-start gap-3 mb-3">
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
-                      automation.iconColor,
-                    )}
-                  >
-                    <Icon className="w-5 h-5" />
+                {tab.label}
+                <span className="ml-1 text-[var(--color-tabby-muted)]">
+                  {tab.count}
+                </span>
+                {filter === tab.id && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-tabby-foreground)] rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto px-6 pb-4">
+        {/* Content - Card Grid */}
+        {filtered.length > 0 ? (
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
+            {filtered.map((automation) => {
+              const Icon = automation.icon;
+              return (
+                <div
+                  key={automation.id}
+                  className="bg-white rounded-xl border border-[var(--color-tabby-border)] p-4 hover:border-[var(--color-tabby-foreground)]/30 transition-colors cursor-pointer"
+                >
+                  {/* Header */}
+                  <div className="flex items-start gap-3 mb-3">
+                    <div
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                        automation.iconColor,
+                      )}
+                    >
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[14px] font-semibold text-[var(--color-tabby-foreground)] truncate">
+                          {automation.name}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0",
+                            automation.status === "active"
+                              ? "bg-green-50 text-green-600"
+                              : "bg-amber-50 text-amber-600",
+                          )}
+                        >
+                          {automation.status === "active"
+                            ? t("automations.active")
+                            : t("automations.paused")}
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-[var(--color-tabby-muted)] line-clamp-1">
+                        {automation.description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[14px] font-semibold text-[var(--color-tabby-foreground)] truncate">
-                        {automation.name}
+
+                  {/* Trigger & Action */}
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <Clock className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
+                      <span className="text-[var(--color-tabby-muted)]">
+                        {t("automations.detail.trigger")}:
                       </span>
-                      <span
-                        className={cn(
-                          "text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0",
-                          automation.status === "active"
-                            ? "bg-green-50 text-green-600"
-                            : "bg-amber-50 text-amber-600",
-                        )}
-                      >
-                        {automation.status === "active"
-                          ? t("automations.active")
-                          : t("automations.paused")}
+                      <span className="text-[var(--color-tabby-foreground)] truncate">
+                        {automation.trigger}
                       </span>
                     </div>
-                    <p className="text-[12px] text-[var(--color-tabby-muted)] line-clamp-1">
-                      {automation.description}
-                    </p>
+                    <div className="flex items-center gap-2 text-[12px]">
+                      <Zap className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
+                      <span className="text-[var(--color-tabby-muted)]">
+                        {t("automations.detail.action")}:
+                      </span>
+                      <span className="text-[var(--color-tabby-foreground)] truncate">
+                        {automation.action}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between pt-3 border-t border-[var(--color-tabby-border)]">
+                    <span className="text-[11px] text-[var(--color-tabby-muted)]">
+                      {automation.lastRun}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(automation)}
+                        className="p-1.5 rounded-md text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)] hover:bg-neutral-100 transition-colors"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(automation)}
+                        className={cn(
+                          "p-1.5 rounded-md transition-colors",
+                          automation.status === "active"
+                            ? "text-amber-600 hover:bg-amber-50"
+                            : "text-green-600 hover:bg-green-50",
+                        )}
+                      >
+                        {automation.status === "active" ? (
+                          <Pause size={14} />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(automation)}
+                        className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Sparkles className="w-12 h-12 text-[var(--color-tabby-muted)] opacity-30 mb-4" />
+            <p className="text-sm text-[var(--color-tabby-muted)]">
+              {t("automations.noAutomations")}
+            </p>
+            <p className="text-xs text-[var(--color-tabby-muted)] mt-1">
+              {t("automations.createFirst")}
+            </p>
+          </div>
+        )}
 
-                {/* Trigger & Action */}
-                <div className="space-y-1.5 mb-3">
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <Clock className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
-                    <span className="text-[var(--color-tabby-muted)]">
-                      {t("automations.detail.trigger")}:
-                    </span>
-                    <span className="text-[var(--color-tabby-foreground)] truncate">
-                      {automation.trigger}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[12px]">
-                    <Zap className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
-                    <span className="text-[var(--color-tabby-muted)]">
-                      {t("automations.detail.action")}:
-                    </span>
-                    <span className="text-[var(--color-tabby-foreground)] truncate">
-                      {automation.action}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between pt-3 border-t border-[var(--color-tabby-border)]">
-                  <span className="text-[11px] text-[var(--color-tabby-muted)]">
-                    {automation.lastRun}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleEdit(automation)}
-                      className="p-1.5 rounded-md text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)] hover:bg-neutral-100 transition-colors"
-                    >
-                      <Edit3 size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleStatus(automation)}
-                      className={cn(
-                        "p-1.5 rounded-md transition-colors",
-                        automation.status === "active"
-                          ? "text-amber-600 hover:bg-amber-50"
-                          : "text-green-600 hover:bg-green-50",
-                      )}
-                    >
-                      {automation.status === "active" ? (
-                        <Pause size={14} />
-                      ) : (
-                        <Play size={14} />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(automation)}
-                      className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-20">
-          <Sparkles className="w-12 h-12 text-[var(--color-tabby-muted)] opacity-30 mb-4" />
-          <p className="text-sm text-[var(--color-tabby-muted)]">
-            {t("automations.noAutomations")}
-          </p>
-          <p className="text-xs text-[var(--color-tabby-muted)] mt-1">
-            {t("automations.createFirst")}
-          </p>
-        </div>
-      )}
-
-      <AutomationModal
-        open={showModal}
-        onOpenChange={setShowModal}
-        editingAutomation={editingAutomation}
-      />
+        <AutomationModal
+          open={showModal}
+          onOpenChange={setShowModal}
+          editingAutomation={editingAutomation}
+        />
+      </div>
     </div>
   );
 }

@@ -884,63 +884,85 @@ function WorkspaceLayoutInner() {
             <div className="sidebar-section-label whitespace-nowrap">
               {t("layout.conversations")}
             </div>
-            <div className="space-y-0.5">
-              {sessions.map((s) => {
-                const isActive = selectedSessionId === s.id;
-                return (
-                  <button
-                    type="button"
-                    key={s.id}
-                    data-sidebar-session-row={s.id}
-                    data-session-channel-type={s.channelType ?? "web"}
-                    data-session-state={s.status || "idle"}
-                    onClick={() => {
-                      const channel = normalizeChannel(s.channelType);
-                      track("workspace_channel_click", {
-                        channel_type: s.channelType,
-                      });
-                      track("workspace_sidebar_click", {
-                        target: "conversations",
-                        ...(channel ? { channel } : {}),
-                      });
-                      navigate(`/workspace/sessions/${s.id}`);
-                    }}
-                    className={cn(
-                      "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
-                      isActive && "nav-item-active",
-                    )}
-                  >
-                    <SidebarPlatformIcon platform={s.channelType ?? "web"} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div
-                          className={cn(
-                            "text-[12px] truncate whitespace-nowrap font-medium",
-                            !isActive && "text-text-primary",
-                          )}
-                        >
-                          {s.title}
-                        </div>
-                        {s.status === "active" && (
-                          <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                            Live
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
-                        <span>{getPlatformLabel(s.channelType ?? "web")}</span>
-                        <span className="text-border">·</span>
-                        <span>{formatTime(s.lastTime)}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {s.status === "active" && (
-                        <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
-                      )}
-                    </div>
-                  </button>
+            <div className="space-y-3">
+              {(() => {
+                const grouped = sessions.reduce(
+                  (acc, s) => {
+                    const key = s.channelType ?? "web";
+                    (acc[key] ??= []).push(s);
+                    return acc;
+                  },
+                  {} as Record<string, SidebarSession[]>,
                 );
-              })}
+                return Object.entries(grouped).map(
+                  ([channelType, groupSessions]) => (
+                    <div key={channelType}>
+                      <div className="space-y-0.5">
+                        {groupSessions.map((s) => {
+                          const isActive = selectedSessionId === s.id;
+                          return (
+                            <button
+                              type="button"
+                              key={s.id}
+                              data-sidebar-session-row={s.id}
+                              data-session-channel-type={s.channelType ?? "web"}
+                              data-session-state={s.status || "idle"}
+                              onClick={() => {
+                                const channel = normalizeChannel(s.channelType);
+                                track("workspace_channel_click", {
+                                  channel_type: s.channelType,
+                                });
+                                track("workspace_sidebar_click", {
+                                  target: "conversations",
+                                  ...(channel ? { channel } : {}),
+                                });
+                                navigate(`/workspace/sessions/${s.id}`);
+                              }}
+                              className={cn(
+                                "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
+                                isActive && "nav-item-active",
+                              )}
+                            >
+                              <SidebarPlatformIcon
+                                platform={s.channelType ?? "web"}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div
+                                    className={cn(
+                                      "text-[12px] truncate whitespace-nowrap font-medium",
+                                      !isActive && "text-text-primary",
+                                    )}
+                                  >
+                                    {s.title}
+                                  </div>
+                                  {s.status === "active" && (
+                                    <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
+                                      Live
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                  <span>
+                                    {getPlatformLabel(s.channelType ?? "web")}
+                                  </span>
+                                  <span className="text-border">·</span>
+                                  <span>{formatTime(s.lastTime)}</span>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                {s.status === "active" && (
+                                  <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ),
+                );
+              })()}
             </div>
           </div>
         </div>
