@@ -137,13 +137,16 @@ export function DevicesPage() {
                 >
                   <div className="bg-white p-2 rounded-lg border border-border">
                     <QRCodeSVG
-                      value="https://nexu.io/tabby"
+                      value="https://cdn.jsdelivr.net/gh/coder-zkl1988/tabby-app@dev/app-release.apk"
                       size={160}
                       level="M"
                     />
                   </div>
                   <p className="text-[11px] text-text-muted mt-2 text-center leading-relaxed">
                     扫描下载 Tabby App
+                  </p>
+                  <p className="text-[10px] text-text-muted/60 mt-1 text-center leading-relaxed">
+                    jsDelivr CDN · 免费无限流量
                   </p>
                 </div>
               </div>
