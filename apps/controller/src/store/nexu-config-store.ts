@@ -1210,6 +1210,15 @@ export class NexuConfigStore {
     return deleted;
   }
 
+  async setScheduleExternalId(id: string, externalId: string): Promise<void> {
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((s) =>
+        s.id === id ? { ...s, externalId } : s,
+      ),
+    }));
+  }
+
   async listChannels(): Promise<ChannelResponse[]> {
     const config = await this.getConfig();
     return config.channels;

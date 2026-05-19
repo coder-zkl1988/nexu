@@ -160,6 +160,15 @@ export async function bootstrapController(
     );
   }
 
+  // Register existing schedules with OpenClaw now that the WS connection
+  // is established. Fire-and-forget so bootstrap isn't blocked.
+  void container.scheduleService.bootstrap().catch((err) => {
+    logger.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "schedule_bootstrap_failed",
+    );
+  });
+
   container.runtimeState.bootPhase = "ready";
 
   return container.startBackgroundLoops();

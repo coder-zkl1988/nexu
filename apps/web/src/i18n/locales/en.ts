@@ -1366,6 +1366,7 @@ const en = {
   "automations.detail.action": "Action",
   "automations.detail.history": "Run History",
   "automations.detail.noHistory": "No run history",
+  "automations.detail.historyError": "Failed to load run history",
   "automations.detail.success": "Success",
   "automations.detail.failed": "Failed",
   "automations.detail.edit": "Edit",

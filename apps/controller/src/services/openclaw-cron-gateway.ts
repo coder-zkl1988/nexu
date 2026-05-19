@@ -31,6 +31,19 @@ interface CronJob {
   payload: CronPayload;
 }
 
+export interface CronJobCreateInput {
+  name: string;
+  description?: string;
+  agentId: string;
+  enabled: boolean;
+  cron: string;
+  timezone: string;
+  prompt: string;
+  channelType?: string;
+  channelId?: string;
+  scheduleId: string;
+}
+
 interface CronListResult {
   jobs: CronJob[];
   total: number;
@@ -39,6 +52,27 @@ interface CronListResult {
 interface CronStoreFile {
   version: number;
   jobs: CronJob[];
+}
+
+export interface CronRunEntry {
+  ts: number;
+  jobId: string;
+  action: "finished";
+  status?: "ok" | "error" | "skipped";
+  error?: string;
+  summary?: string;
+  runAtMs?: number;
+  durationMs?: number;
+  nextRunAtMs?: number;
+}
+
+export interface CronRunsResponse {
+  entries: CronRunEntry[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number | null;
 }
 
 export function mapCronJobToScheduleItem(
@@ -101,6 +135,43 @@ export class OpenClawCronGateway {
 
   async updateJob(id: string, patch: { enabled?: boolean }): Promise<void> {
     await this.wsClient.request("cron.update", { id, patch });
+  }
+
+  async createJob(input: CronJobCreateInput): Promise<string> {
+    const result = await this.wsClient.request<{ id: string }>("cron.add", {
+      name: input.name,
+      description: input.description ?? `nexuScheduleId:${input.scheduleId}`,
+      agentId: input.agentId,
+      enabled: input.enabled,
+      schedule: {
+        kind: "cron",
+        expr: input.cron,
+        tz: input.timezone,
+      },
+      payload: {
+        kind: "agentTurn",
+        message: input.prompt,
+      },
+      sessionTarget: "isolated",
+      sessionKey: `agent:${input.agentId}:schedule-${input.scheduleId}`,
+      delivery: {
+        mode: "announce",
+        channel: input.channelType ?? "last",
+        accountId: input.channelId,
+      },
+    });
+    return result.id;
+  }
+
+  async getRuns(
+    jobId: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<CronRunsResponse> {
+    return this.wsClient.request<CronRunsResponse>("cron.runs", {
+      id: jobId,
+      limit: opts?.limit ?? 20,
+      offset: opts?.offset ?? 0,
+    });
   }
 
   async removeJob(id: string): Promise<void> {

@@ -1277,6 +1277,7 @@ const zhCN = {
   "automations.detail.action": "执行动作",
   "automations.detail.history": "运行历史",
   "automations.detail.noHistory": "暂无运行记录",
+  "automations.detail.historyError": "加载运行记录失败",
   "automations.detail.success": "成功",
   "automations.detail.failed": "失败",
   "automations.detail.edit": "编辑",

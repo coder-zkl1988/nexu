@@ -5135,6 +5135,52 @@ export type PatchApiV1SchedulesByScheduleIdResponses = {
 
 export type PatchApiV1SchedulesByScheduleIdResponse = PatchApiV1SchedulesByScheduleIdResponses[keyof PatchApiV1SchedulesByScheduleIdResponses];
 
+export type GetApiV1SchedulesByScheduleIdRunsData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+    };
+    query?: {
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/v1/schedules/{scheduleId}/runs';
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsErrors = {
+    /**
+     * Schedule not found or no cron job registered
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsError = GetApiV1SchedulesByScheduleIdRunsErrors[keyof GetApiV1SchedulesByScheduleIdRunsErrors];
+
+export type GetApiV1SchedulesByScheduleIdRunsResponses = {
+    /**
+     * Schedule run history
+     */
+    200: {
+        entries: Array<{
+            ts: number;
+            jobId: string;
+            action: 'finished';
+            status?: 'ok' | 'error' | 'skipped';
+            error?: string;
+            summary?: string;
+            runAtMs?: number;
+            durationMs?: number;
+            nextRunAtMs?: number;
+        }>;
+        total: number;
+        hasMore: boolean;
+    };
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesByScheduleIdRunsResponses[keyof GetApiV1SchedulesByScheduleIdRunsResponses];
+
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };

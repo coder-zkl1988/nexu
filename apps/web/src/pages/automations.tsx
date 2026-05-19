@@ -27,12 +27,14 @@ import {
   getApiV1Bots,
   getApiV1Channels,
   getApiV1Schedules,
+  getApiV1SchedulesByScheduleIdRuns,
   patchApiV1SchedulesByScheduleId,
   postApiV1Schedules,
 } from "../../lib/api/sdk.gen";
 import type {
   GetApiV1BotsResponse,
   GetApiV1ChannelsResponse,
+  GetApiV1SchedulesByScheduleIdRunsResponse,
   GetApiV1SchedulesResponse,
 } from "../../lib/api/types.gen";
 
@@ -55,9 +57,43 @@ interface ScheduleItem {
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 type DayKey = (typeof DAYS)[number];
 
+type ScheduleMode = "daily" | "interval";
+
+interface IntervalConfig {
+  value: number;
+  unit: "minutes" | "hours";
+}
+
+function parseIntervalCron(cron: string): IntervalConfig | null {
+  const parts = cron.split(" ");
+  if (parts.length < 5) return null;
+  const minutePart = parts[0] ?? "*";
+  // Every N minutes: */N * * * *
+  if (minutePart.startsWith("*/")) {
+    const v = Number.parseInt(minutePart.slice(2), 10);
+    if (v > 0) return { value: v, unit: "minutes" };
+  }
+  // Every N hours: 0 */N * * *
+  const hourPart = parts[1] ?? "*";
+  if (hourPart.startsWith("*/") && (minutePart === "0" || minutePart === "0")) {
+    const v = Number.parseInt(hourPart.slice(2), 10);
+    if (v > 0) return { value: v, unit: "hours" };
+  }
+  return null;
+}
+
 function cronToTriggerText(cron: string, timezone: string): string {
   const parts = cron.split(" ");
   if (parts.length < 5) return cron;
+
+  const interval = parseIntervalCron(cron);
+  if (interval) {
+    const label =
+      interval.unit === "minutes"
+        ? `Every ${interval.value} min`
+        : `Every ${interval.value} hr`;
+    return `${label} (${timezone})`;
+  }
 
   const minute = parts[0] ?? "0";
   const hour = parts[1] ?? "9";
@@ -177,8 +213,13 @@ function AutomationModal({
   const [name, setName] = useState("");
   const [botId, setBotId] = useState("");
   const [channelType, setChannelType] = useState("");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("daily");
   const [time, setTime] = useState("09:00");
   const [selectedDays, setSelectedDays] = useState<Set<DayKey>>(new Set());
+  const [intervalValue, setIntervalValue] = useState(30);
+  const [intervalUnit, setIntervalUnit] = useState<"minutes" | "hours">(
+    "minutes",
+  );
   const [prompt, setPrompt] = useState("");
   const [enabled, setEnabled] = useState(true);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -226,20 +267,31 @@ function AutomationModal({
       setPrompt(editingSchedule.prompt);
       setEnabled(editingSchedule.enabled);
 
-      const parts = editingSchedule.cron.split(" ");
-      if (parts.length >= 5) {
-        const minute = parts[0] ?? "0";
-        const hour = parts[1] ?? "9";
-        setTime(`${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`);
-        setSelectedDays(parseCronDays(parts[4] ?? "*"));
+      const interval = parseIntervalCron(editingSchedule.cron);
+      if (interval) {
+        setScheduleMode("interval");
+        setIntervalValue(interval.value);
+        setIntervalUnit(interval.unit);
+      } else {
+        setScheduleMode("daily");
+        const parts = editingSchedule.cron.split(" ");
+        if (parts.length >= 5) {
+          const minute = parts[0] ?? "0";
+          const hour = parts[1] ?? "9";
+          setTime(`${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`);
+          setSelectedDays(parseCronDays(parts[4] ?? "*"));
+        }
       }
     } else {
       setName("");
       setBotId("");
       setPrompt("");
       setEnabled(true);
+      setScheduleMode("daily");
       setTime("09:00");
       setSelectedDays(new Set());
+      setIntervalValue(30);
+      setIntervalUnit("minutes");
     }
   }, [editingSchedule]);
 
@@ -247,8 +299,11 @@ function AutomationModal({
     setName("");
     setBotId("");
     setChannelType("");
+    setScheduleMode("daily");
     setTime("09:00");
     setSelectedDays(new Set());
+    setIntervalValue(30);
+    setIntervalUnit("minutes");
     setPrompt("");
     setEnabled(true);
   }
@@ -274,7 +329,12 @@ function AutomationModal({
     if (saving) return;
     setSaving(true);
     try {
-      const cron = buildCronExpression(time, selectedDays);
+      const cron =
+        scheduleMode === "interval"
+          ? intervalUnit === "minutes"
+            ? `*/${intervalValue} * * * *`
+            : `0 */${intervalValue} * * *`
+          : buildCronExpression(time, selectedDays);
       if (isEditing && editingSchedule) {
         await patchApiV1SchedulesByScheduleId({
           body: {
@@ -402,44 +462,110 @@ function AutomationModal({
               {t("automations.modal.schedule")}
             </Label>
 
-            <div className="space-y-3">
-              {/* Time picker - 24h format */}
-              <div className="flex items-center gap-3">
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="block w-[120px] px-3 py-1.5 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:outline-none focus:ring-2 focus:ring-black focus:border-black [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
-                />
-                <span className="text-[12px] text-[var(--color-tabby-muted)]">
-                  {t("automations.modal.timezone")}: {timezone}
-                </span>
-              </div>
+            {/* Mode tabs */}
+            <div className="inline-flex items-center gap-1 p-1 rounded-full bg-neutral-100 mb-3">
+              {(
+                [
+                  { id: "daily" as const, label: t("automations.modal.daily") },
+                  {
+                    id: "interval" as const,
+                    label: t("automations.modal.interval"),
+                  },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setScheduleMode(tab.id)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
+                    scheduleMode === tab.id
+                      ? "bg-white text-[var(--color-tabby-foreground)] shadow-[var(--shadow-rest)]"
+                      : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)]",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-              {/* Days of week */}
-              <div>
-                <span className="text-[12px] text-[var(--color-tabby-muted)] mb-1.5 block">
-                  {t("automations.modal.days")}
-                </span>
-                <div className="flex gap-1">
-                  {DAYS.map((day) => (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => toggleDay(day)}
-                      className={cn(
-                        "w-8 h-8 rounded-lg text-[12px] font-medium transition-colors",
-                        selectedDays.has(day)
-                          ? "bg-black text-white"
-                          : "bg-black/10 text-[var(--color-tabby-muted)] hover:bg-black/20",
-                      )}
-                    >
-                      {t(`automations.days.${day}`)}
-                    </button>
-                  ))}
+            {scheduleMode === "daily" ? (
+              <div className="space-y-3">
+                {/* Time picker */}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="block w-[120px] px-3 py-1.5 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:outline-none focus:ring-2 focus:ring-black focus:border-black [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+                  />
+                  <span className="text-[12px] text-[var(--color-tabby-muted)]">
+                    {t("automations.modal.timezone")}: {timezone}
+                  </span>
+                </div>
+
+                {/* Days of week */}
+                <div>
+                  <span className="text-[12px] text-[var(--color-tabby-muted)] mb-1.5 block">
+                    {t("automations.modal.days")}
+                  </span>
+                  <div className="flex gap-1">
+                    {DAYS.map((day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleDay(day)}
+                        className={cn(
+                          "w-8 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                          selectedDays.has(day)
+                            ? "bg-black text-white"
+                            : "bg-black/10 text-[var(--color-tabby-muted)] hover:bg-black/20",
+                        )}
+                      >
+                        {t(`automations.days.${day}`)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] text-[var(--color-tabby-muted)]">
+                  {t("automations.modal.every")}
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={intervalValue}
+                  onChange={(e) =>
+                    setIntervalValue(
+                      Math.max(1, Math.min(1440, Number(e.target.value) || 1)),
+                    )
+                  }
+                  className="w-[80px] px-3 py-1.5 text-[13px] text-center border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                />
+                <div className="relative">
+                  <select
+                    value={intervalUnit}
+                    onChange={(e) =>
+                      setIntervalUnit(e.target.value as "minutes" | "hours")
+                    }
+                    className="block w-[100px] pl-3 pr-8 py-1.5 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:ring-1 focus:ring-[var(--color-tabby-foreground)] focus:border-[var(--color-tabby-foreground)] appearance-none"
+                  >
+                    <option value="minutes">
+                      {t("automations.modal.minutes")}
+                    </option>
+                    <option value="hours">
+                      {t("automations.modal.hours")}
+                    </option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-[var(--color-tabby-muted)]">
+                    <ChevronDown size={14} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Prompt */}
@@ -566,6 +692,48 @@ export function AutomationsPage() {
     fetchSchedules();
   }
 
+  const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
+  const [runsData, setRunsData] = useState<
+    Record<string, GetApiV1SchedulesByScheduleIdRunsResponse | null>
+  >({});
+  const [runsLoading, setRunsLoading] = useState<Set<string>>(new Set());
+
+  async function toggleRuns(scheduleId: string) {
+    setExpandedRuns((prev) => {
+      const next = new Set(prev);
+      if (next.has(scheduleId)) {
+        next.delete(scheduleId);
+      } else {
+        next.add(scheduleId);
+        if (!(scheduleId in runsData)) {
+          setRunsLoading((s) => new Set(s).add(scheduleId));
+          getApiV1SchedulesByScheduleIdRuns({
+            path: { scheduleId },
+            query: { limit: 20 },
+          })
+            .then((res) => {
+              setRunsData((d) => ({
+                ...d,
+                [scheduleId]:
+                  res.data as GetApiV1SchedulesByScheduleIdRunsResponse,
+              }));
+            })
+            .catch(() => {
+              setRunsData((d) => ({ ...d, [scheduleId]: null }));
+            })
+            .finally(() => {
+              setRunsLoading((s) => {
+                const ns = new Set(s);
+                ns.delete(scheduleId);
+                return ns;
+              });
+            });
+        }
+      }
+      return next;
+    });
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Fixed header area */}
@@ -643,7 +811,7 @@ export function AutomationsPage() {
             <Loader2 className="w-8 h-8 animate-spin text-[var(--color-tabby-muted)]" />
           </div>
         ) : filtered.length > 0 ? (
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
+          <div className="grid gap-4 items-start [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
             {filtered.map((schedule) => (
               <div
                 key={schedule.id}
@@ -692,6 +860,80 @@ export function AutomationsPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Run history toggle */}
+                <button
+                  type="button"
+                  onClick={() => toggleRuns(schedule.id)}
+                  className="flex items-center gap-1 text-[11px] text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)] transition-colors mb-1"
+                >
+                  <Clock size={12} />
+                  {t("automations.detail.history")}
+                  <ChevronDown
+                    size={12}
+                    className={cn(
+                      "transition-transform",
+                      expandedRuns.has(schedule.id) && "rotate-180",
+                    )}
+                  />
+                </button>
+
+                {/* Run history list */}
+                {expandedRuns.has(schedule.id) && (
+                  <div className="mb-3 border border-[var(--color-tabby-border)] rounded-lg divide-y divide-[var(--color-tabby-border)] max-h-[200px] overflow-y-auto">
+                    {runsLoading.has(schedule.id) ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2
+                          size={14}
+                          className="animate-spin text-[var(--color-tabby-muted)]"
+                        />
+                      </div>
+                    ) : runsData[schedule.id] === null ? (
+                      <div className="text-[11px] text-[var(--color-tabby-muted)] text-center py-4">
+                        {t("automations.detail.historyError")}
+                      </div>
+                    ) : (runsData[schedule.id]?.entries?.length ?? 0) === 0 ? (
+                      <div className="text-[11px] text-[var(--color-tabby-muted)] text-center py-4">
+                        {t("automations.detail.noHistory")}
+                      </div>
+                    ) : (
+                      runsData[schedule.id]?.entries?.map((run) => (
+                        <div
+                          key={run.ts}
+                          className="flex items-center gap-2 px-3 py-2 text-[11px]"
+                        >
+                          <span
+                            className={cn(
+                              "w-1.5 h-1.5 rounded-full shrink-0",
+                              run.status === "ok"
+                                ? "bg-green-500"
+                                : run.status === "error"
+                                  ? "bg-red-500"
+                                  : "bg-neutral-300",
+                            )}
+                          />
+                          <span className="text-[var(--color-tabby-muted)] shrink-0 w-[120px]">
+                            {run.runAtMs
+                              ? new Date(run.runAtMs).toLocaleString()
+                              : new Date(run.ts).toLocaleString()}
+                          </span>
+                          {run.durationMs !== undefined && (
+                            <span className="text-[var(--color-tabby-muted)] shrink-0">
+                              {run.durationMs < 1000
+                                ? `${run.durationMs}ms`
+                                : `${(run.durationMs / 1000).toFixed(1)}s`}
+                            </span>
+                          )}
+                          <span className="text-[var(--color-tabby-muted)] truncate flex-1 min-w-0 text-right">
+                            {run.error
+                              ? run.error.slice(0, 80)
+                              : (run.summary?.slice(0, 80) ?? "")}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
 
                 {/* Footer */}
                 <div className="flex items-center justify-between pt-3 border-t border-[var(--color-tabby-border)]">
