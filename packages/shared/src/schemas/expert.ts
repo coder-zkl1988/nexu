@@ -41,6 +41,7 @@ export const installedExpertSchema = z.object({
   name: z.string().optional(),
   avatarDataUrl: z.string().optional(),
   description: z.string().optional(),
+  configuredSkills: z.array(z.string()).optional(),
 });
 
 export const experthubCatalogResponseSchema = z.object({

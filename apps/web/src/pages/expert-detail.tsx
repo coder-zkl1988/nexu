@@ -1,24 +1,35 @@
+import { SkillList } from "@/components/experts/skill-selector";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
+import { useCommunitySkills } from "@/hooks/use-community-catalog";
 import {
   useExpertDetail,
   useExperthubCatalog,
   useInstallExpert,
   useUninstallExpert,
+  useUpdateExpertSkills,
 } from "@/hooks/use-experthub-catalog";
+import { getTagLabel } from "@/lib/skill-translations";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   Bot,
+  Compass,
   Download,
+  Edit3,
   FileText,
   Heart,
   Loader2,
+  Lock,
+  Save,
+  Search,
+  Settings2,
   Sparkles,
   Trash2,
   User,
   Wrench,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -50,6 +61,158 @@ export default function ExpertDetailPage() {
   const installedSlugs = new Set(catalogQuery.data?.installedSlugs ?? []);
   const isInstalled = slug ? installedSlugs.has(slug) : false;
   const isBusy = pendingAction !== null;
+
+  // Skill editing state
+  const [editingSkills, setEditingSkills] = useState(false);
+  const { data: skillsData } = useCommunitySkills();
+  const updateSkillsMutation = useUpdateExpertSkills();
+  const allSkills = skillsData?.skills ?? [];
+  const communityInstalledSlugs = useMemo(
+    () => new Set(skillsData?.installedSlugs ?? []),
+    [skillsData?.installedSlugs],
+  );
+
+  // Current configured skills from ledger
+  const ledgerEntry = slug
+    ? catalogQuery.data?.installedExperts?.find((e) => e.slug === slug)
+    : null;
+  const currentConfiguredSkills: string[] = ledgerEntry?.configuredSkills ?? [];
+  const requiredSkills: string[] = data?.requiredSkills ?? [];
+  const requiredSkillsSet = useMemo(
+    () => new Set(requiredSkills),
+    [requiredSkills],
+  );
+
+  // When entering edit mode, initialize from current configured skills (if any)
+  // or fall back to required skills
+  const [editedSkills, setEditedSkills] = useState<string[]>([]);
+  const editedSkillsSet = useMemo(() => new Set(editedSkills), [editedSkills]);
+
+  function enterEditMode() {
+    setEditedSkills(
+      currentConfiguredSkills.length > 0
+        ? [...currentConfiguredSkills]
+        : [...requiredSkills],
+    );
+    setEditingSkills(true);
+  }
+
+  function cancelEdit() {
+    setEditingSkills(false);
+    setEditedSkills([]);
+    setSkillSearch("");
+    setActiveTag(null);
+  }
+
+  async function saveSkills() {
+    if (!slug) return;
+    try {
+      await updateSkillsMutation.mutateAsync({ slug, skills: editedSkills });
+      setEditingSkills(false);
+      toast.success(
+        t("experts.detail.skills_saved", { defaultValue: "Skills updated" }),
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("experts.detail.skills_save_error", {
+              defaultValue: "Failed to update skills",
+            }),
+      );
+    }
+  }
+
+  function toggleSkill(skillSlug: string) {
+    if (requiredSkillsSet.has(skillSlug)) return;
+    setEditedSkills((prev) =>
+      prev.includes(skillSlug)
+        ? prev.filter((s) => s !== skillSlug)
+        : [...prev, skillSlug],
+    );
+  }
+
+  // Skill filtering state
+  const [skillTab, setSkillTab] = useState<"yours" | "explore">("explore");
+  const [skillSearch, setSkillSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+
+  const installedSkillsList = useMemo(() => {
+    return (skillsData?.installedSkills ?? []).map((is) => {
+      const catalogEntry = allSkills.find((s) => s.slug === is.slug);
+      return (
+        catalogEntry ?? {
+          slug: is.slug,
+          name: is.name || is.slug,
+          description: is.description || "",
+          downloads: 0,
+          stars: 0,
+          tags: [] as string[],
+          version: "",
+          updatedAt: "",
+        }
+      );
+    });
+  }, [skillsData?.installedSkills, allSkills]);
+
+  const skillNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of allSkills) {
+      if (s.name && s.name !== s.slug) map.set(s.slug, s.name);
+    }
+    for (const s of skillsData?.installedSkills ?? []) {
+      if (s.name && !map.has(s.slug)) map.set(s.slug, s.name);
+    }
+    return map;
+  }, [allSkills, skillsData?.installedSkills]);
+
+  const exploreSkills = useMemo(
+    () => [...allSkills].filter((s) => !communityInstalledSlugs.has(s.slug)),
+    [allSkills, communityInstalledSlugs],
+  );
+
+  const displaySkills =
+    skillTab === "explore"
+      ? (() => {
+          let list = [...exploreSkills];
+          if (activeTag) list = list.filter((s) => s.tags.includes(activeTag));
+          if (skillSearch.trim()) {
+            const q = skillSearch.toLowerCase();
+            list = list.filter((s) =>
+              [s.slug, s.name, s.description]
+                .join("\n")
+                .toLowerCase()
+                .includes(q),
+            );
+          }
+          return list;
+        })()
+      : (() => {
+          let list = [...installedSkillsList];
+          if (skillSearch.trim()) {
+            const q = skillSearch.toLowerCase();
+            list = list.filter((s) =>
+              [s.slug, s.name, s.description]
+                .join("\n")
+                .toLowerCase()
+                .includes(q),
+            );
+          }
+          return list;
+        })();
+
+  const topTags = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of allSkills) {
+      for (const tag of s.tags) {
+        counts[tag] = (counts[tag] ?? 0) + 1;
+      }
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([tag, count]) => ({ tag, count }));
+  }, [allSkills]);
 
   function handleBack() {
     // Preserve the view state (tab/tag/q) from the URL when navigating back
@@ -129,7 +292,6 @@ export default function ExpertDetailPage() {
   }
 
   const tags = data.tags ?? [];
-  const requiredSkills = data.requiredSkills ?? [];
   const workspaceFiles = data.workspaceFiles ?? {};
   const hasAnyFile =
     workspaceFiles["AGENTS.md"] ||
@@ -302,24 +464,198 @@ export default function ExpertDetailPage() {
                 </div>
               )}
 
-              {/* Required skills */}
-              {requiredSkills.length > 0 && (
+              {/* Skills */}
+              {(requiredSkills.length > 0 || isInstalled) && (
                 <div>
-                  <h3 className="text-[13px] font-semibold text-text-primary mb-2 flex items-center gap-1.5">
-                    <Wrench size={14} />
-                    {t("experts.detail.requiredSkills")}
-                  </h3>
-                  <div className="rounded-lg bg-surface-1 border border-border p-3 space-y-1">
-                    {requiredSkills.map((skillSlug) => (
-                      <div
-                        key={skillSlug}
-                        className="flex items-center gap-2 text-[12px] text-text-muted font-mono"
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-[13px] font-semibold text-text-primary flex items-center gap-1.5">
+                      <Wrench size={14} />
+                      {t("experts.detail.requiredSkills")}
+                    </h3>
+                    {!editingSkills ? (
+                      <button
+                        type="button"
+                        onClick={enterEditMode}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
                       >
-                        <Wrench size={12} />
-                        {skillSlug}
+                        <Edit3 size={12} />
+                        {t("experts.custom.edit")}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          disabled={updateSkillsMutation.isPending}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-text-secondary hover:text-text-primary hover:bg-surface-2 transition-colors"
+                        >
+                          <X size={12} />
+                          {t("experts.custom.cancel", { defaultValue: "取消" })}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void saveSkills()}
+                          disabled={updateSkillsMutation.isPending}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-[#FF5A3C] text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                        >
+                          {updateSkillsMutation.isPending ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Save size={12} />
+                          )}
+                          {t("experts.custom.save", { defaultValue: "保存" })}
+                        </button>
                       </div>
-                    ))}
+                    )}
                   </div>
+
+                  {editingSkills ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2">
+                          {(
+                            [
+                              {
+                                id: "yours" as const,
+                                label: t("skills.yours"),
+                                icon: Settings2,
+                              },
+                              {
+                                id: "explore" as const,
+                                label: t("skills.explore"),
+                                icon: Compass,
+                              },
+                            ] as const
+                          ).map((tab) => {
+                            const active = skillTab === tab.id;
+                            const TabIcon = tab.icon;
+                            return (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setSkillTab(tab.id)}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-medium transition-all",
+                                  active
+                                    ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
+                                    : "text-text-secondary hover:text-text-primary",
+                                )}
+                              >
+                                <TabIcon size={12} />
+                                {tab.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="relative flex-1 max-w-[200px]">
+                          <Search
+                            size={12}
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted"
+                          />
+                          <input
+                            type="text"
+                            value={skillSearch}
+                            onChange={(e) => setSkillSearch(e.target.value)}
+                            placeholder={t("skills.searchPlaceholder")}
+                            className="w-full pl-8 pr-3 py-1 rounded-lg border border-border bg-surface-0 text-[12px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 transition-colors"
+                          />
+                        </div>
+                      </div>
+                      {skillTab === "explore" && (
+                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTag(null)}
+                            className={cn(
+                              "shrink-0 inline-flex items-center justify-center rounded-full h-6 px-2.5 text-[10px] leading-none font-medium transition-all",
+                              activeTag === null
+                                ? "bg-[var(--color-accent)] text-white"
+                                : "border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-border-hover",
+                            )}
+                          >
+                            {t("skills.all")}
+                          </button>
+                          {topTags.map(({ tag, count }) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() =>
+                                setActiveTag(activeTag === tag ? null : tag)
+                              }
+                              className={cn(
+                                "shrink-0 inline-flex items-center justify-center rounded-full h-6 px-2.5 text-[10px] leading-none font-medium transition-all",
+                                activeTag === tag
+                                  ? "bg-[var(--color-accent)] text-white"
+                                  : "border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-border-hover",
+                              )}
+                            >
+                              {getTagLabel(tag, "zh-CN")}
+                              <span className="ml-1 tabular-nums opacity-50">
+                                {count}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="max-h-[300px] flex flex-col">
+                        <SkillList
+                          skills={allSkills}
+                          displaySkills={displaySkills}
+                          selectedSkillsSet={editedSkillsSet}
+                          installedSlugs={communityInstalledSlugs}
+                          lockedSkills={requiredSkillsSet}
+                          onToggleSkill={toggleSkill}
+                          emptyLabel={t("skills.loadingCatalog")}
+                          noResultsLabel={t("skills.noMatchingSkills")}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-text-muted">
+                        <Lock size={10} />
+                        {t("experts.detail.skills_required_hint", {
+                          defaultValue: "Required skills cannot be removed",
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-surface-1 border border-border p-3 space-y-1">
+                      {[
+                        ...new Set([
+                          ...requiredSkills,
+                          ...currentConfiguredSkills,
+                        ]),
+                      ].map((skillSlug) => {
+                        const isRequired = requiredSkillsSet.has(skillSlug);
+                        const isSkillInstalled =
+                          communityInstalledSlugs.has(skillSlug);
+                        return (
+                          <div
+                            key={skillSlug}
+                            className="flex items-center gap-2 text-[12px] text-text-muted font-mono"
+                          >
+                            {isRequired ? (
+                              <Lock size={12} />
+                            ) : (
+                              <Wrench size={12} />
+                            )}
+                            <span
+                              className={
+                                isSkillInstalled ? "text-text-primary" : ""
+                              }
+                            >
+                              {skillNameMap.get(skillSlug) || skillSlug}
+                            </span>
+                            {isSkillInstalled && (
+                              <span className="text-[10px] text-green-500 font-medium shrink-0">
+                                {t("experts.detail.skill_installed", {
+                                  defaultValue: "已安装",
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

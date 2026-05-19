@@ -5,6 +5,7 @@ import {
   postApiV1ExperthubInstall,
   postApiV1ExperthubRefresh,
   postApiV1ExperthubUninstall,
+  putApiV1ExperthubExpertsBySlugSkills,
 } from "../../lib/api/sdk.gen";
 
 const CATALOG_QUERY_KEY = ["experthub", "catalog"] as const;
@@ -78,6 +79,29 @@ export function useUninstallExpert() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
+    },
+  });
+}
+
+export function useUpdateExpertSkills() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      slug,
+      skills,
+    }: { slug: string; skills: string[] }) => {
+      const { data, error } = await putApiV1ExperthubExpertsBySlugSkills({
+        path: { slug },
+        body: { skills },
+      });
+      if (error) throw new Error("Update expert skills request failed");
+      if (!data) throw new Error("Update expert skills returned no data");
+      return data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
     },
   });
 }

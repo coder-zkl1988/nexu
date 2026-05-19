@@ -4136,6 +4136,7 @@ export type GetApiV1ExperthubCatalogResponses = {
             name?: string;
             avatarDataUrl?: string;
             description?: string;
+            configuredSkills?: Array<string>;
         }>;
         meta: {
             version: string;
@@ -4199,6 +4200,40 @@ export type PostApiV1ExperthubUninstallResponses = {
 };
 
 export type PostApiV1ExperthubUninstallResponse = PostApiV1ExperthubUninstallResponses[keyof PostApiV1ExperthubUninstallResponses];
+
+export type PutApiV1ExperthubExpertsBySlugSkillsData = {
+    body?: {
+        skills: Array<string>;
+    };
+    path: {
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/experthub/experts/{slug}/skills';
+};
+
+export type PutApiV1ExperthubExpertsBySlugSkillsErrors = {
+    /**
+     * Expert not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PutApiV1ExperthubExpertsBySlugSkillsError = PutApiV1ExperthubExpertsBySlugSkillsErrors[keyof PutApiV1ExperthubExpertsBySlugSkillsErrors];
+
+export type PutApiV1ExperthubExpertsBySlugSkillsResponses = {
+    /**
+     * Expert skills updated
+     */
+    200: {
+        ok: true;
+        configuredSkills: Array<string>;
+    };
+};
+
+export type PutApiV1ExperthubExpertsBySlugSkillsResponse = PutApiV1ExperthubExpertsBySlugSkillsResponses[keyof PutApiV1ExperthubExpertsBySlugSkillsResponses];
 
 export type PostApiV1ExperthubRefreshData = {
     body?: never;
@@ -4307,7 +4342,9 @@ export type GetApiV1ExperthubPlatformTemplatesByFilenameData = {
     path: {
         filename: 'AGENTS.md' | 'IDENTITY.md' | 'SOUL.md' | 'USER.md';
     };
-    query?: never;
+    query?: {
+        lang?: string;
+    };
     url: '/api/v1/experthub/platform-templates/{filename}';
 };
 
@@ -4943,6 +4980,160 @@ export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses = {
 };
 
 export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponse = DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses];
+
+export type GetApiV1SchedulesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/schedules';
+};
+
+export type GetApiV1SchedulesResponses = {
+    /**
+     * Schedule list
+     */
+    200: {
+        schedules: Array<{
+            botId: string;
+            name: string;
+            cron: string;
+            timezone?: string;
+            prompt: string;
+            enabled?: boolean;
+            source?: 'ui' | 'agent';
+            sessionKey?: string;
+            channelType?: string;
+            channelId?: string;
+            description?: string;
+            id: string;
+            createdAt: string;
+            updatedAt: string;
+            externalId?: string;
+        }>;
+    };
+};
+
+export type GetApiV1SchedulesResponse = GetApiV1SchedulesResponses[keyof GetApiV1SchedulesResponses];
+
+export type PostApiV1SchedulesData = {
+    body?: {
+        botId: string;
+        name: string;
+        cron: string;
+        timezone?: string;
+        prompt: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/schedules';
+};
+
+export type PostApiV1SchedulesResponses = {
+    /**
+     * Created
+     */
+    200: {
+        botId: string;
+        name: string;
+        cron: string;
+        timezone?: string;
+        prompt: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+        id: string;
+        createdAt: string;
+        updatedAt: string;
+        externalId?: string;
+    };
+};
+
+export type PostApiV1SchedulesResponse = PostApiV1SchedulesResponses[keyof PostApiV1SchedulesResponses];
+
+export type DeleteApiV1SchedulesByScheduleIdData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/api/v1/schedules/{scheduleId}';
+};
+
+export type DeleteApiV1SchedulesByScheduleIdResponses = {
+    /**
+     * Deleted
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteApiV1SchedulesByScheduleIdResponse = DeleteApiV1SchedulesByScheduleIdResponses[keyof DeleteApiV1SchedulesByScheduleIdResponses];
+
+export type PatchApiV1SchedulesByScheduleIdData = {
+    body?: {
+        name?: string;
+        cron?: string;
+        timezone?: string;
+        prompt?: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+    };
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/api/v1/schedules/{scheduleId}';
+};
+
+export type PatchApiV1SchedulesByScheduleIdErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1SchedulesByScheduleIdError = PatchApiV1SchedulesByScheduleIdErrors[keyof PatchApiV1SchedulesByScheduleIdErrors];
+
+export type PatchApiV1SchedulesByScheduleIdResponses = {
+    /**
+     * Updated
+     */
+    200: {
+        botId: string;
+        name: string;
+        cron: string;
+        timezone?: string;
+        prompt: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+        id: string;
+        createdAt: string;
+        updatedAt: string;
+        externalId?: string;
+    };
+};
+
+export type PatchApiV1SchedulesByScheduleIdResponse = PatchApiV1SchedulesByScheduleIdResponses[keyof PatchApiV1SchedulesByScheduleIdResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

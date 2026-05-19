@@ -147,6 +147,62 @@ describe("WorkspaceTemplateWriter", () => {
     );
   });
 
+  it("resolves templates from language subdirectory when present, falling back to en/ then root", async () => {
+    // Create lang-specific subdirectories
+    await mkdir(path.join(sourceDir, "en"), { recursive: true });
+    await mkdir(path.join(sourceDir, "zh-CN"), { recursive: true });
+
+    await writeFile(
+      path.join(sourceDir, "en", "AGENTS.md"),
+      "# AGENTS en\n",
+      "utf8",
+    );
+    await writeFile(
+      path.join(sourceDir, "zh-CN", "AGENTS.md"),
+      "# AGENTS zh\n",
+      "utf8",
+    );
+
+    const writer = new WorkspaceTemplateWriter(env);
+
+    // Chinese locale picks zh-CN subdirectory
+    await writer.write([{ id: "bot-zh", status: "active", lang: "zh-CN" }]);
+    expect(
+      await readFile(workspacePathFor("bot-zh", "AGENTS.md"), "utf8"),
+    ).toBe("# AGENTS zh\n");
+    // IDENTITY.md doesn't exist in zh-CN subdir — should not be seeded
+    // (only files present in the resolved lang dir are seeded)
+    await expect(
+      readFile(workspacePathFor("bot-zh", "IDENTITY.md"), "utf8"),
+    ).rejects.toThrow();
+
+    // English locale picks en subdirectory
+    await writer.write([{ id: "bot-en", status: "active", lang: "en" }]);
+    expect(
+      await readFile(workspacePathFor("bot-en", "AGENTS.md"), "utf8"),
+    ).toBe("# AGENTS en\n");
+
+    // Unknown locale falls back to en/
+    await writer.write([{ id: "bot-ja", status: "active", lang: "ja" }]);
+    expect(
+      await readFile(workspacePathFor("bot-ja", "AGENTS.md"), "utf8"),
+    ).toBe("# AGENTS en\n");
+  });
+
+  it("falls back to flat root directory when no language subdirectories exist", async () => {
+    const writer = new WorkspaceTemplateWriter(env);
+
+    await writer.write([{ id: "bot-flat", status: "active", lang: "zh-CN" }]);
+
+    // Flat sourceDir has AGENTS.md, IDENTITY.md, SOUL.md directly
+    expect(
+      await readFile(workspacePathFor("bot-flat", "AGENTS.md"), "utf8"),
+    ).toBe("# AGENTS template\n");
+    expect(
+      await readFile(workspacePathFor("bot-flat", "IDENTITY.md"), "utf8"),
+    ).toBe("# IDENTITY template\n");
+  });
+
   it("skips inactive bots", async () => {
     const writer = new WorkspaceTemplateWriter(env);
 

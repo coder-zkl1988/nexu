@@ -384,6 +384,20 @@ export function SkillsPage() {
     [searchParams],
   );
   const { topTab, yoursSubTab, activeTag, searchQuery } = viewState;
+
+  const [inputValue, setInputValue] = useState(searchQuery);
+  const debouncedInput = useDebounce(inputValue, 150);
+
+  useEffect(() => {
+    if (debouncedInput !== searchQuery) {
+      setSearchParams(
+        (current) =>
+          applySkillsViewStatePatch(current, { searchQuery: debouncedInput }),
+        { replace: true },
+      );
+    }
+  }, [debouncedInput, searchQuery, setSearchParams]);
+
   const debouncedQuery = useDebounce(searchQuery, 150);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -785,10 +799,8 @@ export function SkillsPage() {
                 />
                 <input
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) =>
-                    updateViewState({ searchQuery: e.target.value })
-                  }
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
                   placeholder={t("skills.searchPlaceholder")}
                   className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
                 />

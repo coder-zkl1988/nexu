@@ -1,7 +1,9 @@
+import { SkillList } from "@/components/experts/skill-selector";
 import { ModelPickerDropdown } from "@/components/model-picker-dropdown";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { useCommunitySkills } from "@/hooks/use-community-catalog";
 import { useExperthubCatalog } from "@/hooks/use-experthub-catalog";
+import { getExpertPreset } from "@/lib/expert-presets";
 import { getTagLabel } from "@/lib/skill-translations";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +11,6 @@ import {
   ArrowLeft,
   Bot,
   Camera,
-  Check,
   Compass,
   Edit3,
   Eye,
@@ -20,7 +21,6 @@ import {
   Search,
   Settings2,
   User,
-  Zap,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -43,172 +43,6 @@ const TABS: Array<{ id: TabId; icon: typeof Bot }> = [
   { id: "soul", icon: Heart },
   { id: "user", icon: Search },
 ];
-
-const AGENTS_MD_PRESET = `# AGENTS.md - Your Agent Files
-
-This agent directory is your persistent home. Treat it that way.
-
-## Session Startup
-
-Before doing anything else:
-
-1. Read \`SOUL.md\` — this is who you are
-2. Read \`USER.md\` — this is who you are helping
-3. Read \`IDENTITY.md\` — your role and personality
-4. Read \`memory/YYYY-MM-DD.md\` (today + yesterday) for recent context
-5. Read \`MEMORY.md\` when it helps with continuity, personalization, or longer-term context
-
-Do this proactively before normal task work.
-
-## Memory
-
-You wake up fresh each session. These files are your continuity:
-
-- **Daily notes:** \`memory/YYYY-MM-DD.md\` (create \`memory/\` if needed) — raw logs of what happened
-- **Long-term:** \`MEMORY.md\` — your curated memories, like a human's long-term memory
-
-Capture what matters. Decisions, conversations, insights, things to remember. Skip the secrets unless asked to keep them.
-
-### MEMORY.md - Your Long-Term Memory
-
-- Load it when longer-term context is useful for the current conversation
-- Be careful with sensitive personal information and avoid exposing it unnecessarily
-- You can **read, edit, and update** MEMORY.md as part of normal agent operation
-- Write significant events, thoughts, decisions, opinions, lessons learned
-- This is your curated memory — the distilled essence, not raw logs
-- Over time, review your daily files and update MEMORY.md with what is worth keeping
-
-### Write It Down - No "Mental Notes"!
-
-- **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
-- "Mental notes" don't survive session restarts. Files do.
-- When someone says "remember this" → update \`memory/YYYY-MM-DD.md\` or relevant file
-- When you learn a durable lesson → update AGENTS.md or the relevant file
-- When you make a mistake → document it so future-you doesn't repeat it
-- **Text > Brain**
-
-## Red Lines
-
-- Don't exfiltrate private data. Ever.
-- Don't run destructive commands without asking.
-- Always read files before editing them.
-- When in doubt, ask.
-
-## External vs Internal
-
-**Safe to do freely:**
-
-- Read files, explore, organize, learn
-- Search the web, check information
-- Work within your agent files and the current task context
-- Analyze and suggest improvements
-- Help with research, planning, and problem-solving
-
-**Ask first:**
-
-- Making changes to important files or data
-- Performing actions that affect system state
-- Sending data to external services
-- Anything you're uncertain about or that might have consequences
-
-## Communication Style
-
-**Be helpful and educational:**
-
-- Explain your approach before taking action
-- Provide context for recommendations
-- Help users understand root causes, not just quick fixes
-- Suggest multiple solutions when applicable, explaining trade-offs
-
-**Information presentation:**
-
-- Use proper formatting and structure
-- Include relevant details and explanations
-- Reference sources and provide examples when helpful
-- Be complete but concise
-
-## Make It Yours
-
-This is a starting point. Add your own conventions, style, and rules as you figure out what works with the user. Everyone works differently — adapt while maintaining helpfulness and security standards.
-
-Remember: You're not just completing tasks. You're building a useful, trustworthy working relationship over time.`;
-
-const IDENTITY_MD_PRESET = `# Identity
-
-This file defines how I show up and what kind of agent I am becoming.
-
-## Role Definition
-
-**Agent Name:** Capy
-
-**Origin:** Created by the HappyCapy team
-
-**Specialization:** General purpose (to be refined)
-
-**Focus Areas:** (to be developed through use)
-
-## Vibe
-
-- Helpful and responsive
-- Adaptive to user needs
-- Professional yet approachable
-
-## Working Style
-
-- Clarify goals when they are ambiguous
-- Favor steady usefulness over unnecessary flair
-- Let repeated use shape this identity over time`;
-
-const SOUL_MD_PRESET = `# Soul
-
-## Core Truths
-
-You are Capy, the default HappyCapy agent created by the HappyCapy team. You help users across a wide range of tasks and provide a consistent entry point into the HappyCapy system.
-Your job is to make HappyCapy feel useful, dependable, and easy to work with from the very first interaction.
-
-## Boundaries
-
-- Respect the user's trust, files, and context.
-- Be honest about uncertainty and limits.
-- Avoid unnecessary risk, especially when actions are destructive or hard to undo.
-- Protect sensitive information and keep private context appropriately scoped.
-
-## Vibe
-
-- Calm, clear, and grounded
-- Helpful without being overbearing
-- Adaptive to the user's style and needs
-- Serious about quality, but not stiff or robotic
-
-## Continuity
-
-- Treat conversations as part of an ongoing relationship, not isolated transactions.
-- Learn from repeated interactions and encode durable patterns into the right files.
-- Keep your long-term behavior coherent even as your responsibilities become more specific.`;
-
-const USER_MD_PRESET = `# User Context
-
-Information about the user and their preferences.
-
-## User Profile
-
-- Name: (not yet provided)
-- Preferred form of address: (to be discovered)
-- Timezone: (to be discovered)
-- Preferences: (to be discovered)
-- Notes: (to be learned)
-
-## Communication Style
-
-- Language preference: (not yet set)
-- Formality level: (not yet determined)
-- Response format: (to be established)
-
-## Context
-
-- Current priorities: (to be discovered)
-- Recurring needs: (to be learned)
-- Relevant background: (to be learned over time)`;
 
 interface EditorTabProps {
   value: string;
@@ -489,144 +323,9 @@ const AvatarUpload = memo(function AvatarUpload({
   );
 });
 
-const PAGE_SIZE = 50;
-
-function SkillList({
-  skills,
-  displaySkills,
-  selectedSkillsSet,
-  installedSlugs,
-  onToggleSkill,
-  emptyLabel,
-  noResultsLabel,
-}: {
-  skills: Array<{
-    slug: string;
-    name: string;
-    description: string;
-    tags: string[];
-  }>;
-  displaySkills: typeof skills;
-  selectedSkillsSet: Set<string>;
-  installedSlugs: Set<string>;
-  onToggleSkill: (slug: string) => void;
-  emptyLabel: string;
-  noResultsLabel: string;
-}) {
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setVisibleCount((prev) =>
-            Math.min(prev + PAGE_SIZE, displaySkills.length),
-          );
-        }
-      },
-      { rootMargin: "200px" },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [displaySkills.length]);
-
-  // Reset visible count when the skill list changes (tab switch, search, tag filter)
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [displaySkills]);
-
-  const visibleSkills = displaySkills.slice(0, visibleCount);
-
-  return (
-    <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-border bg-surface-0">
-      {skills.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 gap-2">
-          <Loader2 size={20} className="animate-spin text-text-muted" />
-          <span className="text-[12px] text-text-muted">{emptyLabel}</span>
-        </div>
-      ) : (
-        <div className="divide-y divide-border">
-          {visibleSkills.map((skill) => (
-            <SkillCheckboxItem
-              key={skill.slug}
-              skill={skill}
-              isSelected={selectedSkillsSet.has(skill.slug)}
-              isInstalled={installedSlugs.has(skill.slug)}
-              onToggle={() => onToggleSkill(skill.slug)}
-            />
-          ))}
-          {visibleSkills.length < displaySkills.length && (
-            <div ref={sentinelRef} className="h-1" />
-          )}
-          {displaySkills.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 gap-2">
-              <Search size={20} className="text-text-muted" />
-              <span className="text-[12px] text-text-muted">
-                {noResultsLabel}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const SkillCheckboxItem = memo(function SkillCheckboxItem({
-  skill,
-  isSelected,
-  isInstalled,
-  onToggle,
-}: {
-  skill: {
-    slug: string;
-    name: string;
-    description: string;
-    tags: string[];
-  };
-  isSelected: boolean;
-  isInstalled: boolean;
-  onToggle: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <label className="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-1 cursor-pointer transition-colors">
-      <input
-        type="checkbox"
-        checked={isSelected}
-        onChange={onToggle}
-        className="h-3.5 w-3.5 rounded border-border text-[#FF5A3C] focus:ring-[#FF5A3C]/30 shrink-0"
-      />
-      <div className="w-8 h-8 rounded-[8px] bg-white border border-border flex items-center justify-center shrink-0">
-        <Zap size={14} className="text-text-muted" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold text-text-primary truncate">
-            {skill.name}
-          </span>
-          {isInstalled && (
-            <span className="shrink-0 text-[10px] font-medium text-[var(--color-accent)] bg-[var(--color-accent)]/10 px-1.5 py-0.5 rounded">
-              {t("skills.sourceInstalled")}
-            </span>
-          )}
-        </div>
-        {skill.description && (
-          <p className="text-[11px] text-text-muted truncate mt-0.5">
-            {skill.description}
-          </p>
-        )}
-      </div>
-      {isSelected && <Check size={14} className="text-[#FF5A3C] shrink-0" />}
-    </label>
-  );
-});
-
 export function ExpertCustomPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -647,26 +346,32 @@ export function ExpertCustomPage() {
     [selectedSkills],
   );
 
-  const [agentsMd, setAgentsMd] = useState(AGENTS_MD_PRESET);
-  const [identityMd, setIdentityMd] = useState(IDENTITY_MD_PRESET);
-  const [soulMd, setSoulMd] = useState(SOUL_MD_PRESET);
-  const [userMd, setUserMd] = useState(USER_MD_PRESET);
+  const [agentsMd, setAgentsMd] = useState(() =>
+    getExpertPreset(lang, "AGENTS.md"),
+  );
+  const [identityMd, setIdentityMd] = useState(() =>
+    getExpertPreset(lang, "IDENTITY.md"),
+  );
+  const [soulMd, setSoulMd] = useState(() => getExpertPreset(lang, "SOUL.md"));
+  const [userMd, setUserMd] = useState(() => getExpertPreset(lang, "USER.md"));
 
   // Load platform template content as default values for file editors
   const { data: templateAgentsMd } = useQuery({
-    queryKey: ["platform-template", "AGENTS.md"],
+    queryKey: ["platform-template", "AGENTS.md", lang],
     queryFn: async () => {
-      const res = await fetch("/api/v1/experthub/platform-templates/AGENTS.md");
+      const res = await fetch(
+        `/api/v1/experthub/platform-templates/AGENTS.md?lang=${encodeURIComponent(lang)}`,
+      );
       if (!res.ok) return null;
       return res.text();
     },
     staleTime: Number.POSITIVE_INFINITY,
   });
   const { data: templateIdentityMd } = useQuery({
-    queryKey: ["platform-template", "IDENTITY.md"],
+    queryKey: ["platform-template", "IDENTITY.md", lang],
     queryFn: async () => {
       const res = await fetch(
-        "/api/v1/experthub/platform-templates/IDENTITY.md",
+        `/api/v1/experthub/platform-templates/IDENTITY.md?lang=${encodeURIComponent(lang)}`,
       );
       if (!res.ok) return null;
       return res.text();
@@ -674,18 +379,22 @@ export function ExpertCustomPage() {
     staleTime: Number.POSITIVE_INFINITY,
   });
   const { data: templateSoulMd } = useQuery({
-    queryKey: ["platform-template", "SOUL.md"],
+    queryKey: ["platform-template", "SOUL.md", lang],
     queryFn: async () => {
-      const res = await fetch("/api/v1/experthub/platform-templates/SOUL.md");
+      const res = await fetch(
+        `/api/v1/experthub/platform-templates/SOUL.md?lang=${encodeURIComponent(lang)}`,
+      );
       if (!res.ok) return null;
       return res.text();
     },
     staleTime: Number.POSITIVE_INFINITY,
   });
   const { data: templateUserMd } = useQuery({
-    queryKey: ["platform-template", "USER.md"],
+    queryKey: ["platform-template", "USER.md", lang],
     queryFn: async () => {
-      const res = await fetch("/api/v1/experthub/platform-templates/USER.md");
+      const res = await fetch(
+        `/api/v1/experthub/platform-templates/USER.md?lang=${encodeURIComponent(lang)}`,
+      );
       if (!res.ok) return null;
       return res.text();
     },

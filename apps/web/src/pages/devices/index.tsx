@@ -137,7 +137,7 @@ export function DevicesPage() {
                 >
                   <div className="bg-white p-2 rounded-lg border border-border">
                     <QRCodeSVG
-                      value="https://github.com/coder-zkl1988/tabby-app/releases/download/v1.0.0/app-release.apk"
+                      value="https://github.com/coder-zkl1988/tabby-app/releases/download/v1.0.1/app-release.apk"
                       size={160}
                       level="M"
                     />

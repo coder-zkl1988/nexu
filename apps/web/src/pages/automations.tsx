@@ -13,235 +13,244 @@ import {
   ChevronDown,
   Clock,
   Edit3,
-  GitBranch,
   Loader2,
-  Mail,
-  MessageSquare,
   Pause,
   Play,
   Plus,
   Sparkles,
   Trash2,
-  Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getApiV1Bots } from "../../lib/api/sdk.gen";
-import type { GetApiV1BotsResponse } from "../../lib/api/types.gen";
+import {
+  deleteApiV1SchedulesByScheduleId,
+  getApiV1Bots,
+  getApiV1Channels,
+  getApiV1Schedules,
+  patchApiV1SchedulesByScheduleId,
+  postApiV1Schedules,
+} from "../../lib/api/sdk.gen";
+import type {
+  GetApiV1BotsResponse,
+  GetApiV1ChannelsResponse,
+  GetApiV1SchedulesResponse,
+} from "../../lib/api/types.gen";
 
-interface RunHistoryEntry {
-  time: string;
-  success: boolean;
-  duration: string;
-}
-
-interface Automation {
+interface ScheduleItem {
   id: string;
-  name: string;
-  description: string;
-  trigger: string;
-  action: string;
-  status: "active" | "paused";
-  lastRun: string;
-  icon: typeof Mail;
-  iconColor: string;
   botId: string;
+  name: string;
   cron: string;
+  timezone: string;
   prompt: string;
-  history: RunHistoryEntry[];
+  enabled: boolean;
+  source: "ui" | "agent";
+  sessionKey?: string;
+  channelType?: string;
+  channelId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 type DayKey = (typeof DAYS)[number];
 
-const mockAutomations: Automation[] = [
-  {
-    id: "1",
-    name: "Daily Report Generator",
-    description: "Automatically generate and send daily analytics reports",
-    trigger: "Schedule · Every day at 9:00 AM",
-    action: "Generate report → Send email",
-    status: "paused",
-    lastRun: "2 hours ago",
-    icon: Mail,
-    iconColor: "bg-blue-50 text-blue-500",
-    botId: "bot-1",
-    cron: "0 9 * * 1-5",
-    prompt:
-      "Generate the daily analytics report and send it to the team mailing list.",
-    history: [
-      { time: "9:00 AM", success: true, duration: "2.3s" },
-      { time: "9:00 AM", success: true, duration: "1.8s" },
-      { time: "9:00 AM", success: false, duration: "0.5s" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Slack Summary Bot",
-    description: "Summarize important conversations and post to channel",
-    trigger: "Webhook · New message in #general",
-    action: "Summarize → Post to Slack",
-    status: "paused",
-    lastRun: "15 min ago",
-    icon: MessageSquare,
-    iconColor: "bg-purple-50 text-purple-500",
-    botId: "bot-2",
-    cron: "",
-    prompt:
-      "Summarize the latest conversations in #general and post highlights.",
-    history: [
-      { time: "10:45 AM", success: true, duration: "3.1s" },
-      { time: "10:30 AM", success: true, duration: "2.7s" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Code Review Assistant",
-    description: "Auto-review pull requests and suggest improvements",
-    trigger: "GitHub · New PR opened",
-    action: "Analyze code → Comment on PR",
-    status: "paused",
-    lastRun: "3 days ago",
-    icon: GitBranch,
-    iconColor: "bg-orange-50 text-orange-500",
-    botId: "bot-3",
-    cron: "",
-    prompt: "Review the pull request and suggest improvements.",
-    history: [
-      { time: "May 5", success: true, duration: "5.2s" },
-      { time: "May 4", success: true, duration: "4.1s" },
-      { time: "May 3", success: false, duration: "0.8s" },
-    ],
-  },
-  {
-    id: "4",
-    name: "Customer Support Triage",
-    description: "Classify and route incoming support tickets",
-    trigger: "Webhook · New ticket created",
-    action: "Classify → Assign to agent",
-    status: "paused",
-    lastRun: "1 hour ago",
-    icon: Zap,
-    iconColor: "bg-green-50 text-green-500",
-    botId: "bot-4",
-    cron: "",
-    prompt:
-      "Classify the incoming support ticket and assign it to the appropriate agent.",
-    history: [
-      { time: "9:45 AM", success: true, duration: "1.2s" },
-      { time: "9:20 AM", success: true, duration: "0.9s" },
-      { time: "8:55 AM", success: true, duration: "1.5s" },
-    ],
-  },
-];
+function cronToTriggerText(cron: string, timezone: string): string {
+  const parts = cron.split(" ");
+  if (parts.length < 5) return cron;
+
+  const minute = parts[0] ?? "0";
+  const hour = parts[1] ?? "9";
+  const daysPart = parts[4] ?? "*";
+
+  const timeStr = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+
+  if (daysPart === "*") {
+    return `Every day at ${timeStr} (${timezone})`;
+  }
+
+  const dayLabels: Record<string, string> = {
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat",
+    "7": "Sun",
+  };
+
+  if (daysPart === "1-5") {
+    return `Weekdays at ${timeStr} (${timezone})`;
+  }
+
+  if (daysPart === "0" || daysPart === "7") {
+    return `Sundays at ${timeStr} (${timezone})`;
+  }
+
+  const days = daysPart.split(",").map((d) => dayLabels[d.trim()] ?? d);
+  if (days.length <= 3 && days.every((d) => d.length <= 4)) {
+    return `${days.join(", ")} at ${timeStr} (${timezone})`;
+  }
+
+  return `Cron: ${cron}`;
+}
+
+function buildCronExpression(time: string, selectedDays: Set<DayKey>): string {
+  const [hours, minutes] = time.split(":");
+  const dayMap: Record<DayKey, string> = {
+    mon: "1",
+    tue: "2",
+    wed: "3",
+    thu: "4",
+    fri: "5",
+    sat: "6",
+    sun: "7",
+  };
+
+  let daysPart = "*";
+  if (selectedDays.size > 0 && selectedDays.size < 7) {
+    const sorted = [...selectedDays]
+      .map((d) => Number(dayMap[d]))
+      .sort((a, b) => a - b);
+    daysPart = sorted.join(",");
+  }
+
+  return `${minutes} ${hours} * * ${daysPart}`;
+}
+
+function parseCronDays(daysPart: string): Set<DayKey> {
+  const dayMap: Record<string, DayKey> = {
+    "1": "mon",
+    "2": "tue",
+    "3": "wed",
+    "4": "thu",
+    "5": "fri",
+    "6": "sat",
+    "7": "sun",
+  };
+  const selected = new Set<DayKey>();
+
+  if (!daysPart || daysPart === "*") return selected;
+
+  if (daysPart.includes("-")) {
+    const range = daysPart.split("-").map(Number);
+    const start = range[0] ?? 1;
+    const end = range[1] ?? 5;
+    for (let d = start; d <= end; d++) {
+      const key = dayMap[String(d)];
+      if (key) selected.add(key);
+    }
+  } else if (daysPart.includes(",")) {
+    for (const d of daysPart.split(",")) {
+      const key = dayMap[d.trim()];
+      if (key) selected.add(key);
+    }
+  } else {
+    const key = dayMap[daysPart];
+    if (key) selected.add(key);
+  }
+
+  return selected;
+}
 
 function AutomationModal({
   open,
   onOpenChange,
-  editingAutomation,
+  editingSchedule,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  editingAutomation: Automation | null;
+  editingSchedule: ScheduleItem | null;
+  onSaved: () => void;
 }) {
   const { t } = useTranslation();
-  const isEditing = editingAutomation !== null;
+  const isEditing = editingSchedule !== null;
 
   const [bots, setBots] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingBots, setLoadingBots] = useState(false);
+  const [channels, setChannels] = useState<
+    Array<{ channelType: string; accountId?: string }>
+  >([]);
+  const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState("");
   const [botId, setBotId] = useState("");
-  const [scheduleMode, setScheduleMode] = useState<"daily" | "interval">(
-    "daily",
-  );
+  const [channelType, setChannelType] = useState("");
   const [time, setTime] = useState("09:00");
   const [selectedDays, setSelectedDays] = useState<Set<DayKey>>(new Set());
-  const [intervalHours, setIntervalHours] = useState(0);
-  const [intervalMinutes, setIntervalMinutes] = useState(30);
   const [prompt, setPrompt] = useState("");
-  const [runImmediately, setRunImmediately] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // Fetch bots when modal opens
   useEffect(() => {
     if (open) {
       setLoadingBots(true);
       getApiV1Bots()
         .then((res: { data?: GetApiV1BotsResponse }) => {
           if (res.data?.bots) {
-            // Filter active bots only
-            const activeBots = res.data.bots
-              .filter((b) => b.status === "active")
-              .map((b) => ({ id: b.id, name: b.name }));
+            const seen = new Map<string, string>();
+            const activeBots: Array<{ id: string; name: string }> = [];
+            for (const b of res.data.bots) {
+              if (b.status !== "active") continue;
+              if (seen.has(b.name)) continue;
+              seen.set(b.name, b.id);
+              activeBots.push({ id: b.id, name: b.name });
+            }
             setBots(activeBots);
           }
         })
         .finally(() => setLoadingBots(false));
+
+      getApiV1Channels()
+        .then((res: { data?: GetApiV1ChannelsResponse }) => {
+          if (res.data?.channels) {
+            const connected = res.data.channels
+              .filter((ch) => ch.status === "connected")
+              .map((ch) => ({
+                channelType: ch.channelType,
+                accountId: ch.accountId as string | undefined,
+              }));
+            setChannels(connected);
+          }
+        })
+        .catch(() => {});
     }
   }, [open]);
 
-  // Pre-fill form when editing
   useEffect(() => {
-    if (editingAutomation) {
-      setName(editingAutomation.name);
-      setBotId(editingAutomation.botId);
-      setPrompt(editingAutomation.prompt);
+    if (editingSchedule) {
+      setName(editingSchedule.name);
+      setBotId(editingSchedule.botId);
+      setChannelType(editingSchedule.channelType ?? "");
+      setPrompt(editingSchedule.prompt);
+      setEnabled(editingSchedule.enabled);
 
-      // Parse cron expression to extract time and days
-      if (editingAutomation.cron) {
-        const parts = editingAutomation.cron.split(" ");
-        if (parts.length >= 5) {
-          const minute = parts[0] ?? "0";
-          const hour = parts[1] ?? "9";
-          setTime(`${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`);
-
-          // Parse days (1=Monday, 7=Sunday in cron)
-          const daysPart = parts[4];
-          if (daysPart && daysPart !== "*") {
-            const dayMap: Record<string, DayKey> = {
-              "1": "mon",
-              "2": "tue",
-              "3": "wed",
-              "4": "thu",
-              "5": "fri",
-              "6": "sat",
-              "7": "sun",
-            };
-            const selected = new Set<DayKey>();
-            if (daysPart.includes("-")) {
-              const rangeParts = daysPart.split("-");
-              const start = Number(rangeParts[0] ?? 1);
-              const end = Number(rangeParts[1] ?? 5);
-              for (let d = start; d <= end; d++) {
-                const key = dayMap[String(d)];
-                if (key) selected.add(key);
-              }
-            } else if (daysPart.includes(",")) {
-              for (const d of daysPart.split(",")) {
-                const key = dayMap[d.trim()];
-                if (key) selected.add(key);
-              }
-            } else {
-              const key = dayMap[daysPart];
-              if (key) selected.add(key);
-            }
-            setSelectedDays(selected);
-          }
-        }
+      const parts = editingSchedule.cron.split(" ");
+      if (parts.length >= 5) {
+        const minute = parts[0] ?? "0";
+        const hour = parts[1] ?? "9";
+        setTime(`${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`);
+        setSelectedDays(parseCronDays(parts[4] ?? "*"));
       }
+    } else {
+      setName("");
+      setBotId("");
+      setPrompt("");
+      setEnabled(true);
+      setTime("09:00");
+      setSelectedDays(new Set());
     }
-  }, [editingAutomation]);
+  }, [editingSchedule]);
 
   function resetForm() {
     setName("");
     setBotId("");
-    setScheduleMode("daily");
+    setChannelType("");
     setTime("09:00");
     setSelectedDays(new Set());
-    setIntervalHours(0);
-    setIntervalMinutes(30);
     setPrompt("");
-    setRunImmediately(false);
+    setEnabled(true);
   }
 
   function handleOpenChange(val: boolean) {
@@ -261,9 +270,46 @@ function AutomationModal({
     });
   }
 
+  async function handleSubmit() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const cron = buildCronExpression(time, selectedDays);
+      if (isEditing && editingSchedule) {
+        await patchApiV1SchedulesByScheduleId({
+          body: {
+            name,
+            cron,
+            timezone,
+            prompt,
+            enabled,
+            channelType: channelType || undefined,
+          },
+          path: { scheduleId: editingSchedule.id },
+        });
+      } else {
+        await postApiV1Schedules({
+          body: {
+            botId,
+            name,
+            cron,
+            timezone,
+            prompt,
+            enabled,
+            channelType: channelType || undefined,
+          },
+        });
+      }
+      onSaved();
+      handleOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[600px] h-[720px] flex flex-col p-0 bg-white rounded-xl">
+      <DialogContent className="w-[600px] h-[640px] flex flex-col p-0 bg-white rounded-xl">
         <div className="px-8 pt-8 pb-5">
           <DialogTitle className="text-[18px] font-semibold leading-tight text-[var(--color-tabby-foreground)]">
             {isEditing
@@ -297,7 +343,7 @@ function AutomationModal({
               <select
                 value={botId}
                 onChange={(e) => setBotId(e.target.value)}
-                disabled={loadingBots}
+                disabled={loadingBots || isEditing}
                 className="block w-full pl-3 pr-10 py-2 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:ring-1 focus:ring-[var(--color-tabby-foreground)] focus:border-[var(--color-tabby-foreground)] appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">
@@ -321,114 +367,79 @@ function AutomationModal({
             </div>
           </div>
 
+          {/* Delivery channel */}
+          {!isEditing && channels.length > 0 && (
+            <div>
+              <Label className="block text-[13px] font-medium text-[var(--color-tabby-foreground)] mb-1.5">
+                {t("automations.modal.deliveryChannel")}
+              </Label>
+              <div className="relative">
+                <select
+                  value={channelType}
+                  onChange={(e) => setChannelType(e.target.value)}
+                  className="block w-full pl-3 pr-10 py-2 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:ring-1 focus:ring-[var(--color-tabby-foreground)] focus:border-[var(--color-tabby-foreground)] appearance-none"
+                >
+                  <option value="">
+                    {t("automations.modal.deliveryChannelPlaceholder")}
+                  </option>
+                  {channels.map((ch) => (
+                    <option key={ch.channelType} value={ch.channelType}>
+                      {ch.channelType}
+                      {ch.accountId ? ` - ${ch.accountId}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-tabby-muted)]">
+                  <ChevronDown size={16} />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Schedule */}
           <div>
             <Label className="block text-[13px] font-medium text-[var(--color-tabby-foreground)] mb-2.5">
               {t("automations.modal.schedule")}
             </Label>
 
-            {/* Daily / Interval toggle */}
-            <div className="flex p-1 bg-[var(--color-tabby-surface-2)] rounded-lg border border-[var(--color-tabby-border)] mb-3">
-              <button
-                type="button"
-                onClick={() => setScheduleMode("daily")}
-                className={cn(
-                  "flex-1 py-1.5 text-[13px] font-medium rounded-md transition-colors",
-                  scheduleMode === "daily"
-                    ? "bg-white shadow-sm border border-[var(--color-tabby-border)] text-[var(--color-tabby-foreground)]"
-                    : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)]",
-                )}
-              >
-                {t("automations.modal.daily")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setScheduleMode("interval")}
-                className={cn(
-                  "flex-1 py-[6px] text-[14px] font-medium rounded-md transition-colors",
-                  scheduleMode === "interval"
-                    ? "bg-white shadow-sm border border-[var(--color-tabby-border)] text-[var(--color-tabby-foreground)]"
-                    : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)]",
-                )}
-              >
-                {t("automations.modal.interval")}
-              </button>
+            <div className="space-y-3">
+              {/* Time picker - 24h format */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="block w-[120px] px-3 py-1.5 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:outline-none focus:ring-2 focus:ring-black focus:border-black [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
+                />
+                <span className="text-[12px] text-[var(--color-tabby-muted)]">
+                  {t("automations.modal.timezone")}: {timezone}
+                </span>
+              </div>
+
+              {/* Days of week */}
+              <div>
+                <span className="text-[12px] text-[var(--color-tabby-muted)] mb-1.5 block">
+                  {t("automations.modal.days")}
+                </span>
+                <div className="flex gap-1">
+                  {DAYS.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(day)}
+                      className={cn(
+                        "w-8 h-8 rounded-lg text-[12px] font-medium transition-colors",
+                        selectedDays.has(day)
+                          ? "bg-black text-white"
+                          : "bg-black/10 text-[var(--color-tabby-muted)] hover:bg-black/20",
+                      )}
+                    >
+                      {t(`automations.days.${day}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-
-            {scheduleMode === "daily" && (
-              <div className="space-y-3">
-                {/* Time picker - 24h format */}
-                <div className="flex items-center gap-3">
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="block w-[120px] px-3 py-1.5 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:outline-none focus:ring-2 focus:ring-black focus:border-black [&::-webkit-calendar-picker-indicator]:opacity-50 [&::-webkit-calendar-picker-indicator]:hover:opacity-100"
-                  />
-                  <span className="text-[12px] text-[var(--color-tabby-muted)]">
-                    {t("automations.modal.timezone")}:{" "}
-                    {Intl.DateTimeFormat().resolvedOptions().timeZone}
-                  </span>
-                </div>
-
-                {/* Days of week - full week, none selected by default */}
-                <div>
-                  <span className="text-[12px] text-[var(--color-tabby-muted)] mb-1.5 block">
-                    {t("automations.modal.days")}
-                  </span>
-                  <div className="flex gap-1">
-                    {DAYS.map((day) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => toggleDay(day)}
-                        className={cn(
-                          "w-8 h-8 rounded-lg text-[12px] font-medium transition-colors",
-                          selectedDays.has(day)
-                            ? "bg-black text-white"
-                            : "bg-black/10 text-[var(--color-tabby-muted)] hover:bg-black/20",
-                        )}
-                      >
-                        {t(`automations.days.${day}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {scheduleMode === "interval" && (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-[var(--color-tabby-muted)]">
-                  {t("automations.modal.every")}
-                </span>
-                <Input
-                  type="number"
-                  min={0}
-                  max={23}
-                  value={intervalHours}
-                  onChange={(e) => setIntervalHours(Number(e.target.value))}
-                  className="w-16 text-[13px] py-1.5 text-center border-[var(--color-tabby-border)]"
-                />
-                <span className="text-[12px] text-[var(--color-tabby-muted)]">
-                  {t("automations.modal.hours")}
-                </span>
-                <span className="text-[12px] text-[var(--color-tabby-muted)]">
-                  {t("automations.modal.and")}
-                </span>
-                <Input
-                  type="number"
-                  min={1}
-                  max={59}
-                  value={intervalMinutes}
-                  onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                  className="w-16 text-[13px] py-1.5 text-center border-[var(--color-tabby-border)]"
-                />
-                <span className="text-[12px] text-[var(--color-tabby-muted)]">
-                  {t("automations.modal.minutes")}
-                </span>
-              </div>
-            )}
           </div>
 
           {/* Prompt */}
@@ -445,15 +456,11 @@ function AutomationModal({
             />
           </div>
 
-          {/* Run immediately */}
+          {/* Enabled toggle */}
           <div className="flex items-center">
-            <Switch
-              size="sm"
-              checked={runImmediately}
-              onCheckedChange={setRunImmediately}
-            />
+            <Switch size="sm" checked={enabled} onCheckedChange={setEnabled} />
             <Label className="ml-3 text-[13px] font-medium text-[var(--color-tabby-foreground)] cursor-pointer">
-              {t("automations.modal.runImmediately")}
+              {t("automations.modal.enabled")}
             </Label>
           </div>
         </div>
@@ -467,12 +474,16 @@ function AutomationModal({
             {t("automations.modal.cancel")}
           </button>
           <button
-            type="submit"
-            className="px-5 py-2 text-[13px] font-medium text-white bg-black rounded-lg hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="px-5 py-2 text-[13px] font-medium text-white bg-black rounded-lg hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 disabled:opacity-50"
           >
-            {isEditing
-              ? t("automations.modal.save")
-              : t("automations.modal.create")}
+            {saving
+              ? t("automations.modal.saving")
+              : isEditing
+                ? t("automations.modal.save")
+                : t("automations.modal.create")}
           </button>
         </div>
       </DialogContent>
@@ -483,40 +494,76 @@ function AutomationModal({
 export function AutomationsPage() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<"all" | "active" | "paused">("all");
-  const [_expandedId, _setExpandedId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleItem | null>(
     null,
   );
-  const [automations, setAutomations] = useState<Automation[]>(mockAutomations);
+  const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = automations.filter((a) => {
+  const fetchSchedules = useCallback(async () => {
+    try {
+      const res = await getApiV1Schedules();
+      const data = res.data as GetApiV1SchedulesResponse | undefined;
+      const list = data?.schedules ?? [];
+      setSchedules(
+        list.map((s) => ({
+          id: s.id,
+          botId: s.botId,
+          name: s.name,
+          cron: s.cron,
+          timezone: s.timezone ?? "UTC",
+          prompt: s.prompt,
+          enabled: s.enabled ?? true,
+          source: (s.source as "ui" | "agent") ?? "ui",
+          sessionKey: s.sessionKey as string | undefined,
+          channelType: s.channelType as string | undefined,
+          channelId: s.channelId as string | undefined,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        })),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules]);
+
+  const filtered = schedules.filter((s) => {
     if (filter === "all") return true;
-    return a.status === filter;
+    if (filter === "active") return s.enabled;
+    return !s.enabled;
   });
 
+  const activeCount = schedules.filter((s) => s.enabled).length;
+  const pausedCount = schedules.filter((s) => !s.enabled).length;
+
   function handleNew() {
-    setEditingAutomation(null);
+    setEditingSchedule(null);
     setShowModal(true);
   }
 
-  function handleEdit(automation: Automation) {
-    setEditingAutomation(automation);
+  function handleEdit(schedule: ScheduleItem) {
+    setEditingSchedule(schedule);
     setShowModal(true);
   }
 
-  function handleToggleStatus(automation: Automation) {
-    setAutomations((prev) =>
-      prev.map((a) =>
-        a.id === automation.id
-          ? { ...a, status: a.status === "active" ? "paused" : "active" }
-          : a,
-      ),
-    );
+  async function handleToggleStatus(schedule: ScheduleItem) {
+    await patchApiV1SchedulesByScheduleId({
+      body: { enabled: !schedule.enabled },
+      path: { scheduleId: schedule.id },
+    });
+    fetchSchedules();
   }
 
-  function handleDelete(automation: Automation) {
-    setAutomations((prev) => prev.filter((a) => a.id !== automation.id));
+  async function handleDelete(schedule: ScheduleItem) {
+    await deleteApiV1SchedulesByScheduleId({
+      path: { scheduleId: schedule.id },
+    });
+    fetchSchedules();
   }
 
   return (
@@ -551,19 +598,17 @@ export function AutomationsPage() {
                 {
                   id: "all" as const,
                   label: t("automations.all"),
-                  count: mockAutomations.length,
+                  count: schedules.length,
                 },
                 {
                   id: "active" as const,
                   label: t("automations.active"),
-                  count: mockAutomations.filter((a) => a.status === "active")
-                    .length,
+                  count: activeCount,
                 },
                 {
                   id: "paused" as const,
                   label: t("automations.paused"),
-                  count: mockAutomations.filter((a) => a.status === "paused")
-                    .length,
+                  count: pausedCount,
                 },
               ] as const
             ).map((tab) => (
@@ -593,113 +638,109 @@ export function AutomationsPage() {
 
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto px-6 pb-4">
-        {/* Content - Card Grid */}
-        {filtered.length > 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--color-tabby-muted)]" />
+          </div>
+        ) : filtered.length > 0 ? (
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
-            {filtered.map((automation) => {
-              const Icon = automation.icon;
-              return (
-                <div
-                  key={automation.id}
-                  className="bg-white rounded-xl border border-[var(--color-tabby-border)] p-4 hover:border-[var(--color-tabby-foreground)]/30 transition-colors cursor-pointer"
-                >
-                  {/* Header */}
-                  <div className="flex items-start gap-3 mb-3">
-                    <div
-                      className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
-                        automation.iconColor,
-                      )}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[14px] font-semibold text-[var(--color-tabby-foreground)] truncate">
-                          {automation.name}
-                        </span>
-                        <span
-                          className={cn(
-                            "text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0",
-                            automation.status === "active"
-                              ? "bg-green-50 text-green-600"
-                              : "bg-amber-50 text-amber-600",
-                          )}
-                        >
-                          {automation.status === "active"
-                            ? t("automations.active")
-                            : t("automations.paused")}
-                        </span>
-                      </div>
-                      <p className="text-[12px] text-[var(--color-tabby-muted)] line-clamp-1">
-                        {automation.description}
-                      </p>
-                    </div>
+            {filtered.map((schedule) => (
+              <div
+                key={schedule.id}
+                className="bg-white rounded-xl border border-[var(--color-tabby-border)] p-4 hover:border-[var(--color-tabby-foreground)]/30 transition-colors"
+              >
+                {/* Header */}
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-neutral-100 text-neutral-500">
+                    <Clock className="w-5 h-5" />
                   </div>
-
-                  {/* Trigger & Action */}
-                  <div className="space-y-1.5 mb-3">
-                    <div className="flex items-center gap-2 text-[12px]">
-                      <Clock className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
-                      <span className="text-[var(--color-tabby-muted)]">
-                        {t("automations.detail.trigger")}:
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[14px] font-semibold text-[var(--color-tabby-foreground)] truncate">
+                        {schedule.name}
                       </span>
-                      <span className="text-[var(--color-tabby-foreground)] truncate">
-                        {automation.trigger}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[12px]">
-                      <Zap className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
-                      <span className="text-[var(--color-tabby-muted)]">
-                        {t("automations.detail.action")}:
-                      </span>
-                      <span className="text-[var(--color-tabby-foreground)] truncate">
-                        {automation.action}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-3 border-t border-[var(--color-tabby-border)]">
-                    <span className="text-[11px] text-[var(--color-tabby-muted)]">
-                      {automation.lastRun}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(automation)}
-                        className="p-1.5 rounded-md text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)] hover:bg-neutral-100 transition-colors"
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(automation)}
+                      <span
                         className={cn(
-                          "p-1.5 rounded-md transition-colors",
-                          automation.status === "active"
-                            ? "text-amber-600 hover:bg-amber-50"
-                            : "text-green-600 hover:bg-green-50",
+                          "text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0",
+                          schedule.enabled
+                            ? "bg-green-50 text-green-600"
+                            : "bg-amber-50 text-amber-600",
                         )}
                       >
-                        {automation.status === "active" ? (
-                          <Pause size={14} />
-                        ) : (
-                          <Play size={14} />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(automation)}
-                        className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                        {schedule.enabled
+                          ? t("automations.active")
+                          : t("automations.paused")}
+                      </span>
+                      {schedule.source === "agent" && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 bg-blue-50 text-blue-600">
+                          {t("automations.agentCreated")}
+                        </span>
+                      )}
                     </div>
+                    <p className="text-[12px] text-[var(--color-tabby-muted)] line-clamp-1">
+                      {schedule.prompt}
+                    </p>
                   </div>
                 </div>
-              );
-            })}
+
+                {/* Trigger info */}
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <Clock className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
+                    <span className="text-[var(--color-tabby-foreground)] truncate">
+                      {cronToTriggerText(schedule.cron, schedule.timezone)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-3 border-t border-[var(--color-tabby-border)]">
+                  <span className="text-[11px] text-[var(--color-tabby-muted)]">
+                    {schedule.channelType
+                      ? `# ${schedule.channelType}`
+                      : schedule.botId}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(schedule)}
+                      disabled={schedule.source === "agent"}
+                      className={cn(
+                        "p-1.5 rounded-md transition-colors",
+                        schedule.source === "agent"
+                          ? "text-[var(--color-tabby-border)] cursor-not-allowed"
+                          : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)] hover:bg-neutral-100",
+                      )}
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatus(schedule)}
+                      className={cn(
+                        "p-1.5 rounded-md transition-colors",
+                        schedule.enabled
+                          ? "text-amber-600 hover:bg-amber-50"
+                          : "text-green-600 hover:bg-green-50",
+                      )}
+                    >
+                      {schedule.enabled ? (
+                        <Pause size={14} />
+                      ) : (
+                        <Play size={14} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(schedule)}
+                      className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20">
@@ -716,7 +757,8 @@ export function AutomationsPage() {
         <AutomationModal
           open={showModal}
           onOpenChange={setShowModal}
-          editingAutomation={editingAutomation}
+          editingSchedule={editingSchedule}
+          onSaved={fetchSchedules}
         />
       </div>
     </div>

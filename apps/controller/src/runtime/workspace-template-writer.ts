@@ -6,6 +6,8 @@ import { logger } from "../lib/logger.js";
 interface BotInfo {
   id: string;
   status: string;
+  /** ISO language code (e.g. "en", "zh-CN"). Defaults to "en". */
+  lang?: string;
 }
 
 export class WorkspaceTemplateWriter {
@@ -22,9 +24,9 @@ export class WorkspaceTemplateWriter {
    */
   async write(bots: BotInfo[]): Promise<void> {
     const activeBots = bots.filter((bot) => bot.status === "active");
-    const sourceDir = this.env.platformTemplatesDir;
+    const templatesRoot = this.env.platformTemplatesDir;
 
-    if (!sourceDir) {
+    if (!templatesRoot) {
       logger.warn(
         {},
         "platformTemplatesDir not configured; new agents will be created without platform docs (AGENTS.md, BOOTSTRAP.md, ...)",
@@ -32,15 +34,39 @@ export class WorkspaceTemplateWriter {
       return;
     }
 
-    const sourceDirExists = await this.directoryExists(sourceDir);
-    if (!sourceDirExists) {
-      logger.warn({ sourceDir }, "platform templates directory not found");
+    const rootExists = await this.directoryExists(templatesRoot);
+    if (!rootExists) {
+      logger.warn({ templatesRoot }, "platform templates directory not found");
       return;
     }
 
     for (const bot of activeBots) {
+      const sourceDir = await this.resolveTemplateDir(
+        templatesRoot,
+        bot.lang ?? "en",
+      );
       await this.copyPlatformTemplates(bot.id, sourceDir);
     }
+  }
+
+  /**
+   * Resolve the best language-specific template directory.
+   * Tries `<root>/<lang>/` first, then `<root>/en/`, then `<root>` itself
+   * for backward compatibility with flat template layouts.
+   */
+  private async resolveTemplateDir(
+    root: string,
+    lang: string,
+  ): Promise<string> {
+    const langDir = path.join(root, lang);
+    if (await this.directoryExists(langDir)) {
+      return langDir;
+    }
+    const enDir = path.join(root, "en");
+    if (await this.directoryExists(enDir)) {
+      return enDir;
+    }
+    return root;
   }
 
   private async copyPlatformTemplates(

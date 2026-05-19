@@ -12535,6 +12535,12 @@
                           },
                           "description": {
                             "type": "string"
+                          },
+                          "configuredSkills": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
                           }
                         },
                         "required": [
@@ -12691,6 +12697,92 @@
                   },
                   "required": [
                     "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/experts/{slug}/skills": {
+      "put": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "skills"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expert skills updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "configuredSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "configuredSkills"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Expert not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }
@@ -13003,6 +13095,15 @@
             "required": true,
             "name": "filename",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "default": "en"
+            },
+            "required": false,
+            "name": "lang",
+            "in": "query"
           }
         ],
         "responses": {
@@ -14811,6 +14912,436 @@
                   },
                   "required": [
                     "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules": {
+      "get": {
+        "tags": [
+          "Schedules"
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schedules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "botId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                          },
+                          "cron": {
+                            "type": "string"
+                          },
+                          "timezone": {
+                            "type": "string",
+                            "default": "UTC"
+                          },
+                          "prompt": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "ui",
+                              "agent"
+                            ],
+                            "default": "ui"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "channelType": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          },
+                          "externalId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "botId",
+                          "name",
+                          "cron",
+                          "prompt",
+                          "id",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "schedules"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Schedules"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "cron": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "default": "UTC"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "ui",
+                      "agent"
+                    ],
+                    "default": "ui"
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "channelType": {
+                    "type": "string"
+                  },
+                  "channelId": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "botId",
+                  "name",
+                  "cron",
+                  "prompt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "botId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    },
+                    "cron": {
+                      "type": "string"
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "default": "UTC"
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "ui",
+                        "agent"
+                      ],
+                      "default": "ui"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "botId",
+                    "name",
+                    "cron",
+                    "prompt",
+                    "id",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules/{scheduleId}": {
+      "patch": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "cron": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "ui",
+                      "agent"
+                    ]
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "channelType": {
+                    "type": "string"
+                  },
+                  "channelId": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "botId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    },
+                    "cron": {
+                      "type": "string"
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "default": "UTC"
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "ui",
+                        "agent"
+                      ],
+                      "default": "ui"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "botId",
+                    "name",
+                    "cron",
+                    "prompt",
+                    "id",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
                   ]
                 }
               }

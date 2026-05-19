@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { cpSync, existsSync } from "node:fs";
+import path from "node:path";
 import type { ControllerEnv } from "../app/env.js";
 import { CatalogManager } from "./skillhub/catalog-manager.js";
 import {
@@ -8,6 +9,7 @@ import {
   stripRequiresBins,
 } from "./skillhub/curated-skills.js";
 import { InstallQueue } from "./skillhub/install-queue.js";
+import { ensureNpmAvailable, runNpmInstall } from "./skillhub/npm-runner.js";
 import { SkillDb } from "./skillhub/skill-db.js";
 import { SkillDirWatcher } from "./skillhub/skill-dir-watcher.js";
 import type { QueueItem, SkillSource } from "./skillhub/types.js";
@@ -217,6 +219,70 @@ export class SkillhubService {
   cancelInstall(slug: string): boolean {
     const canonical = this.catalogManager.canonicalizeSlug(slug);
     return this.installQueue.cancel(canonical);
+  }
+
+  /**
+   * Install a skill into a bot's workspace directory.
+   *
+   * Copies the skill from the shared skillsDir to
+   * `{stateDir}/agents/{agentId}/skills/{slug}/`, then records the
+   * workspace-scoped install in the ledger.
+   *
+   * If the skill is not yet available in the shared directory it is
+   * downloaded first via the catalog manager.
+   */
+  async installWorkspaceSkill(
+    slug: string,
+    agentId: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const canonical = this.catalogManager.canonicalizeSlug(slug);
+
+    // Ensure the skill exists in the shared skills directory first.
+    const sharedDir = path.join(this.env.openclawSkillsDir, canonical);
+    if (!existsSync(path.join(sharedDir, "SKILL.md"))) {
+      try {
+        await this.catalogManager.executeInstall(canonical);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { ok: false, error: `Failed to download skill: ${message}` };
+      }
+    }
+
+    // Copy to workspace directory.
+    const workspaceDir = path.join(
+      this.env.openclawStateDir,
+      "agents",
+      agentId,
+      "skills",
+      canonical,
+    );
+    try {
+      cpSync(sharedDir, workspaceDir, { recursive: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `Failed to copy skill: ${message}` };
+    }
+
+    // Install npm dependencies if the skill has a package.json.
+    if (existsSync(path.join(workspaceDir, "package.json"))) {
+      try {
+        await ensureNpmAvailable();
+        await runNpmInstall(workspaceDir);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          error: `Failed to install dependencies: ${message}`,
+        };
+      }
+    }
+
+    // Record install in ledger and trigger sync.
+    this.db.recordInstall(canonical, "workspace", undefined, agentId);
+    this.dirWatcher.syncNow();
+    this.onSyncNeeded?.();
+
+    return { ok: true };
   }
 
   async uninstallSkill(

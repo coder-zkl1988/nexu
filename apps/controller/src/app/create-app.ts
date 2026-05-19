@@ -17,6 +17,7 @@ import { registerMiscCompatRoutes } from "../routes/misc-compat-routes.js";
 import { registerModelRoutes } from "../routes/model-routes.js";
 import { registerProviderOAuthRoutes } from "../routes/provider-oauth-routes.js";
 import { registerRuntimeConfigRoutes } from "../routes/runtime-config-routes.js";
+import { registerScheduleRoutes } from "../routes/schedule-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillhubRoutes } from "../routes/skillhub-routes.js";
 import { registerUserRoutes } from "../routes/user-routes.js";
@@ -58,6 +59,7 @@ export function createApp(container: ControllerContainer) {
       catalog: container.experthubCatalogManager,
       installExpert: container.installExpertFn,
       createCustomExpert: container.createCustomExpertFn,
+      updateExpertSkills: container.updateExpertSkillsFn,
       platformTemplatesDir: container.env.platformTemplatesDir ?? "",
     }),
   );
@@ -66,6 +68,7 @@ export function createApp(container: ControllerContainer) {
   registerWorkspaceTemplateRoutes(app, container);
   registerDeviceTaskHistoryRoutes(app, container);
   registerDeviceControlRoutes(app, container);
+  registerScheduleRoutes(app, container);
   registerMediaRoutes(app, container);
 
   app.doc("/openapi.json", {

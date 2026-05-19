@@ -108,12 +108,28 @@ export async function installExpert(args: {
     expertSlug: manifest.slug,
   });
 
-  for (const skillSlug of manifest.requiredSkills) {
-    await deps.skillhub.install({
+  // Read ledger before installing skills so we can merge any
+  // skills the user pre-configured before installing the expert.
+  const preLedger = await deps.catalog.readLedger();
+  const preConfiguredSkills =
+    preLedger.entries[manifest.slug]?.configuredSkills ?? [];
+
+  const allSkillsToInstall = [
+    ...new Set([...manifest.requiredSkills, ...preConfiguredSkills]),
+  ];
+
+  // Install each skill, continuing on failure so one broken
+  // skill download doesn't block the rest of the expert setup.
+  for (const skillSlug of allSkillsToInstall) {
+    const result = await deps.skillhub.install({
       slug: skillSlug,
       agentId: bot.id,
       source: "workspace",
     });
+    if (!result.ok) {
+      // Skill ledger already records the failure independently;
+      // the expert detail page shows per-skill installed status.
+    }
   }
 
   const workspaceRoot = path.join(deps.agentsDir, bot.id);
@@ -133,13 +149,16 @@ export async function installExpert(args: {
     // May not exist — fine.
   }
 
+  // Re-read ledger after install in case it changed — then merge entry.
   const ledger = await deps.catalog.readLedger();
   const installedAt = new Date().toISOString();
   ledger.entries[manifest.slug] = {
+    ...ledger.entries[manifest.slug],
     slug: manifest.slug,
     version: manifest.version,
     botId: bot.id,
     installedAt,
+    configuredSkills: preConfiguredSkills,
   };
   ledger.updatedAt = installedAt;
   await deps.catalog.writeLedger(ledger);
@@ -259,7 +278,7 @@ function injectIdentityInfo(
     if (!descReplaced) {
       // Insert directly after the name line
       const nameIdx = lines.findIndex(
-        (l) => l.includes(`**Name:** ${name}`) || l.includes(`**Name:**`),
+        (l) => l.includes(`**Name:** ${name}`) || l.includes("**Name:**"),
       );
       if (nameIdx >= 0) {
         lines.splice(nameIdx + 1, 0, descLine);
@@ -386,4 +405,123 @@ export async function createCustomExpert(args: {
   await deps.sync.syncAll();
 
   return { ok: true, botId: bot.id, slug: expertSlug };
+}
+
+export type UpdateExpertSkillsDeps = {
+  catalog: {
+    resolveExpert: (slug: string) => Promise<ResolvedExpert | null>;
+    readLedger: () => Promise<ExpertLedger>;
+    writeLedger: (ledger: ExpertLedger) => Promise<void>;
+  };
+  skillhub: {
+    install: (input: {
+      slug: string;
+      agentId: string;
+      source: "workspace";
+    }) => Promise<{ ok: boolean; error?: string }>;
+    uninstall: (input: {
+      slug: string;
+      agentId: string;
+    }) => Promise<{ ok: boolean; error?: string }>;
+  };
+  sync: {
+    syncAll: () => Promise<unknown>;
+  };
+};
+
+export async function updateExpertSkills(args: {
+  slug: string;
+  skills: string[];
+  deps: UpdateExpertSkillsDeps;
+}): Promise<{ ok: true; configuredSkills: string[] }> {
+  let { slug, skills: submittedSkills } = args;
+  const { deps } = args;
+
+  const resolved = await deps.catalog.resolveExpert(slug);
+  const requiredSkills = resolved?.manifest.requiredSkills ?? [];
+
+  // Always merge required skills — server-side enforcement
+  const finalSkills = [...new Set([...requiredSkills, ...submittedSkills])];
+
+  const ledger = await deps.catalog.readLedger();
+  const entry = ledger.entries[slug];
+
+  if (entry?.botId) {
+    // Installed expert: diff and apply changes to bot workspace
+    const prevSkills = entry.configuredSkills ?? requiredSkills;
+    const prevSet = new Set(prevSkills);
+    const finalSet = new Set(finalSkills);
+
+    const toAdd = finalSkills.filter((s) => !prevSet.has(s));
+    const toRemove = prevSkills.filter(
+      (s) => !finalSet.has(s) && !requiredSkills.includes(s),
+    );
+
+    for (const skillSlug of toAdd) {
+      const result = await deps.skillhub.install({
+        slug: skillSlug,
+        agentId: entry.botId,
+        source: "workspace",
+      });
+      if (!result.ok) {
+        // Drop from submittedSkills so the UI can surface the failure
+        // and the user can retry on the next save.
+        submittedSkills = submittedSkills.filter((s) => s !== skillSlug);
+      }
+    }
+
+    for (const skillSlug of toRemove) {
+      await deps.skillhub.uninstall({
+        slug: skillSlug,
+        agentId: entry.botId,
+      });
+    }
+  }
+
+  // Write configured skills to ledger
+  ledger.entries[slug] = {
+    ...entry,
+    slug,
+    version: entry?.version ?? "",
+    botId: entry?.botId ?? "",
+    installedAt: entry?.installedAt ?? "",
+    configuredSkills: submittedSkills,
+  };
+  ledger.updatedAt = new Date().toISOString();
+  await deps.catalog.writeLedger(ledger);
+
+  await deps.sync.syncAll();
+
+  return { ok: true, configuredSkills: submittedSkills };
+}
+
+export const DEFAULT_EXPERT_SLUGS = [
+  "marketing-china-market-localization-strategist",
+  "marketing-xiaohongshu-operator",
+  "marketing-xiaohongshu-specialist",
+] as const;
+
+export async function installDefaultExperts(args: {
+  slugs: readonly string[];
+  deps: InstallExpertDeps;
+}): Promise<{ installed: string[]; skipped: string[] }> {
+  const ledger = await args.deps.catalog.readLedger();
+  const installed: string[] = [];
+  const skipped: string[] = [];
+
+  for (const slug of args.slugs) {
+    if (ledger.entries[slug]) {
+      skipped.push(slug);
+      continue;
+    }
+
+    try {
+      await installExpert({ slug, deps: args.deps });
+      installed.push(slug);
+    } catch {
+      skipped.push(slug);
+    }
+  }
+
+  return { installed, skipped };
 }

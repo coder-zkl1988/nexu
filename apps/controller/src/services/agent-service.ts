@@ -16,9 +16,9 @@ export class AgentService {
     return this.configStore.getBot(botId);
   }
 
-  async createBot(input: CreateBotInput) {
+  async createBot(input: CreateBotInput, lang?: string) {
     const bot = await this.configStore.createBot(input);
-    await this.syncService.writePlatformTemplatesForBot(bot.id);
+    await this.syncService.writePlatformTemplatesForBot(bot.id, lang);
     await this.syncService.syncAll();
     return bot;
   }
@@ -55,7 +55,7 @@ export class AgentService {
     return bot;
   }
 
-  async getOrCreateDefaultBot(): Promise<BotResponse> {
+  async getOrCreateDefaultBot(lang?: string): Promise<BotResponse> {
     const existing = await this.configStore.listBots();
     const activeBots = existing.filter((b) => b.status === "active");
 
@@ -70,7 +70,7 @@ export class AgentService {
       slug: "tabby-local-chat",
       modelId: config.runtime.defaultModelId,
     });
-    await this.syncService.writePlatformTemplatesForBot(bot.id);
+    await this.syncService.writePlatformTemplatesForBot(bot.id, lang);
     await this.syncService.syncAll();
     return bot;
   }

@@ -18,6 +18,7 @@ import {
 } from "../runtime/slimclaw-runtime-model-writer.js";
 import type { OpenClawRuntimePluginWriter } from "../runtime/slimclaw-runtime-plugin-writer.js";
 import type { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js";
+import type { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.js";
 import type { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 import type { NexuConfig } from "../store/schemas.js";
@@ -136,6 +137,7 @@ export class OpenClawSyncService {
     private readonly runtimeModelWriter: OpenClawRuntimeModelWriter,
     private readonly creditGuardStateWriter: CreditGuardStateWriter,
     private readonly templateWriter: WorkspaceTemplateWriter,
+    private readonly scheduleWorkspaceWriter: ScheduleWorkspaceWriter,
     private readonly watchTrigger: OpenClawWatchTrigger,
     private readonly gatewayService: OpenClawGatewayService,
     private readonly skillDb: SkillDb | null = null,
@@ -271,8 +273,11 @@ export class OpenClawSyncService {
    * platform docs at runtime, and any caller that re-seeds is implicitly
    * claiming the bot's workspace state should be reset.
    */
-  async writePlatformTemplatesForBot(botId: string): Promise<void> {
-    await this.templateWriter.write([{ id: botId, status: "active" }]);
+  async writePlatformTemplatesForBot(
+    botId: string,
+    lang?: string,
+  ): Promise<void> {
+    await this.templateWriter.write([{ id: botId, status: "active", lang }]);
   }
 
   private async doSync(): Promise<{
@@ -389,6 +394,9 @@ export class OpenClawSyncService {
     }
     await this.creditGuardStateWriter.write(locale);
     await this.compiledStore.saveConfig(compiled);
+
+    // Write SCHEDULE.md for each active bot so agents can register cron tasks.
+    await this.scheduleWorkspaceWriter.write(config);
 
     // 3. If OpenClaw is not connected yet, nudge the file watcher after the
     // write. Connected runtimes already see the single in-place overwrite.

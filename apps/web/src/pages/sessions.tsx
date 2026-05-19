@@ -747,8 +747,8 @@ function ChatBubble({
             className={cn(
               "inline-block max-w-full rounded-[20px] px-4 py-3 text-[13px] break-words shadow-[0_10px_24px_rgba(15,23,42,0.04)]",
               isBot
-                ? "border border-border bg-surface-1 text-text-primary rounded-tl-sm"
-                : "bg-surface-3 text-text-primary rounded-tl-sm",
+                ? "border border-border bg-surface-1 text-text-primary"
+                : "bg-surface-3 text-text-primary",
             )}
           >
             <ChatMarkdown content={text} />
@@ -1337,7 +1337,7 @@ export function SessionsPage() {
                     alt=""
                     className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
                   />
-                  <div className="inline-flex items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 rounded-tl-sm shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                  <div className="inline-flex items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
                     <Loader2
                       size={14}
                       className="animate-spin text-text-muted"

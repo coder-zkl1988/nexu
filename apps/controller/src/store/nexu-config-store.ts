@@ -9,6 +9,7 @@ import type {
   ConnectQqbotInput,
   ConnectSlackInput,
   ConnectWecomInput,
+  CreateScheduleInput,
   CreditRechargeRecord,
   DesktopRewardClaimProof,
   DesktopRewardsStatus,
@@ -17,6 +18,8 @@ import type {
   PersistedModelsConfig,
   RewardTask,
   RewardTaskId,
+  ScheduleResponse,
+  UpdateScheduleInput,
 } from "@nexu/shared";
 import {
   type claimDesktopRewardResponseSchema,
@@ -649,6 +652,7 @@ export class NexuConfigStore {
           wsPort: 18790,
           rpcPort: 18801,
         },
+        schedules: [],
         secrets: {},
       }),
     );
@@ -984,6 +988,26 @@ export class NexuConfigStore {
     poolId?: string;
     expertSlug?: string | null;
   }): Promise<BotResponse> {
+    // Dedup: if expertSlug is set and an active bot with the same expertSlug
+    // already exists, return the existing bot instead of creating a duplicate.
+    if (input.expertSlug) {
+      const config = await this.getConfig();
+      const existing = config.bots.find(
+        (b) => b.expertSlug === input.expertSlug && b.status === "active",
+      );
+      if (existing) {
+        logger.info(
+          {
+            expertSlug: input.expertSlug,
+            existingBotId: existing.id,
+            requestedName: input.name,
+          },
+          "bot_creation_skipped_expert_already_exists",
+        );
+        return existing;
+      }
+    }
+
     const createdAt = now();
     const bot: BotResponse = {
       id: crypto.randomUUID(),
@@ -1089,7 +1113,98 @@ export class NexuConfigStore {
         ...config,
         bots,
         channels: config.channels.filter((channel) => channel.botId !== botId),
+        schedules: (config.schedules ?? []).filter((s) => s.botId !== botId),
       };
+    });
+
+    return deleted;
+  }
+
+  async listSchedules(): Promise<ScheduleResponse[]> {
+    const config = await this.getConfig();
+    return config.schedules ?? [];
+  }
+
+  async getSchedule(id: string): Promise<ScheduleResponse | null> {
+    const config = await this.getConfig();
+    return config.schedules?.find((s) => s.id === id) ?? null;
+  }
+
+  async createSchedule(input: CreateScheduleInput): Promise<ScheduleResponse> {
+    const createdAt = now();
+    const schedule: ScheduleResponse = {
+      id: crypto.randomUUID(),
+      botId: input.botId,
+      name: input.name,
+      cron: input.cron,
+      timezone: input.timezone ?? "UTC",
+      prompt: input.prompt,
+      enabled: input.enabled ?? true,
+      source: input.source ?? "ui",
+      sessionKey: input.sessionKey,
+      channelType: input.channelType,
+      channelId: input.channelId,
+      description: input.description,
+      createdAt,
+      updatedAt: createdAt,
+    };
+
+    await this.store.update((config) => ({
+      ...config,
+      schedules: [...(config.schedules ?? []), schedule],
+    }));
+
+    return schedule;
+  }
+
+  async updateSchedule(
+    id: string,
+    input: UpdateScheduleInput,
+  ): Promise<ScheduleResponse | null> {
+    let updated: ScheduleResponse | null = null;
+
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((s) => {
+        if (s.id !== id) return s;
+        updated = {
+          ...s,
+          name: input.name ?? s.name,
+          cron: input.cron ?? s.cron,
+          timezone: input.timezone ?? s.timezone,
+          prompt: input.prompt ?? s.prompt,
+          enabled: input.enabled ?? s.enabled,
+          source: input.source ?? s.source,
+          sessionKey:
+            input.sessionKey !== undefined ? input.sessionKey : s.sessionKey,
+          channelType:
+            input.channelType !== undefined ? input.channelType : s.channelType,
+          channelId:
+            input.channelId !== undefined ? input.channelId : s.channelId,
+          description:
+            input.description !== undefined ? input.description : s.description,
+          updatedAt: now(),
+        };
+        return updated;
+      }),
+    }));
+
+    return updated;
+  }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    let deleted = false;
+
+    await this.store.update((config) => {
+      const schedules = (config.schedules ?? []).filter((s) => {
+        if (s.id === id) {
+          deleted = true;
+          return false;
+        }
+        return true;
+      });
+
+      return { ...config, schedules };
     });
 
     return deleted;

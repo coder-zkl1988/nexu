@@ -44,6 +44,10 @@ export type ExperthubRoutesDeps = {
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) => Promise<{ ok: true; botId: string; slug: string }>;
+  updateExpertSkills: (args: {
+    slug: string;
+    skills: string[];
+  }) => Promise<{ ok: true; configuredSkills: string[] }>;
   platformTemplatesDir: string;
 };
 
@@ -57,6 +61,14 @@ const ALLOWED_TEMPLATE_FILES = [
 ] as const;
 
 const templateFilenameSchema = z.enum(ALLOWED_TEMPLATE_FILES);
+
+const updateExpertSkillsRequestSchema = z.object({
+  skills: z.array(z.string()),
+});
+const updateExpertSkillsResponseSchema = z.object({
+  ok: z.literal(true),
+  configuredSkills: z.array(z.string()),
+});
 
 const refreshResponseSchema = z.object({
   meta: z
@@ -189,6 +201,50 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
     },
   );
 
+  // PUT /experts/{slug}/skills
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/experts/{slug}/skills",
+      tags: ["ExpertHub"],
+      request: {
+        params: z.object({ slug: z.string().min(1) }),
+        body: {
+          content: {
+            "application/json": { schema: updateExpertSkillsRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: updateExpertSkillsResponseSchema },
+          },
+          description: "Expert skills updated",
+        },
+        404: {
+          content: {
+            "application/json": { schema: notFoundErrorSchema },
+          },
+          description: "Expert not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { slug } = c.req.valid("param");
+      const { skills } = c.req.valid("json");
+      try {
+        const result = await deps.updateExpertSkills({ slug, skills });
+        return c.json(result, 200);
+      } catch (error) {
+        if (error instanceof ExpertNotFoundError) {
+          return c.json({ message: error.message }, 404);
+        }
+        throw error;
+      }
+    },
+  );
+
   // POST /refresh
   app.openapi(
     createRoute({
@@ -289,6 +345,9 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
       tags: ["ExpertHub"],
       request: {
         params: z.object({ filename: templateFilenameSchema }),
+        query: z.object({
+          lang: z.string().optional().default("en"),
+        }),
       },
       responses: {
         200: {
@@ -305,12 +364,20 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
     }),
     async (c) => {
       const { filename } = c.req.valid("param");
-      const filePath = path.join(deps.platformTemplatesDir, filename);
+      const { lang } = c.req.valid("query");
+      const langDir = path.join(deps.platformTemplatesDir, lang);
+      const langPath = path.join(langDir, filename);
+      const fallbackPath = path.join(deps.platformTemplatesDir, "en", filename);
       try {
-        const content = await readFile(filePath, "utf-8");
+        const content = await readFile(langPath, "utf-8");
         return c.text(content, 200);
       } catch {
-        return c.json({ message: "Template file not found" }, 404);
+        try {
+          const content = await readFile(fallbackPath, "utf-8");
+          return c.text(content, 200);
+        } catch {
+          return c.json({ message: "Template file not found" }, 404);
+        }
       }
     },
   );

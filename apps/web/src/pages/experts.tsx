@@ -54,6 +54,18 @@ export default function ExpertsPage() {
     [searchParams],
   );
   const { tab, tag, q } = viewState;
+
+  const [inputValue, setInputValue] = useState(q);
+  const debouncedInput = useDebounce(inputValue, 150);
+
+  useEffect(() => {
+    if (debouncedInput !== q) {
+      const next: ExpertsViewState = { tab, tag, q: debouncedInput };
+      const qs = serializeExpertsViewState(next);
+      setSearchParams(new URLSearchParams(qs), { replace: true });
+    }
+  }, [debouncedInput, q, tab, tag, setSearchParams]);
+
   const debouncedQuery = useDebounce(q, 150);
 
   // Resolve the effective tab during render so the correct content is painted in
@@ -308,8 +320,8 @@ export default function ExpertsPage() {
               />
               <input
                 type="text"
-                value={q}
-                onChange={(e) => updateViewState({ q: e.target.value })}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
                 placeholder={t("experts.search.placeholder")}
                 className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
               />

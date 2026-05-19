@@ -100,6 +100,15 @@ export async function bootstrapController(
   // invisible to the running agent until a restart.
   container.skillhubService.bootstrap();
 
+  // Auto-install default experts on startup (fire-and-forget so startup
+  // isn't blocked; failures are logged inside installDefaultExperts).
+  void container.installDefaultExpertsFn().catch((err) => {
+    logger.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "default_experts_auto_install_failed",
+    );
+  });
+
   container.channelFallbackService.start();
 
   container.wsClient.onGatewayShutdown(({ restartExpectedMs }) => {
