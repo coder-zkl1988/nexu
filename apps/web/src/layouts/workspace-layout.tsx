@@ -846,9 +846,6 @@ function WorkspaceLayoutInner() {
             >
               <Sparkles size={16} className="shrink-0" />
               {t("layout.nav.automations")}
-              <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-tabby-sidebar-active)] text-text-muted font-medium">
-                Beta
-              </span>
             </Link>
             <Link
               to="/workspace/experts"
