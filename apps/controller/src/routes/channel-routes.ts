@@ -206,7 +206,7 @@ function logChannelConnectFailure(
   );
 
   void container.controlPlaneHealth
-    .probe({ timeoutMs: 1500 })
+    .bootstrapProbe()
     .then((controlPlaneHealth) => {
       logger.warn(
         {

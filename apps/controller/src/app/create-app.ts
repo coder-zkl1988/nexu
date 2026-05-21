@@ -80,9 +80,7 @@ export function createApp(container: ControllerContainer) {
   });
 
   app.get("/health", async (c) => {
-    const controlPlane = await container.controlPlaneHealth.probe({
-      timeoutMs: 1500,
-    });
+    const controlPlane = await container.controlPlaneHealth.bootstrapProbe();
     return c.json(
       {
         status: container.runtimeState.status,

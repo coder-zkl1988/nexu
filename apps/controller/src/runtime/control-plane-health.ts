@@ -40,6 +40,82 @@ export class ControlPlaneHealthService {
     private readonly processManager?: OpenClawProcessManager,
   ) {}
 
+  /**
+   * Lightweight bootstrap probe that only checks `health` — not `status` or
+   * `config.get`.  OpenClaw >=2026.5.18 overlaps channel-sidecar startup with
+   * the gateway listen loop, so `status` and `config.get` can take 30–60 s
+   * during the first readiness window while sidecars initialise.  `health` is
+   * the correct single-signal readiness gate for the bootstrap stabilisation
+   * loop.
+   */
+  async bootstrapProbe(options?: {
+    timeoutMs?: number;
+  }): Promise<ControlPlaneHealthResult> {
+    const checkedAt = new Date().toISOString();
+    const startedAt = Date.now();
+    const wsConnected = this.wsClient.isConnected();
+
+    if (!wsConnected) {
+      const processAlive = this.processManager?.isAlive() ?? false;
+      const phase: ControlPlaneHealthPhase =
+        isBootPhasePreReady(this.runtimeState.bootPhase) || processAlive
+          ? "connecting"
+          : "disconnected";
+
+      return {
+        ok: false,
+        phase,
+        checkedAt,
+        latencyMs: null,
+        wsConnected: false,
+        checks: { health: false, status: false, configGet: false },
+        errors: {
+          health: "openclaw gateway not connected",
+          status: "openclaw gateway not connected",
+          configGet: "openclaw gateway not connected",
+        },
+        lastError: "openclaw gateway not connected",
+      };
+    }
+
+    const timeoutMs = options?.timeoutMs ?? 30_000;
+
+    try {
+      await this.gatewayService.getGatewayHealthSnapshot({
+        timeoutMs,
+      });
+      return {
+        ok: true,
+        phase: "ready",
+        checkedAt,
+        latencyMs: Date.now() - startedAt,
+        wsConnected,
+        checks: { health: true, status: true, configGet: true },
+        errors: { health: null, status: null, configGet: null },
+        lastError: null,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        phase: "degraded",
+        checkedAt,
+        latencyMs: Date.now() - startedAt,
+        wsConnected,
+        checks: {
+          health: false,
+          status: false,
+          configGet: false,
+        },
+        errors: {
+          health: getErrorMessage(err),
+          status: null,
+          configGet: null,
+        },
+        lastError: getErrorMessage(err),
+      };
+    }
+  }
+
   async probe(options?: {
     timeoutMs?: number;
   }): Promise<ControlPlaneHealthResult> {

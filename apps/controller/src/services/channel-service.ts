@@ -1641,9 +1641,7 @@ export class ChannelService {
 
     const deadline = Date.now() + WHATSAPP_RUNTIME_RESTART_TIMEOUT_MS;
     while (Date.now() < deadline) {
-      const controlPlane = await this.controlPlaneHealth.probe({
-        timeoutMs: 1500,
-      });
+      const controlPlane = await this.controlPlaneHealth.bootstrapProbe();
       if (controlPlane.ok) {
         logger.info({ reason }, "whatsapp_runtime_restart_ready");
         return;

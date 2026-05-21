@@ -7,19 +7,20 @@ import {
   readdir,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 
 const OPENCLAW_PACKAGE_PATCH_DIRNAME = "openclaw";
 const STAGE_MANIFEST_FILENAME = "manifest.json";
-const STAGE_PATCH_VERSION = "2026-04-09-slimclaw-runtime-stage-v1";
+const STAGE_PATCH_VERSION = "2026-05-19-slimclaw-runtime-stage-v3";
 const REPLY_OUTCOME_HELPER_SEARCH = `
-const sessionKey = ctx.SessionKey;
+const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const startTime = diagnosticsEnabled ? Date.now() : 0;
 `.trim();
 const REPLY_OUTCOME_HELPER_REPLACEMENT = `
-const sessionKey = ctx.SessionKey;
+const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const emitReplyOutcome = (status, reasonCode, error) => {
 		try {
 			console.log("NEXU_EVENT channel.reply_outcome " + JSON.stringify({
@@ -42,23 +43,25 @@ const sessionKey = ctx.SessionKey;
 `.trim();
 const REPLY_OUTCOME_SILENT_SEARCH = `
 const counts = dispatcher.getQueuedCounts();
-		counts.final += routedFinalCount;
-		recordProcessed("completed");
+			counts.final += routedFinalCount;
+			recordProcessed("completed", { reason: "fast_abort" });
 `.trim();
 const REPLY_OUTCOME_SILENT_REPLACEMENT = `
 const counts = dispatcher.getQueuedCounts();
-		counts.final += routedFinalCount;
-		if (!queuedFinal) emitReplyOutcome("silent", "no_final_reply");
-		recordProcessed("completed");
+			counts.final += routedFinalCount;
+			if (!queuedFinal) emitReplyOutcome("silent", "no_final_reply");
+			recordProcessed("completed", { reason: "fast_abort" });
 `.trim();
 const REPLY_OUTCOME_ERROR_SEARCH = `
 recordProcessed("error", { error: String(err) });
 		markIdle("message_error");
+		throw err;
 `.trim();
 const REPLY_OUTCOME_ERROR_REPLACEMENT = `
 emitReplyOutcome("failed", "dispatch_threw", err instanceof Error ? err.message : String(err));
 		recordProcessed("error", { error: String(err) });
 		markIdle("message_error");
+		throw err;
 `.trim();
 const FEISHU_ERROR_REPLY_SUPPRESS_GUARD_SEARCH = `
 const genericErrorText = "The AI service returned an error. Please try again.";
@@ -184,12 +187,15 @@ const KNOWN_LINK_ERROR_MAPPING_LINES = [
   'if (lowered.includes("[code=streaming_unsupported]") || lowered.includes("streaming unsupported")) return _nexuLocale === "en" ? "⚠️ Streaming is not supported for this request. Please try a different approach or try again later. If the issue persists, see https://docs.nexu.io/guide/contact" : "⚠️ 当前暂不支持这种返回方式，请换一种方式再试，或稍后重试。如仍无法解决，请查看 https://docs.nexu.io/zh/guide/contact";',
   'if (lowered.includes("[code=upstream_error]") || lowered.includes("upstream provider is unavailable") || lowered.includes("upstream_error")) return _nexuLocale === "en" ? "⚠️ The upstream model service is temporarily unavailable. Please try again later or switch to a different model. If the issue persists, see https://docs.nexu.io/guide/contact" : "⚠️ 当前连接的模型服务暂时不可用，请稍后重试，或更换其他模型后再试。如仍无法解决，请查看 https://docs.nexu.io/zh/guide/contact";',
 ] as const;
-const HELPER_BUNDLE_PATTERNS = [/^pi-embedded-helpers-.*\.js$/u] as const;
+const HELPER_BUNDLE_PATTERNS = [/^assistant-error-format-.*\.js$/u] as const;
 const PLUGIN_SDK_BUNDLE_PATTERNS = [
   /^reply-.*\.js$/u,
   /^dispatch-.*\.js$/u,
 ] as const;
-const CORE_DIST_REPLY_BUNDLE_PATTERNS = [/^reply-.*\.js$/u] as const;
+const CORE_DIST_REPLY_BUNDLE_PATTERNS = [
+  /^reply-.*\.js$/u,
+  /^dispatch-.*\.js$/u,
+] as const;
 const FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH = `
       // --- Single-agent dispatch (existing behavior) ---
       const ctxPayload = buildCtxPayloadForAgent(
@@ -469,68 +475,94 @@ async function patchReplyOutcomeBridge(
   const patchedFiles = new Map<string, string>();
   const feishuBotPath = resolve(
     openclawPackageRoot,
+    "dist",
     "extensions",
     "feishu",
     "src",
     "bot.ts",
   );
-  let feishuBotSource = await readFile(feishuBotPath, "utf8");
 
-  if (feishuBotSource.includes(LEGACY_FEISHU_PRE_LLM_BLOCK)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      LEGACY_FEISHU_PRE_LLM_BLOCK,
-      "",
-    );
-  }
-
-  if (feishuBotSource.includes(LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK,
-      FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
-    );
-  }
-
-  if (feishuBotSource.includes(LEGACY_FEISHU_TRIGGER_CALLSITE)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      LEGACY_FEISHU_TRIGGER_CALLSITE,
-      LEGACY_FEISHU_TRIGGER_CALLSITE_REPLACEMENT,
-    );
-  }
-
-  if (feishuBotSource.includes(FEISHU_SYNTHETIC_PRE_LLM_BLOCK)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      FEISHU_SYNTHETIC_PRE_LLM_BLOCK,
-      "",
-    );
-  }
-
-  if (feishuBotSource.includes(FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH)) {
-    feishuBotSource = feishuBotSource.replace(
-      FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH,
-      FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
-    );
+  try {
+    const feishuBotStat = await stat(feishuBotPath);
+    if (!feishuBotStat.isFile()) {
+      throw new Error("not a file");
+    }
+  } catch {
     emitLog(
       log,
-      "[slimclaw-runtime-stage] patched feishu single-agent pre-llm trigger",
+      "[slimclaw-runtime-stage] feishu bot.ts not found — skipping feishu source patching (OpenClaw >=2026.5.18 bundles feishu into dist)",
     );
   }
 
-  if (countOccurrences(feishuBotSource, FEISHU_SYNTHETIC_PRE_LLM_BLOCK) !== 1) {
-    throw new Error(
-      "Feishu bot patch did not converge to a single synthetic pre-llm block.",
-    );
+  // Only patch feishu source if it still exists as a standalone extension.
+  let feishuBotSource: string | undefined;
+  try {
+    feishuBotSource = await readFile(feishuBotPath, "utf8");
+  } catch {
+    // skip feishu source patching
   }
 
-  if (feishuBotSource.includes("return;\n      }\n        route.sessionKey,")) {
-    throw new Error(
-      "Feishu bot patch left a dangling buildCtxPayloadForAgent argument tail.",
+  if (feishuBotSource !== undefined) {
+    if (feishuBotSource.includes(LEGACY_FEISHU_PRE_LLM_BLOCK)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        LEGACY_FEISHU_PRE_LLM_BLOCK,
+        "",
+      );
+    }
+
+    if (feishuBotSource.includes(LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK,
+        FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
+      );
+    }
+
+    if (feishuBotSource.includes(LEGACY_FEISHU_TRIGGER_CALLSITE)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        LEGACY_FEISHU_TRIGGER_CALLSITE,
+        LEGACY_FEISHU_TRIGGER_CALLSITE_REPLACEMENT,
+      );
+    }
+
+    if (feishuBotSource.includes(FEISHU_SYNTHETIC_PRE_LLM_BLOCK)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        FEISHU_SYNTHETIC_PRE_LLM_BLOCK,
+        "",
+      );
+    }
+
+    if (feishuBotSource.includes(FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH)) {
+      feishuBotSource = feishuBotSource.replace(
+        FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH,
+        FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
+      );
+      emitLog(
+        log,
+        "[slimclaw-runtime-stage] patched feishu single-agent pre-llm trigger",
+      );
+    }
+
+    if (
+      countOccurrences(feishuBotSource, FEISHU_SYNTHETIC_PRE_LLM_BLOCK) !== 1
+    ) {
+      throw new Error(
+        "Feishu bot patch did not converge to a single synthetic pre-llm block.",
+      );
+    }
+
+    if (
+      feishuBotSource.includes("return;\n      }\n        route.sessionKey,")
+    ) {
+      throw new Error(
+        "Feishu bot patch left a dangling buildCtxPayloadForAgent argument tail.",
+      );
+    }
+
+    patchedFiles.set(
+      relative(openclawPackageRoot, feishuBotPath),
+      feishuBotSource,
     );
   }
-
-  patchedFiles.set(
-    relative(openclawPackageRoot, feishuBotPath),
-    feishuBotSource,
-  );
 
   const patchBundleGroup = async (
     bundleDir: string,
@@ -550,7 +582,10 @@ async function patchReplyOutcomeBridge(
       const bundlePath = resolve(bundleDir, bundleName);
       let source = await readFile(bundlePath, "utf8");
 
-      if (!source.includes("NEXU_EVENT channel.reply_outcome")) {
+      if (
+        !source.includes("NEXU_EVENT channel.reply_outcome") &&
+        source.includes(REPLY_OUTCOME_HELPER_SEARCH)
+      ) {
         source = applyExactReplacement(
           source,
           REPLY_OUTCOME_HELPER_SEARCH,
@@ -810,10 +845,6 @@ async function patchReplyOutcomeBridge(
     resolve(openclawPackageRoot, "dist"),
     "core dist",
   );
-  await patchHelperBundleGroup(
-    resolve(openclawPackageRoot, "dist", "plugin-sdk"),
-    "plugin-sdk",
-  );
 
   const allDistFiles = await readdir(resolve(openclawPackageRoot, "dist"));
   for (const fileName of allDistFiles.sort((left, right) =>
@@ -856,7 +887,14 @@ async function collectFingerprintFiles(
   const files: Array<{ label: string; path: string }> = [];
   const sourceCandidates = [
     resolve(sourceOpenclawRoot, "package.json"),
-    resolve(sourceOpenclawRoot, "extensions", "feishu", "src", "bot.ts"),
+    resolve(
+      sourceOpenclawRoot,
+      "dist",
+      "extensions",
+      "feishu",
+      "src",
+      "bot.ts",
+    ),
   ];
 
   for (const sourceFilePath of sourceCandidates) {

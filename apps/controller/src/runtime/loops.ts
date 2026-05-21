@@ -64,7 +64,7 @@ export function startHealthLoop(params: {
   const run = async () => {
     while (!stopped) {
       const prevGateway = params.state.gatewayStatus;
-      const result = await params.controlPlaneHealth.probe();
+      const result = await params.controlPlaneHealth.bootstrapProbe();
       params.state.lastGatewayProbeAt = result.checkedAt;
       if (result.phase === "ready") {
         params.state.gatewayStatus = "active";

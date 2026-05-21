@@ -321,7 +321,7 @@ type Frame = RequestFrame | ResponseFrame | EventFrame;
 // WS Client
 // ---------------------------------------------------------------------------
 
-const PROTOCOL_VERSION = 3;
+const PROTOCOL_VERSION = 4;
 const MAX_BACKOFF_MS = 4_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 

@@ -170,9 +170,7 @@ export function registerDesktopRoutes(
       },
     }),
     async (c) => {
-      const controlPlane = await container.controlPlaneHealth.probe({
-        timeoutMs: 1500,
-      });
+      const controlPlane = await container.controlPlaneHealth.bootstrapProbe();
       const coreReady =
         container.runtimeState.bootPhase === "ready" && controlPlane.ok;
       const degraded = coreReady && container.runtimeState.status !== "active";

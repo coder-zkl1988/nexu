@@ -39,9 +39,7 @@ async function waitForStableControlPlane(
   let stableSince: number | null = null;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const result = await container.controlPlaneHealth.probe({
-      timeoutMs: 1500,
-    });
+    const result = await container.controlPlaneHealth.bootstrapProbe();
 
     if (result.ok) {
       stableSince ??= Date.now();
