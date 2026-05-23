@@ -11,5 +11,8 @@
         "description": "URL for the 'Contact us' link in error messages"
       }
     }
+  },
+  "activation": {
+    "onStartup": true
   }
 }

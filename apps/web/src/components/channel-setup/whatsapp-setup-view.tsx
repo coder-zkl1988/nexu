@@ -1,10 +1,13 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2, QrCode, RefreshCw, Smartphone } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  getApiV1Channels,
   postApiV1ChannelsWhatsappConnect,
   postApiV1ChannelsWhatsappQrStart,
   postApiV1ChannelsWhatsappQrWait,
@@ -30,7 +33,24 @@ export function WhatsappSetupView({
   const [phase, setPhase] = useState<Phase>("idle");
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [botId, setBotId] = useState<string>("");
   const mountedRef = useRef(true);
+
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === "whatsapp")
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   useEffect(
     () => () => {
@@ -46,7 +66,7 @@ export function WhatsappSetupView({
       }
       setPhase("connecting");
       const { error } = await postApiV1ChannelsWhatsappConnect({
-        body: { accountId },
+        body: { accountId, botId },
       });
       if (!mountedRef.current) {
         return;
@@ -73,7 +93,7 @@ export function WhatsappSetupView({
         setQrUrl(null);
       }
     },
-    [onConnected, t],
+    [onConnected, t, botId],
   );
 
   const startQrFlow = useCallback(async () => {
@@ -217,13 +237,22 @@ export function WhatsappSetupView({
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3 py-1">
+            <div className="w-full">
+              <BotPicker
+                value={botId || null}
+                onChange={setBotId}
+                required
+                disabled={disabled || isLoading}
+                disabledBotIds={disabledBotIds}
+              />
+            </div>
             <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
               <QrCode size={48} className="text-emerald-500" />
             </div>
             <button
               type="button"
               onClick={startQrFlow}
-              disabled={disabled || isLoading}
+              disabled={disabled || isLoading || !botId}
               className="flex gap-1.5 items-center px-5 py-2.5 text-[13px] font-medium text-accent-fg rounded-lg bg-accent hover:bg-accent-hover transition-all disabled:opacity-60"
             >
               <QrCode size={14} />

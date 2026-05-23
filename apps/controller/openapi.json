@@ -4204,11 +4204,16 @@
                   },
                   "appId": {
                     "type": "string"
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botToken",
-                  "signingSecret"
+                  "signingSecret",
+                  "botId"
                 ]
               }
             }
@@ -4368,11 +4373,16 @@
                   },
                   "guildName": {
                     "type": "string"
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botToken",
-                  "appId"
+                  "appId",
+                  "botId"
                 ]
               }
             }
@@ -4878,10 +4888,15 @@
                   "botToken": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
-                  "botToken"
+                  "botToken",
+                  "botId"
                 ]
               }
             }
@@ -5217,11 +5232,16 @@
                   "clientSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "clientId",
-                  "clientSecret"
+                  "clientSecret",
+                  "botId"
                 ]
               }
             }
@@ -5557,11 +5577,16 @@
                   "clientSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "clientId",
-                  "clientSecret"
+                  "clientSecret",
+                  "botId"
                 ]
               }
             }
@@ -5629,11 +5654,16 @@
                   "appSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "appId",
-                  "appSecret"
+                  "appSecret",
+                  "botId"
                 ]
               }
             }
@@ -5787,11 +5817,16 @@
                   "appSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "appId",
-                  "appSecret"
+                  "appSecret",
+                  "botId"
                 ]
               }
             }
@@ -5859,11 +5894,16 @@
                   "secret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "nexuBotId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botId",
-                  "secret"
+                  "secret",
+                  "nexuBotId"
                 ]
               }
             }
@@ -6017,11 +6057,16 @@
                   "secret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "nexuBotId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botId",
-                  "secret"
+                  "secret",
+                  "nexuBotId"
                 ]
               }
             }
@@ -6468,6 +6513,24 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Bot already bound to another channel of same type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -6819,10 +6882,15 @@
                   "accountId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
-                  "accountId"
+                  "accountId",
+                  "botId"
                 ]
               }
             }

@@ -4,8 +4,10 @@ import type { ControllerEnv } from "../app/env.js";
 
 const BUNDLED_PLUGIN_IDS = new Set([
   "dingtalk-connector",
-  "tabby-control",
+  "openclaw-lark",
+  "openclaw-weixin",
   "openclaw-qqbot",
+  "tabby-control",
   "wecom",
 ]);
 

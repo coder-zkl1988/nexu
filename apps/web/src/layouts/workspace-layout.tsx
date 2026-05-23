@@ -18,7 +18,7 @@ import {
 import { logoutToWelcome } from "@/lib/logout";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Bot,
@@ -38,6 +38,7 @@ import {
   Settings,
   Smartphone,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -51,7 +52,11 @@ import {
   useNavigate,
 } from "react-router-dom";
 import "@/lib/api";
-import { getApiV1Me, getApiV1Sessions } from "../../lib/api/sdk.gen";
+import {
+  deleteApiV1SessionsById,
+  getApiV1Me,
+  getApiV1Sessions,
+} from "../../lib/api/sdk.gen";
 
 interface SidebarSession {
   id: string;
@@ -555,6 +560,19 @@ function WorkspaceLayoutInner() {
     },
   });
 
+  const deleteSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      await deleteApiV1SessionsById({ path: { id: sessionId } });
+    },
+    onSuccess: (_data, deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
+      // If the deleted session is currently viewed, navigate away
+      if (selectedSessionId === deletedId) {
+        navigate("/workspace");
+      }
+    },
+  });
+
   const sessions = sessionsData ?? [];
 
   const sessionMatch = location.pathname.match(/\/workspace\/sessions\/(.+)/);
@@ -947,10 +965,21 @@ function WorkspaceLayoutInner() {
                                   <span>{formatTime(s.lastTime)}</span>
                                 </div>
                               </div>
-                              <div className="flex flex-col items-end gap-1 shrink-0">
+                              <div className="flex items-center gap-1 shrink-0">
                                 {s.status === "active" && (
                                   <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteSessionMutation.mutate(s.id);
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
+                                  title={t("layout.deleteSession")}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               </div>
                             </button>
                           );

@@ -1427,6 +1427,7 @@ export type PostApiV1ChannelsSlackConnectData = {
         teamId?: string;
         teamName?: string;
         appId?: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1476,6 +1477,7 @@ export type PostApiV1ChannelsDiscordConnectData = {
         appId: string;
         guildId?: string;
         guildName?: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1606,6 +1608,7 @@ export type PostApiV1ChannelsFeishuConnectResponse = PostApiV1ChannelsFeishuConn
 export type PostApiV1ChannelsTelegramConnectData = {
     body: {
         botToken: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1687,6 +1690,7 @@ export type PostApiV1ChannelsDingtalkConnectData = {
     body?: {
         clientId: string;
         clientSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1768,6 +1772,7 @@ export type PostApiV1ChannelsDingtalkTestData = {
     body?: {
         clientId: string;
         clientSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1801,6 +1806,7 @@ export type PostApiV1ChannelsQqbotConnectData = {
     body?: {
         appId: string;
         appSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1848,6 +1854,7 @@ export type PostApiV1ChannelsQqbotTestData = {
     body?: {
         appId: string;
         appSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1881,6 +1888,7 @@ export type PostApiV1ChannelsWecomConnectData = {
     body?: {
         botId: string;
         secret: string;
+        nexuBotId: string;
     };
     path?: never;
     query?: never;
@@ -1928,6 +1936,7 @@ export type PostApiV1ChannelsWecomTestData = {
     body?: {
         botId: string;
         secret: string;
+        nexuBotId: string;
     };
     path?: never;
     query?: never;
@@ -2067,6 +2076,12 @@ export type PatchApiV1ChannelsByChannelIdErrors = {
      * Channel not found
      */
     404: {
+        message: string;
+    };
+    /**
+     * Bot already bound to another channel of same type
+     */
+    409: {
         message: string;
     };
 };
@@ -2224,6 +2239,7 @@ export type PostApiV1ChannelsWhatsappQrWaitResponse = PostApiV1ChannelsWhatsappQ
 export type PostApiV1ChannelsWhatsappConnectData = {
     body: {
         accountId: string;
+        botId: string;
     };
     path?: never;
     query?: never;

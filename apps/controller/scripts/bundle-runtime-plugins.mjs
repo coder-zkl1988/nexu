@@ -17,8 +17,12 @@ const bundledPlugins = [
     npmName: "@dingtalk-real-ai/dingtalk-connector",
   },
   {
-    id: "wecom",
-    npmName: "@wecom/wecom-openclaw-plugin",
+    id: "openclaw-lark",
+    npmName: "@larksuite/openclaw-lark",
+  },
+  {
+    id: "openclaw-weixin",
+    npmName: "@tencent-weixin/openclaw-weixin",
   },
   {
     id: "openclaw-qqbot",
@@ -28,6 +32,10 @@ const bundledPlugins = [
     id: "tabby-control",
     // Local repo — resolved from TBBY_CONTROL_DIR env or default workspace path
     localSource: true,
+  },
+  {
+    id: "wecom",
+    npmName: "@wecom/wecom-openclaw-plugin",
   },
 ];
 
@@ -191,15 +199,58 @@ async function bundlePlugin({ id, npmName, localSource }) {
     );
     sourcePackageRoot = await realpath(tabbyDistNexu);
   } else {
-    let packageJsonPath;
+    // Resolve the package root directory.
+    // Some packages (e.g. @larksuite/openclaw-lark) restrict "exports" and
+    // don't expose ./package.json or a CJS main, so we try multiple strategies.
+    let sourceDir;
     try {
-      packageJsonPath = requireFromRepo.resolve(`${npmName}/package.json`);
+      // Strategy 1: resolve package.json directly (works for most packages)
+      const packageJsonPath = requireFromRepo.resolve(`${npmName}/package.json`);
+      sourceDir = path.dirname(packageJsonPath);
     } catch {
+      // Strategy 2: resolve the main entry and walk up to find package.json
+      try {
+        const mainEntry = requireFromRepo.resolve(npmName);
+        let dir = path.dirname(mainEntry);
+        for (let i = 0; i < 20; i++) {
+          const candidate = path.join(dir, "package.json");
+          try {
+            const pkg = await readJson(candidate);
+            if (pkg.name === npmName) {
+              sourceDir = dir;
+              break;
+            }
+          } catch {
+            // not a valid package.json, keep walking
+          }
+          const parent = path.dirname(dir);
+          if (parent === dir) break;
+          dir = parent;
+        }
+      } catch {
+        // Strategy 2 failed
+      }
+    }
+    // Strategy 3: direct path construction for scoped packages
+    // pnpm hoists to node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/
+    // but also creates a symlink at node_modules/<scope>/<pkg>/
+    if (!sourceDir) {
+      const directPath = path.join(repoRoot, "node_modules", npmName);
+      try {
+        const pkg = await readJson(path.join(directPath, "package.json"));
+        if (pkg.name === npmName) {
+          sourceDir = directPath;
+        }
+      } catch {
+        // direct path doesn't exist
+      }
+    }
+    if (!sourceDir) {
       throw new Error(
         `Missing ${npmName}. Run "pnpm install" at the repo root before building controller runtime plugins.`,
       );
     }
-    sourcePackageRoot = await realpath(path.dirname(packageJsonPath));
+    sourcePackageRoot = await realpath(sourceDir);
   }
   const outputDir = path.join(outputRoot, id);
 

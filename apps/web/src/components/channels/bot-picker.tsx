@@ -6,6 +6,8 @@ type BotPickerProps = {
   onChange: (botId: string) => void;
   required?: boolean;
   disabled?: boolean;
+  /** Bot IDs that should be shown as disabled (already bound to a channel) */
+  disabledBotIds?: Set<string>;
 };
 
 export function BotPicker({
@@ -13,6 +15,7 @@ export function BotPicker({
   onChange,
   required,
   disabled,
+  disabledBotIds,
 }: BotPickerProps) {
   const { bots, isLoading } = useBots();
   const { t } = useTranslation();
@@ -44,13 +47,19 @@ export function BotPicker({
         <option value="" disabled>
           {t("channels.botPicker.placeholder")}
         </option>
-        {bots.map((b) => (
-          // TODO(expert-slug): once Plan A merges and `expertSlug` is on BotResponse,
-          // render `b.expertSlug ? `${b.name}（${b.expertSlug}）` : b.name` here.
-          <option key={b.id} value={b.id}>
-            {b.name}
-          </option>
-        ))}
+        {bots.map((b) => {
+          const isBound = disabledBotIds?.has(b.id) ?? false;
+          return (
+            // TODO(expert-slug): once Plan A merges and `expertSlug` is on BotResponse,
+            // render `b.expertSlug ? `${b.name}（${b.expertSlug}）` : b.name` here.
+            <option key={b.id} value={b.id} disabled={isBound}>
+              {b.name}
+              {isBound
+                ? ` (${t("channels.botPicker.alreadyBound", { defaultValue: "已绑定" })})`
+                : ""}
+            </option>
+          );
+        })}
       </select>
       {isEmpty ? (
         <p className="mt-1.5 text-[11px] text-text-muted leading-relaxed">

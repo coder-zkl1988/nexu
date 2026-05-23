@@ -122,6 +122,8 @@ export class OpenClawSyncService {
   }> = [];
   private static readonly DEBOUNCE_MS = 100;
   private static readonly SETTLING_MS = 3000;
+  private static readonly SYNC_MAX_RETRIES = 2;
+  private static readonly SYNC_RETRY_DELAY_MS = 1000;
   private syncCounter = 0;
   /** Tracks the last-known skill allowlist to detect skill-specific changes. */
   private lastSkillAllowlist: ReadonlySet<string> = new Set();
@@ -238,7 +240,7 @@ export class OpenClawSyncService {
       }
       this.debounceTimer = setTimeout(() => {
         this.debounceTimer = null;
-        const p = this.doSync();
+        const p = this.doSyncWithRetry();
         this.pendingSync = p;
         p.then(resolve, reject).finally(() => {
           this.pendingSync = null;
@@ -380,28 +382,67 @@ export class OpenClawSyncService {
       (config.desktop as Record<string, unknown>).locale === "zh-CN"
         ? "zh-CN"
         : "en";
+    // Non-critical writes: these supplement the primary config but a failure
+    // should not abort the sync. The next sync cycle will retry them.
     if (runtimeModelRef) {
-      await this.runtimeModelWriter.write(runtimeModelRef);
+      try {
+        await this.runtimeModelWriter.write(runtimeModelRef);
+      } catch (err) {
+        logger.warn(
+          { seq, err: err instanceof Error ? err.message : String(err) },
+          "doSync: runtimeModelWriter.write failed (non-critical)",
+        );
+      }
     } else {
-      // TODO(alche): This writes `noModelMessage` into the runtime-model state
-      // file, but the downstream OpenClaw/runtime consumer still primarily acts
-      // on non-empty `selectedModelRef` / `promptNotice`. Wire that reader path
-      // to surface `noModelMessage` explicitly so users see this guidance
-      // instead of falling through to a generic runtime/provider error.
-      await this.runtimeModelWriter.writeNoModelState(
-        resolveNoModelConfiguredMessage(locale),
+      try {
+        await this.runtimeModelWriter.writeNoModelState(
+          resolveNoModelConfiguredMessage(locale),
+        );
+      } catch (err) {
+        logger.warn(
+          { seq, err: err instanceof Error ? err.message : String(err) },
+          "doSync: runtimeModelWriter.writeNoModelState failed (non-critical)",
+        );
+      }
+    }
+    try {
+      await this.creditGuardStateWriter.write(locale);
+    } catch (err) {
+      logger.warn(
+        { seq, err: err instanceof Error ? err.message : String(err) },
+        "doSync: creditGuardStateWriter.write failed (non-critical)",
       );
     }
-    await this.creditGuardStateWriter.write(locale);
-    await this.compiledStore.saveConfig(compiled);
+    try {
+      await this.compiledStore.saveConfig(compiled);
+    } catch (err) {
+      logger.warn(
+        { seq, err: err instanceof Error ? err.message : String(err) },
+        "doSync: compiledStore.saveConfig failed (non-critical)",
+      );
+    }
 
     // Write SCHEDULE.md for each active bot so agents can register cron tasks.
-    await this.scheduleWorkspaceWriter.write(config);
+    try {
+      await this.scheduleWorkspaceWriter.write(config);
+    } catch (err) {
+      logger.warn(
+        { seq, err: err instanceof Error ? err.message : String(err) },
+        "doSync: scheduleWorkspaceWriter.write failed (non-critical)",
+      );
+    }
 
     // 3. If OpenClaw is not connected yet, nudge the file watcher after the
     // write. Connected runtimes already see the single in-place overwrite.
     if (!this.gatewayService.isConnected()) {
-      await this.watchTrigger.touchConfig();
+      try {
+        await this.watchTrigger.touchConfig();
+      } catch (err) {
+        logger.warn(
+          { seq, err: err instanceof Error ? err.message : String(err) },
+          "doSync: touchConfig failed (non-critical)",
+        );
+      }
     }
 
     // 4. Nudge OpenClaw's skills watcher + restart gateway ONLY when the
@@ -427,6 +468,51 @@ export class OpenClawSyncService {
 
     logger.info({ seq, configPushed, configChanged }, "doSync: complete");
     return { configPushed, configChanged };
+  }
+
+  /**
+   * Retry wrapper around doSync(). Transient failures (e.g. file I/O during
+   * OpenClaw restart, WS disconnection mid-push) are retried up to
+   * SYNC_MAX_RETRIES times with SYNC_RETRY_DELAY_MS backoff. This prevents
+   * a single blip from surfacing as an HTTP 500 to the caller.
+   */
+  private async doSyncWithRetry(): Promise<{
+    configPushed: boolean;
+    configChanged: boolean;
+  }> {
+    let lastError: unknown;
+    for (
+      let attempt = 0;
+      attempt <= OpenClawSyncService.SYNC_MAX_RETRIES;
+      attempt++
+    ) {
+      try {
+        return await this.doSync();
+      } catch (err) {
+        lastError = err;
+        if (attempt < OpenClawSyncService.SYNC_MAX_RETRIES) {
+          logger.warn(
+            {
+              attempt: attempt + 1,
+              maxRetries: OpenClawSyncService.SYNC_MAX_RETRIES,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "doSync failed, retrying after backoff",
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, OpenClawSyncService.SYNC_RETRY_DELAY_MS),
+          );
+        }
+      }
+    }
+    logger.error(
+      {
+        maxRetries: OpenClawSyncService.SYNC_MAX_RETRIES,
+        err: lastError instanceof Error ? lastError.message : String(lastError),
+      },
+      "doSync failed after all retries",
+    );
+    throw lastError;
   }
 
   private extractSkillAllowlist(

@@ -171,7 +171,7 @@ export function MirrorPanel({ device, onClose }: Props) {
           <div className="relative inline-block select-none">
             <img
               ref={imgRef}
-              src={`data:image/png;base64,${frame.screenshot}`}
+              src={`data:image/${frame.format ?? "png"};base64,${frame.screenshot}`}
               alt={t("devices.mirror.title")}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
@@ -191,6 +191,8 @@ export function MirrorPanel({ device, onClose }: Props) {
               <svg
                 className="absolute inset-0 pointer-events-none"
                 style={{ width: "100%", height: "100%" }}
+                role="img"
+                aria-label={t("devices.mirror.swipeIndicator")}
               >
                 <line
                   x1={swipeLine.x1}

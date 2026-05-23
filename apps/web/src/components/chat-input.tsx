@@ -62,7 +62,7 @@ export function ChatInput({
         </div>
         <div className="flex items-center justify-between px-2 pb-2">
           <div className="flex items-center gap-0.5">{leftActions}</div>
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-4">
             {rightActions}
             <button
               type="button"

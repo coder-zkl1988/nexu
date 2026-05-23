@@ -4,7 +4,8 @@ export const mirrorSnapshotFrameSchema = z.object({
   channel: z.literal("mirror"),
   type: z.enum(["snapshot", "realtime"]),
   deviceId: z.string(),
-  screenshot: z.string(), // base64 PNG
+  screenshot: z.string(), // base64 PNG or JPEG
+  format: z.enum(["png", "jpeg"]).default("png"),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   timestamp: z.number().int().nonnegative(),

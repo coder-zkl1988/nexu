@@ -1,6 +1,7 @@
 import { BotPicker } from "@/components/channels/bot-picker";
 import { Input } from "@/components/ui/input";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
@@ -10,10 +11,13 @@ import {
   Loader2,
   Lock,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { postApiV1ChannelsFeishuConnect } from "../../../lib/api/sdk.gen";
+import {
+  getApiV1Channels,
+  postApiV1ChannelsFeishuConnect,
+} from "../../../lib/api/sdk.gen";
 
 const FEISHU_SETUP_STEP_KEYS = [
   "feishuSetup.stepCreateApp",
@@ -128,6 +132,23 @@ export function FeishuSetupView({
   const [botId, setBotId] = useState<string>("");
   const [connecting, setConnecting] = useState(false);
   const [jsonCopied, setJsonCopied] = useState(false);
+
+  // Fetch existing channels to determine which bots are already bound
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === "feishu")
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(FEISHU_PERMISSIONS_JSON);
@@ -352,6 +373,7 @@ export function FeishuSetupView({
               onChange={setBotId}
               required
               disabled={connecting}
+              disabledBotIds={disabledBotIds}
             />
             <div>
               <div className="flex items-baseline gap-1.5 mb-1.5">

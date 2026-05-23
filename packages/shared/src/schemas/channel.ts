@@ -25,6 +25,7 @@ export const connectSlackSchema = z.object({
   teamId: z.string().optional(),
   teamName: z.string().optional(),
   appId: z.string().optional(),
+  botId: z.string().min(1),
 });
 
 export const connectDiscordSchema = z.object({
@@ -32,6 +33,7 @@ export const connectDiscordSchema = z.object({
   appId: z.string().min(1),
   guildId: z.string().optional(),
   guildName: z.string().optional(),
+  botId: z.string().min(1),
 });
 
 export const connectFeishuSchema = z.object({
@@ -45,11 +47,13 @@ export const connectFeishuSchema = z.object({
 export const connectWecomSchema = z.object({
   botId: z.string().min(1),
   secret: z.string().min(1),
+  nexuBotId: z.string().min(1),
 });
 
 export const connectDingtalkSchema = z.object({
   clientId: z.string().min(1),
   clientSecret: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const connectWechatSchema = z.object({
@@ -65,15 +69,18 @@ export type UpdateChannelBotInput = z.infer<typeof updateChannelBotSchema>;
 
 export const connectTelegramSchema = z.object({
   botToken: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const connectWhatsappSchema = z.object({
   accountId: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const connectQqbotSchema = z.object({
   appId: z.string().min(1),
   appSecret: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const feishuPolicySchema = z.enum(["open", "allowlist", "disabled"]);

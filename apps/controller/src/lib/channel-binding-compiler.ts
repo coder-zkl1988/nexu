@@ -20,6 +20,7 @@ const INTERNAL_WECHAT_PREWARM_ACCOUNT_ID = `${NEXU_INTERNAL_ACCOUNT_PREFIX}wecha
 export const MANAGED_CHANNEL_PLUGIN_IDS: Partial<Record<ChannelType, string>> =
   {
     dingtalk: "dingtalk-connector",
+    feishu: "openclaw-lark",
     wecom: "wecom",
     qqbot: "openclaw-qqbot",
     wechat: "openclaw-weixin",
@@ -111,7 +112,7 @@ export function compileChannelsConfig(params: {
     [];
 
   for (const channel of params.channels) {
-    if (channel.status !== "connected" && channel.channelType !== "feishu") {
+    if (channel.status !== "connected") {
       skippedChannels.push({
         id: channel.id,
         type: channel.channelType,

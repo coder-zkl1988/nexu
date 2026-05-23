@@ -1,10 +1,15 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import { KeyRound, Loader2, MessageCircle } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { postApiV1ChannelsTelegramConnect } from "../../../lib/api/sdk.gen";
+import {
+  getApiV1Channels,
+  postApiV1ChannelsTelegramConnect,
+} from "../../../lib/api/sdk.gen";
 
 export interface TelegramSetupViewProps {
   onConnected: () => void;
@@ -17,7 +22,24 @@ export function TelegramSetupView({
 }: TelegramSetupViewProps) {
   const { t } = useTranslation();
   const [botToken, setBotToken] = useState("");
+  const [botId, setBotId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === "telegram")
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   const handleConnect = async () => {
     const trimmedToken = botToken.trim();
@@ -29,7 +51,7 @@ export function TelegramSetupView({
     setSubmitting(true);
     try {
       const { data, error } = await postApiV1ChannelsTelegramConnect({
-        body: { botToken: trimmedToken },
+        body: { botToken: trimmedToken, botId },
       });
 
       if (error || !data) {
@@ -109,10 +131,20 @@ export function TelegramSetupView({
           </div>
         </div>
 
+        <div className="mb-4">
+          <BotPicker
+            value={botId || null}
+            onChange={setBotId}
+            required
+            disabled={submitting}
+            disabledBotIds={disabledBotIds}
+          />
+        </div>
+
         <button
           type="button"
           onClick={handleConnect}
-          disabled={disabled || submitting}
+          disabled={disabled || submitting || !botId}
           className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-medium text-accent-fg transition-all hover:bg-accent-hover disabled:opacity-60"
         >
           {submitting ? (

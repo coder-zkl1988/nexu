@@ -16,19 +16,19 @@ import {
   WecomIcon,
   WhatsAppIcon,
 } from "@/components/platform-icons";
+import { useBots } from "@/hooks/use-bots";
 import {
   getBudgetBannerRouteVariant,
   useDesktopBudgetGuard,
 } from "@/hooks/use-desktop-budget-guard";
 import { useDesktopRewardsStatus } from "@/hooks/use-desktop-rewards";
-import { getChannelChatUrl } from "@/lib/channel-links";
 import {
   type ChannelLiveStatus,
   getChannelStatusLabel,
 } from "@/lib/channel-live-status";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Cable, X } from "lucide-react";
+import { Cable, Plus, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -205,6 +205,11 @@ const ONBOARDING_CHANNELS = [
   },
 ];
 
+const MULTI_INSTANCE_PLATFORMS: ReadonlySet<string> = new Set([
+  "feishu",
+  "wechat",
+]);
+
 function getChannelOptions(t: (key: string) => string) {
   return [
     {
@@ -376,6 +381,15 @@ export function HomePage() {
   const STARTUP_GRACE_MS = 15_000;
 
   const CHANNEL_OPTIONS = useMemo(() => getChannelOptions(t), [t]);
+
+  const { bots } = useBots();
+  const botNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const bot of bots) {
+      map.set(bot.id, bot.name);
+    }
+    return map;
+  }, [bots]);
 
   // Runtime health status (polls every 2s for faster feedback)
   const { data: runtimeData } = useQuery({
@@ -976,9 +990,11 @@ export function HomePage() {
                 {CHANNEL_OPTIONS.filter((ch) =>
                   effectiveConnectedTypes.has(ch.id),
                 ).map((ch) => {
-                  const connectedChannel = activeChannels.find(
+                  const isMulti = MULTI_INSTANCE_PLATFORMS.has(ch.id);
+                  const instances = channels.filter(
                     (c) => c.channelType === ch.id,
                   );
+                  const connectedChannel = instances[0];
                   const statusEntry = connectedChannel
                     ? liveStatusByChannelId.get(connectedChannel.id)
                     : liveStatusByChannelType.get(ch.id);
@@ -993,126 +1009,178 @@ export function HomePage() {
                       : statusEntry?.status;
                   const statusMeta = getChannelStatusMeta(effectiveStatus, t);
                   const isConnectedLive = effectiveStatus === "connected";
-                  const channelChatUrl = connectedChannel
-                    ? getChannelChatUrl(
-                        ch.id,
-                        connectedChannel.appId,
-                        connectedChannel.botUserId,
-                        connectedChannel.accountId,
-                      )
-                    : "";
-                  const handleOpenChannel = () => {
-                    const channel = normalizeChannel(ch.id);
-                    if (!channelChatUrl || !channel) {
-                      return;
-                    }
-                    track("workspace_chat_in_im_click", {
-                      channel,
-                      where: "home",
-                    });
-                    window.open(
-                      channelChatUrl,
-                      "_blank",
-                      "noopener,noreferrer",
-                    );
-                  };
 
                   return (
                     <div
                       key={ch.id}
-                      role={channelChatUrl ? "button" : undefined}
-                      tabIndex={channelChatUrl ? 0 : undefined}
-                      className="flex w-full items-center gap-3 rounded-xl border border-border bg-white px-4 py-3 text-left transition-all hover:bg-surface-1"
-                      onClick={handleOpenChannel}
-                      onKeyDown={(event) => {
-                        if (!channelChatUrl) {
-                          return;
-                        }
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          handleOpenChannel();
-                        }
-                      }}
+                      className="rounded-xl border border-border bg-white px-4 py-3 text-left transition-all hover:bg-surface-1"
                     >
-                      <div className="w-8 h-8 rounded-[10px] flex items-center justify-center border border-border bg-white shrink-0">
-                        {homeChannelIcon(ch)}
-                      </div>
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-[13px] font-semibold text-text-primary">
-                          {ch.name}
-                        </span>
-                        <span
-                          title={statusMeta.label}
-                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.colorClass} ${statusMeta.pulse ? "animate-pulse" : ""}`}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={
-                          isConnectedLive
-                            ? t("home.disconnect")
-                            : statusMeta.label
-                        }
-                        title={
-                          isConnectedLive
-                            ? t("home.disconnect")
-                            : statusMeta.label
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (actionableChannelId) {
-                            const channel = normalizeChannel(ch.id);
-                            track("workspace_channel_disconnect_click", {
-                              channel: channel ?? ch.id,
-                            });
-                            disconnectChannel.mutate(actionableChannelId);
-                          }
-                        }}
-                        disabled={
-                          disconnectChannel.isPending || !actionableChannelId
-                        }
-                        className="group rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium bg-surface-2 text-text-secondary hover:text-[var(--color-danger)] hover:bg-surface-3 transition-colors shrink-0 disabled:opacity-50"
-                      >
-                        {isConnectedLive ? (
-                          <>
-                            <span
-                              className="group-hover:hidden"
-                              aria-hidden="true"
-                            >
-                              {statusMeta.label}
-                            </span>
-                            <span
-                              className="hidden group-hover:inline"
-                              aria-hidden="true"
-                            >
-                              {t("home.disconnect")}
-                            </span>
-                          </>
-                        ) : (
-                          statusMeta.label
-                        )}
-                      </button>
-                      {ch.id !== "wechat" && channelChatUrl && (
-                        <a
-                          href={channelChatUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          onClickCapture={() => {
-                            const channel = normalizeChannel(ch.id);
-                            if (!channel) {
-                              return;
+                      <div className="flex w-full items-center gap-3">
+                        <div className="w-8 h-8 rounded-[10px] flex items-center justify-center border border-border bg-white shrink-0">
+                          {homeChannelIcon(ch)}
+                        </div>
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <span className="text-[13px] font-semibold text-text-primary">
+                            {ch.name}
+                          </span>
+                        </div>
+                        {!isMulti && (
+                          <button
+                            type="button"
+                            aria-label={
+                              isConnectedLive
+                                ? t("home.disconnect")
+                                : statusMeta.label
                             }
-                            track("workspace_chat_in_im_click", {
-                              channel,
-                              where: "home",
-                            });
-                          }}
-                          className="inline-flex items-center gap-1 text-[12px] font-medium text-text-secondary hover:text-text-primary transition-colors ml-3 shrink-0 leading-none"
-                        >
-                          {t("home.chat")}
-                          <ArrowUpRight size={12} className="-mt-px" />
-                        </a>
+                            title={
+                              isConnectedLive
+                                ? t("home.disconnect")
+                                : statusMeta.label
+                            }
+                            onClick={() => {
+                              if (actionableChannelId) {
+                                const channel = normalizeChannel(ch.id);
+                                track("workspace_channel_disconnect_click", {
+                                  channel: channel ?? ch.id,
+                                });
+                                disconnectChannel.mutate(actionableChannelId);
+                              }
+                            }}
+                            disabled={
+                              disconnectChannel.isPending ||
+                              !actionableChannelId
+                            }
+                            className="group rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium bg-surface-2 text-text-secondary hover:text-[var(--color-danger)] hover:bg-surface-3 transition-colors shrink-0 disabled:opacity-50"
+                          >
+                            {isConnectedLive ? (
+                              <>
+                                <span
+                                  className="group-hover:hidden"
+                                  aria-hidden="true"
+                                >
+                                  {statusMeta.label}
+                                </span>
+                                <span
+                                  className="hidden group-hover:inline"
+                                  aria-hidden="true"
+                                >
+                                  {t("home.disconnect")}
+                                </span>
+                              </>
+                            ) : (
+                              statusMeta.label
+                            )}
+                          </button>
+                        )}
+                        {isMulti && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (ch.id === "wechat") {
+                                setWechatQrOpen(true);
+                              } else {
+                                setModalChannel(
+                                  ch.id as "feishu" | "slack" | "discord",
+                                );
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium bg-surface-2 text-accent hover:bg-accent/10 transition-colors shrink-0"
+                          >
+                            <Plus size={12} />
+                            {t("home.addBinding")}
+                          </button>
+                        )}
+                      </div>
+                      {isMulti && instances.length > 0 && (
+                        <div className="mt-2 grid grid-cols-3 gap-1.5">
+                          {instances.map((instance) => {
+                            const instStatusEntry = liveStatusByChannelId.get(
+                              instance.id,
+                            );
+                            const instEffectiveStatus:
+                              | ChannelLiveStatus
+                              | undefined =
+                              instance.id === pendingChannelId &&
+                              (!instStatusEntry ||
+                                instStatusEntry.status === "disconnected")
+                                ? "connecting"
+                                : instStatusEntry?.status;
+                            const instStatusMeta = getChannelStatusMeta(
+                              instEffectiveStatus,
+                              t,
+                            );
+                            const instConnected =
+                              instEffectiveStatus === "connected";
+                            return (
+                              <div
+                                key={instance.id}
+                                className="flex items-center gap-2 min-w-0 rounded-lg border border-border/60 bg-surface-0 px-3 py-2"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[12px] font-medium text-text-primary truncate">
+                                      {botNameMap.get(instance.botId) ||
+                                        instance.botId}
+                                    </span>
+                                    <span
+                                      title={instStatusMeta.label}
+                                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${instStatusMeta.colorClass} ${instStatusMeta.pulse ? "animate-pulse" : ""}`}
+                                    />
+                                  </div>
+                                  <div className="text-[11px] text-text-muted truncate">
+                                    {instance.teamName ||
+                                      instance.accountId ||
+                                      ""}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label={
+                                    instConnected
+                                      ? t("home.disconnect")
+                                      : instStatusMeta.label
+                                  }
+                                  title={
+                                    instConnected
+                                      ? t("home.disconnect")
+                                      : instStatusMeta.label
+                                  }
+                                  onClick={() => {
+                                    const channel = normalizeChannel(ch.id);
+                                    track(
+                                      "workspace_channel_disconnect_click",
+                                      {
+                                        channel: channel ?? ch.id,
+                                      },
+                                    );
+                                    disconnectChannel.mutate(instance.id);
+                                  }}
+                                  disabled={disconnectChannel.isPending}
+                                  className="group rounded-[6px] px-2 py-1 text-[11px] font-medium bg-surface-2 text-text-secondary hover:text-[var(--color-danger)] hover:bg-surface-3 transition-colors shrink-0 disabled:opacity-50"
+                                >
+                                  {instConnected ? (
+                                    <>
+                                      <span
+                                        className="group-hover:hidden"
+                                        aria-hidden="true"
+                                      >
+                                        {instStatusMeta.label}
+                                      </span>
+                                      <span
+                                        className="hidden group-hover:inline"
+                                        aria-hidden="true"
+                                      >
+                                        {t("home.disconnect")}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    instStatusMeta.label
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   );

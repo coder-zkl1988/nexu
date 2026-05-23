@@ -1,6 +1,8 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { Input } from "@/components/ui/input";
 import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   BookOpen,
@@ -11,10 +13,13 @@ import {
   Loader2,
   Lock,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { postApiV1ChannelsDiscordConnect } from "../../../lib/api/sdk.gen";
+import {
+  getApiV1Channels,
+  postApiV1ChannelsDiscordConnect,
+} from "../../../lib/api/sdk.gen";
 
 const DISCORD_SETUP_STEP_KEYS = [
   "discordSetup.stepCreateApp",
@@ -61,12 +66,29 @@ export function DiscordSetupView({
   const [appId, setAppId] = useState("");
   const [botToken, setBotToken] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [botId, setBotId] = useState<string>("");
+
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === "discord")
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   const handleConnect = async () => {
     setConnecting(true);
     try {
       const { data, error } = await postApiV1ChannelsDiscordConnect({
-        body: { botToken: botToken.trim(), appId: appId.trim() },
+        body: { botToken: botToken.trim(), appId: appId.trim(), botId },
       });
       if (error) {
         track("workspace_channel_config_submit", {
@@ -387,11 +409,24 @@ export function DiscordSetupView({
                 />
               </div>
             </div>
+            <div className="mb-4">
+              <BotPicker
+                value={botId || null}
+                onChange={setBotId}
+                required
+                disabled={disabled || connecting}
+                disabledBotIds={disabledBotIds}
+              />
+            </div>
             <button
               type="button"
               onClick={handleConnect}
               disabled={
-                disabled || connecting || !appId.trim() || !botToken.trim()
+                disabled ||
+                connecting ||
+                !appId.trim() ||
+                !botToken.trim() ||
+                !botId
               }
               className="flex gap-1.5 items-center px-5 py-2.5 text-[13px] font-medium text-white rounded-lg bg-[#5865F2] hover:bg-[#4752C4] transition-all disabled:opacity-60 cursor-pointer"
             >

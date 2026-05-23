@@ -1,11 +1,13 @@
 import { BotPicker } from "@/components/channels/bot-picker";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2, QrCode, RefreshCw, Smartphone } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  getApiV1Channels,
   postApiV1ChannelsWechatConnect,
   postApiV1ChannelsWechatQrStart,
   postApiV1ChannelsWechatQrWait,
@@ -60,6 +62,23 @@ export function WechatSetupView({
   const abortRef = useRef<AbortController | null>(null);
   const progressStartRef = useRef(0);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Fetch existing channels to determine which bots are already bound
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === "wechat")
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   const cleanup = useCallback(() => {
     abortRef.current?.abort();
@@ -250,6 +269,7 @@ export function WechatSetupView({
           onChange={setBotId}
           required
           disabled={isLoading}
+          disabledBotIds={disabledBotIds}
         />
       </div>
 

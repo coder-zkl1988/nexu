@@ -712,6 +712,12 @@ export class ChannelService {
       throw new Error(`Bot not found: ${botId}`);
     }
 
+    await this.configStore.assertBotNotBoundToSameChannelType(
+      botId,
+      channel.channelType,
+      channelId,
+    );
+
     const updated = await this.configStore.updateChannel(channelId, { botId });
     await this.syncService.syncAll();
     logger.info(
@@ -1170,6 +1176,7 @@ export class ChannelService {
           payload.result.username?.trim() ||
           payload.result.first_name?.trim() ||
           null,
+        botId: input.botId,
       });
     } catch (error) {
       throw this.toPersistConnectError(error, "telegram");
@@ -1193,6 +1200,7 @@ export class ChannelService {
     const { appId, appSecret } = await this.verifyQqbotCredentials(input);
 
     const channel = await this.configStore.connectQqbot({
+      botId: input.botId,
       appId,
       appSecret,
     });
@@ -1211,6 +1219,7 @@ export class ChannelService {
     let channel: ChannelResponse;
     try {
       channel = await this.configStore.connectDingtalk({
+        botId: input.botId,
         clientId,
         clientSecret,
       });
@@ -1251,11 +1260,12 @@ export class ChannelService {
   async connectWecom(input: ConnectWecomInput) {
     logger.info({}, "wecom_connect_start");
     this.ensureWecomPluginInstalled();
-    const { botId, secret } = this.verifyWecomCredentials(input);
+    const { botId, secret, nexuBotId } = this.verifyWecomCredentials(input);
 
     const channel = await this.configStore.connectWecom({
       botId,
       secret,
+      nexuBotId,
     });
     await this.syncService.syncAll();
     this.logChannelConnectSuccess(channel);
@@ -1461,7 +1471,7 @@ export class ChannelService {
     }
   }
 
-  async connectWhatsapp(accountId: string) {
+  async connectWhatsapp(accountId: string, botId: string) {
     const login = activeWhatsappLogins.get(accountId);
     if (!login || !login.connected) {
       throw new Error("WhatsApp login is not complete yet.");
@@ -1470,6 +1480,7 @@ export class ChannelService {
     const channel = await this.configStore.connectWhatsapp({
       accountId,
       authDir: login.authDir,
+      botId,
     });
     await this.syncService.syncAll();
     await this.restartOpenClawForWhatsappLifecycle("whatsapp-connect");
@@ -1555,9 +1566,34 @@ export class ChannelService {
       // account IDs no longer in config. Credential files are cleaned up
       // by the writer's orphan sweep — no destructive cleanup here so
       // disconnect stays a pure "unbind", not a "logout".
-      await this.syncService.syncAll();
+      //
+      // The store-level disconnect has already succeeded at this point.
+      // A sync failure (e.g. OpenClaw restarting, file I/O blip) should
+      // not fail the HTTP request — the next sync cycle will reconcile.
+      try {
+        await this.syncService.syncAll();
+      } catch (err) {
+        logger.warn(
+          {
+            channelId,
+            channelType: channel?.channelType ?? "unknown",
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "channel_disconnect_sync_failed",
+        );
+      }
       if (channel?.channelType === "whatsapp") {
-        await this.restartOpenClawForWhatsappLifecycle("whatsapp-disconnect");
+        try {
+          await this.restartOpenClawForWhatsappLifecycle("whatsapp-disconnect");
+        } catch (err) {
+          logger.warn(
+            {
+              channelId,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "channel_disconnect_whatsapp_restart_failed",
+          );
+        }
       }
       logger.info(
         { channelId, channelType: channel?.channelType ?? "unknown" },
@@ -1805,13 +1841,15 @@ export class ChannelService {
   private verifyWecomCredentials(input: ConnectWecomInput): {
     botId: string;
     secret: string;
+    nexuBotId: string;
   } {
     const botId = input.botId.trim();
     const secret = input.secret.trim();
+    const nexuBotId = input.nexuBotId.trim();
     if (!botId || !secret) {
       throw new Error("WeCom Bot ID and Secret are required");
     }
-    return { botId, secret };
+    return { botId, secret, nexuBotId };
   }
 
   private async verifyQqbotCredentials(input: ConnectQqbotInput): Promise<{

@@ -512,9 +512,28 @@ export class SessionsRuntime {
     if (!session) {
       return false;
     }
-    const filePath = this.getSessionFilePath(session.botId, session.sessionKey);
-    await rm(filePath, { force: true });
-    await rm(sessionMetadataPath(filePath), { force: true });
+
+    // Resolve the actual file path — OpenClaw stores sessions as
+    // UUID-named files (e.g. {uuid}.jsonl) and maps sessionKey → UUID
+    // in sessions.json.  The legacy getSessionFilePath() constructs a
+    // key-based path that usually does NOT exist on disk.
+    const resolvedPath = await this.resolveSessionFilePath(
+      session.botId,
+      session.sessionKey,
+    );
+
+    // Delete all session-related files (JSONL transcript, metadata,
+    // trajectory, trajectory-path).
+    const base = resolvedPath.replace(/\.jsonl$/, "");
+    await rm(`${base}.jsonl`, { force: true });
+    await rm(`${base}.meta.json`, { force: true });
+    await rm(`${base}.trajectory.jsonl`, { force: true });
+    await rm(`${base}.trajectory-path.json`, { force: true });
+
+    // Remove the entry from OpenClaw's sessions.json index so the
+    // session does not reappear after a restart.
+    await this.removeSessionIndexEntry(session.botId, session.sessionKey);
+
     return true;
   }
 
@@ -1278,6 +1297,42 @@ export class SessionsRuntime {
       return parsed;
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Remove a sessionKey entry from OpenClaw's sessions.json index.
+   *
+   * OpenClaw owns sessions.json and writes to it during normal operation.
+   * When the user deletes a session through the Nexu UI we must also
+   * remove the index entry, otherwise the session would reappear after
+   * an OpenClaw restart (the index entry still points to the now-deleted
+   * file, and OpenClaw recreates it on next message).
+   */
+  private async removeSessionIndexEntry(
+    botId: string,
+    sessionKey: string,
+  ): Promise<void> {
+    const sessionsDir = path.join(
+      this.env.openclawStateDir,
+      "agents",
+      botId,
+      "sessions",
+    );
+    const indexPath = path.join(sessionsDir, "sessions.json");
+    try {
+      const raw = await readFile(indexPath, "utf8");
+      const index = JSON.parse(raw) as Record<string, SessionsIndexEntry>;
+      if (!(sessionKey in index)) {
+        return;
+      }
+      delete index[sessionKey];
+      await writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+    } catch (err) {
+      logger.warn(
+        { botId, sessionKey, err },
+        "removeSessionIndexEntry: failed to update sessions.json",
+      );
     }
   }
 

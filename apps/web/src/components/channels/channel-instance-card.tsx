@@ -1,4 +1,5 @@
 import { useUpdateChannelBot } from "@/hooks/use-update-channel-bot";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Loader2,
@@ -6,9 +7,10 @@ import {
   Shield,
   X as XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { getApiV1Channels } from "../../../lib/api/sdk.gen";
 import { BotPicker } from "./bot-picker";
 import {
   type FeishuPermissionsDraft,
@@ -56,6 +58,25 @@ export function ChannelInstanceCard({ channel, botName, liveStatus }: Props) {
   const [editing, setEditing] = useState(false);
   const [draftBotId, setDraftBotId] = useState<string | null>(channel.botId);
   const patch = useUpdateChannelBot();
+
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter(
+          (ch) =>
+            ch.channelType === channel.channelType && ch.id !== channel.id,
+        )
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData, channel.channelType, channel.id]);
 
   const status = liveStatus ?? channel.status;
 
@@ -111,6 +132,7 @@ export function ChannelInstanceCard({ channel, botName, liveStatus }: Props) {
             onChange={setDraftBotId}
             required
             disabled={patch.isPending}
+            disabledBotIds={disabledBotIds}
           />
           <div className="flex items-center gap-2">
             <button

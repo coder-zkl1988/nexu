@@ -897,6 +897,10 @@ export function registerChannelRoutes(
           content: { "application/json": { schema: errorSchema } },
           description: "Channel not found",
         },
+        409: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Bot already bound to another channel of same type",
+        },
       },
     }),
     async (c) => {
@@ -921,6 +925,10 @@ export function registerChannelRoutes(
         if (/^Bot not found/i.test(message)) {
           logger.warn({ channelId, botId }, "channel_update_bot_bot_not_found");
           return c.json({ message }, 400);
+        }
+        if (/already bound/i.test(message)) {
+          logger.warn({ channelId, botId }, "channel_update_bot_already_bound");
+          return c.json({ message }, 409);
         }
         logger.error(
           { channelId, botId, error: message },
@@ -1105,9 +1113,9 @@ export function registerChannelRoutes(
     }),
     async (c) => {
       try {
-        const { accountId } = c.req.valid("json");
+        const { accountId, botId } = c.req.valid("json");
         return c.json(
-          await container.channelService.connectWhatsapp(accountId),
+          await container.channelService.connectWhatsapp(accountId, botId),
           200,
         );
       } catch (error) {
@@ -1305,6 +1313,7 @@ export function registerChannelRoutes(
             id: channel.id,
             channelType: channel.channelType,
             accountId: channel.accountId,
+            storedStatus: channel.status,
           })),
         );
       const effectiveModelId =

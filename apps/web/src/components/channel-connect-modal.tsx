@@ -4,11 +4,13 @@ import {
   isAlreadyConnectedError,
 } from "@/lib/channel-connect-errors";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Eye, EyeOff, FileText, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  getApiV1Channels,
   postApiV1ChannelsDiscordConnect,
   postApiV1ChannelsFeishuConnect,
   postApiV1ChannelsSlackConnect,
@@ -156,7 +158,24 @@ export function ChannelConnectModal({
   const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
   const [botId, setBotId] = useState<string>("");
 
-  const requiresBot = channelType === "feishu";
+  // Fetch existing channels to determine which bots are already bound
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === channelType)
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData, channelType]);
+
+  const requiresBot = true;
   const allFilled =
     config.fields.every((f) => fieldValues[f.id]?.trim()) &&
     (!requiresBot || !!botId);
@@ -214,6 +233,7 @@ export function ChannelConnectModal({
           body: {
             botToken: fieldValues.botToken ?? "",
             signingSecret: fieldValues.signingSecret ?? "",
+            botId,
           },
         }));
       } else if (channelType === "discord") {
@@ -221,6 +241,7 @@ export function ChannelConnectModal({
           body: {
             botToken: fieldValues.botToken ?? "",
             appId: fieldValues.appId ?? "",
+            botId,
           },
         }));
       }
@@ -314,6 +335,7 @@ export function ChannelConnectModal({
               onChange={setBotId}
               required
               disabled={loading}
+              disabledBotIds={disabledBotIds}
             />
           ) : null}
           {/* Credential fields */}

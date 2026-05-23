@@ -289,7 +289,7 @@ function compilePlugins(
   // writes it back to plugins.allow on disk; if controller's compiled
   // config omits it, the next write creates a diff that triggers a
   // gateway restart, and the cycle repeats.
-  const prewarmedChannelPluginIds = ["feishu", "openclaw-weixin"];
+  const prewarmedChannelPluginIds = ["openclaw-lark", "openclaw-weixin"];
   const analyticsEnabled = config.desktop.analyticsEnabled !== false;
   const platformPluginIds = [
     "nexu-runtime-model",
@@ -324,7 +324,7 @@ function compilePlugins(
     },
     allow,
     entries: {
-      feishu: {
+      "openclaw-lark": {
         enabled: true,
       },
       "openclaw-weixin": {
@@ -353,12 +353,21 @@ function compilePlugins(
         : {}),
       "nexu-runtime-model": {
         enabled: true,
+        hooks: {
+          allowConversationAccess: true,
+        },
+      },
+      "nexu-platform-bootstrap": {
+        enabled: true,
       },
       "langfuse-tracer": {
         enabled: analyticsEnabled,
       },
       "nexu-credit-guard": {
         enabled: true,
+        hooks: {
+          allowConversationAccess: true,
+        },
         config: {
           contactUrl: "https://nexu.app/contact",
         },
@@ -440,10 +449,27 @@ export function compileOpenClawConfig(
             enabled: true,
           },
         },
+        tools: {
+          allow: [
+            "cron",
+            // Plugin-registered tools must be listed here to be accessible by agents.
+            // OpenClaw 2026.5.x requires tools to be in gateway.tools.allow even when
+            // the plugin is loaded and its tools are registered via contracts.tools.
+            ...(config.deviceControl.enabled
+              ? [
+                  "device_list",
+                  "device_execute_task",
+                  "device_execute_task_all",
+                  "device_execute_batch",
+                  "device_cancel_task",
+                  "device_get_status",
+                ]
+              : []),
+            "render_a2ui",
+          ],
+        },
       },
-      tools: {
-        allow: ["cron"],
-      },
+      // TEMP: removed to debug device_list visibility
     },
     agents: {
       defaults: {
