@@ -38,7 +38,11 @@ export function DevicesPage() {
   const deviceControl = runtimeConfig?.deviceControl;
   const qrUrl =
     deviceControl?.enabled && deviceControl?.localIp
-      ? `ws://${deviceControl.localIp}:${deviceControl.wsPort}/phone`
+      ? JSON.stringify({
+          mqttHost: deviceControl.localIp,
+          mqttPort: deviceControl.mqttPort ?? 18883,
+          token: "",
+        })
       : null;
 
   const fetchDevices = useCallback(async () => {
