@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { mirrorClientActionSchema } from "@nexu/shared";
+import mqtt from "mqtt";
 import { WebSocket, WebSocketServer } from "ws";
 import { logger } from "../lib/logger.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
@@ -8,6 +9,8 @@ import type { NexuConfigStore } from "../store/nexu-config-store.js";
 const MIRROR_PATH_PREFIX = "/api/v1/devices/";
 const MIRROR_PATH_SUFFIX = "/mirror";
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+
+const DEFAULT_MQTT_PORT = 18883;
 
 function isPrivateAddress(remote: string): boolean {
   if (
@@ -17,26 +20,42 @@ function isPrivateAddress(remote: string): boolean {
   ) {
     return true;
   }
-  // Accept RFC-1918 private addresses so that the Vite dev proxy
-  // and desktop webview on the same LAN can reach mirror sessions.
   const ipv4 = remote.startsWith("::ffff:") ? remote.slice(7) : remote;
   return (
     ipv4.startsWith("192.168.") ||
     ipv4.startsWith("10.") ||
     ipv4 === "172.16.0.0" ||
-    // 172.16.0.0/12 — check the full second octet range
     /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ipv4)
   );
 }
 
 export class DeviceMirrorProxy {
   private readonly wss: WebSocketServer;
+  private mqttClient: mqtt.MqttClient | null = null;
+  private mqttPort: number = DEFAULT_MQTT_PORT;
 
   constructor(private readonly configStore: NexuConfigStore) {
     this.wss = new WebSocketServer({ noServer: true });
   }
 
-  /** Attach HTTP server upgrade handler. */
+  private async ensureMqtt(): Promise<mqtt.MqttClient> {
+    if (this.mqttClient?.connected) return this.mqttClient;
+
+    const config = await this.configStore.getConfig();
+    this.mqttPort = config.deviceControl.mqttPort ?? DEFAULT_MQTT_PORT;
+
+    this.mqttClient = mqtt.connect(`mqtt://127.0.0.1:${this.mqttPort}`, {
+      clientId: `nexu-mirror-${Date.now()}`,
+      clean: true,
+      connectTimeout: 5000,
+    });
+
+    return new Promise((resolve, reject) => {
+      this.mqttClient!.once("connect", () => resolve(this.mqttClient!));
+      this.mqttClient!.once("error", reject);
+    });
+  }
+
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
     const url = req.url ?? "";
     if (
@@ -75,87 +94,102 @@ export class DeviceMirrorProxy {
   private async bridge(clientWs: WebSocket, deviceId: string): Promise<void> {
     const config = await this.configStore.getConfig();
     if (!config.deviceControl.enabled) {
-      logger.info(
-        { deviceId },
-        "mirror upgrade rejected: device control disabled",
-      );
       clientWs.close(4404, "Device control disabled");
       return;
     }
 
-    logger.info({ deviceId }, "mirror bridge opened");
+    let mqtt: mqtt.MqttClient;
+    try {
+      mqtt = await this.ensureMqtt();
+    } catch (err) {
+      logger.error({ err }, "MQTT broker unavailable");
+      clientWs.close(4502, "MQTT broker unavailable");
+      return;
+    }
 
-    // Connect to the /mirror upgrade path on the device-control plugin.
-    // The plugin uses `/phone` for device auth and `/mirror` for screen
-    // mirror subscriptions.  Connecting to `/mirror` causes the plugin
-    // to enter handleMirrorConnection which expects the first message
-    // to contain { deviceId } to subscribe to that device's frames.
-    const upstream = new WebSocket(
-      `ws://127.0.0.1:${config.deviceControl.wsPort}/mirror`,
-    );
+    logger.info({ deviceId }, "MQTT mirror bridge opened");
 
-    upstream.on("open", () => {
-      // The /mirror handler expects the first message to carry the
-      // deviceId of the device to subscribe to. Include fps hint so
-      // the phone agent can adjust its screenshot interval.
-      upstream.send(JSON.stringify({ deviceId, fps: 20 }));
-    });
+    const frameTopic = `phone/${deviceId}/frame`;
+    const cmdTopic = `phone/${deviceId}/mirror_cmd`;
 
-    upstream.on("message", (data) => {
+    mqtt.subscribe(frameTopic, { qos: 0 });
+
+    const handleFrame = (_topic: string, payload: Buffer) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      clientWs.send(typeof data === "string" ? data : data.toString());
-    });
+
+      // Split JSON header \n JPEG binary
+      const sepIdx = payload.indexOf(0x0a); // '\n'
+      if (sepIdx < 0) return;
+
+      try {
+        const headerJson = payload.subarray(0, sepIdx).toString();
+        const header = JSON.parse(headerJson) as {
+          w: number;
+          h: number;
+          ts: number;
+          app?: string;
+          status: string;
+          fmt: string;
+        };
+        const jpegBytes = payload.subarray(sepIdx + 1);
+
+        clientWs.send(
+          JSON.stringify({
+            channel: "mirror",
+            type: "realtime",
+            screenshot: jpegBytes.toString("base64"),
+            format: header.fmt || "jpeg",
+            width: header.w,
+            height: header.h,
+            timestamp: header.ts,
+            currentApp: header.app,
+            deviceStatus: header.status,
+          }),
+        );
+      } catch {
+        // drop malformed frame
+      }
+    };
+
+    mqtt.on("message", handleFrame);
 
     clientWs.on("message", (raw) => {
-      if (upstream.readyState !== WebSocket.OPEN) return;
+      if (!mqtt.connected) return;
       try {
         const parsed = JSON.parse(raw.toString());
         const action = mirrorClientActionSchema.parse(parsed);
-        upstream.send(
+        mqtt.publish(
+          cmdTopic,
           JSON.stringify({
-            channel: "mirror",
             type: action.type,
-            deviceId,
             params: action,
           }),
+          { qos: 0 },
         );
       } catch (err) {
         logger.warn(
-          {
-            error: err instanceof Error ? err.message : String(err),
-            deviceId,
-          },
+          { error: err instanceof Error ? err.message : String(err), deviceId },
           "dropped malformed mirror client frame",
         );
       }
     });
 
     let torn = false;
-    const teardown = (source: "client" | "upstream") => {
+    const teardown = (source: "client" | "mqtt") => {
       if (torn) return;
       torn = true;
-      logger.info({ deviceId, source }, "mirror bridge closed");
+      logger.info({ deviceId, source }, "MQTT mirror bridge closed");
+      mqtt.off("message", handleFrame);
+      mqtt.unsubscribe(frameTopic);
       if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
-      if (upstream.readyState === WebSocket.OPEN) upstream.close();
     };
     clientWs.on("close", () => teardown("client"));
     clientWs.on("error", () => teardown("client"));
-    upstream.on("close", () => teardown("upstream"));
-    upstream.on("error", (err) => {
-      logger.warn(
-        {
-          error: err instanceof Error ? err.message : String(err),
-          deviceId,
-        },
-        "mirror upstream error",
-      );
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.close(4502, "Mirror upstream unavailable");
-      }
-    });
   }
 
   close(): void {
     this.wss.close();
+    this.mqttClient?.end();
+    this.mqttClient = null;
   }
 }

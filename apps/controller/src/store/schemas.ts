@@ -547,6 +547,7 @@ export const deviceControlConfigSchema = z.object({
   enabled: z.boolean().default(true),
   wsPort: z.number().int().positive().default(18790),
   rpcPort: z.number().int().positive().default(18801),
+  mqttPort: z.number().int().positive().default(18883),
   localIp: z.string().optional(),
 });
 

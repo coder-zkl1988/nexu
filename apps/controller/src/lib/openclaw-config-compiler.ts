@@ -389,6 +389,7 @@ function compilePlugins(
               config: {
                 wsPort: config.deviceControl.wsPort,
                 rpcPort: config.deviceControl.rpcPort,
+                mqttPort: config.deviceControl.mqttPort ?? 18883,
               },
             },
           }
