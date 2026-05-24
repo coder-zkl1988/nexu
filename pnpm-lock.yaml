@@ -75,9 +75,6 @@ importers:
       lowdb:
         specifier: ^7.0.1
         version: 7.0.1
-      mqtt:
-        specifier: ^5.15.1
-        version: 5.15.1
       pdf-parse:
         specifier: ^2.4.5
         version: 2.4.5
@@ -269,6 +266,9 @@ importers:
       markdown-it:
         specifier: ^14.1.1
         version: 14.1.1
+      mqtt:
+        specifier: ^5.15.1
+        version: 5.15.1
       posthog-js:
         specifier: ^1.365.1
         version: 1.365.1

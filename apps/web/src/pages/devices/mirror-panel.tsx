@@ -2,7 +2,7 @@ import { RefreshCw, Send, X } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
-import { useMirrorSocket } from "./use-mirror-socket";
+import { useMirrorSocket } from "./use-mirror-mqtt";
 
 interface Props {
   device: DeviceInfo;

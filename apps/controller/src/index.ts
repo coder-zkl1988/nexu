@@ -22,17 +22,6 @@ async function main(): Promise<void> {
     },
   );
 
-  server.on("upgrade", (req, socket, head) => {
-    const handled = container.deviceMirrorProxy.handleUpgrade(
-      req,
-      socket,
-      head,
-    );
-    if (!handled) {
-      socket.destroy();
-    }
-  });
-
   let stopBackgroundLoops = () => {};
 
   let shuttingDown = false;
@@ -56,15 +45,6 @@ async function main(): Promise<void> {
 
     shuttingDown = true;
     stopBackgroundLoops();
-
-    try {
-      container.deviceMirrorProxy.close();
-    } catch (error: unknown) {
-      logger.warn(
-        { error: error instanceof Error ? error.message : String(error) },
-        "controller shutdown device mirror proxy close failed",
-      );
-    }
 
     try {
       await closeServer();

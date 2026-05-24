@@ -29,7 +29,6 @@ import { ChannelFallbackService } from "../services/channel-fallback-service.js"
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
 import { DeviceControlService } from "../services/device-control-service.js";
-import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
 import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
 import {
   DEFAULT_EXPERT_SLUGS,
@@ -106,7 +105,6 @@ export interface ControllerContainer {
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
-  deviceMirrorProxy: DeviceMirrorProxy;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   deviceNameStore: Map<string, string>;
   wsClient: OpenClawWsClient;
@@ -219,7 +217,6 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     deviceTaskHistoryStore,
   );
-  const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
   const attachmentStore = new AttachmentStore({
     openclawStateDir: env.openclawStateDir,
   });
@@ -511,7 +508,6 @@ export async function createContainer(): Promise<ControllerContainer> {
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
-    deviceMirrorProxy,
     deviceTaskHistoryStore,
     deviceNameStore: new Map(),
     wsClient,
