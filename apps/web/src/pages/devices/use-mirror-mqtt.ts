@@ -5,21 +5,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type MirrorStatus = "connecting" | "open" | "closed";
 
-function parseFrame(payload: Uint8Array): MirrorSnapshotFrame | null {
+function parseFrame(
+  payload: Uint8Array,
+  deviceId: string,
+): MirrorSnapshotFrame | null {
   const sepIdx = payload.indexOf(0x0a); // '\n'
   if (sepIdx < 0) return null;
   try {
     const headerJson = new TextDecoder().decode(payload.subarray(0, sepIdx));
     const header = mirrorFrameHeaderSchema.parse(JSON.parse(headerJson));
     const jpegBytes = payload.subarray(sepIdx + 1);
-    let binary = "";
-    for (let i = 0; i < jpegBytes.length; i++) {
-      binary += String.fromCharCode(jpegBytes[i]);
+    // Chunked binary→base64 to avoid O(n^2) string concat with per-byte +=
+    const CHUNK = 8192;
+    const parts: string[] = [];
+    for (let i = 0; i < jpegBytes.length; i += CHUNK) {
+      parts.push(String.fromCharCode(...jpegBytes.subarray(i, i + CHUNK)));
     }
-    const screenshot = btoa(binary);
+    const screenshot = btoa(parts.join(""));
     return {
       channel: "mirror",
       type: "realtime",
+      deviceId,
       screenshot,
       format: "jpeg",
       width: header.w,
@@ -66,7 +72,7 @@ function startClient(
   });
 
   client.on("message", (_topic: string, payload: Buffer) => {
-    const frame = parseFrame(new Uint8Array(payload));
+    const frame = parseFrame(new Uint8Array(payload), deviceId);
     if (frame) {
       pendingFrame = frame;
       if (rafId === null) rafId = requestAnimationFrame(flushFrame);
