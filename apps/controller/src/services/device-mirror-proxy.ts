@@ -33,6 +33,7 @@ export class DeviceMirrorProxy {
   private readonly wss: WebSocketServer;
   private mqttClient: mqtt.MqttClient | null = null;
   private mqttPort: number = DEFAULT_MQTT_PORT;
+  private connectingPromise: Promise<mqtt.MqttClient> | null = null;
 
   constructor(private readonly configStore: NexuConfigStore) {
     this.wss = new WebSocketServer({ noServer: true });
@@ -40,20 +41,31 @@ export class DeviceMirrorProxy {
 
   private async ensureMqtt(): Promise<mqtt.MqttClient> {
     if (this.mqttClient?.connected) return this.mqttClient;
+    if (this.connectingPromise) return this.connectingPromise;
 
-    const config = await this.configStore.getConfig();
-    this.mqttPort = config.deviceControl.mqttPort ?? DEFAULT_MQTT_PORT;
+    this.connectingPromise = (async () => {
+      const config = await this.configStore.getConfig();
+      this.mqttPort = config.deviceControl.mqttPort ?? DEFAULT_MQTT_PORT;
 
-    this.mqttClient = mqtt.connect(`mqtt://127.0.0.1:${this.mqttPort}`, {
-      clientId: `nexu-mirror-${Date.now()}`,
-      clean: true,
-      connectTimeout: 5000,
-    });
+      this.mqttClient = mqtt.connect(`mqtt://127.0.0.1:${this.mqttPort}`, {
+        clientId: `nexu-mirror-${Date.now()}`,
+        clean: true,
+        connectTimeout: 5000,
+      });
 
-    return new Promise((resolve, reject) => {
-      this.mqttClient!.once("connect", () => resolve(this.mqttClient!));
-      this.mqttClient!.once("error", reject);
-    });
+      return new Promise<mqtt.MqttClient>((resolve, reject) => {
+        this.mqttClient!.once("connect", () => {
+          this.connectingPromise = null;
+          resolve(this.mqttClient!);
+        });
+        this.mqttClient!.once("error", (err) => {
+          this.connectingPromise = null;
+          reject(err);
+        });
+      });
+    })();
+
+    return this.connectingPromise;
   }
 
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
