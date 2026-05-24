@@ -1,6 +1,9 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { mirrorClientActionSchema } from "@nexu/shared";
+import {
+  mirrorClientActionSchema,
+  mirrorFrameHeaderSchema,
+} from "@nexu/shared";
 import mqtt from "mqtt";
 import { WebSocket, WebSocketServer } from "ws";
 import { logger } from "../lib/logger.js";
@@ -135,14 +138,7 @@ export class DeviceMirrorProxy {
 
       try {
         const headerJson = payload.subarray(0, sepIdx).toString();
-        const header = JSON.parse(headerJson) as {
-          w: number;
-          h: number;
-          ts: number;
-          app?: string;
-          status: string;
-          fmt: string;
-        };
+        const header = mirrorFrameHeaderSchema.parse(JSON.parse(headerJson));
         const jpegBytes = payload.subarray(sepIdx + 1);
 
         clientWs.send(
