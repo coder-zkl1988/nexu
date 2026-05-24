@@ -104,10 +104,10 @@ export function MirrorPanel({ device, onClose }: Props) {
     setTextInput("");
   }, [textInput, sendAction]);
 
-  const isConnected = status === "open" || status === "subscribing";
+  const isConnected = status === "open";
 
   const statusLabel =
-    status === "connecting" || status === "subscribing"
+    status === "connecting"
       ? t("devices.mirror.statusConnecting")
       : status === "closed"
         ? t("devices.mirror.statusClosed")

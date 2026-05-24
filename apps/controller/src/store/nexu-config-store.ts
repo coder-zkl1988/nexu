@@ -1854,7 +1854,9 @@ export class NexuConfigStore {
     let created = false;
 
     await this.store.update((config) => {
-      const existing = config.models.providers[providerId];
+      const existing = config.models.providers[providerId] as
+        | ModelProviderConfig
+        | undefined;
       const nextProvider = buildProviderConfig(
         providerId,
         input,
@@ -1900,6 +1902,9 @@ export class NexuConfigStore {
     input: {
       models: string[];
       oauthRegion: "global" | "cn";
+      enabled?: boolean;
+      displayName?: string;
+      baseUrl?: string;
       oauthCredential: {
         provider: string;
         access: string;
@@ -1913,7 +1918,9 @@ export class NexuConfigStore {
     let result: ModelProviderConfig | null = null;
 
     await this.store.update((config) => {
-      const existing = config.models.providers[providerId];
+      const existing = config.models.providers[providerId] as
+        | ModelProviderConfig
+        | undefined;
       const existingMetadata = getProviderMetadata(existing) ?? {};
       const nextProvider: ModelProviderConfig = {
         ...(existing?.providerTemplateId

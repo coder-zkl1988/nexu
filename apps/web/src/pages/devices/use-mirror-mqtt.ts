@@ -32,7 +32,7 @@ function parseFrame(
       height: header.h,
       timestamp: header.ts,
       currentApp: header.app,
-      deviceStatus: header.status,
+      deviceStatus: (header.status || "idle") as "idle" | "busy" | "error",
     };
   } catch {
     return null;

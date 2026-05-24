@@ -1,7 +1,7 @@
 import { useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
-import { useMirrorSocket } from "./use-mirror-socket";
+import { useMirrorSocket } from "./use-mirror-mqtt";
 
 interface Props {
   device: DeviceInfo;
@@ -39,7 +39,7 @@ export function MirrorDialog({ device, open, onClose }: Props) {
   };
 
   const statusText =
-    status === "connecting" || status === "subscribing"
+    status === "connecting"
       ? t("devices.mirror.statusConnecting")
       : status === "closed"
         ? t("devices.mirror.statusClosed")

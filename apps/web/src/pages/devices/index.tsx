@@ -40,7 +40,8 @@ export function DevicesPage() {
     deviceControl?.enabled && deviceControl?.localIp
       ? JSON.stringify({
           mqttHost: deviceControl.localIp,
-          mqttPort: deviceControl.mqttPort ?? 18883,
+          mqttPort:
+            (deviceControl as Record<string, unknown>).mqttPort ?? 18883,
           token: "",
         })
       : null;
