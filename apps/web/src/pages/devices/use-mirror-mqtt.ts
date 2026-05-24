@@ -12,14 +12,15 @@ function parseFrame(payload: Uint8Array): MirrorSnapshotFrame | null {
     const headerJson = new TextDecoder().decode(payload.subarray(0, sepIdx));
     const header = mirrorFrameHeaderSchema.parse(JSON.parse(headerJson));
     const jpegBytes = payload.subarray(sepIdx + 1);
-    let base64 = "";
+    let binary = "";
     for (let i = 0; i < jpegBytes.length; i++) {
-      base64 += String.fromCharCode(jpegBytes[i]);
+      binary += String.fromCharCode(jpegBytes[i]);
     }
+    const screenshot = btoa(binary);
     return {
       channel: "mirror",
       type: "realtime",
-      screenshot: btoa(base64),
+      screenshot,
       format: "jpeg",
       width: header.w,
       height: header.h,
@@ -32,6 +33,66 @@ function parseFrame(payload: Uint8Array): MirrorSnapshotFrame | null {
   }
 }
 
+type MqttClient = mqtt.MqttClient;
+
+function startClient(
+  host: string,
+  port: number,
+  deviceId: string,
+  onFrame: (f: MirrorSnapshotFrame) => void,
+  onStatus: (s: MirrorStatus) => void,
+): { client: MqttClient; stop: () => void } {
+  const url = `ws://${host}:${port}`;
+  const client = mqtt.connect(url, {
+    clientId: `nexu-mirror-${Date.now()}`,
+    clean: true,
+    connectTimeout: 5000,
+  });
+  onStatus("connecting");
+
+  let pendingFrame: MirrorSnapshotFrame | null = null;
+  let rafId: number | null = null;
+
+  function flushFrame() {
+    rafId = null;
+    if (pendingFrame !== null) {
+      onFrame(pendingFrame);
+      pendingFrame = null;
+    }
+  }
+
+  client.on("connect", () => {
+    client.subscribe(`phone/${deviceId}/frame`, { qos: 0 });
+  });
+
+  client.on("message", (_topic: string, payload: Buffer) => {
+    const frame = parseFrame(new Uint8Array(payload));
+    if (frame) {
+      pendingFrame = frame;
+      if (rafId === null) rafId = requestAnimationFrame(flushFrame);
+      onStatus("open");
+    }
+  });
+
+  client.on("close", () => {
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    onStatus("closed");
+  });
+
+  client.on("error", () => {
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    onStatus("closed");
+  });
+
+  return {
+    client,
+    stop: () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      client.end();
+    },
+  };
+}
+
 export function useMirrorSocket(
   deviceId: string | null,
   mqttHost?: string,
@@ -41,11 +102,29 @@ export function useMirrorSocket(
   const [status, setStatus] = useState<MirrorStatus>(
     deviceId === null ? "closed" : "connecting",
   );
-  const clientRef = useRef<mqtt.MqttClient | null>(null);
+  const clientRef = useRef<MqttClient | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);
   const cancelledRef = useRef(false);
 
   const host = mqttHost ?? window.location.hostname;
   const port = mqttPort ?? 18883;
+
+  const connect = useCallback(() => {
+    if (deviceId === null) return;
+
+    stopRef.current?.();
+    cancelledRef.current = false;
+
+    const { client, stop } = startClient(
+      host,
+      port,
+      deviceId,
+      setFrame,
+      setStatus,
+    );
+    clientRef.current = client;
+    stopRef.current = stop;
+  }, [deviceId, host, port]);
 
   useEffect(() => {
     if (deviceId === null) {
@@ -55,117 +134,14 @@ export function useMirrorSocket(
       return;
     }
 
-    cancelledRef.current = false;
-    const url = `ws://${host}:${port}`;
-    const client = mqtt.connect(url, {
-      clientId: `nexu-mirror-${Date.now()}`,
-      clean: true,
-      connectTimeout: 5000,
-    });
-    clientRef.current = client;
-    setStatus("connecting");
-
-    // rAF-based frame dropping: only latest frame per animation frame
-    let pendingFrame: MirrorSnapshotFrame | null = null;
-    let rafId: number | null = null;
-
-    function flushFrame() {
-      rafId = null;
-      if (pendingFrame !== null) {
-        setFrame(pendingFrame);
-        pendingFrame = null;
-      }
-    }
-
-    client.on("connect", () => {
-      if (cancelledRef.current) return;
-      client.subscribe(`phone/${deviceId}/frame`, { qos: 0 });
-    });
-
-    client.on("message", (_topic: string, payload: Buffer) => {
-      if (cancelledRef.current) return;
-      const frame = parseFrame(new Uint8Array(payload));
-      if (frame) {
-        pendingFrame = frame;
-        if (rafId === null) rafId = requestAnimationFrame(flushFrame);
-        setStatus("open");
-      }
-    });
-
-    client.on("close", () => {
-      if (cancelledRef.current) return;
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      pendingFrame = null;
-      setStatus("closed");
-    });
-
-    client.on("error", () => {
-      if (cancelledRef.current) return;
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      pendingFrame = null;
-      setStatus("closed");
-    });
+    connect();
 
     return () => {
       cancelledRef.current = true;
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      client.end();
+      stopRef.current?.();
       clientRef.current = null;
     };
-  }, [deviceId, host, port]);
-
-  const reconnect = useCallback(() => {
-    if (deviceId === null) return;
-    clientRef.current?.end();
-    clientRef.current = null;
-
-    cancelledRef.current = false;
-    const url = `ws://${host}:${port}`;
-    const client = mqtt.connect(url, {
-      clientId: `nexu-mirror-${Date.now()}`,
-      clean: true,
-      connectTimeout: 5000,
-    });
-    clientRef.current = client;
-    setStatus("connecting");
-
-    let pendingFrame: MirrorSnapshotFrame | null = null;
-    let rafId: number | null = null;
-
-    function flushFrame() {
-      rafId = null;
-      if (pendingFrame !== null) {
-        setFrame(pendingFrame);
-        pendingFrame = null;
-      }
-    }
-
-    client.on("connect", () => {
-      if (cancelledRef.current) return;
-      client.subscribe(`phone/${deviceId}/frame`, { qos: 0 });
-    });
-
-    client.on("message", (_topic: string, payload: Buffer) => {
-      if (cancelledRef.current) return;
-      const frame = parseFrame(new Uint8Array(payload));
-      if (frame) {
-        pendingFrame = frame;
-        if (rafId === null) rafId = requestAnimationFrame(flushFrame);
-        setStatus("open");
-      }
-    });
-
-    client.on("close", () => {
-      if (cancelledRef.current) return;
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      setStatus("closed");
-    });
-    client.on("error", () => {
-      if (cancelledRef.current) return;
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      setStatus("closed");
-    });
-  }, [deviceId, host, port]);
+  }, [deviceId, host, port, connect]);
 
   const sendAction = useCallback(
     (action: MirrorClientAction) => {
@@ -180,5 +156,5 @@ export function useMirrorSocket(
     [deviceId],
   );
 
-  return { frame, status, sendAction, reconnect };
+  return { frame, status, sendAction, reconnect: connect };
 }
