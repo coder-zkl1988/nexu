@@ -36,14 +36,14 @@ export function DevicesPage() {
   });
 
   const deviceControl = runtimeConfig?.deviceControl;
+  const wsPort: number =
+    typeof (deviceControl as Record<string, unknown> | undefined)?.wsPort ===
+    "number"
+      ? ((deviceControl as Record<string, unknown>).wsPort as number)
+      : 18790;
   const qrUrl =
     deviceControl?.enabled && deviceControl?.localIp
-      ? JSON.stringify({
-          mqttHost: deviceControl.localIp,
-          mqttPort:
-            (deviceControl as Record<string, unknown>).mqttPort ?? 18883,
-          token: "",
-        })
+      ? `ws://${deviceControl.localIp}:${wsPort}/phone`
       : null;
 
   const fetchDevices = useCallback(async () => {
@@ -73,7 +73,7 @@ export function DevicesPage() {
   useEffect(() => {
     const startPolling = () => {
       if (intervalRef.current === null) {
-        intervalRef.current = setInterval(() => void fetchDevices(), 5000);
+        intervalRef.current = setInterval(() => void fetchDevices(), 2000);
       }
     };
     const stopPolling = () => {
@@ -239,6 +239,7 @@ export function DevicesPage() {
                   device={device}
                   onTaskSuccess={fetchDevices}
                   onViewScreen={setMirrorDevice}
+                  wsPort={wsPort}
                 />
               ))}
             </div>
@@ -251,6 +252,8 @@ export function DevicesPage() {
           <MirrorPanel
             device={mirrorDevice}
             onClose={() => setMirrorDevice(null)}
+            wsHost={deviceControl?.localIp}
+            wsPort={wsPort}
           />
         </div>
       )}

@@ -1,20 +1,24 @@
 import { useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
-import { useMirrorSocket } from "./use-mirror-mqtt";
+import { useMirrorSocket } from "./use-mirror-ws";
 
 interface Props {
   device: DeviceInfo;
   open: boolean;
   onClose: () => void;
+  wsHost?: string;
+  wsPort?: number;
 }
 
-export function MirrorDialog({ device, open, onClose }: Props) {
+export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
   const { t } = useTranslation();
   const titleId = useId();
   const imgRef = useRef<HTMLImageElement | null>(null);
   const { frame, status, sendAction } = useMirrorSocket(
     open ? device.deviceId : null,
+    wsHost,
+    wsPort,
   );
 
   if (!open) return null;

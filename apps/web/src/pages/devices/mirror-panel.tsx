@@ -2,14 +2,16 @@ import { RefreshCw, Send, X } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
-import { useMirrorSocket } from "./use-mirror-mqtt";
+import { useMirrorSocket } from "./use-mirror-ws";
 
 interface Props {
   device: DeviceInfo;
   onClose: () => void;
+  wsHost?: string;
+  wsPort?: number;
 }
 
-export function MirrorPanel({ device, onClose }: Props) {
+export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
   const { t } = useTranslation();
   const titleId = useId();
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -25,7 +27,21 @@ export function MirrorPanel({ device, onClose }: Props) {
 
   const { frame, status, sendAction, reconnect } = useMirrorSocket(
     device.deviceId,
+    wsHost,
+    wsPort,
   );
+
+  const [lastClick, setLastClick] = useState<{
+    x: number;
+    y: number;
+    relX: number;
+    relY: number;
+    rectW: number;
+    rectH: number;
+    frameW: number;
+    frameH: number;
+  } | null>(null);
+  const [lastAction, setLastAction] = useState<string>("");
 
   const mapPointerToDevice = useCallback(
     (clientX: number, clientY: number) => {
@@ -35,10 +51,21 @@ export function MirrorPanel({ device, onClose }: Props) {
       const relX = (clientX - rect.left) / rect.width;
       const relY = (clientY - rect.top) / rect.height;
       if (relX < 0 || relX > 1 || relY < 0 || relY > 1) return null;
-      return {
+      const result = {
         x: Math.round(relX * frame.width),
         y: Math.round(relY * frame.height),
       };
+      setLastClick({
+        x: result.x,
+        y: result.y,
+        relX: Number(relX.toFixed(3)),
+        relY: Number(relY.toFixed(3)),
+        rectW: Math.round(rect.width),
+        rectH: Math.round(rect.height),
+        frameW: frame.width,
+        frameH: frame.height,
+      });
+      return result;
     },
     [frame],
   );
@@ -82,6 +109,7 @@ export function MirrorPanel({ device, onClose }: Props) {
 
       if (endPoint === null || distance < 8) {
         sendAction({ type: "click", x: s.deviceStartX, y: s.deviceStartY });
+        setLastAction(`click(${s.deviceStartX},${s.deviceStartY})`);
         return;
       }
 
@@ -93,6 +121,9 @@ export function MirrorPanel({ device, onClose }: Props) {
         endY: endPoint.y,
         durationMs: Math.min(Math.round(distance / 2), 500),
       });
+      setLastAction(
+        `swipe(${s.deviceStartX},${s.deviceStartY}->${endPoint.x},${endPoint.y})`,
+      );
     },
     [mapPointerToDevice, sendAction],
   );
@@ -101,6 +132,7 @@ export function MirrorPanel({ device, onClose }: Props) {
     const text = textInput.trim();
     if (!text) return;
     sendAction({ type: "input_text", text });
+    setLastAction(`input_text("${text.slice(0, 20)}")`);
     setTextInput("");
   }, [textInput, sendAction]);
 
@@ -180,7 +212,7 @@ export function MirrorPanel({ device, onClose }: Props) {
                 swipeRef.current = null;
                 setShowSwipe(false);
               }}
-              className="max-w-full rounded-lg shadow-md"
+              className="max-w-full h-auto rounded-lg shadow-md"
               draggable={false}
               style={{
                 aspectRatio: `${frame.width}/${frame.height}`,
@@ -258,6 +290,16 @@ export function MirrorPanel({ device, onClose }: Props) {
             <span>
               {frame.width}×{frame.height}
             </span>
+            {lastClick && (
+              <span className="text-orange-500">
+                click=({lastClick.x},{lastClick.y}) rel=({lastClick.relX},
+                {lastClick.relY}) img=({lastClick.rectW}×{lastClick.rectH})
+                frame=({lastClick.frameW}×{lastClick.frameH})
+              </span>
+            )}
+            {lastAction && (
+              <span className="text-green-500 ml-2">→ {lastAction}</span>
+            )}
             {frame.currentApp && (
               <span className="truncate ml-2">{frame.currentApp}</span>
             )}

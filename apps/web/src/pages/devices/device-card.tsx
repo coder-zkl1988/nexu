@@ -43,17 +43,19 @@ export function DeviceCard({
   device,
   onTaskSuccess,
   onViewScreen,
+  wsPort,
 }: {
   device: DeviceInfo;
   onTaskSuccess: () => void;
   onViewScreen: (device: DeviceInfo) => void;
+  wsPort?: number;
 }) {
   const { t } = useTranslation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(device.name ?? "");
   const nameInputRef = useRef<HTMLSpanElement>(null);
-  const snapshot = useDeviceSnapshot(device.deviceId);
+  const snapshot = useDeviceSnapshot(device.deviceId, wsPort);
   const color = statusColor(device.status);
   const label = STATUS_I18N_KEY[device.status]
     ? t(STATUS_I18N_KEY[device.status])

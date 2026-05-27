@@ -49,10 +49,16 @@ function startClient(
   onStatus: (s: MirrorStatus) => void,
 ): { client: MqttClient; stop: () => void } {
   const url = `ws://${host}:${port}`;
+  // Use a stable clientId based on deviceId to avoid rapid reconnection loops
+  // when the component re-renders. Each mirror viewer for the same device
+  // shares the same clientId, so the broker closes the old connection when
+  // a new one with the same ID connects (clean session).
+  const clientId = `nexu-mirror-${deviceId}`;
   const client = mqtt.connect(url, {
-    clientId: `nexu-mirror-${Date.now()}`,
+    clientId,
     clean: true,
     connectTimeout: 5000,
+    reconnectPeriod: 2000, // retry every 2s instead of default 1s
   });
   onStatus("connecting");
 
@@ -110,16 +116,17 @@ export function useMirrorSocket(
   );
   const clientRef = useRef<MqttClient | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
-  const cancelledRef = useRef(false);
 
   const host = mqttHost ?? window.location.hostname;
   const port = mqttPort ?? 18883;
 
-  const connect = useCallback(() => {
-    if (deviceId === null) return;
-
-    stopRef.current?.();
-    cancelledRef.current = false;
+  useEffect(() => {
+    if (deviceId === null) {
+      setFrame(null);
+      setStatus("closed");
+      clientRef.current = null;
+      return;
+    }
 
     const { client, stop } = startClient(
       host,
@@ -130,24 +137,13 @@ export function useMirrorSocket(
     );
     clientRef.current = client;
     stopRef.current = stop;
-  }, [deviceId, host, port]);
-
-  useEffect(() => {
-    if (deviceId === null) {
-      setFrame(null);
-      setStatus("closed");
-      clientRef.current = null;
-      return;
-    }
-
-    connect();
 
     return () => {
-      cancelledRef.current = true;
-      stopRef.current?.();
+      stop();
       clientRef.current = null;
+      stopRef.current = null;
     };
-  }, [deviceId, host, port, connect]);
+  }, [deviceId, host, port]);
 
   const sendAction = useCallback(
     (action: MirrorClientAction) => {
@@ -162,5 +158,20 @@ export function useMirrorSocket(
     [deviceId],
   );
 
-  return { frame, status, sendAction, reconnect: connect };
+  const reconnect = useCallback(() => {
+    // Force a new connection by ending the current one and creating a fresh client
+    stopRef.current?.();
+    if (deviceId === null) return;
+    const { client, stop } = startClient(
+      host,
+      port,
+      deviceId,
+      setFrame,
+      setStatus,
+    );
+    clientRef.current = client;
+    stopRef.current = stop;
+  }, [deviceId, host, port]);
+
+  return { frame, status, sendAction, reconnect };
 }

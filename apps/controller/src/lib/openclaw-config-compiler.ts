@@ -450,25 +450,9 @@ export function compileOpenClawConfig(
             enabled: true,
           },
         },
-        tools: {
-          allow: [
-            "cron",
-            // Plugin-registered tools must be listed here to be accessible by agents.
-            // OpenClaw 2026.5.x requires tools to be in gateway.tools.allow even when
-            // the plugin is loaded and its tools are registered via contracts.tools.
-            ...(config.deviceControl.enabled
-              ? [
-                  "device_list",
-                  "device_execute_task",
-                  "device_execute_task_all",
-                  "device_execute_batch",
-                  "device_cancel_task",
-                  "device_get_status",
-                ]
-              : []),
-            "render_a2ui",
-          ],
-        },
+        // tools.allow intentionally omitted — when absent, OpenClaw allows
+        // all plugin-registered tools. An explicit allowlist here would be
+        // validated as gateway.http.tools and reject unrecognised names.
       },
       // TEMP: removed to debug device_list visibility
     },
