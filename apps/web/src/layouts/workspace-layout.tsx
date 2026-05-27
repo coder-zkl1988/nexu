@@ -26,6 +26,7 @@ import {
   ChevronUp,
   CircleHelp,
   CirclePlus,
+  Clock,
   Home,
   Info,
   LogOut,
@@ -64,6 +65,7 @@ interface SidebarSession {
   channelType: string;
   lastTime: string | null;
   status: string;
+  sessionKey: string;
 }
 
 export function getSidebarCreditBreakdown(input: {
@@ -106,6 +108,7 @@ function mapDbSession(s: {
   lastMessageAt?: string | null;
   updatedAt?: string;
   status?: string | null;
+  sessionKey?: string;
 }): SidebarSession {
   return {
     id: s.id,
@@ -113,6 +116,7 @@ function mapDbSession(s: {
     channelType: s.channelType ?? "web",
     lastTime: s.lastMessageAt ?? s.updatedAt ?? null,
     status: s.status ?? "",
+    sessionKey: s.sessionKey ?? "",
   };
 }
 
@@ -390,6 +394,7 @@ function WorkspaceLayoutInner() {
   const [collapsed, setCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
+  const [scheduledCollapsed, setScheduledCollapsed] = useState(true);
   const {
     status: rewardsStatus,
     loading: rewardsStatusLoading,
@@ -901,92 +906,202 @@ function WorkspaceLayoutInner() {
             </div>
             <div className="space-y-3">
               {(() => {
-                const grouped = sessions.reduce(
-                  (acc, s) => {
-                    const key = s.channelType ?? "web";
-                    (acc[key] ??= []).push(s);
-                    return acc;
-                  },
-                  {} as Record<string, SidebarSession[]>,
+                // Split sessions into regular and scheduled
+                const regularSessions = sessions.filter(
+                  (s) => !s.sessionKey.includes(":schedule-"),
                 );
-                return Object.entries(grouped).map(
-                  ([channelType, groupSessions]) => (
-                    <div key={channelType}>
-                      <div className="space-y-0.5">
-                        {groupSessions.map((s) => {
-                          const isActive = selectedSessionId === s.id;
-                          return (
-                            <button
-                              type="button"
-                              key={s.id}
-                              data-sidebar-session-row={s.id}
-                              data-session-channel-type={s.channelType ?? "web"}
-                              data-session-state={s.status || "idle"}
-                              onClick={() => {
-                                const channel = normalizeChannel(s.channelType);
-                                track("workspace_channel_click", {
-                                  channel_type: s.channelType,
-                                });
-                                track("workspace_sidebar_click", {
-                                  target: "conversations",
-                                  ...(channel ? { channel } : {}),
-                                });
-                                navigate(`/workspace/sessions/${s.id}`);
-                              }}
-                              className={cn(
-                                "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
-                                isActive && "nav-item-active",
-                              )}
-                            >
-                              <SidebarPlatformIcon
-                                platform={s.channelType ?? "web"}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <div
-                                    className={cn(
-                                      "text-[12px] truncate whitespace-nowrap font-medium",
-                                      !isActive && "text-text-primary",
-                                    )}
-                                  >
-                                    {s.title}
-                                  </div>
-                                  {s.status === "active" && (
-                                    <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                      Live
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
-                                  <span>
-                                    {getPlatformLabel(s.channelType ?? "web")}
-                                  </span>
-                                  <span className="text-border">·</span>
-                                  <span>{formatTime(s.lastTime)}</span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {s.status === "active" && (
-                                  <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
+                const scheduledSessions = sessions.filter((s) =>
+                  s.sessionKey.includes(":schedule-"),
+                );
+
+                // Regular sessions grouped by channelType
+                const regularGroups = Object.entries(
+                  regularSessions.reduce(
+                    (acc, s) => {
+                      const key = s.channelType ?? "web";
+                      (acc[key] ??= []).push(s);
+                      return acc;
+                    },
+                    {} as Record<string, SidebarSession[]>,
+                  ),
+                );
+
+                return (
+                  <>
+                    {regularGroups.map(([channelType, groupSessions]) => (
+                      <div key={channelType}>
+                        <div className="space-y-0.5">
+                          {groupSessions.map((s) => {
+                            const isActive = selectedSessionId === s.id;
+                            return (
+                              <button
+                                type="button"
+                                key={s.id}
+                                data-sidebar-session-row={s.id}
+                                data-session-channel-type={
+                                  s.channelType ?? "web"
+                                }
+                                data-session-state={s.status || "idle"}
+                                onClick={() => {
+                                  const channel = normalizeChannel(
+                                    s.channelType,
+                                  );
+                                  track("workspace_channel_click", {
+                                    channel_type: s.channelType,
+                                  });
+                                  track("workspace_sidebar_click", {
+                                    target: "conversations",
+                                    ...(channel ? { channel } : {}),
+                                  });
+                                  navigate(`/workspace/sessions/${s.id}`);
+                                }}
+                                className={cn(
+                                  "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
+                                  isActive && "nav-item-active",
                                 )}
+                              >
+                                <SidebarPlatformIcon
+                                  platform={s.channelType ?? "web"}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div
+                                      className={cn(
+                                        "text-[12px] truncate whitespace-nowrap font-medium",
+                                        !isActive && "text-text-primary",
+                                      )}
+                                    >
+                                      {s.title}
+                                    </div>
+                                    {s.status === "active" && (
+                                      <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
+                                        Live
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                    <span>
+                                      {getPlatformLabel(s.channelType ?? "web")}
+                                    </span>
+                                    <span className="text-border">·</span>
+                                    <span>{formatTime(s.lastTime)}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {s.status === "active" && (
+                                    <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteSessionMutation.mutate(s.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
+                                    title={t("layout.deleteSession")}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Scheduled tasks section */}
+                    {scheduledSessions.length > 0 && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setScheduledCollapsed(!scheduledCollapsed)
+                          }
+                          className="flex items-center gap-2 w-full px-1 py-1.5 text-[12px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                        >
+                          <ChevronRight
+                            size={12}
+                            className={cn(
+                              "transition-transform",
+                              !scheduledCollapsed && "rotate-90",
+                            )}
+                          />
+                          <Clock size={12} />
+                          <span>{t("layout.scheduledTasks", "定时任务")}</span>
+                          <span className="ml-auto text-[10px] text-text-muted/60">
+                            {scheduledSessions.length}
+                          </span>
+                        </button>
+                        {!scheduledCollapsed && (
+                          <div className="space-y-0.5 mt-1">
+                            {scheduledSessions.map((s) => {
+                              const isActive = selectedSessionId === s.id;
+                              return (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteSessionMutation.mutate(s.id);
+                                  key={s.id}
+                                  data-sidebar-session-row={s.id}
+                                  data-session-channel-type={
+                                    s.channelType ?? "web"
+                                  }
+                                  data-session-state={s.status || "idle"}
+                                  onClick={() => {
+                                    track("workspace_sidebar_click", {
+                                      target: "conversations",
+                                    });
+                                    navigate(`/workspace/sessions/${s.id}`);
                                   }}
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
-                                  title={t("layout.deleteSession")}
+                                  className={cn(
+                                    "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
+                                    isActive && "nav-item-active",
+                                  )}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Clock
+                                    size={16}
+                                    className="shrink-0 text-text-muted"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div
+                                        className={cn(
+                                          "text-[12px] truncate whitespace-nowrap font-medium",
+                                          !isActive && "text-text-primary",
+                                        )}
+                                      >
+                                        {s.title}
+                                      </div>
+                                      {s.status === "active" && (
+                                        <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
+                                          Live
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                      <span>{formatTime(s.lastTime)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteSessionMutation.mutate(s.id);
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
+                                      title={t("layout.deleteSession")}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </button>
-                              </div>
-                            </button>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ),
+                    )}
+                  </>
                 );
               })()}
             </div>

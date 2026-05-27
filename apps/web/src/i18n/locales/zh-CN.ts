@@ -135,6 +135,7 @@ const zhCN = {
   "layout.mobile.settings": "设置",
   "layout.mobile.settingsSubtitle": "管理 AI 模型服务商",
   "layout.conversations": "对话",
+  "layout.scheduledTasks": "定时任务",
   "layout.deleteSession": "删除对话",
   "layout.mobile.conversations": "对话",
   "layout.sidebar.loginTitle": "登录 nexu 账号",
