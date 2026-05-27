@@ -668,7 +668,6 @@ export class NexuConfigStore {
           enabled: true,
           wsPort: 18790,
           rpcPort: 18801,
-          mqttPort: 18883,
         },
         schedules: [],
         secrets: {},

@@ -82,7 +82,6 @@ export function registerRuntimeConfigRoutes(
     enabled: z.boolean().optional(),
     wsPort: z.number().int().positive().optional(),
     rpcPort: z.number().int().positive().optional(),
-    mqttPort: z.number().int().positive().optional(),
   });
 
   app.openapi(
