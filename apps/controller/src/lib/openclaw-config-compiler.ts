@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { OpenClawConfig } from "@nexu/shared";
 import { openclawConfigSchema } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
@@ -16,6 +17,68 @@ import {
   resolveModelProviderApiKey,
 } from "./model-provider-runtime.js";
 import { normalizeProviderBaseUrl } from "./provider-base-url.js";
+
+/**
+ * Known model capabilities for popular providers.
+ * Keys are matched case-insensitively against the model ID (without provider prefix).
+ * When a match is found, the contextWindow and maxTokens values override the defaults.
+ */
+const MODEL_CAPABILITIES: Record<
+  string,
+  { contextWindow: number; maxTokens?: number; reasoning?: boolean }
+> = {
+  // DeepSeek V4
+  "deepseek-v4-pro": { contextWindow: 1048576, maxTokens: 384000 },
+  "deepseek-v4-flash": { contextWindow: 1048576, maxTokens: 384000 },
+  "deepseek-chat": { contextWindow: 1048576, maxTokens: 384000 },
+  "deepseek-reasoner": { contextWindow: 1048576, maxTokens: 384000 },
+
+  // OpenAI GPT
+  "gpt-5.4": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-5.4-mini": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-4.1": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-4.1-mini": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-4.1-nano": { contextWindow: 1048576, maxTokens: 32768 },
+  "o4-mini": { contextWindow: 200000, maxTokens: 100000, reasoning: true },
+  o3: { contextWindow: 200000, maxTokens: 100000, reasoning: true },
+  "o3-mini": { contextWindow: 200000, maxTokens: 100000, reasoning: true },
+
+  // Anthropic Claude
+  "claude-sonnet-4-20250514": { contextWindow: 200000, maxTokens: 64000 },
+  "claude-opus-8-20250514": { contextWindow: 200000, maxTokens: 32000 },
+
+  // Google Gemini
+  "gemini-3-flash-preview": { contextWindow: 1048576, maxTokens: 65536 },
+  "gemini-3-pro-preview": { contextWindow: 1048576, maxTokens: 65536 },
+
+  // Groq
+  "llama-4-scout-17b-16e-instruct": { contextWindow: 1048576, maxTokens: 8192 },
+  "llama-4-maverick-17b-128e-instruct": {
+    contextWindow: 1048576,
+    maxTokens: 8192,
+  },
+};
+
+/** Look up known model capabilities by ID (case-insensitive, stripped of provider prefix). */
+function lookupModelCapabilities(modelId: string): {
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+} {
+  // Try exact match first
+  const lower = modelId.toLowerCase();
+  const exact = MODEL_CAPABILITIES[lower];
+  if (exact) return exact;
+
+  // Try matching the tail after the last slash (e.g. "deepseek/deepseek-v4-pro" → "deepseek-v4-pro")
+  const tail = lower.split("/").pop() ?? lower;
+  if (tail !== lower) {
+    const match = MODEL_CAPABILITIES[tail];
+    if (match) return match;
+  }
+
+  return {};
+}
 
 export type { OAuthConnectionState };
 
@@ -55,11 +118,19 @@ function getDesktopSelectedModel(config: NexuConfig): string | null {
     : null;
 }
 
-function buildModelEntry(id: string, name?: string) {
+const DEFAULT_CONTEXT_WINDOW = 200000;
+const DEFAULT_MAX_TOKENS = 8192;
+
+function buildModelEntry(
+  id: string,
+  name?: string,
+  overrides?: { contextWindow?: number; maxTokens?: number },
+) {
+  const known = lookupModelCapabilities(id);
   return {
     id,
     name: name ?? id,
-    reasoning: false,
+    reasoning: known.reasoning ?? false,
     input: ["text", "image"],
     cost: {
       input: 0,
@@ -67,8 +138,14 @@ function buildModelEntry(id: string, name?: string) {
       cacheRead: 0,
       cacheWrite: 0,
     },
-    contextWindow: 200000,
-    maxTokens: 8192,
+    contextWindow:
+      (overrides?.contextWindow && overrides.contextWindow > 0
+        ? overrides.contextWindow
+        : known.contextWindow) ?? DEFAULT_CONTEXT_WINDOW,
+    maxTokens:
+      (overrides?.maxTokens && overrides.maxTokens > 0
+        ? overrides.maxTokens
+        : known.maxTokens) ?? DEFAULT_MAX_TOKENS,
     compat: {
       supportsStore: false,
     },
@@ -138,6 +215,7 @@ function compileModelsConfig(
         buildModelEntry(
           buildProviderRuntimeModelId(descriptor, model.id),
           model.name,
+          { contextWindow: model.contextWindow, maxTokens: model.maxTokens },
         ),
       ),
     };
@@ -441,6 +519,15 @@ export function compileOpenClawConfig(
         mode: "hybrid",
       },
       controlUi: {
+        ...(env.openclawBuiltinExtensionsDir
+          ? {
+              root: path.join(
+                path.dirname(env.openclawBuiltinExtensionsDir),
+                "dist",
+                "control-ui",
+              ),
+            }
+          : {}),
         allowedOrigins: [env.webUrl],
         dangerouslyAllowHostHeaderOriginFallback: true,
       },

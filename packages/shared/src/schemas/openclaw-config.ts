@@ -17,6 +17,7 @@ const gatewayReloadSchema = z.object({
 
 const controlUiSchema = z
   .object({
+    root: z.string().optional(),
     allowedOrigins: z.array(z.string()).optional(),
     dangerouslyAllowHostHeaderOriginFallback: z.boolean().optional(),
   })
