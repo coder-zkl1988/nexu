@@ -29,6 +29,7 @@ import { ChannelFallbackService } from "../services/channel-fallback-service.js"
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
 import { DeviceControlService } from "../services/device-control-service.js";
+import { DevicePollingService } from "../services/device-polling-service.js";
 import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
 import {
   DEFAULT_EXPERT_SLUGS,
@@ -105,6 +106,7 @@ export interface ControllerContainer {
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
+  devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   deviceNameStore: Map<string, string>;
   wsClient: OpenClawWsClient;
@@ -217,6 +219,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     deviceTaskHistoryStore,
   );
+  const devicePollingService = new DevicePollingService(deviceControlService);
   const attachmentStore = new AttachmentStore({
     openclawStateDir: env.openclawStateDir,
   });
@@ -508,6 +511,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
+    devicePollingService,
     deviceTaskHistoryStore,
     deviceNameStore: new Map(),
     wsClient,
@@ -550,12 +554,14 @@ export async function createContainer(): Promise<ControllerContainer> {
       }, NEXU_OFFICIAL_MODEL_REFRESH_INTERVAL_MS);
       nexuOfficialModelRefreshInterval.unref?.();
       skillhubService.start();
+      devicePollingService.start();
 
       return () => {
         stopHealthLoop();
         stopAnalyticsLoop();
         clearInterval(nexuOfficialModelRefreshInterval);
         skillhubService.dispose();
+        devicePollingService.dispose();
         openclawAuthService.dispose();
         channelFallbackService.stop();
         wsClient.stop();
