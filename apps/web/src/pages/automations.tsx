@@ -206,13 +206,14 @@ function AutomationModal({
   const [bots, setBots] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingBots, setLoadingBots] = useState(false);
   const [channels, setChannels] = useState<
-    Array<{ channelType: string; accountId?: string }>
+    Array<{ channelType: string; accountId?: string; botId?: string }>
   >([]);
   const [saving, setSaving] = useState(false);
 
   const [name, setName] = useState("");
   const [botId, setBotId] = useState("");
   const [channelType, setChannelType] = useState("");
+  const [channelId, setChannelId] = useState<string | undefined>(undefined);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("daily");
   const [time, setTime] = useState("09:00");
   const [selectedDays, setSelectedDays] = useState<Set<DayKey>>(new Set());
@@ -251,6 +252,7 @@ function AutomationModal({
               .map((ch) => ({
                 channelType: ch.channelType,
                 accountId: ch.accountId as string | undefined,
+                botId: ch.botId,
               }));
             setChannels(connected);
           }
@@ -264,6 +266,7 @@ function AutomationModal({
       setName(editingSchedule.name);
       setBotId(editingSchedule.botId);
       setChannelType(editingSchedule.channelType ?? "");
+      setChannelId(editingSchedule.channelId ?? undefined);
       setPrompt(editingSchedule.prompt);
       setEnabled(editingSchedule.enabled);
 
@@ -299,6 +302,7 @@ function AutomationModal({
     setName("");
     setBotId("");
     setChannelType("");
+    setChannelId(undefined);
     setScheduleMode("daily");
     setTime("09:00");
     setSelectedDays(new Set());
@@ -344,6 +348,7 @@ function AutomationModal({
             prompt,
             enabled,
             channelType: channelType || undefined,
+            channelId: channelId || undefined,
           },
           path: { scheduleId: editingSchedule.id },
         });
@@ -357,6 +362,7 @@ function AutomationModal({
             prompt,
             enabled,
             channelType: channelType || undefined,
+            channelId: channelId || undefined,
           },
         });
       }
@@ -402,7 +408,14 @@ function AutomationModal({
             <div className="relative">
               <select
                 value={botId}
-                onChange={(e) => setBotId(e.target.value)}
+                onChange={(e) => {
+                  setBotId(e.target.value);
+                  // Reset channel selection when bot changes — channels are bound to specific bots
+                  if (!isEditing) {
+                    setChannelType("");
+                    setChannelId(undefined);
+                  }
+                }}
                 disabled={loadingBots || isEditing}
                 className="block w-full pl-3 pr-10 py-2 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:ring-1 focus:ring-[var(--color-tabby-foreground)] focus:border-[var(--color-tabby-foreground)] appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -427,27 +440,46 @@ function AutomationModal({
             </div>
           </div>
 
-          {/* Delivery channel */}
-          {!isEditing && channels.length > 0 && (
+          {/* Delivery channel — only show channels bound to the selected bot */}
+          {!isEditing && botId && channels.some((ch) => ch.botId === botId) && (
             <div>
               <Label className="block text-[13px] font-medium text-[var(--color-tabby-foreground)] mb-1.5">
                 {t("automations.modal.deliveryChannel")}
               </Label>
               <div className="relative">
                 <select
-                  value={channelType}
-                  onChange={(e) => setChannelType(e.target.value)}
+                  value={
+                    channelId ? `${channelType}:${channelId}` : channelType
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val || !val.includes(":")) {
+                      setChannelType(val);
+                      setChannelId(undefined);
+                    } else {
+                      const [type, ...rest] = val.split(":");
+                      setChannelType(type ?? "");
+                      setChannelId(rest.join(":") || undefined);
+                    }
+                  }}
                   className="block w-full pl-3 pr-10 py-2 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:ring-1 focus:ring-[var(--color-tabby-foreground)] focus:border-[var(--color-tabby-foreground)] appearance-none"
                 >
                   <option value="">
                     {t("automations.modal.deliveryChannelPlaceholder")}
                   </option>
-                  {channels.map((ch) => (
-                    <option key={ch.channelType} value={ch.channelType}>
-                      {ch.channelType}
-                      {ch.accountId ? ` - ${ch.accountId}` : ""}
-                    </option>
-                  ))}
+                  {channels
+                    .filter((ch) => ch.botId === botId)
+                    .map((ch) => {
+                      const compoundKey = ch.accountId
+                        ? `${ch.channelType}:${ch.accountId}`
+                        : ch.channelType;
+                      return (
+                        <option key={compoundKey} value={compoundKey}>
+                          {ch.channelType}
+                          {ch.accountId ? ` - ${ch.accountId}` : ""}
+                        </option>
+                      );
+                    })}
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-tabby-muted)]">
                   <ChevronDown size={16} />

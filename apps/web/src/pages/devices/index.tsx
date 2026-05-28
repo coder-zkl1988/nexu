@@ -7,7 +7,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Download, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -24,6 +24,19 @@ export function DevicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mirrorDevice, setMirrorDevice] = useState<DeviceInfo | null>(null);
+
+  const handleViewScreen = useCallback(
+    (device: DeviceInfo) => {
+      if (mirrorDevice?.deviceId === device.deviceId) {
+        // Same device already shown — force remount to reconnect
+        setMirrorDevice(null);
+        requestAnimationFrame(() => setMirrorDevice(device));
+      } else {
+        setMirrorDevice(device);
+      }
+    },
+    [mirrorDevice],
+  );
   const [showQrDialog, setShowQrDialog] = useState(false);
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
 
@@ -68,36 +81,59 @@ export function DevicesPage() {
     }
   }, [t]);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   useEffect(() => {
-    const startPolling = () => {
-      if (intervalRef.current === null) {
-        intervalRef.current = setInterval(() => void fetchDevices(), 2000);
-      }
-    };
-    const stopPolling = () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        void fetchDevices();
-        startPolling();
-      }
-    };
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+    const es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
-    void fetchDevices();
-    startPolling();
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    es.addEventListener("device_list", (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.devices) {
+          setDevices(data.devices);
+          setLoading(false);
+          setError(null);
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+
+    es.addEventListener("device_connected", (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.devices) {
+          setDevices(data.devices);
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+
+    es.addEventListener("device_disconnected", (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.devices) {
+          setDevices(data.devices);
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+
+    es.onerror = () => {
+      // SSE failed — fall back to polling
+      es.close();
+      if (fallbackInterval === null) {
+        fallbackInterval = setInterval(() => void fetchDevices(), 3000);
+      }
+    };
 
     return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      es.close();
+      if (fallbackInterval !== null) {
+        clearInterval(fallbackInterval);
+      }
     };
   }, [fetchDevices]);
 
@@ -238,7 +274,7 @@ export function DevicesPage() {
                   key={device.deviceId}
                   device={device}
                   onTaskSuccess={fetchDevices}
-                  onViewScreen={setMirrorDevice}
+                  onViewScreen={handleViewScreen}
                   wsPort={wsPort}
                 />
               ))}

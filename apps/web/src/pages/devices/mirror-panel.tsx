@@ -31,18 +31,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
     wsPort,
   );
 
-  const [lastClick, setLastClick] = useState<{
-    x: number;
-    y: number;
-    relX: number;
-    relY: number;
-    rectW: number;
-    rectH: number;
-    frameW: number;
-    frameH: number;
-  } | null>(null);
-  const [lastAction, setLastAction] = useState<string>("");
-
   const mapPointerToDevice = useCallback(
     (clientX: number, clientY: number) => {
       const img = imgRef.current;
@@ -51,21 +39,10 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
       const relX = (clientX - rect.left) / rect.width;
       const relY = (clientY - rect.top) / rect.height;
       if (relX < 0 || relX > 1 || relY < 0 || relY > 1) return null;
-      const result = {
+      return {
         x: Math.round(relX * frame.width),
         y: Math.round(relY * frame.height),
       };
-      setLastClick({
-        x: result.x,
-        y: result.y,
-        relX: Number(relX.toFixed(3)),
-        relY: Number(relY.toFixed(3)),
-        rectW: Math.round(rect.width),
-        rectH: Math.round(rect.height),
-        frameW: frame.width,
-        frameH: frame.height,
-      });
-      return result;
     },
     [frame],
   );
@@ -109,7 +86,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
 
       if (endPoint === null || distance < 8) {
         sendAction({ type: "click", x: s.deviceStartX, y: s.deviceStartY });
-        setLastAction(`click(${s.deviceStartX},${s.deviceStartY})`);
         return;
       }
 
@@ -121,9 +97,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
         endY: endPoint.y,
         durationMs: Math.min(Math.round(distance / 2), 500),
       });
-      setLastAction(
-        `swipe(${s.deviceStartX},${s.deviceStartY}->${endPoint.x},${endPoint.y})`,
-      );
     },
     [mapPointerToDevice, sendAction],
   );
@@ -132,7 +105,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
     const text = textInput.trim();
     if (!text) return;
     sendAction({ type: "input_text", text });
-    setLastAction(`input_text("${text.slice(0, 20)}")`);
     setTextInput("");
   }, [textInput, sendAction]);
 
@@ -205,9 +177,9 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
               ref={imgRef}
               src={`data:image/${frame.format ?? "png"};base64,${frame.screenshot}`}
               alt={t("devices.mirror.title")}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
+              onMouseDown={isConnected ? handleMouseDown : undefined}
+              onMouseMove={isConnected ? handleMouseMove : undefined}
+              onMouseUp={isConnected ? handleMouseUp : undefined}
               onMouseLeave={() => {
                 swipeRef.current = null;
                 setShowSwipe(false);
@@ -217,8 +189,24 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
               style={{
                 aspectRatio: `${frame.width}/${frame.height}`,
                 maxHeight: "calc(100vh - 220px)",
+                opacity: isConnected ? 1 : 0.5,
               }}
             />
+            {!isConnected && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/40">
+                <div className="text-[13px] text-white font-medium">
+                  {t("devices.mirror.closedHint")}
+                </div>
+                <button
+                  type="button"
+                  onClick={reconnect}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-white rounded-lg border border-white/30 hover:bg-white/10 transition-colors"
+                >
+                  <RefreshCw size={12} />
+                  {t("devices.mirror.retry")}
+                </button>
+              </div>
+            )}
             {showSwipe && (
               <svg
                 className="absolute inset-0 pointer-events-none"
@@ -290,16 +278,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
             <span>
               {frame.width}×{frame.height}
             </span>
-            {lastClick && (
-              <span className="text-orange-500">
-                click=({lastClick.x},{lastClick.y}) rel=({lastClick.relX},
-                {lastClick.relY}) img=({lastClick.rectW}×{lastClick.rectH})
-                frame=({lastClick.frameW}×{lastClick.frameH})
-              </span>
-            )}
-            {lastAction && (
-              <span className="text-green-500 ml-2">→ {lastAction}</span>
-            )}
             {frame.currentApp && (
               <span className="truncate ml-2">{frame.currentApp}</span>
             )}

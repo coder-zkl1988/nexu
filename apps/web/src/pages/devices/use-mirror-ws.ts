@@ -572,12 +572,14 @@ export function useMirrorSocket(
   const [status, setStatus] = useState<MirrorStatus>(
     deviceId === null ? "closed" : "connecting",
   );
+  const [reconnectKey, setReconnectKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
 
   const host = wsHost ?? window.location.hostname;
   const port = wsPort ?? 18790;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey intentionally triggers reconnection
   useEffect(() => {
     if (deviceId === null) {
       setFrame(null);
@@ -614,6 +616,7 @@ export function useMirrorSocket(
         cancelAnimationFrame(rafId);
         rafId = null;
       }
+      setFrame(null);
     }
 
     ws.onopen = () => {
@@ -654,6 +657,15 @@ export function useMirrorSocket(
       // ── Text (JSON) path ────────────────────────────────
       try {
         const data = JSON.parse(event.data as string);
+
+        // Handle phone disconnect notification from server
+        if (data.channel === "mirror" && data.type === "device_disconnected") {
+          cleanup();
+          ws.close();
+          setStatus("closed");
+          return;
+        }
+
         if (data.channel === "mirror" && data.screenshot) {
           const frame: MirrorSnapshotFrame = {
             channel: "mirror",
@@ -687,7 +699,7 @@ export function useMirrorSocket(
       stop();
       wsRef.current = null;
     };
-  }, [deviceId, host, port]);
+  }, [deviceId, host, port, reconnectKey]);
 
   const sendAction = useCallback(
     (action: MirrorClientAction) => {
@@ -706,10 +718,11 @@ export function useMirrorSocket(
   );
 
   const reconnect = useCallback(() => {
-    // Force re-mount by toggling deviceId dependency
-    // The effect will clean up and re-create the WS connection
+    // Increment reconnectKey to trigger the useEffect re-run,
+    // which cleans up the old WS and creates a new one.
     setFrame(null);
     setStatus("connecting");
+    setReconnectKey((k) => k + 1);
   }, []);
 
   return { frame, status, sendAction, reconnect };
