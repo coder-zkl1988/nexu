@@ -9,7 +9,8 @@
   },
   "contracts": {
     "tools": [
-      "render_a2ui"
+      "render_a2ui",
+      "render_skill_confirmation"
     ]
   },
   "activation": {

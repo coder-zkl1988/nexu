@@ -515,6 +515,202 @@ CUSTOM COMPONENTS:
             };
           },
     });
+
+    api.registerTool({
+      name: "render_skill_confirmation",
+      label: "Render Skill Confirmation Card",
+      description: `Render a confirmation card for skill operations that require user approval (posting, commenting, etc.).
+
+WHEN TO USE:
+- The device_execute_skill tool returns a result with status "needs_confirmation"
+- The user needs to review and approve/cancel a write operation before it executes
+
+HOW TO USE:
+- Call this tool with the pending operation details from the needs_confirmation result
+- It generates a standardized confirmation card with screenshot preview, operation summary, and confirm/cancel buttons
+- When the user clicks a button, you receive the action and can call device_execute_skill with action="resume" to proceed or abort
+
+PARAMETERS:
+- surfaceId: Unique surface ID for this confirmation UI
+- appName: Display name of the target app (e.g. "小红书")
+- operationName: Name of the pending operation (e.g. "发布笔记", "发表评论")
+- contentSummary: Key-value pairs of the content to be confirmed (e.g. {"标题": "周末羽毛球", "正文": "..."})
+- screenshotUrl: URL or data URI of the current phone screenshot showing the filled content
+- taskId: The orchestration taskId (needed for resume)
+- subtaskId: The pending subtaskId (needed for resume)`,
+
+      parameters: {
+        type: "object",
+        properties: {
+          surfaceId: {
+            type: "string",
+            description: "Unique identifier for this confirmation surface (e.g. 'xhs-post-confirm')",
+          },
+          appName: {
+            type: "string",
+            description: "Display name of the app (e.g. '小红书')",
+          },
+          operationName: {
+            type: "string",
+            description: "Name of the operation pending confirmation (e.g. '发布笔记')",
+          },
+          contentSummary: {
+            type: "object",
+            description: "Key-value pairs of content to be reviewed (e.g. {\"标题\": \"周末羽毛球\"})",
+            additionalProperties: { type: "string" },
+          },
+          screenshotUrl: {
+            type: "string",
+            description: "Data URI or URL of the current phone screenshot",
+          },
+          taskId: {
+            type: "string",
+            description: "The orchestration taskId for resume",
+          },
+          subtaskId: {
+            type: "string",
+            description: "The pending subtaskId for resume",
+          },
+        },
+        required: ["surfaceId", "appName", "operationName", "contentSummary", "taskId", "subtaskId"],
+      },
+
+      async execute(_toolCallId, params) {
+        // Build component tree for confirmation card
+        const components = [];
+        const rootChildren = [];
+
+        // Header section
+        components.push({
+          id: "confirm-header",
+          type: "Text",
+          content: `📱 ${params.appName} - ${params.operationName}确认`,
+          variant: "h3",
+        });
+        rootChildren.push("confirm-header");
+
+        // Screenshot section (if provided)
+        if (params.screenshotUrl) {
+          components.push({
+            id: "confirm-screenshot",
+            type: "Image",
+            source: params.screenshotUrl,
+            alt: "当前屏幕截图",
+            width: 270,
+            height: 480,
+          });
+          rootChildren.push("confirm-screenshot");
+        }
+
+        // Content summary section
+        const contentChildren = [];
+        components.push({
+          id: "content-label",
+          type: "Text",
+          content: "📋 待确认内容",
+          variant: "h4",
+        });
+        contentChildren.push("content-label");
+
+        const entries = Object.entries(params.contentSummary);
+        for (const [key, value] of entries) {
+          const keyId = `content-key-${key}`;
+          const valueId = `content-value-${key}`;
+          const rowId = `content-row-${key}`;
+
+          components.push({ id: keyId, type: "Text", content: `${key}：`, variant: "body" });
+          components.push({
+            id: valueId,
+            type: "Text",
+            content: value.length > 100 ? value.slice(0, 100) + "..." : value,
+            variant: "body",
+          });
+          components.push({
+            id: rowId,
+            type: "Row",
+            children: [keyId, valueId],
+            gap: 4,
+          });
+          contentChildren.push(rowId);
+        }
+
+        components.push({
+          id: "content-section",
+          type: "Column",
+          children: contentChildren,
+          gap: 6,
+        });
+        rootChildren.push("content-section");
+
+        // Divider
+        components.push({ id: "confirm-divider", type: "Divider" });
+        rootChildren.push("confirm-divider");
+
+        // Action buttons
+        components.push({
+          id: "btn-cancel",
+          type: "Button",
+          label: "❌ 取消",
+          variant: "secondary",
+          action: {
+            event: {
+              name: "skill_confirmation",
+              context: {
+                taskId: params.taskId,
+                subtaskId: params.subtaskId,
+                confirmed: false,
+              },
+            },
+          },
+        });
+
+        components.push({
+          id: "btn-confirm",
+          type: "Button",
+          label: "✅ 确认执行",
+          variant: "primary",
+          action: {
+            event: {
+              name: "skill_confirmation",
+              context: {
+                taskId: params.taskId,
+                subtaskId: params.subtaskId,
+                confirmed: true,
+              },
+            },
+          },
+        });
+
+        components.push({
+          id: "action-buttons",
+          type: "Row",
+          children: ["btn-cancel", "btn-confirm"],
+          gap: 12,
+          alignment: "center",
+        });
+        rootChildren.push("action-buttons");
+
+        // Root card
+        components.push({
+          id: "confirm-card",
+          type: "Card",
+          children: rootChildren,
+          padding: 16,
+          elevation: 2,
+        });
+
+        const jsonl = generateA2UIJSONL(params.surfaceId, components, undefined, undefined);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: ["```a2ui", jsonl, "```"].join("\n"),
+            },
+          ],
+        };
+      },
+    });
   },
 };
 
