@@ -306,11 +306,21 @@ export class DeviceMirrorProxy {
         const size = Buffer.isBuffer(raw)
           ? raw.length
           : (raw as ArrayBuffer).byteLength;
-        const firstByte = Buffer.isBuffer(raw)
-          ? raw[0]
-          : new Uint8Array(raw as ArrayBuffer)[0];
+        const buf = Buffer.isBuffer(raw)
+          ? raw
+          : Buffer.from(raw as ArrayBuffer);
+        const firstByte = buf[0] ?? 0;
+        // Decode touch events for diagnostic logging
+        let detail = `firstByte=0x${firstByte.toString(16).padStart(2, "0")}`;
+        if (firstByte === 0x03 && size >= 36) {
+          // INJECT_TOUCH_EVENT (0x03)
+          const touchAction = buf[1] ?? -1; // 0=DOWN, 1=UP, 2=MOVE
+          const actionNames = ["DOWN", "UP", "MOVE"] as const;
+          const pressure = buf.readUInt16LE(26);
+          detail = `TOUCH ${actionNames[touchAction as 0 | 1 | 2] ?? touchAction} pressure=${pressure} size=${size}`;
+        }
         logger.info(
-          { deviceId, size, firstByte },
+          { deviceId, detail },
           "control bridge: binary frame → upstream",
         );
         upstream.send(raw);

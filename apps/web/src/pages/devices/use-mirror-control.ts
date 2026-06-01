@@ -20,8 +20,8 @@ type ControlStatus = "connecting" | "open" | "closed";
  *   - Otherwise → go through the controller proxy:
  *     ws://{window.location.host}/api/v1/devices/{deviceId}/control
  *
- * Note: screenWidth/screenHeight params are required for binary control protocol
- * encoding (screen-relative touch coordinates).
+ * Action sending:
+ *   - All actions (click, swipe, input_text, press_key, scroll) are sent as JSON
  */
 export function useMirrorControl(
   deviceId: string | null,
@@ -106,21 +106,27 @@ export function useMirrorControl(
         );
         return;
       }
-      const sw = screenWidth ?? 1080;
-      const sh = screenHeight ?? 2400;
-      const frames = encodeMirrorAction(action, sw, sh);
-      console.log(
-        "[mirror-control] sendAction →",
-        frames.length,
-        "binary frames, type:",
-        action.type,
-        "dims:",
-        sw,
-        "x",
-        sh,
-      );
-      for (const frame of frames) {
-        ws.send(frame);
+
+      if (action.type === "touch_raw") {
+        const sw = screenWidth ?? 1080;
+        const sh = screenHeight ?? 2400;
+        const frames = encodeMirrorAction(action, sw, sh);
+        console.log(
+          "[mirror-control] sendAction → binary, frames:",
+          frames.length,
+          "type:",
+          action.type,
+          "dims:",
+          sw,
+          "x",
+          sh,
+        );
+        for (const frame of frames) {
+          ws.send(frame);
+        }
+      } else {
+        console.log("[mirror-control] sendAction → JSON, type:", action.type);
+        ws.send(JSON.stringify(action));
       }
     },
     [screenWidth, screenHeight],

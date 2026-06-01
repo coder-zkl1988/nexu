@@ -264,7 +264,14 @@ function buildInjectTouchEvent(
   writeUint32LE(buf, 14, y);
   writeUint32LE(buf, 18, screenWidth);
   writeUint32LE(buf, 22, screenHeight);
-  writeUint16LE(buf, 26, pressure);
+  // scrcpy expects pressure as uint16 in range [0, 0xffff]:
+  // callers pass either 0.0-1.0 float (touch_raw) or 0xffff (click/swipe).
+  // Normalize 0.0-1.0 → uint16; values already ≥256 are assumed pre-scaled.
+  const pressureU16 =
+    pressure >= 256
+      ? Math.min(Math.round(pressure), 0xffff)
+      : Math.round(pressure * 0xffff);
+  writeUint16LE(buf, 26, pressureU16);
   writeUint32LE(buf, 28, actionButton);
   writeUint32LE(buf, 32, buttons);
   return buf;
@@ -346,7 +353,7 @@ export function encodeMirrorAction(
           action.y,
           screenWidth,
           screenHeight,
-          1000, // pressure = max
+          0xffff, // pressure = max (uint16)
           actionButton,
           buttons,
         ),
@@ -376,7 +383,7 @@ export function encodeMirrorAction(
           action.startY,
           screenWidth,
           screenHeight,
-          1000,
+          0xffff, // pressure = max (uint16)
           actionButton,
           buttons,
         ),
@@ -387,7 +394,7 @@ export function encodeMirrorAction(
           action.endY,
           screenWidth,
           screenHeight,
-          1000,
+          0xffff, // pressure = max (uint16)
           actionButton,
           buttons,
         ),
@@ -398,7 +405,7 @@ export function encodeMirrorAction(
           action.endY,
           screenWidth,
           screenHeight,
-          0,
+          0, // pressure = 0
           actionButton,
           buttons,
         ),

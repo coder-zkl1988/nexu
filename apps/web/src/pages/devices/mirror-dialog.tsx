@@ -1,5 +1,5 @@
 import { TouchAction } from "@nexu/shared";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
 import { MirrorGLRenderer } from "./mirror-renderer";
@@ -19,7 +19,16 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
   const titleId = useId();
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<MirrorGLRenderer | null>(null);
-  const upTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(
+    new Map(),
+  );
+  const pendingMoveRef = useRef<
+    Map<number, { x: number; y: number; pressure: number; buttons: number }>
+  >(new Map());
+  const moveRafRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
   const { frame, status: videoStatus } = useMirrorSocket(
     open ? device.deviceId : null,
     wsHost,
@@ -29,8 +38,8 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
     open ? device.deviceId : null,
     wsHost,
     wsPort,
-    frame?.width,
-    frame?.height,
+    frame?.screenWidth ?? frame?.width,
+    frame?.screenHeight ?? frame?.height,
   );
 
   const isConnected = videoStatus === "open" && controlStatus === "open";
@@ -39,6 +48,33 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
     : videoStatus === "connecting" || controlStatus === "connecting"
       ? "connecting"
       : "closed";
+
+  const flushPendingMoves = useCallback(() => {
+    moveRafRef.current = null;
+    const pending = pendingMoveRef.current;
+    if (pending.size === 0) return;
+    for (const [pointerId, move] of pending) {
+      sendAction({
+        type: "touch_raw",
+        action: TouchAction.MOVE,
+        pointerId,
+        x: move.x,
+        y: move.y,
+        pressure: move.pressure,
+        actionButton: 0,
+        buttons: move.buttons,
+      });
+    }
+    pending.clear();
+  }, [sendAction]);
+
+  useEffect(() => {
+    return () => {
+      if (moveRafRef.current !== null) {
+        cancelAnimationFrame(moveRafRef.current);
+      }
+    };
+  }, []);
 
   // Initialize WebGL renderer when dialog opens and canvas is available
   useEffect(() => {
@@ -51,24 +87,12 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
       const unregister = registerMirrorRenderer(device.deviceId, renderer);
 
       return () => {
-        if (upTimerRef.current !== null) {
-          clearTimeout(upTimerRef.current);
-          upTimerRef.current = null;
-        }
         unregister();
         renderer.destroy();
         rendererRef.current = null;
       };
     }
   }, [open, canvasEl, device.deviceId]);
-
-  // Clean up pending tap timer on close
-  useEffect(() => {
-    if (!open && upTimerRef.current !== null) {
-      clearTimeout(upTimerRef.current);
-      upTimerRef.current = null;
-    }
-  }, [open]);
 
   // Update canvas size when frame dimensions change
   useEffect(() => {
@@ -80,50 +104,141 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
 
   if (!open) return null;
 
-  const mapPointerToDevice = (clientX: number, clientY: number) => {
-    const canvas = canvasEl;
-    if (canvas === null || frame === null) return null;
-    const rect = canvas.getBoundingClientRect();
-    const relX = (clientX - rect.left) / rect.width;
-    const relY = (clientY - rect.top) / rect.height;
-    if (relX < 0 || relX > 1 || relY < 0 || relY > 1) return null;
-    return {
-      x: Math.round(relX * frame.width),
-      y: Math.round(relY * frame.height),
-    };
-  };
+  const mapPointerToDevice = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = canvasEl;
+      if (canvas === null || frame === null) return null;
+      const rect = canvas.getBoundingClientRect();
+      const relX = (clientX - rect.left) / rect.width;
+      const relY = (clientY - rect.top) / rect.height;
+      if (relX < 0 || relX > 1 || relY < 0 || relY > 1) return null;
+      return {
+        x: Math.round(relX * (frame.screenWidth ?? frame.width)),
+        y: Math.round(relY * (frame.screenHeight ?? frame.height)),
+      };
+    },
+    [frame, canvasEl],
+  );
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isConnected) return;
-    const point = mapPointerToDevice(e.clientX, e.clientY);
-    if (point === null) return;
-    // Send DOWN immediately
-    sendAction({
-      type: "touch_raw",
-      action: TouchAction.DOWN,
-      pointerId: e.pointerId,
-      x: point.x,
-      y: point.y,
-      pressure: e.pressure || 1,
-      actionButton: 0,
-      buttons: e.buttons,
-    });
-    // Schedule UP after short delay (tap gesture)
-    const ptrId = e.pointerId;
-    upTimerRef.current = setTimeout(() => {
-      upTimerRef.current = null;
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!isConnected) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const point = mapPointerToDevice(e.clientX, e.clientY);
+      if (point === null) return;
+      activePointersRef.current.set(e.pointerId, { ...point });
+
+      const pressure = e.buttons & 2 ? 0 : e.pressure || 1;
+      sendAction({
+        type: "touch_raw",
+        action: TouchAction.DOWN,
+        pointerId: e.pointerId,
+        x: point.x,
+        y: point.y,
+        pressure,
+        actionButton: 0,
+        buttons: e.buttons,
+      });
+
+      // Long press
+      longPressFiredRef.current = false;
+      longPressStartRef.current = { x: e.clientX, y: e.clientY };
+      longPressTimerRef.current = setTimeout(() => {
+        if (longPressStartRef.current === null) return;
+        sendAction({
+          type: "touch_raw",
+          action: TouchAction.UP,
+          pointerId: e.pointerId,
+          x: point.x,
+          y: point.y,
+          pressure: 0,
+          actionButton: 0,
+          buttons: 0,
+        });
+        longPressFiredRef.current = true;
+        sendAction({
+          type: "long_press",
+          x: point.x,
+          y: point.y,
+          durationMs: 500,
+        });
+      }, 500);
+    },
+    [isConnected, mapPointerToDevice, sendAction],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (longPressTimerRef.current !== null && longPressStartRef.current) {
+        const dx = e.clientX - longPressStartRef.current.x;
+        const dy = e.clientY - longPressStartRef.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 8) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+          longPressStartRef.current = null;
+        }
+      }
+
+      if (!activePointersRef.current.has(e.pointerId)) return;
+      const point = mapPointerToDevice(e.clientX, e.clientY);
+      if (point === null) return;
+      const activePtr = activePointersRef.current.get(e.pointerId);
+      if (activePtr) {
+        activePtr.x = point.x;
+        activePtr.y = point.y;
+      }
+
+      const pressure = e.buttons & 2 ? 0 : e.pressure || 1;
+      pendingMoveRef.current.set(e.pointerId, {
+        x: point.x,
+        y: point.y,
+        pressure,
+        buttons: e.buttons,
+      });
+      if (moveRafRef.current === null) {
+        moveRafRef.current = requestAnimationFrame(flushPendingMoves);
+      }
+    },
+    [mapPointerToDevice, flushPendingMoves],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      pendingMoveRef.current.delete(e.pointerId);
+      if (pendingMoveRef.current.size === 0 && moveRafRef.current !== null) {
+        cancelAnimationFrame(moveRafRef.current);
+        moveRafRef.current = null;
+      }
+      if (longPressTimerRef.current !== null) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      longPressStartRef.current = null;
+
+      if (longPressFiredRef.current) {
+        activePointersRef.current.delete(e.pointerId);
+        longPressFiredRef.current = false;
+        return;
+      }
+
+      activePointersRef.current.delete(e.pointerId);
+      const point = mapPointerToDevice(e.clientX, e.clientY);
+      if (point === null) return;
       sendAction({
         type: "touch_raw",
         action: TouchAction.UP,
-        pointerId: ptrId,
+        pointerId: e.pointerId,
         x: point.x,
         y: point.y,
         pressure: 0,
         actionButton: 0,
         buttons: 0,
       });
-    }, 50);
-  };
+      longPressFiredRef.current = false;
+    },
+    [mapPointerToDevice, sendAction],
+  );
 
   const statusText =
     status === "connecting"
@@ -181,9 +296,12 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
             <canvas
               ref={setCanvasEl}
               onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
               className="w-full rounded-lg cursor-pointer select-none"
               style={{
-                aspectRatio: `${frame.width}/${frame.height}`,
+                aspectRatio: `${frame.screenWidth ?? frame.width}/${frame.screenHeight ?? frame.height}`,
                 touchAction: "none",
               }}
             />

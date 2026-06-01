@@ -33,6 +33,10 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
       }
     >
   >(new Map());
+  const pendingMoveRef = useRef<
+    Map<number, { x: number; y: number; pressure: number; buttons: number }>
+  >(new Map());
+  const moveRafRef = useRef<number | null>(null);
   const visualPointerRef = useRef<{
     id: number;
     startX: number;
@@ -99,6 +103,33 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
     reconnectVideo();
     reconnectControl();
   }, [reconnectVideo, reconnectControl]);
+
+  const flushPendingMoves = useCallback(() => {
+    moveRafRef.current = null;
+    const pending = pendingMoveRef.current;
+    if (pending.size === 0) return;
+    for (const [pointerId, move] of pending) {
+      sendAction({
+        type: "touch_raw",
+        action: TouchAction.MOVE,
+        pointerId,
+        x: move.x,
+        y: move.y,
+        pressure: move.pressure,
+        actionButton: 0,
+        buttons: move.buttons,
+      });
+    }
+    pending.clear();
+  }, [sendAction]);
+
+  useEffect(() => {
+    return () => {
+      if (moveRafRef.current !== null) {
+        cancelAnimationFrame(moveRafRef.current);
+      }
+    };
+  }, []);
 
   // Initialize WebGL renderer and register with decoder
   useEffect(() => {
@@ -184,7 +215,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
         startDeviceY: point.y,
       });
 
-      // Right-click → hover (pressure=0)
       const pressure = e.buttons & 2 ? 0 : e.pressure || 1;
       sendAction({
         type: "touch_raw",
@@ -197,14 +227,12 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
         buttons: e.buttons,
       });
 
-      // Start long press detection
+      // Long press detection
       longPressFiredRef.current = false;
       longPressStartRef.current = { x: e.clientX, y: e.clientY };
       longPressTimerRef.current = setTimeout(() => {
         const start = longPressStartRef.current;
         if (start === null) return;
-        // Close the initial touch_raw DOWN with a matching UP before sending semantic long_press
-        // This prevents an orphaned DOWN in the Android gesture buffer
         sendAction({
           type: "touch_raw",
           action: TouchAction.UP,
@@ -224,7 +252,7 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
         });
       }, 500);
 
-      // Visual swipe indicator: track first pointer only
+      // Visual swipe indicator
       if (activePointersRef.current.size === 1) {
         visualPointerRef.current = {
           id: e.pointerId,
@@ -239,7 +267,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      // Cancel long press if moved significantly
       if (longPressTimerRef.current !== null && longPressStartRef.current) {
         const dx = e.clientX - longPressStartRef.current.x;
         const dy = e.clientY - longPressStartRef.current.y;
@@ -249,13 +276,14 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
           longPressStartRef.current = null;
         }
       }
+
       const active = activePointersRef.current.get(e.pointerId);
       if (active === undefined) return;
       const point = mapPointerToDevice(e.clientX, e.clientY);
       if (point === null) return;
       Object.assign(active, { x: point.x, y: point.y });
 
-      // Visual swipe indicator for the tracked pointer
+      // Visual swipe indicator
       const visual = visualPointerRef.current;
       if (visual && visual.id === e.pointerId) {
         setShowSwipe(true);
@@ -267,27 +295,30 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
         });
       }
 
-      // Only send MOVE if pointer is captured (i.e., button held)
-      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      // Buffer MOVE for rAF throttling
+      if (activePointersRef.current.has(e.pointerId)) {
         const pressure = e.buttons & 2 ? 0 : e.pressure || 1;
-        sendAction({
-          type: "touch_raw",
-          action: TouchAction.MOVE,
-          pointerId: e.pointerId,
+        pendingMoveRef.current.set(e.pointerId, {
           x: point.x,
           y: point.y,
           pressure,
-          actionButton: 0,
           buttons: e.buttons,
         });
+        if (moveRafRef.current === null) {
+          moveRafRef.current = requestAnimationFrame(flushPendingMoves);
+        }
       }
     },
-    [mapPointerToDevice, sendAction],
+    [mapPointerToDevice, flushPendingMoves],
   );
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
-      // Clear long press timer
+      pendingMoveRef.current.delete(e.pointerId);
+      if (pendingMoveRef.current.size === 0 && moveRafRef.current !== null) {
+        cancelAnimationFrame(moveRafRef.current);
+        moveRafRef.current = null;
+      }
       if (longPressTimerRef.current !== null) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
@@ -295,8 +326,6 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
       longPressStartRef.current = null;
 
       if (longPressFiredRef.current) {
-        // Long press already handled the complete gesture on device
-        // Skip the UP event to avoid spurious Click on Android
         if (e.target instanceof HTMLElement) {
           try {
             e.target.releasePointerCapture(e.pointerId);
@@ -322,21 +351,24 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
         buttons: 0,
       });
 
-      // Clear visual indicator if this was the tracked pointer
       const visual = visualPointerRef.current;
       if (visual && visual.id === e.pointerId) {
         visualPointerRef.current = null;
       }
-
       if (activePointersRef.current.size === 0) {
         setShowSwipe(false);
       }
       longPressFiredRef.current = false;
     },
-    [sendAction, mapPointerToDevice],
+    [mapPointerToDevice, sendAction],
   );
 
   const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    pendingMoveRef.current.delete(e.pointerId);
+    if (pendingMoveRef.current.size === 0 && moveRafRef.current !== null) {
+      cancelAnimationFrame(moveRafRef.current);
+      moveRafRef.current = null;
+    }
     if (longPressTimerRef.current !== null) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
@@ -345,17 +377,12 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
     longPressFiredRef.current = false;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // Already released
-    }
-
+    } catch {}
     activePointersRef.current.delete(e.pointerId);
-
     const visual = visualPointerRef.current;
     if (visual && visual.id === e.pointerId) {
       visualPointerRef.current = null;
     }
-
     if (activePointersRef.current.size === 0) {
       setShowSwipe(false);
     }
@@ -366,10 +393,17 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
       if (!isConnected || !frame) return;
       const point = mapPointerToDevice(e.clientX, e.clientY);
       if (point === null) return;
-      // Normalize wheel delta to scroll values (-1 to 1)
-      const vScroll = Math.max(-1, Math.min(1, -e.deltaY / 100));
-      const hScroll = Math.max(-1, Math.min(1, e.deltaX / 100));
-      sendAction({ type: "scroll", x: point.x, y: point.y, hScroll, vScroll });
+      // Convert scroll to swipe — scroll distance proportional to deltaY
+      const scrollDist = Math.max(50, Math.min(400, Math.abs(e.deltaY) * 2));
+      const endX = point.x;
+      const endY = point.y + (e.deltaY > 0 ? -scrollDist : scrollDist);
+      sendAction({
+        type: "swipe",
+        startX: point.x,
+        startY: point.y,
+        endX,
+        endY,
+      });
     },
     [isConnected, frame, mapPointerToDevice, sendAction],
   );
