@@ -82,27 +82,20 @@ export function registerDeviceControlRoutes(
         }
       }
 
-      // Listen for changes
+      // Listen for changes — broadcast immediately without re-checking
+      // isAvailable(). The polling service already gates events on availability.
       const unsub = deviceEventEmitter.onChange(async (event) => {
         if (aborted) return;
         try {
-          if (await container.deviceControlService.isAvailable()) {
-            const list = await container.deviceControlService.listDevices();
-            const devices = list.devices.map((d) => ({
-              ...d,
-              name: container.deviceNameStore.get(d.deviceId) ?? d.name,
-            }));
-            await stream.writeSSE({
-              data: JSON.stringify({
-                type: event.type,
-                deviceId: event.deviceId,
-                devices,
-              }),
-              event: event.type,
-            });
-          }
+          await stream.writeSSE({
+            data: JSON.stringify({
+              type: event.type,
+              deviceId: event.deviceId,
+            }),
+            event: event.type,
+          });
         } catch {
-          /* ignore */
+          /* ignore — likely client disconnected */
         }
       });
 

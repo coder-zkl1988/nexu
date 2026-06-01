@@ -29,6 +29,7 @@ import { ChannelFallbackService } from "../services/channel-fallback-service.js"
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
 import { DeviceControlService } from "../services/device-control-service.js";
+import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
 import { DevicePollingService } from "../services/device-polling-service.js";
 import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
 import {
@@ -106,6 +107,7 @@ export interface ControllerContainer {
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
+  deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   deviceNameStore: Map<string, string>;
@@ -219,6 +221,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     deviceTaskHistoryStore,
   );
+  const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
   const devicePollingService = new DevicePollingService(deviceControlService);
   const attachmentStore = new AttachmentStore({
     openclawStateDir: env.openclawStateDir,
@@ -511,6 +514,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
+    deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,
     deviceNameStore: new Map(),
@@ -562,6 +566,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         clearInterval(nexuOfficialModelRefreshInterval);
         skillhubService.dispose();
         devicePollingService.dispose();
+        deviceMirrorProxy.close();
         openclawAuthService.dispose();
         channelFallbackService.stop();
         wsClient.stop();

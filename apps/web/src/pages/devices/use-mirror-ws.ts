@@ -1,7 +1,41 @@
-import type { MirrorClientAction, MirrorSnapshotFrame } from "@nexu/shared";
+import type { MirrorSnapshotFrame } from "@nexu/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MirrorGLRenderer } from "./mirror-renderer";
 
 type MirrorStatus = "connecting" | "open" | "closed";
+
+// ── Global renderer registry ──────────────────────────────
+
+/** Map of deviceId → renderer registration */
+const rendererRegistry = new Map<
+  string,
+  {
+    renderer: MirrorGLRenderer;
+    callback: (frame: VideoFrame) => void;
+  }
+>();
+
+/** Register a renderer for a specific device */
+export function registerMirrorRenderer(
+  deviceId: string,
+  renderer: MirrorGLRenderer,
+): () => void {
+  const callback = (frame: VideoFrame) => renderer.render(frame);
+  rendererRegistry.set(deviceId, { renderer, callback });
+  return () => {
+    const entry = rendererRegistry.get(deviceId);
+    if (entry && entry.renderer === renderer) {
+      rendererRegistry.delete(deviceId);
+    }
+  };
+}
+
+/** Get the render callback for a device (used by H264Decoder) */
+export function getMirrorRenderCallback(
+  deviceId: string,
+): ((frame: VideoFrame) => void) | null {
+  return rendererRegistry.get(deviceId)?.callback ?? null;
+}
 
 // ── H.264 Annex B helpers ─────────────────────────────────
 
@@ -412,7 +446,53 @@ class H264Decoder {
   }
 
   private handleDecodedFrame(videoFrame: VideoFrame): void {
-    if (this.closed || !this.ctx || !this.canvas) {
+    if (this.closed) {
+      videoFrame.close();
+      return;
+    }
+
+    // If a WebGL renderer is registered for this device, use it for direct rendering
+    const renderCallback = getMirrorRenderCallback(this.deviceId);
+    if (renderCallback !== null) {
+      // Read videoFrame dimensions BEFORE renderCallback, because
+      // renderer.render() calls frame.close() which zeros displayWidth/displayHeight.
+      const vfDisplayW = videoFrame.displayWidth;
+      const vfDisplayH = videoFrame.displayHeight;
+
+      renderCallback(videoFrame);
+
+      // Still emit metadata for coordinate mapping and state updates
+      const frameMeta: MirrorSnapshotFrame = {
+        channel: "mirror",
+        type: "realtime",
+        deviceId: this.deviceId,
+        screenshot: "", // No JPEG needed with WebGL renderer
+        format: "jpeg",
+        width: this.originalWidth || vfDisplayW,
+        height: this.originalHeight || vfDisplayH,
+        screenWidth: this.originalWidth || vfDisplayW,
+        screenHeight: this.originalHeight || vfDisplayH,
+        streamWidth: vfDisplayW || this.streamWidth,
+        streamHeight: vfDisplayH || this.streamHeight,
+        timestamp: Date.now(),
+        deviceStatus: "busy",
+      };
+
+      this.pendingFrame = frameMeta;
+      if (this.rafId === null) {
+        this.rafId = requestAnimationFrame(() => {
+          this.rafId = null;
+          if (this.pendingFrame !== null) {
+            this.onFrame(this.pendingFrame);
+            this.pendingFrame = null;
+          }
+        });
+      }
+      return;
+    }
+
+    // Legacy JPEG path (when no WebGL renderer)
+    if (!this.ctx || !this.canvas) {
       videoFrame.close();
       return;
     }
@@ -474,6 +554,10 @@ class H264Decoder {
       format: "jpeg",
       width: this.originalWidth || this.canvas.width,
       height: this.originalHeight || this.canvas.height,
+      screenWidth: this.originalWidth || this.canvas.width,
+      screenHeight: this.originalHeight || this.canvas.height,
+      streamWidth: this.streamWidth || this.canvas.width,
+      streamHeight: this.streamHeight || this.canvas.height,
       timestamp: Date.now(),
       deviceStatus: "busy",
     };
@@ -508,7 +592,6 @@ class H264Decoder {
     // These come from the binary frame header (full screen size, not half-resolution stream size).
     this.originalWidth = screenWidth || width;
     this.originalHeight = screenHeight || height;
-    // Store stream dimensions for cropping macroblock padding.
     this.streamWidth = width;
     this.streamHeight = height;
 
@@ -556,6 +639,8 @@ class H264Decoder {
       this.decoder.close();
       this.decoder = null;
     }
+    this.canvas = null;
+    this.ctx = null;
   }
 }
 
@@ -574,10 +659,11 @@ export function useMirrorSocket(
   );
   const [reconnectKey, setReconnectKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
-  const stopRef = useRef<(() => void) | null>(null);
 
-  const host = wsHost ?? window.location.hostname;
-  const port = wsPort ?? 18790;
+  const url =
+    wsHost !== undefined || wsPort !== undefined
+      ? `ws://${wsHost ?? window.location.hostname}:${wsPort ?? 18790}/mirror`
+      : `ws://${window.location.host}/api/v1/devices/${deviceId === null ? "" : encodeURIComponent(deviceId)}/mirror`;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey intentionally triggers reconnection
   useEffect(() => {
@@ -588,7 +674,6 @@ export function useMirrorSocket(
       return;
     }
 
-    const url = `ws://${host}:${port}/mirror`;
     const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
@@ -620,7 +705,10 @@ export function useMirrorSocket(
     }
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ deviceId, fps: 30 }));
+      // Direct mode: send subscription message; proxy mode: proxy handles upstream subscription
+      if (wsHost !== undefined || wsPort !== undefined) {
+        ws.send(JSON.stringify({ deviceId, fps: 30 }));
+      }
     };
 
     ws.onclose = () => {
@@ -636,6 +724,12 @@ export function useMirrorSocket(
     ws.onmessage = (event: MessageEvent) => {
       // ── Binary (H.264) path ─────────────────────────────
       if (event.data instanceof ArrayBuffer) {
+        console.log(
+          "[mirror-ws] binary frame received, size:",
+          event.data.byteLength,
+          "firstByte:",
+          new Uint8Array(event.data)[0],
+        );
         if (!decoder) return;
 
         const header = parseBinaryFrameHeader(event.data);
@@ -699,23 +793,7 @@ export function useMirrorSocket(
       stop();
       wsRef.current = null;
     };
-  }, [deviceId, host, port, reconnectKey]);
-
-  const sendAction = useCallback(
-    (action: MirrorClientAction) => {
-      const ws = wsRef.current;
-      if (ws === null || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(
-        JSON.stringify({
-          channel: "mirror",
-          type: action.type,
-          params: action,
-          deviceId,
-        }),
-      );
-    },
-    [deviceId],
-  );
+  }, [deviceId, url, reconnectKey]);
 
   const reconnect = useCallback(() => {
     // Increment reconnectKey to trigger the useEffect re-run,
@@ -725,5 +803,5 @@ export function useMirrorSocket(
     setReconnectKey((k) => k + 1);
   }, []);
 
-  return { frame, status, sendAction, reconnect };
+  return { frame, status, reconnect };
 }

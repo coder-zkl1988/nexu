@@ -7,6 +7,8 @@ import {
 
 const DEFAULT_POLL_INTERVAL_MS = 3_000;
 const AVAILABILITY_CHECK_INTERVAL_MS = 10_000;
+/** Consecutive failures before declaring the plugin offline. */
+const OFFLINE_THRESHOLD = 3;
 
 export class DevicePollingService {
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -14,6 +16,8 @@ export class DevicePollingService {
   private previousDeviceIds = new Set<string>();
   private polling = false;
   private disposed = false;
+  /** Consecutive isAvailable() failures — resets to 0 on success. */
+  private consecutiveFailures = 0;
 
   constructor(
     private readonly deviceControlService: DeviceControlService,
@@ -54,6 +58,7 @@ export class DevicePollingService {
       this.availabilityHandle = null;
     }
     this.previousDeviceIds.clear();
+    this.consecutiveFailures = 0;
     logger.info({}, "device-polling-service: stopped");
   }
 
@@ -61,10 +66,49 @@ export class DevicePollingService {
     if (this.disposed) return;
     try {
       const available = await this.deviceControlService.isAvailable();
-      if (!available && this.intervalHandle) {
-        // Plugin went offline — stop polling, emit disconnected for known devices
-        clearInterval(this.intervalHandle);
-        this.intervalHandle = null;
+      if (available) {
+        this.consecutiveFailures = 0;
+        if (!this.intervalHandle) {
+          // Plugin came back — resume polling
+          this.intervalHandle = setInterval(() => {
+            void this.poll();
+          }, this.pollIntervalMs);
+          this.intervalHandle.unref?.();
+          logger.debug(
+            {},
+            "device-polling-service: plugin online, resumed polling",
+          );
+        }
+      } else {
+        this.consecutiveFailures++;
+        if (
+          this.consecutiveFailures >= OFFLINE_THRESHOLD &&
+          this.intervalHandle
+        ) {
+          // Plugin genuinely offline — stop polling, emit disconnected for known
+          // devices. We emit BEFORE clearing so the set is still populated.
+          for (const id of this.previousDeviceIds) {
+            deviceEventEmitter.emitChange({
+              type: "device_disconnected",
+              deviceId: id,
+            });
+          }
+          this.previousDeviceIds.clear();
+          clearInterval(this.intervalHandle);
+          this.intervalHandle = null;
+          logger.debug(
+            { consecutiveFailures: this.consecutiveFailures },
+            "device-polling-service: plugin offline, paused polling",
+          );
+        }
+      }
+    } catch {
+      // Treat exception as a failure — don't crash the timer loop.
+      this.consecutiveFailures++;
+      if (
+        this.consecutiveFailures >= OFFLINE_THRESHOLD &&
+        this.intervalHandle
+      ) {
         for (const id of this.previousDeviceIds) {
           deviceEventEmitter.emitChange({
             type: "device_disconnected",
@@ -72,23 +116,13 @@ export class DevicePollingService {
           });
         }
         this.previousDeviceIds.clear();
+        clearInterval(this.intervalHandle);
+        this.intervalHandle = null;
         logger.debug(
-          {},
-          "device-polling-service: plugin offline, paused polling",
-        );
-      } else if (available && !this.intervalHandle) {
-        // Plugin came back — resume polling
-        this.intervalHandle = setInterval(() => {
-          void this.poll();
-        }, this.pollIntervalMs);
-        this.intervalHandle.unref?.();
-        logger.debug(
-          {},
-          "device-polling-service: plugin online, resumed polling",
+          { consecutiveFailures: this.consecutiveFailures },
+          "device-polling-service: plugin offline (exception path), paused polling",
         );
       }
-    } catch {
-      // ignore
     }
   }
 
@@ -96,11 +130,9 @@ export class DevicePollingService {
     if (this.polling || this.disposed) return;
     this.polling = true;
     try {
-      const available = await this.deviceControlService.isAvailable();
-      if (!available) {
-        return;
-      }
-
+      // Availability is managed by checkAvailability() — no need to call
+      // isAvailable() here. A stale poll after going offline is harmless; the
+      // next checkAvailability() will clean up.
       const list = await this.deviceControlService.listDevices();
       const currentIds = new Set(list.devices.map((d) => d.deviceId));
 

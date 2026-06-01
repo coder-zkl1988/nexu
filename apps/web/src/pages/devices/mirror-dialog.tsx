@@ -1,7 +1,10 @@
-import { useId, useRef } from "react";
+import { TouchAction } from "@nexu/shared";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DeviceInfo } from "./device-card";
-import { useMirrorSocket } from "./use-mirror-ws";
+import { MirrorGLRenderer } from "./mirror-renderer";
+import { useMirrorControl } from "./use-mirror-control";
+import { registerMirrorRenderer, useMirrorSocket } from "./use-mirror-ws";
 
 interface Props {
   device: DeviceInfo;
@@ -14,19 +17,73 @@ interface Props {
 export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
   const { t } = useTranslation();
   const titleId = useId();
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const { frame, status, sendAction } = useMirrorSocket(
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
+  const rendererRef = useRef<MirrorGLRenderer | null>(null);
+  const upTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { frame, status: videoStatus } = useMirrorSocket(
     open ? device.deviceId : null,
     wsHost,
     wsPort,
   );
+  const { status: controlStatus, sendAction } = useMirrorControl(
+    open ? device.deviceId : null,
+    wsHost,
+    wsPort,
+    frame?.width,
+    frame?.height,
+  );
+
+  const isConnected = videoStatus === "open" && controlStatus === "open";
+  const status = isConnected
+    ? "open"
+    : videoStatus === "connecting" || controlStatus === "connecting"
+      ? "connecting"
+      : "closed";
+
+  // Initialize WebGL renderer when dialog opens and canvas is available
+  useEffect(() => {
+    if (open && canvasEl && !rendererRef.current) {
+      const renderer = new MirrorGLRenderer();
+      renderer.init(canvasEl);
+      rendererRef.current = renderer;
+
+      // Register with the decoder for this device
+      const unregister = registerMirrorRenderer(device.deviceId, renderer);
+
+      return () => {
+        if (upTimerRef.current !== null) {
+          clearTimeout(upTimerRef.current);
+          upTimerRef.current = null;
+        }
+        unregister();
+        renderer.destroy();
+        rendererRef.current = null;
+      };
+    }
+  }, [open, canvasEl, device.deviceId]);
+
+  // Clean up pending tap timer on close
+  useEffect(() => {
+    if (!open && upTimerRef.current !== null) {
+      clearTimeout(upTimerRef.current);
+      upTimerRef.current = null;
+    }
+  }, [open]);
+
+  // Update canvas size when frame dimensions change
+  useEffect(() => {
+    if (frame && rendererRef.current && canvasEl) {
+      const rect = canvasEl.getBoundingClientRect();
+      rendererRef.current.resize(rect.width, rect.height);
+    }
+  }, [frame, canvasEl]);
 
   if (!open) return null;
 
   const mapPointerToDevice = (clientX: number, clientY: number) => {
-    const img = imgRef.current;
-    if (img === null || frame === null) return null;
-    const rect = img.getBoundingClientRect();
+    const canvas = canvasEl;
+    if (canvas === null || frame === null) return null;
+    const rect = canvas.getBoundingClientRect();
     const relX = (clientX - rect.left) / rect.width;
     const relY = (clientY - rect.top) / rect.height;
     if (relX < 0 || relX > 1 || relY < 0 || relY > 1) return null;
@@ -36,10 +93,36 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
     };
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLImageElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isConnected) return;
     const point = mapPointerToDevice(e.clientX, e.clientY);
     if (point === null) return;
-    sendAction({ type: "click", x: point.x, y: point.y });
+    // Send DOWN immediately
+    sendAction({
+      type: "touch_raw",
+      action: TouchAction.DOWN,
+      pointerId: e.pointerId,
+      x: point.x,
+      y: point.y,
+      pressure: e.pressure || 1,
+      actionButton: 0,
+      buttons: e.buttons,
+    });
+    // Schedule UP after short delay (tap gesture)
+    const ptrId = e.pointerId;
+    upTimerRef.current = setTimeout(() => {
+      upTimerRef.current = null;
+      sendAction({
+        type: "touch_raw",
+        action: TouchAction.UP,
+        pointerId: ptrId,
+        x: point.x,
+        y: point.y,
+        pressure: 0,
+        actionButton: 0,
+        buttons: 0,
+      });
+    }, 50);
   };
 
   const statusText =
@@ -95,13 +178,14 @@ export function MirrorDialog({ device, open, onClose, wsHost, wsPort }: Props) {
                 : statusText}
             </div>
           ) : (
-            // biome-ignore lint/a11y/useKeyWithClickEvents: tap-relay to a phone has no keyboard analog
-            <img
-              ref={imgRef}
-              src={`data:image/png;base64,${frame.screenshot}`}
-              alt={t("devices.mirror.title")}
-              onClick={handleClick}
+            <canvas
+              ref={setCanvasEl}
+              onPointerDown={handlePointerDown}
               className="w-full rounded-lg cursor-pointer select-none"
+              style={{
+                aspectRatio: `${frame.width}/${frame.height}`,
+                touchAction: "none",
+              }}
             />
           )}
         </div>

@@ -17,16 +17,18 @@ export function useDeviceSnapshot(
   const wsRef = useRef<WebSocket | null>(null);
   const decoderRef = useRef<H264ThumbnailDecoder | null>(null);
 
-  const port = wsPort ?? 18790;
-
   useEffect(() => {
     if (!deviceId) {
       setSnapshot(null);
       return;
     }
 
-    const host = window.location.hostname;
-    const url = `ws://${host}:${port}/mirror`;
+    // When wsPort is provided, use direct mode (for remote/external access).
+    // Otherwise, proxy through the controller's DeviceMirrorProxy.
+    const url =
+      wsPort !== undefined
+        ? `ws://${window.location.hostname}:${wsPort}/mirror`
+        : `ws://${window.location.host}/api/v1/devices/${encodeURIComponent(deviceId)}/mirror`;
 
     const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
@@ -40,8 +42,11 @@ export function useDeviceSnapshot(
     decoderRef.current = decoder;
 
     ws.onopen = () => {
-      // Subscribe to the device's mirror stream at low fps for thumbnail
-      ws.send(JSON.stringify({ deviceId, fps: 1 }));
+      // In direct mode, send subscribe message with low fps for thumbnail.
+      // In proxy mode, the proxy handles the subscribe message upstream.
+      if (wsPort !== undefined) {
+        ws.send(JSON.stringify({ deviceId, fps: 1 }));
+      }
     };
 
     ws.onmessage = (event) => {
@@ -79,7 +84,8 @@ export function useDeviceSnapshot(
       wsRef.current = null;
       decoderRef.current = null;
     };
-  }, [deviceId, port]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: wsPort intentionally triggers reconnection when changed
+  }, [deviceId, wsPort]);
 
   return snapshot;
 }

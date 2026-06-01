@@ -99,26 +99,12 @@ export function DevicesPage() {
       }
     });
 
-    es.addEventListener("device_connected", (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.devices) {
-          setDevices(data.devices);
-        }
-      } catch {
-        /* ignore */
-      }
+    es.addEventListener("device_connected", () => {
+      void fetchDevices();
     });
 
-    es.addEventListener("device_disconnected", (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.devices) {
-          setDevices(data.devices);
-        }
-      } catch {
-        /* ignore */
-      }
+    es.addEventListener("device_disconnected", () => {
+      void fetchDevices();
     });
 
     es.onerror = () => {
@@ -275,7 +261,6 @@ export function DevicesPage() {
                   device={device}
                   onTaskSuccess={fetchDevices}
                   onViewScreen={handleViewScreen}
-                  wsPort={wsPort}
                 />
               ))}
             </div>
@@ -288,8 +273,6 @@ export function DevicesPage() {
           <MirrorPanel
             device={mirrorDevice}
             onClose={() => setMirrorDevice(null)}
-            wsHost={deviceControl?.localIp}
-            wsPort={wsPort}
           />
         </div>
       )}

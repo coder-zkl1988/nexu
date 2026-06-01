@@ -22,6 +22,11 @@ async function main(): Promise<void> {
     },
   );
 
+  // Wire WebSocket upgrade handler for device mirror proxy
+  server.on("upgrade", (req, socket, head) => {
+    container.deviceMirrorProxy.handleUpgrade(req, socket, head);
+  });
+
   let stopBackgroundLoops = () => {};
 
   let shuttingDown = false;
@@ -56,6 +61,15 @@ async function main(): Promise<void> {
     }
 
     try {
+      container.deviceMirrorProxy.close();
+    } catch (error: unknown) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "controller shutdown device mirror proxy close failed",
+      );
+    }
+
+    try {
       await container.openclawProcess.stop();
     } catch (error: unknown) {
       logger.warn(
@@ -73,6 +87,12 @@ async function main(): Promise<void> {
   } catch (error) {
     try {
       await closeServer();
+    } catch {
+      // Best-effort cleanup on bootstrap failure.
+    }
+
+    try {
+      container.deviceMirrorProxy.close();
     } catch {
       // Best-effort cleanup on bootstrap failure.
     }
