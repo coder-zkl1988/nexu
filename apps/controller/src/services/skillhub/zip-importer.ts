@@ -170,7 +170,10 @@ export function importSkillZip(
     }
 
     const entries = readdirSync(stagingDir, { withFileTypes: true }).filter(
-      (e) => e.name !== "upload.zip" && !e.name.startsWith("."),
+      (e) =>
+        e.name !== "upload.zip" &&
+        !e.name.startsWith(".") &&
+        !e.name.startsWith("__MACOSX"),
     );
 
     let skillRoot = stagingDir;

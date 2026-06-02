@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
@@ -48,6 +48,12 @@ export type ExperthubRoutesDeps = {
     slug: string;
     skills: string[];
   }) => Promise<{ ok: true; configuredSkills: string[] }>;
+  /** Delete a bot by ID (removes from config + syncs to OpenClaw). */
+  botService: {
+    deleteBot: (botId: string) => Promise<boolean>;
+  };
+  /** Root directory containing agent workspaces (`<agentsDir>/<botId>/`). */
+  agentsDir: string;
   platformTemplatesDir: string;
 };
 
@@ -190,13 +196,31 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
     async (c) => {
       const { slug } = c.req.valid("json");
       const ledger = await deps.catalog.readLedger();
-      if (ledger.entries[slug]) {
+      const entry = ledger.entries[slug];
+      if (entry) {
+        // Delete the bot from config and sync to OpenClaw so it
+        // disappears from the runtime immediately.
+        try {
+          await deps.botService.deleteBot(entry.botId);
+        } catch {
+          // Bot may already have been deleted via the bots UI.
+        }
+
+        // Remove the agent workspace directory so sessions and
+        // IDENTITY files don't linger on disk.
+        try {
+          await rm(path.join(deps.agentsDir, entry.botId), {
+            recursive: true,
+            force: true,
+          });
+        } catch {
+          // Directory may already be gone.
+        }
+
         delete ledger.entries[slug];
         ledger.updatedAt = new Date().toISOString();
         await deps.catalog.writeLedger(ledger);
       }
-      // Per plan spec: do NOT delete the bot — user may have customized it
-      // after install, and deletion is handled via the bots UI explicitly.
       return c.json({ ok: true as const }, 200);
     },
   );

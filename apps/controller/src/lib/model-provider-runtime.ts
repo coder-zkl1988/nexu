@@ -287,14 +287,25 @@ export function buildProviderRuntimeModelId(
     modelId,
   );
 
+  // Built-in providers with default base URLs use bare model IDs — OpenClaw
+  // routes by provider key alone and passes the model field directly to the API.
   if (
-    !descriptor.isCustomProvider &&
     !descriptor.usesProxyRuntimeKey &&
     descriptor.runtimeKey === descriptor.canonicalOpenClawId
   ) {
     return normalizedModelId;
   }
 
+  // BYOK ("proxy") providers already supply the correct baseUrl and apiKey.
+  // OpenClaw sends the model field verbatim to the upstream API, so we must
+  // NOT namespace-prefix it — the upstream API expects the bare model ID
+  // (e.g. "step-3.7-flash", not "stepfun/step-3.7-flash").
+  if (descriptor.usesProxyRuntimeKey) {
+    return normalizedModelId;
+  }
+
+  // Custom protocol-family providers still need namespaces for disambiguation
+  // inside OpenClaw's model registry.
   return `${descriptor.runtimeModelNamespace}/${normalizedModelId}`;
 }
 

@@ -430,6 +430,29 @@ export class OpenClawGatewayService {
     );
   }
 
+  /**
+   * Abort all active runs for a chat session via OpenClaw's chat.abort RPC.
+   *
+   * OpenClaw returns `{ ok, aborted, runIds }` indicating which runs were
+   * actually interrupted.
+   */
+  async abortChatSession(sessionKey: string): Promise<{
+    ok: boolean;
+    aborted: boolean;
+    runIds: string[];
+  }> {
+    const result = await this.wsClient.request(
+      "chat.abort",
+      { sessionKey },
+      { timeoutMs: 10_000 },
+    );
+    return {
+      ok: (result as Record<string, unknown>).ok as boolean,
+      aborted: (result as Record<string, unknown>).aborted as boolean,
+      runIds: ((result as Record<string, unknown>).runIds ?? []) as string[],
+    };
+  }
+
   async logoutChannelAccount(
     channelType: string,
     accountId?: string,

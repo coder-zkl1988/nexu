@@ -48,6 +48,7 @@ export interface ChatInputAreaProps {
   selectedBot: BotItem | null;
   onSelectBot: (bot: BotItem) => void;
   onSend: (text: string, attachments: PendingAttachment[]) => void;
+  onCancel?: () => void;
   sending: boolean;
   waitingReply: boolean;
   disabled: boolean;
@@ -296,6 +297,7 @@ export function ChatInputArea({
   selectedBot,
   onSelectBot,
   onSend,
+  onCancel,
   sending,
   waitingReply,
   disabled,
@@ -479,9 +481,11 @@ export function ChatInputArea({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         onSend={handleSend}
+        onCancel={onCancel}
         placeholder={placeholder}
         disabled={disabled}
         sending={sending}
+        waitingReply={waitingReply}
         leftActions={
           <>
             <ChatInputAttachButton onClick={() => fileRef.current?.click()} />

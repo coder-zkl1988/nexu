@@ -163,6 +163,47 @@ export function registerChatRoutes(
     },
   );
 
+  // POST /api/v1/chat/cancel - Abort active runs for a chat session
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/chat/cancel",
+      tags: ["Chat"],
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                botId: z.string(),
+                sessionKey: z.string(),
+              }),
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Chat session aborted",
+          content: {
+            "application/json": {
+              schema: z.object({
+                ok: z.boolean(),
+                aborted: z.boolean(),
+                runIds: z.array(z.string()),
+              }),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { botId, sessionKey } = c.req.valid("json");
+      const lookupKey = sessionKey || `agent:${botId}:main`;
+      const result = await container.gatewayService.abortChatSession(lookupKey);
+      return c.json(result);
+    },
+  );
+
   // GET /api/v1/chat/history - Full aggregated message history across all
   // compacted sessions for a bot's main webchat conversation.
   // When OpenClaw performs context compaction it creates a new UUID-named JSONL

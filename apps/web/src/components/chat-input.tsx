@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Loader2, Plus, SendHorizonal, Sparkles } from "lucide-react";
+import { Loader2, Plus, SendHorizonal, Sparkles, Square } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,9 +9,11 @@ interface ChatInputProps {
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
   onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
+  onCancel?: () => void;
   placeholder?: string;
   disabled?: boolean;
   sending?: boolean;
+  waitingReply?: boolean;
   canSend?: boolean;
   leftActions?: ReactNode;
   rightActions?: ReactNode;
@@ -23,9 +25,11 @@ export function ChatInput({
   onKeyDown,
   onPaste,
   onSend,
+  onCancel,
   placeholder = "Ask Tabby",
   disabled = false,
   sending = false,
+  waitingReply = false,
   canSend,
   leftActions,
   rightActions,
@@ -64,23 +68,33 @@ export function ChatInput({
           <div className="flex items-center gap-0.5">{leftActions}</div>
           <div className="flex items-center gap-4">
             {rightActions}
-            <button
-              type="button"
-              onClick={onSend}
-              disabled={!effectiveCanSend}
-              className={cn(
-                "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
-                effectiveCanSend
-                  ? "bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
-                  : "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-muted)] cursor-not-allowed",
-              )}
-            >
-              {sending ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <SendHorizonal className="w-5 h-5" />
-              )}
-            </button>
+            {waitingReply && onCancel ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="w-9 h-9 flex items-center justify-center rounded-full transition-colors bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
+              >
+                <Square className="w-4 h-4 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onSend}
+                disabled={!effectiveCanSend}
+                className={cn(
+                  "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                  effectiveCanSend
+                    ? "bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
+                    : "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-muted)] cursor-not-allowed",
+                )}
+              >
+                {sending ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <SendHorizonal className="w-5 h-5" />
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -362,7 +362,7 @@ When creating a cron job, **always set `sessionKey`** to the current session so 
 - This ensures: DM task → DM delivery, group task → group delivery
 - **Never leak a task's output to a different session**
 
-### 📱 Phone Device Control — When No Phone Is Connected
+### 📱 Phone Device Control
 
 Tabby supports controlling real Android phones through the Tabby mobile app. When a user asks you to perform phone-related tasks (send messages, open apps, take screenshots, execute automation, etc.):
 
@@ -380,4 +380,30 @@ Tabby supports controlling real Android phones through the Tabby mobile app. Whe
 > 3. 扫描桌面端 **设置 → 设备控制** 页面上的二维码即可
 >
 > 连接成功后告诉我，我马上帮您执行！
+
+#### Dual-Layer Autonomous Execution Strategy (Important)
+
+The phone-side VLM uses a **dual-layer autonomous architecture** that supports multi-device parallel scaling:
+
+- **Default mode (autonomous execution via device_execute_task)**:
+  - Decompose multi-step tasks into **2~3 sub-tasks**, each containing 2~3 related steps
+  - Describe each sub-task in natural language and send it to the phone via `device_execute_task`
+  - The phone VLM runs autonomously within each sub-task (screenshot → analyze → act → …), then reports back
+  - You only verify results at **sub-task boundaries**, no per-step involvement needed
+  - **Advantage**: Multiple phones can execute in parallel; you only block at boundaries
+
+- **Fallback mode (step-by-step via device_execute_skill)**:
+  - Use only when the phone VLM is unstable (repeated stuck/wrong-app/re-loop)
+  - Decompose operations into ≤3-step sub-task groups dispatched sequentially
+  - Verify screenshot after each group before continuing
+
+**Example**:
+
+> User: "Help me publish a post on 小红书"
+
+Autonomous mode (default):
+- `device_execute_task`: "Tap the red + button at the bottom, then select '写文字'"
+- Verify screenshot ✓ → `device_execute_task`: "Fill in the title and body text"
+- Verify screenshot ✓ → `device_execute_task`: "Add topic tags and tap publish"
+- Verify screenshot ✓ → Report completion
 <!-- NEXU-PLATFORM-END -->

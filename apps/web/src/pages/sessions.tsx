@@ -980,6 +980,26 @@ export function SessionsPage() {
     [selectedBot, id, session?.sessionKey, queryClient, t],
   );
 
+  const handleCancel = useCallback(async () => {
+    if (!session?.sessionKey || !selectedBot) return;
+    try {
+      const res = await fetch("/api/v1/chat/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botId: selectedBot.id,
+          sessionKey: session.sessionKey,
+        }),
+      });
+      if (res.ok) {
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+      }
+    } catch {
+      // Silently ignore — the reply may have already finished
+    }
+  }, [session?.sessionKey, selectedBot]);
+
   // null = not yet loaded, [] = loaded but empty, [...] = loaded with messages
   const messages = (
     chatData ? ((chatData as Record<string, unknown>)?.messages ?? []) : null
@@ -1366,6 +1386,7 @@ export function SessionsPage() {
             onSend={(text, attachments) => {
               void handleSend(text, attachments);
             }}
+            onCancel={handleCancel}
             sending={false}
             waitingReply={waitingForReply}
             disabled={!session?.botId}

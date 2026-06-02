@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { registerArtifactRoutes } from "../routes/artifact-routes.js";
@@ -60,6 +61,8 @@ export function createApp(container: ControllerContainer) {
       installExpert: container.installExpertFn,
       createCustomExpert: container.createCustomExpertFn,
       updateExpertSkills: container.updateExpertSkillsFn,
+      botService: container.agentService,
+      agentsDir: path.join(container.env.openclawStateDir, "agents"),
       platformTemplatesDir: container.env.platformTemplatesDir ?? "",
     }),
   );

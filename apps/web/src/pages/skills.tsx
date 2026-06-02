@@ -1,4 +1,3 @@
-import { GitHubStarCta } from "@/components/github-star-cta";
 import ImportSkillModal from "@/components/skills/import-skill-modal";
 import {
   useCancelInstall,
@@ -7,7 +6,6 @@ import {
   useRefreshCatalog,
   useUninstallSkill,
 } from "@/hooks/use-community-catalog";
-import { useGitHubStars } from "@/hooks/use-github-stars";
 import { useLocale } from "@/hooks/use-locale";
 import { getTagLabel } from "@/lib/skill-translations";
 import {
@@ -366,7 +364,6 @@ function SkillCard({
 
 export function SkillsPage() {
   const { t } = useTranslation();
-  const { stars } = useGitHubStars();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isDesktopClient = useMemo(
@@ -787,11 +784,6 @@ export function SkillsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <GitHubStarCta
-                label={t("home.starGithub")}
-                stars={stars}
-                variant="button"
-              />
               <div className="relative">
                 <Search
                   size={14}
