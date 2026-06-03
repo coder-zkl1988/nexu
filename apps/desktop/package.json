@@ -142,8 +142,8 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
-      "target": ["dmg", "zip"],
-      "artifactName": "nexu-${version}-${arch}.${ext}",
+      "target": ["dmg"],
+      "artifactName": "tabby-${version}-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -181,8 +181,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "nexu-io",
-        "repo": "tabby"
+        "owner": "coder-zkl1988",
+        "repo": "nexu"
       }
     ]
   }

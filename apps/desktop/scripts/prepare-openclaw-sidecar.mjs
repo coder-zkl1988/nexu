@@ -425,11 +425,17 @@ async function resolveCodesignIdentity() {
   const identityLine = stdout
     .split(/\r?\n/u)
     .map((line) => line.trim())
-    .find((line) => line.includes("Developer ID Application:"));
+    .find(
+      (line) =>
+        line.includes("Developer ID Application:") &&
+        (!process.env.CSC_NAME || line.includes(process.env.CSC_NAME)),
+    );
 
   if (!identityLine) {
     throw new Error(
-      "Unable to locate a Developer ID Application signing identity.",
+      process.env.CSC_NAME
+        ? `Unable to locate a Developer ID Application signing identity matching CSC_NAME=${process.env.CSC_NAME}.`
+        : "Unable to locate a Developer ID Application signing identity.",
     );
   }
 
