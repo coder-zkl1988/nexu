@@ -22,6 +22,17 @@ describe("desktop runtime config", () => {
     expect(config.updates.channel).toBe("nightly");
   });
 
+  it("accepts stable as a release build source", () => {
+    const config = getDesktopRuntimeConfig(
+      {
+        NEXU_DESKTOP_BUILD_SOURCE: "stable",
+      },
+      { useBuildConfig: false },
+    );
+
+    expect(config.buildInfo.source).toBe("stable");
+  });
+
   it("reads PostHog env overrides", () => {
     const config = getDesktopRuntimeConfig(
       {

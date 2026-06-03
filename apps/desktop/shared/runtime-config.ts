@@ -154,6 +154,7 @@ function readDesktopPackageVersion(): string | undefined {
 export type DesktopBuildSource =
   | "local-dev"
   | "local-dist"
+  | "stable"
   | "nightly-test"
   | "nightly-prod"
   | "unknown";
@@ -170,6 +171,7 @@ function normalizeBuildSource(value: string | undefined): DesktopBuildSource {
   switch (value) {
     case "local-dev":
     case "local-dist":
+    case "stable":
     case "nightly-test":
     case "nightly-prod":
       return value;

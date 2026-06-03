@@ -1068,9 +1068,10 @@ function DiagnosticsPage({
 
 function DesktopShell() {
   const devImmersive = window.nexuHost.bootstrap.devImmersive;
-  const [activeSurface, setActiveSurface] = useState<DesktopSurface>(
-    devImmersive ? "web" : "web",
-  );
+  const isLocalDesktopBuild =
+    window.nexuHost.bootstrap.buildInfo.source === "local-dev" ||
+    window.nexuHost.bootstrap.buildInfo.source === "local-dist";
+  const [activeSurface, setActiveSurface] = useState<DesktopSurface>("web");
   const [showSetBalanceDialog, setShowSetBalanceDialog] = useState(false);
   const [chromeMode, setChromeMode] = useState<DesktopChromeMode>(
     devImmersive
@@ -1237,13 +1238,22 @@ function DesktopShell() {
       }
 
       setControllerSurfaceState("failed");
-      setActiveSurface((surface) => (surface === "web" ? "control" : surface));
+      if (isLocalDesktopBuild) {
+        setActiveSurface((surface) =>
+          surface === "web" ? "control" : surface,
+        );
+      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [runtimeConfig, controllerReady, controllerRetryNonce]);
+  }, [
+    isLocalDesktopBuild,
+    runtimeConfig,
+    controllerReady,
+    controllerRetryNonce,
+  ]);
 
   const desktopWebUrl =
     runtimeConfig && controllerReady
@@ -1373,16 +1383,16 @@ function DesktopShell() {
           ) : controllerSurfaceState === "failed" ||
             controllerSurfaceState === "recovering" ? (
             <section className="runtime-empty-state">
-              <span className="runtime-eyebrow">Workspace</span>
+              <span className="runtime-eyebrow">Tabby Workspace</span>
               <h2>
                 {controllerSurfaceState === "recovering"
-                  ? "Restarting controller..."
-                  : "Controller unavailable"}
+                  ? "正在重启后台服务..."
+                  : "工作区暂时不可用"}
               </h2>
               <p>
                 {controllerSurfaceState === "recovering"
-                  ? "The local controller stopped cleanly, so desktop is starting it again before mounting the workspace."
-                  : "Workspace startup timed out because the local controller did not come back. Retry it here or switch to the control plane."}
+                  ? "Tabby 正在重新连接本地运行时，完成后会自动打开工作区。"
+                  : "本地运行时启动超时。可以重试连接，或在开发构建中打开控制台查看详情。"}
               </p>
               <div className="runtime-actions">
                 <button
@@ -1391,15 +1401,17 @@ function DesktopShell() {
                   type="button"
                 >
                   {controllerSurfaceState === "recovering"
-                    ? "Restarting..."
-                    : "Retry controller"}
+                    ? "正在重启..."
+                    : "重试连接"}
                 </button>
-                <button
-                  onClick={() => setActiveSurface("control")}
-                  type="button"
-                >
-                  Open control plane
-                </button>
+                {isLocalDesktopBuild ? (
+                  <button
+                    onClick={() => setActiveSurface("control")}
+                    type="button"
+                  >
+                    打开控制台
+                  </button>
+                ) : null}
               </div>
             </section>
           ) : (
@@ -1563,6 +1575,7 @@ function DesktopShell() {
                   >
                     {isComplete && (
                       <svg
+                        aria-hidden="true"
                         width={10}
                         height={10}
                         viewBox="0 0 10 10"

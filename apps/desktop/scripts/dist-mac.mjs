@@ -579,7 +579,7 @@ async function ensureBuildConfig() {
       merged.NEXU_DESKTOP_UPDATE_CHANNEL ??
       existingConfig.NEXU_DESKTOP_UPDATE_CHANNEL ??
       "stable",
-    NEXU_DESKTOP_BUILD_SOURCE: merged.NEXU_DESKTOP_BUILD_SOURCE ?? "local-dist",
+    NEXU_DESKTOP_BUILD_SOURCE: merged.NEXU_DESKTOP_BUILD_SOURCE ?? "stable",
     NEXU_DESKTOP_BUILD_BRANCH:
       merged.NEXU_DESKTOP_BUILD_BRANCH ?? (gitBranch || undefined),
     NEXU_DESKTOP_BUILD_COMMIT:
