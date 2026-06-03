@@ -40,6 +40,7 @@ export interface LocalChatMessageInput {
 
 export interface LocalChatMessageOutput {
   id: string;
+  runId?: string | null;
   role: "user" | "assistant";
   type: "text" | "image" | "video" | "audio" | "file";
   content: unknown;
@@ -66,6 +67,7 @@ export interface SendToMainSessionInput {
 }
 
 export interface SendToMainSessionResult {
+  runId?: string;
   messageId?: string;
   content?: unknown;
 }
@@ -223,6 +225,7 @@ export class ChatService {
 
     return {
       id: result.messageId ?? `local_${Date.now()}`,
+      runId: result.runId ?? null,
       role: "assistant",
       type: message.type,
       content: result.content ?? null,

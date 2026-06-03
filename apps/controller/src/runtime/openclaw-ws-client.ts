@@ -334,6 +334,7 @@ interface Pending {
 export class OpenClawWsClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, Pending>();
+  private eventListeners = new Map<string, Set<(payload: unknown) => void>>();
   private _connected = false;
   private closed = false;
   private backoffMs = 500;
@@ -374,6 +375,44 @@ export class OpenClawWsClient {
     }) => void,
   ): void {
     this.onGatewayShutdownCallback = cb;
+  }
+
+  /**
+   * Register a handler for gateway events by event name.
+   * The handler receives the raw payload (caller should narrow with a schema).
+   */
+  on(event: string, handler: (payload: unknown) => void): void {
+    let handlers = this.eventListeners.get(event);
+    if (!handlers) {
+      handlers = new Set();
+      this.eventListeners.set(event, handlers);
+    }
+    handlers.add(handler);
+  }
+
+  /** Remove a previously registered event handler. */
+  off(event: string, handler: (payload: unknown) => void): void {
+    this.eventListeners.get(event)?.delete(handler);
+  }
+
+  /**
+   * Subscribe to chat lifecycle events ("chat") emitted by the gateway
+   * during a chat.send run. Payload shape follows OpenClaw's ChatEventSchema:
+   *   { runId, sessionKey, seq, state: "delta"|"final"|"aborted"|"error", ... }
+   * Returns an unsubscribe function for convenience.
+   */
+  onChatEvent(handler: (payload: unknown) => void): () => void {
+    this.on("chat", handler);
+    return () => this.off("chat", handler);
+  }
+
+  /**
+   * Subscribe to chat side-result events ("chat.side_result").
+   * Returns an unsubscribe function for convenience.
+   */
+  onChatSideResult(handler: (payload: unknown) => void): () => void {
+    this.on("chat.side_result", handler);
+    return () => this.off("chat.side_result", handler);
   }
 
   /** Whether the client has completed the handshake and is ready for RPC. */
@@ -441,6 +480,7 @@ export class OpenClawWsClient {
   /** Gracefully close the connection. No reconnect after this. */
   stop(): void {
     this.closed = true;
+    this.eventListeners.clear();
     this.cleanup();
     this.ws?.close();
     this.ws = null;
@@ -597,6 +637,20 @@ export class OpenClawWsClient {
           { error: err instanceof Error ? err.message : String(err) },
           "openclaw_ws_on_shutdown_callback_error",
         );
+      }
+
+      // Still dispatch to generic listeners so subscribers see every event
+    }
+
+    // Forward any other events to registered listeners
+    const listeners = this.eventListeners.get(evt.event);
+    if (listeners) {
+      for (const handler of listeners) {
+        try {
+          handler(evt.payload);
+        } catch {
+          // swallow per-handler errors to avoid breaking other listeners
+        }
       }
     }
   }
@@ -815,6 +869,7 @@ export class OpenClawWsClient {
       p.reject(new Error("openclaw gateway disconnected"));
     }
     this.pending.clear();
+    this.eventListeners.clear();
   }
 
   /**

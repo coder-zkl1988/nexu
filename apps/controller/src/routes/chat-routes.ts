@@ -4,8 +4,14 @@ import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { sessionResponseSchema } from "@nexu/shared";
 import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
+import { logger } from "../lib/logger.js";
 import { ChatService } from "../services/chat-service.js";
 import type { ControllerBindings } from "../types.js";
+import {
+  LOCAL_CHAT_SESSION_DISCOVERY_INTERVAL_MS,
+  LOCAL_CHAT_SESSION_DISCOVERY_TIMEOUT_MS,
+  waitForLocalChatSession,
+} from "./local-chat-session-wait.js";
 
 // ~10 MB base64 cap → raw file ≈ 7.5 MB; prevents OOM/body-size attacks
 const MAX_ATTACHMENT_CONTENT_BYTES = 10_000_000;
@@ -43,8 +49,15 @@ const localChatMessageInputSchema = z.object({
   attachments: z.array(chatAttachmentSchema).optional(),
 });
 
+const localChatSendBodySchema = z.object({
+  botId: z.string(),
+  sessionKey: z.string(),
+  message: localChatMessageInputSchema,
+});
+
 const localChatMessageOutputSchema = z.object({
   id: z.string(),
+  runId: z.string().nullable().optional(),
   role: z.string(),
   type: z.string(),
   content: z.unknown(),
@@ -96,6 +109,72 @@ export function registerChatRoutes(
     },
   );
 
+  // POST /api/v1/chat/local/start - Send local chat message and return after
+  // OpenClaw acknowledges chat.send. This is used by the new-conversation page
+  // so it can leave the composer immediately while session indexing continues.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/chat/local/start",
+      tags: ["Chat"],
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: localChatSendBodySchema,
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Local chat run started",
+          content: {
+            "application/json": {
+              schema: z.object({
+                sessionKey: z.string(),
+                session: sessionResponseSchema.nullable(),
+                message: localChatMessageOutputSchema.nullable(),
+              }),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const startedAt = Date.now();
+      const { botId, message, sessionKey } = c.req.valid("json");
+      const lookupKey = sessionKey || `agent:${botId}:main`;
+
+      const messageResult = await chatService.sendLocalMessage(
+        botId,
+        message,
+        lookupKey,
+      );
+      const session = await container.sessionService.getSessionBySessionKey(
+        botId,
+        lookupKey,
+      );
+
+      logger.info(
+        {
+          botId,
+          sessionKey: lookupKey,
+          runId: messageResult.runId ?? null,
+          sessionFound: Boolean(session?.id),
+          elapsedMs: Date.now() - startedAt,
+        },
+        "chat.local: run accepted",
+      );
+
+      return c.json({
+        sessionKey: lookupKey,
+        session,
+        message: messageResult,
+      });
+    },
+  );
+
   // POST /api/v1/chat/local - Send local chat message (direct to main session)
   app.openapi(
     createRoute({
@@ -106,11 +185,7 @@ export function registerChatRoutes(
         body: {
           content: {
             "application/json": {
-              schema: z.object({
-                botId: z.string(),
-                sessionKey: z.string(),
-                message: localChatMessageInputSchema,
-              }),
+              schema: localChatSendBodySchema,
             },
           },
         },
@@ -122,7 +197,7 @@ export function registerChatRoutes(
             "application/json": {
               schema: z.object({
                 session: sessionResponseSchema.nullable(),
-                message: localChatMessageOutputSchema,
+                message: localChatMessageOutputSchema.nullable(),
               }),
             },
           },
@@ -131,35 +206,47 @@ export function registerChatRoutes(
     }),
     async (c) => {
       const { botId, message, sessionKey } = c.req.valid("json");
+      const lookupKey = sessionKey || `agent:${botId}:main`;
 
-      const result = await chatService.sendLocalMessage(
+      const messageResult = await chatService.sendLocalMessage(
         botId,
         message,
-        sessionKey,
+        lookupKey,
       );
 
-      // OpenClaw writes sessions.json asynchronously after chat.send returns.
-      // Give it up to ~1 s (2 attempts × 500 ms) to flush the index before
-      // returning null to the client (which then runs its own discovery loop).
-      const lookupKey = sessionKey || `agent:${botId}:main`;
-      let session: Awaited<
-        ReturnType<typeof container.sessionService.getSessionBySessionKey>
-      > = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        if (attempt > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-        session = await container.sessionService.getSessionBySessionKey(
-          botId,
-          lookupKey,
+      // OpenClaw acknowledges chat.send before the session index is written.
+      // Wait long enough to cover cold run initialization, while the frontend
+      // still keeps a sessionKey-based fallback for slower runs.
+      const discovery = await waitForLocalChatSession({
+        lookupSession: () =>
+          container.sessionService.getSessionBySessionKey(botId, lookupKey),
+      });
+
+      if (discovery.timedOut) {
+        logger.warn(
+          {
+            botId,
+            sessionKey: lookupKey,
+            attempts: discovery.attempts,
+            elapsedMs: discovery.elapsedMs,
+            timeoutMs: LOCAL_CHAT_SESSION_DISCOVERY_TIMEOUT_MS,
+            intervalMs: LOCAL_CHAT_SESSION_DISCOVERY_INTERVAL_MS,
+          },
+          "chat.local: session discovery timed out",
         );
-        if (session) break;
+      } else {
+        logger.info(
+          {
+            botId,
+            sessionKey: lookupKey,
+            attempts: discovery.attempts,
+            elapsedMs: discovery.elapsedMs,
+          },
+          "chat.local: session discovered",
+        );
       }
 
-      return c.json({
-        session,
-        message: result,
-      });
+      return c.json({ session: discovery.session, message: messageResult });
     },
   );
 
@@ -408,6 +495,120 @@ export function registerChatRoutes(
         clearInterval(interval);
         clearInterval(pingInterval);
       });
+    });
+  });
+
+  // GET /api/v1/chat/local/stream — SSE endpoint for real-time WS-based chat
+  // events. Uses plain app.get() because SSE streaming is incompatible with
+  // OpenAPI response schemas.
+  app.get("/api/v1/chat/local/stream", async (c) => {
+    const { botId, sessionKey, runId } = c.req.query();
+
+    // Validate params
+    if (!botId || !sessionKey) {
+      return c.json({ error: "botId and sessionKey are required" }, 400);
+    }
+
+    let aborted = false;
+    let streamCleanup: (() => void) | null = null;
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+
+        function send(event: string, data: string) {
+          if (aborted) return;
+          try {
+            controller.enqueue(
+              encoder.encode(`event: ${event}\ndata: ${data}\n\n`),
+            );
+          } catch {
+            // Stream closed — no-op
+          }
+        }
+
+        // Send connected event immediately
+        send("connected", "connected");
+
+        // Subscribe to WS chat events
+        const unsubChat = container.wsClient.onChatEvent((payload: unknown) => {
+          const evt = payload as Record<string, unknown>;
+          if (runId && evt.runId !== runId) return;
+          if (evt.sessionKey && evt.sessionKey !== sessionKey) return;
+
+          const state = evt.state as string;
+          if (state === "delta") {
+            send(
+              "delta",
+              JSON.stringify({
+                runId: evt.runId,
+                seq: evt.seq,
+                deltaText: evt.deltaText,
+                replace: evt.replace ?? false,
+              }),
+            );
+          } else if (state === "final") {
+            send(
+              "final",
+              JSON.stringify({
+                runId: evt.runId,
+                seq: evt.seq,
+                message: evt.message,
+                stopReason: evt.stopReason,
+              }),
+            );
+            // Don't close — there might be side_results after final
+          } else if (state === "aborted") {
+            send("aborted", JSON.stringify({ runId: evt.runId, seq: evt.seq }));
+          } else if (state === "error") {
+            send(
+              "error",
+              JSON.stringify({
+                runId: evt.runId,
+                seq: evt.seq,
+                errorMessage: evt.errorMessage,
+                errorKind: evt.errorKind,
+              }),
+            );
+          }
+        });
+
+        const unsubSide = container.wsClient.onChatSideResult(
+          (payload: unknown) => {
+            const evt = payload as Record<string, unknown>;
+            if (runId && evt.runId !== runId) return;
+            send("side_result", JSON.stringify(evt));
+          },
+        );
+
+        // Ping keepalive every 30s
+        const pingInterval = setInterval(() => {
+          send("ping", "");
+        }, 30_000);
+
+        streamCleanup = () => {
+          unsubChat();
+          unsubSide();
+          clearInterval(pingInterval);
+        };
+
+        // Listen for client disconnect via the request abort signal
+        c.req.raw.signal.addEventListener("abort", () => {
+          aborted = true;
+          streamCleanup?.();
+        });
+      },
+      cancel() {
+        aborted = true;
+        streamCleanup?.();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     });
   });
 }

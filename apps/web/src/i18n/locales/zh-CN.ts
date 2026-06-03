@@ -849,6 +849,10 @@ const zhCN = {
   "sessions.chat.toolCompleted": "已完成",
   "sessions.chat.thinking": "思考中...",
   "sessions.chat.newSession": "新会话",
+  "sessions.pending.title": "正在创建会话",
+  "sessions.pending.waiting": "等待{{name}}回复...",
+  "sessions.pending.streaming": "{{name}}正在回复...",
+  "sessions.pending.error": "仍在等待会话...",
   "sessions.openFolder": "打开文件夹",
 
   // ── Integrations Page ──

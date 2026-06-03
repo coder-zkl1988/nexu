@@ -52,6 +52,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import { A2UIRenderer } from "@/lib/a2ui";
+import { A2UISidebarProvider, useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
 import "@/lib/api";
 import {
   deleteApiV1SessionsById,
@@ -384,6 +386,14 @@ export function WorkspaceLayout() {
 }
 
 function WorkspaceLayoutInner() {
+  return (
+    <A2UISidebarProvider>
+      <WorkspaceLayoutContent />
+    </A2UISidebarProvider>
+  );
+}
+
+function WorkspaceLayoutContent() {
   const { t } = useTranslation();
   const isDesktopClient = useMemo(
     () =>
@@ -412,6 +422,9 @@ function WorkspaceLayoutInner() {
   const SIDEBAR_MAX = 320;
   const SIDEBAR_DEFAULT = 192;
   const MAIN_MIN = 480;
+  const RIGHT_SIDEBAR_MIN = 320;
+  const RIGHT_SIDEBAR_MAX = 560;
+  const RIGHT_SIDEBAR_DEFAULT = 420;
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_sidebar_width");
     return saved
@@ -419,6 +432,51 @@ function WorkspaceLayoutInner() {
       : SIDEBAR_DEFAULT;
   });
   const isResizing = useRef(false);
+  const { isOpen: rightSidebarOpen, messages: rightSidebarMessages, onAction: rightSidebarOnAction, close: closeRightSidebar } = useA2UISidebar();
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("nexu_right_sidebar_width");
+    return saved ? Math.max(RIGHT_SIDEBAR_MIN, Math.min(RIGHT_SIDEBAR_MAX, Number(saved))) : RIGHT_SIDEBAR_DEFAULT;
+  });
+  const isRightResizing = useRef(false);
+
+  const handleRightResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isRightResizing.current = true;
+      const startX = e.clientX;
+      const startW = rightSidebarWidth;
+
+      const onMove = (ev: MouseEvent) => {
+        if (!isRightResizing.current) return;
+        const containerWidth = window.innerWidth;
+        const newW = Math.max(
+          RIGHT_SIDEBAR_MIN,
+          Math.min(RIGHT_SIDEBAR_MAX, startW - (ev.clientX - startX)),
+        );
+        if (containerWidth - newW >= MAIN_MIN) {
+          setRightSidebarWidth(newW);
+        }
+      };
+
+      const onUp = () => {
+        isRightResizing.current = false;
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        setRightSidebarWidth((w) => {
+          localStorage.setItem("nexu_right_sidebar_width", String(w));
+          return w;
+        });
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [rightSidebarWidth],
+  );
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -1519,6 +1577,51 @@ function WorkspaceLayoutInner() {
           </main>
         </div>
       </div>
+
+      {/* Right sidebar resize handle */}
+      {rightSidebarOpen && (
+        <div
+          onMouseDown={handleRightResizeStart}
+          className="hidden md:block w-px shrink-0 cursor-col-resize group relative z-10"
+          style={
+            {
+              WebkitAppRegion: "no-drag",
+              background: desktopGlassTint,
+            } as React.CSSProperties
+          }
+        >
+          <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
+        </div>
+      )}
+
+      {/* Right A2UI sidebar */}
+      {rightSidebarOpen && (
+        <div
+          className="hidden md:flex shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
+          style={{ width: rightSidebarWidth, background: "var(--color-tabby-bg)" }}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
+            <span className="text-sm font-medium text-[var(--color-text-heading)]">内容预览</span>
+            <button
+              type="button"
+              onClick={closeRightSidebar}
+              className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {rightSidebarMessages.length > 0 && (
+              <A2UIRenderer
+                messages={rightSidebarMessages}
+                onAction={rightSidebarOnAction ?? (() => {})}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

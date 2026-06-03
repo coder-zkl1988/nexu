@@ -374,6 +374,48 @@ const COMPONENT_SCHEMAS = [
       content: { type: "string", description: "Markdown content to display" },
     },
   },
+  {
+    type: "XHSEditor",
+    label: "Xiaohongshu Content Editor",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Unique component ID" },
+        type: { const: "XHSEditor" },
+        title: {
+          type: "string",
+          description: "Initial title text for the post"
+        },
+        content: {
+          type: "string",
+          description: "Initial content/body text for the post"
+        },
+        images: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of image URLs or base64 data URIs to display as preview"
+        },
+        hashtags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of hashtag strings (without # prefix)"
+        },
+        maxTitleLength: {
+          type: "number",
+          description: "Maximum title character count (default 20)",
+          default: 20
+        },
+        visibility: {
+          type: "string",
+          enum: ["visible", "hidden"],
+          description: "Component visibility",
+          default: "visible"
+        }
+      },
+      required: ["id", "type"],
+      additionalProperties: false
+    }
+  },
 ];
 
 /**
@@ -459,8 +501,10 @@ COMPONENT TREE:
 NOTE: This is standard A2UI v0.9 format. It is NOT OpenClaw Canvas format — do not use "literalString", "explicitList", "function", or "beginRendering".
 
 CUSTOM COMPONENTS:
-- PhonePreview: Show connected phone devices with name, model, status, and screenshot. Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using this.
-- MarkdownEditor: Display markdown/copywriting content with a copy button. Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using this.`,
+- PhonePreview: Show connected phone devices with name, model, status, and screenshot.
+- MarkdownEditor: Display markdown/copywriting content with a copy button.
+- XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags.
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, or XHSEditor.`,
 
             parameters: {
               type: "object",
@@ -473,7 +517,7 @@ CUSTOM COMPONENTS:
                 catalogId: {
                   type: "string",
                   description:
-                    "Catalog ID for custom components. Use 'https://nexu.app/a2ui/custom-catalog.json' when using PhonePreview or MarkdownEditor components. Omit for standard components.",
+                    "Catalog ID for custom components. Use 'https://nexu.app/a2ui/custom-catalog.json' when using PhonePreview, MarkdownEditor, or XHSEditor components. Omit for standard components.",
                 },
               components: {
                 type: "array",

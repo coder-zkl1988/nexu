@@ -22,6 +22,7 @@ export type { CustomComponentProps } from "./custom-components/registry";
 
 import { MarkdownEditor } from "./custom-components/MarkdownEditor";
 import { PhonePreview } from "./custom-components/PhonePreview";
+import { XHSEditor } from "./custom-components/XHSEditor";
 // ── Register Nexu custom components ───────────────────────────
 import { registerCustomComponent } from "./custom-components/registry";
 
@@ -29,3 +30,4 @@ const NEXU_CATALOG = "https://nexu.app/a2ui/custom-catalog.json";
 
 registerCustomComponent(NEXU_CATALOG, "MarkdownEditor", MarkdownEditor);
 registerCustomComponent(NEXU_CATALOG, "PhonePreview", PhonePreview);
+registerCustomComponent(NEXU_CATALOG, "XHSEditor", XHSEditor);

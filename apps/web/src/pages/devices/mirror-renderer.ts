@@ -31,6 +31,8 @@ export class MirrorGLRenderer {
   private offscreenCanvas: OffscreenCanvas | null = null;
   private offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
 
+  private jpegImg: HTMLImageElement | null = null;
+
   private displayWidth = 0;
   private displayHeight = 0;
   private streamWidth = 0;
@@ -547,6 +549,69 @@ void main() {
     frame.close();
   }
 
+  /**
+   * Render a base64-encoded JPEG/PNG frame to the canvas (STABLE mode).
+   * Uses a cached Image object — rapid calls reuse the same element and the
+   * browser cancels any in-flight load.
+   */
+  renderJPEG(
+    screenshot: string,
+    width: number,
+    height: number,
+    format: "jpeg" | "png" = "jpeg",
+  ): void {
+    this.streamWidth = width;
+    this.streamHeight = height;
+
+    // Reuse a single Image object to avoid allocations
+    if (!this.jpegImg) {
+      this.jpegImg = new Image();
+    }
+    const img = this.jpegImg;
+
+    img.onload = () => {
+      // 2D fallback path
+      if (this.fallbackTo2D) {
+        if (this.ctx2D && this.canvas) {
+          this.ctx2D.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+        }
+        return;
+      }
+
+      // WebGL path: upload the Image as an RGBA texture
+      if (!this.gl) return;
+
+      const texture = this.gl.createTexture();
+      if (!texture) return;
+
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      this.setTextureParams();
+
+      try {
+        this.gl.texImage2D(
+          this.gl.TEXTURE_2D,
+          0,
+          this.gl.RGBA,
+          this.gl.RGBA,
+          this.gl.UNSIGNED_BYTE,
+          img,
+        );
+      } catch {
+        this.gl.deleteTexture(texture);
+        return;
+      }
+
+      // JPEG/PNG images have no macroblock padding
+      this.texScaleX = 1.0;
+      this.texScaleY = 1.0;
+
+      this.renderRGBATexture(texture);
+      this.gl.deleteTexture(texture);
+    };
+
+    img.src = `data:image/${format};base64,${screenshot}`;
+  }
+
   /** Update the display dimensions (called on resize) */
   resize(displayWidth: number, displayHeight: number): void {
     const w = Math.round(displayWidth);
@@ -595,6 +660,7 @@ void main() {
     this.texScaleY = 1.0;
     this.displayWidth = 0;
     this.displayHeight = 0;
+    this.jpegImg = null;
   }
 
   private cleanupWebGL(): void {

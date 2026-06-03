@@ -7,15 +7,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { getApiV1Bots, getApiV1BotsDefault } from "../../lib/api/sdk.gen";
+import {
+  getApiV1Bots,
+  getApiV1BotsDefault,
+  postApiV1ChatLocalStart,
+} from "../../lib/api/sdk.gen";
+import { buildPendingSessionPath } from "../lib/local-chat-pending";
 
 // Every local chat message targets the agent main webchat session.
 function buildMainSessionKey(botId: string): string {
   return `agent:${botId}:main`;
 }
-
-const SESSION_DISCOVERY_MAX_ATTEMPTS = 120;
-const SESSION_DISCOVERY_INTERVAL_MS = 500;
 
 export function LocalChatPage() {
   const { t } = useTranslation();
@@ -94,7 +96,8 @@ export function LocalChatPage() {
     setSelectedBot(bot);
   }, []);
 
-  // Send message -- fires API, discovers session, and navigates
+  // Send message, then leave the new-conversation page as soon as OpenClaw
+  // acknowledges chat.send. PendingSessionPage resolves the real session later.
   const sendMessage = useCallback(
     async (text: string, atts: PendingAttachment[]) => {
       if (!selectedBot) return;
@@ -105,100 +108,74 @@ export function LocalChatPage() {
       const mainSessionKey = buildMainSessionKey(botId);
 
       try {
-        const onlyImage = atts[0];
-        const isImageOnly =
-          atts.length === 1 && onlyImage?.type === "image" && !text.trim();
-        const msgContent = isImageOnly
-          ? {
-              type: "image" as const,
-              content: onlyImage!.content,
-              metadata: { mimeType: onlyImage!.mimeType },
-            }
-          : {
-              type: "text" as const,
-              content: text,
-              attachments:
-                atts.length > 0
-                  ? atts.map((a) => ({
-                      type: a.type,
-                      content: a.content,
-                      metadata: {
-                        mimeType: a.mimeType,
-                        filename: a.filename,
-                        size: a.size,
-                      },
-                    }))
-                  : undefined,
-            };
+        setWaitingReply(true);
 
-        const rawRes = await fetch("/api/v1/chat/local", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        const onlyImage = atts.length === 1 ? atts[0] : undefined;
+        const isImageOnly = onlyImage?.type === "image" && !text.trim();
+        const msgContent =
+          isImageOnly && onlyImage
+            ? {
+                type: "image" as const,
+                content: onlyImage.content,
+                metadata: { mimeType: onlyImage.mimeType },
+              }
+            : {
+                type: "text" as const,
+                content: text,
+                attachments:
+                  atts.length > 0
+                    ? atts.map((a) => ({
+                        type: a.type,
+                        content: a.content,
+                        metadata: {
+                          mimeType: a.mimeType,
+                          filename: a.filename,
+                          size: a.size,
+                        },
+                      }))
+                    : undefined,
+              };
+
+        const { data: responseData } = await postApiV1ChatLocalStart({
+          body: {
             botId,
             sessionKey: mainSessionKey,
             message: msgContent,
-          }),
+          },
         });
-        const responseData = (await rawRes.json()) as Record<string, unknown>;
 
-        setWaitingReply(true);
-
-        if (contextKeyRef.current !== ctxKey) return;
-
-        const sessionObj = responseData?.session as
-          | { id?: string }
-          | null
-          | undefined;
-        if (sessionObj?.id) {
-          const target = `/workspace/sessions/${sessionObj.id}`;
-          navigate(target);
-          setTimeout(() => {
-            window.location.href = target;
-          }, 200);
+        if (contextKeyRef.current !== ctxKey) {
+          setWaitingReply(false);
           return;
         }
 
-        let sid: string | null = null;
-        for (
-          let attempt = 0;
-          attempt < SESSION_DISCOVERY_MAX_ATTEMPTS;
-          attempt++
-        ) {
-          if (attempt > 0) {
-            await new Promise((r) =>
-              setTimeout(r, SESSION_DISCOVERY_INTERVAL_MS),
-            );
-          }
-          if (contextKeyRef.current !== ctxKey) return;
-          try {
-            const sessionRes = await fetch(
-              `/api/v1/chat/session?botId=${encodeURIComponent(botId)}&sessionKey=${encodeURIComponent(mainSessionKey)}`,
-            );
-            const sessionData = (await sessionRes.json()) as Record<
-              string,
-              unknown
-            >;
-            const found = (sessionData?.session as { id?: string } | null)?.id;
-            if (found) {
-              sid = found;
-              break;
-            }
-          } catch {
-            // retry
-          }
+        const session = responseData?.session ?? null;
+        if (session?.id) {
+          navigate(`/workspace/sessions/${session.id}`);
+          return;
         }
 
-        if (sid) {
-          const target = `/workspace/sessions/${sid}`;
-          navigate(target);
-          // Fallback: direct location change if React Router navigation fails
-          setTimeout(() => {
-            window.location.href = target;
-          }, 200);
-        } else {
-          setWaitingReply(false);
-        }
+        const runId =
+          typeof responseData?.message?.runId === "string"
+            ? responseData.message.runId
+            : undefined;
+        const pendingText = text.trim()
+          ? text
+          : isImageOnly
+            ? "[Image]"
+            : atts.length > 0
+              ? "[File]"
+              : "";
+        navigate(
+          buildPendingSessionPath({
+            botId,
+            sessionKey: responseData?.sessionKey ?? mainSessionKey,
+            runId,
+          }),
+          {
+            state: { pendingText, pendingBotName: selectedBot.name },
+          },
+        );
       } catch {
         setWaitingReply(false);
       }

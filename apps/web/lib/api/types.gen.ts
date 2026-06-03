@@ -2500,6 +2500,73 @@ export type GetApiV1ChatSessionResponses = {
 
 export type GetApiV1ChatSessionResponse = GetApiV1ChatSessionResponses[keyof GetApiV1ChatSessionResponses];
 
+export type PostApiV1ChatLocalStartData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        message: {
+            type: 'text' | 'image' | 'video' | 'audio' | 'file';
+            content: string;
+            metadata?: {
+                width?: number;
+                height?: number;
+                duration?: number;
+                mimeType?: string;
+                filename?: string;
+                size?: number;
+            };
+            attachments?: Array<{
+                type: 'image' | 'file';
+                content: string;
+                metadata?: {
+                    mimeType?: string;
+                    filename?: string;
+                    size?: number;
+                };
+            }>;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/local/start';
+};
+
+export type PostApiV1ChatLocalStartResponses = {
+    /**
+     * Local chat run started
+     */
+    200: {
+        sessionKey: string;
+        session: {
+            id: string;
+            botId: string;
+            sessionKey: string;
+            channelType: string;
+            channelId: string;
+            title: string;
+            status: string;
+            messageCount: number;
+            lastMessageAt: string;
+            metadata: {
+                [key: string]: unknown;
+            };
+            createdAt: string;
+            updatedAt: string;
+        };
+        message: {
+            id: string;
+            runId?: string;
+            role: string;
+            type: string;
+            content?: unknown;
+            timestamp: number;
+            createdAt: string;
+        };
+    };
+};
+
+export type PostApiV1ChatLocalStartResponse = PostApiV1ChatLocalStartResponses[keyof PostApiV1ChatLocalStartResponses];
+
 export type PostApiV1ChatLocalData = {
     body?: {
         botId: string;
@@ -2554,6 +2621,7 @@ export type PostApiV1ChatLocalResponses = {
         };
         message: {
             id: string;
+            runId?: string;
             role: string;
             type: string;
             content?: unknown;
@@ -2564,6 +2632,29 @@ export type PostApiV1ChatLocalResponses = {
 };
 
 export type PostApiV1ChatLocalResponse = PostApiV1ChatLocalResponses[keyof PostApiV1ChatLocalResponses];
+
+export type PostApiV1ChatCancelData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/cancel';
+};
+
+export type PostApiV1ChatCancelResponses = {
+    /**
+     * Chat session aborted
+     */
+    200: {
+        ok: boolean;
+        aborted: boolean;
+        runIds: Array<string>;
+    };
+};
+
+export type PostApiV1ChatCancelResponse = PostApiV1ChatCancelResponses[keyof PostApiV1ChatCancelResponses];
 
 export type GetApiV1ChatHistoryData = {
     body?: never;

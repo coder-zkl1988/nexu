@@ -11,7 +11,8 @@ const rendererRegistry = new Map<
   string,
   {
     renderer: MirrorGLRenderer;
-    callback: (frame: VideoFrame) => void;
+    videoCallback: (frame: VideoFrame) => void;
+    jpegCallback: (screenshot: string, width: number, height: number, format: "jpeg" | "png") => void;
   }
 >();
 
@@ -20,8 +21,10 @@ export function registerMirrorRenderer(
   deviceId: string,
   renderer: MirrorGLRenderer,
 ): () => void {
-  const callback = (frame: VideoFrame) => renderer.render(frame);
-  rendererRegistry.set(deviceId, { renderer, callback });
+  const videoCallback = (frame: VideoFrame) => renderer.render(frame);
+  const jpegCallback = (screenshot: string, width: number, height: number, format: "jpeg" | "png") =>
+    renderer.renderJPEG(screenshot, width, height, format);
+  rendererRegistry.set(deviceId, { renderer, videoCallback, jpegCallback });
   return () => {
     const entry = rendererRegistry.get(deviceId);
     if (entry && entry.renderer === renderer) {
@@ -34,7 +37,14 @@ export function registerMirrorRenderer(
 export function getMirrorRenderCallback(
   deviceId: string,
 ): ((frame: VideoFrame) => void) | null {
-  return rendererRegistry.get(deviceId)?.callback ?? null;
+  return rendererRegistry.get(deviceId)?.videoCallback ?? null;
+}
+
+/** Get the JPEG render callback for a device (used by STABLE mode JSON path) */
+export function getMirrorJPEGCallback(
+  deviceId: string,
+): ((screenshot: string, width: number, height: number, format: "jpeg" | "png") => void) | null {
+  return rendererRegistry.get(deviceId)?.jpegCallback ?? null;
 }
 
 // ── H.264 Annex B helpers ─────────────────────────────────
@@ -761,18 +771,27 @@ export function useMirrorSocket(
         }
 
         if (data.channel === "mirror" && data.screenshot) {
+          const fmt = (data.format ?? "jpeg") as "jpeg" | "png";
           const frame: MirrorSnapshotFrame = {
             channel: "mirror",
             type: data.type ?? "realtime",
             deviceId,
             screenshot: data.screenshot,
-            format: data.format ?? "jpeg",
+            format: fmt,
             width: data.width,
             height: data.height,
             timestamp: data.timestamp ?? Date.now(),
             currentApp: data.currentApp,
             deviceStatus: data.deviceStatus ?? "idle",
           };
+          // Render JPEG directly to the WebGL canvas (STABLE mode path)
+          const jpegCallback = getMirrorJPEGCallback(deviceId);
+          if (jpegCallback && data.width && data.height) {
+            console.log("[mirror-ws] STABLE JPEG render:", data.width, "x", data.height, "format:", fmt);
+            jpegCallback(data.screenshot, data.width, data.height, fmt);
+          } else {
+            console.log("[mirror-ws] JPEG callback missing?", { hasCallback: !!jpegCallback, w: data.width, h: data.height });
+          }
           pendingFrame = frame;
           if (rafId === null) rafId = requestAnimationFrame(flushFrame);
           setStatus("open");

@@ -192,10 +192,40 @@ export class SessionsRuntime {
     users: QqbotKnownUser[];
   } | null = null;
 
+  private _sessionsCache: SessionResponse[] | null = null;
+  private _sessionsCacheMtime = 0;
+  private static SESSIONS_CACHE_TTL_MS = 2000;
+
   constructor(private readonly env: ControllerEnv) {}
 
-  async listSessions(): Promise<SessionResponse[]> {
+  async listSessions(forceRefresh = false): Promise<SessionResponse[]> {
+    // Check if cache is still valid
+    if (!forceRefresh && this._sessionsCache !== null) {
+      const elapsed = Date.now() - this._sessionsCacheMtime;
+      if (elapsed < SessionsRuntime.SESSIONS_CACHE_TTL_MS) {
+        return this._sessionsCache;
+      }
+    }
+
+    // Run the full scan
     const agentsDir = path.join(this.env.openclawStateDir, "agents");
+    const sessions = await this._listSessionsUncached(agentsDir);
+
+    // Update cache
+    this._sessionsCache = sessions;
+    this._sessionsCacheMtime = Date.now();
+
+    return sessions;
+  }
+
+  invalidateSessionsCache(): void {
+    this._sessionsCache = null;
+    this._sessionsCacheMtime = 0;
+  }
+
+  private async _listSessionsUncached(
+    agentsDir: string,
+  ): Promise<SessionResponse[]> {
     const qqbotKnownUsers = await this.readQqbotKnownUsers();
 
     try {
@@ -454,11 +484,20 @@ export class SessionsRuntime {
       updatedAt: now,
     });
 
-    const session = await this.getSessionByKey(input.botId, input.sessionKey);
-    if (!session) {
-      throw new Error("Failed to create or update session");
-    }
-    return session;
+    return {
+      id: `${input.sessionKey}.jsonl`,
+      botId: input.botId,
+      sessionKey: input.sessionKey,
+      title: input.title,
+      channelType: input.channelType ?? null,
+      channelId: input.channelId ?? null,
+      status: input.status ?? existing.status ?? "active",
+      messageCount: input.messageCount ?? existing.messageCount ?? 0,
+      lastMessageAt: input.lastMessageAt ?? existing.lastMessageAt ?? now,
+      metadata: input.metadata ?? existing.metadata ?? null,
+      createdAt: existing.createdAt ?? now,
+      updatedAt: now,
+    };
   }
 
   async updateSession(
@@ -486,6 +525,7 @@ export class SessionsRuntime {
       createdAt: existing.createdAt ?? session.createdAt,
       updatedAt: now,
     });
+    this.invalidateSessionsCache();
     return this.getSession(id);
   }
 
@@ -504,6 +544,7 @@ export class SessionsRuntime {
       lastMessageAt: null,
       updatedAt: now,
     });
+    this.invalidateSessionsCache();
     return this.getSession(id);
   }
 
@@ -534,6 +575,7 @@ export class SessionsRuntime {
     // session does not reappear after a restart.
     await this.removeSessionIndexEntry(session.botId, session.sessionKey);
 
+    this.invalidateSessionsCache();
     return true;
   }
 

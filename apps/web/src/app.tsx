@@ -19,6 +19,7 @@ import { IntegrationsPage } from "./pages/integrations";
 import { LocalChatPage } from "./pages/local-chat";
 import { ModelsPage } from "./pages/models";
 import { OAuthCallbackPage } from "./pages/oauth-callback";
+import { PendingSessionPage } from "./pages/pending-session";
 import { RewardsPage } from "./pages/rewards";
 import { SessionsPage } from "./pages/sessions";
 import { SkillsPage } from "./pages/skills";
@@ -44,6 +45,7 @@ function DocumentTitleSync() {
       "/workspace/settings": t("title.settings"),
       "/workspace/models": t("title.settings"),
       "/workspace/automations": t("layout.nav.automations"),
+      "/workspace/sessions/pending": t("sessions.pending.title"),
       "/feishu/bind": t("title.linkFeishu"),
     };
 
@@ -77,6 +79,10 @@ export function App() {
               <Route path="/workspace" element={<HomePage />} />
               <Route path="/workspace/home" element={<HomePage />} />
               <Route path="/workspace/sessions" element={<SessionsPage />} />
+              <Route
+                path="/workspace/sessions/pending"
+                element={<PendingSessionPage />}
+              />
               <Route
                 path="/workspace/sessions/:id"
                 element={<SessionsPage />}

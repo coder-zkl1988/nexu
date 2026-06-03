@@ -7,7 +7,8 @@ import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { A2UIRenderer } from "@/lib/a2ui";
 import type { A2UIMessage } from "@/lib/a2ui";
-import { type SSEMessage, createSSEClient } from "@/lib/api/event-source";
+import { useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
+import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
@@ -695,6 +696,7 @@ function ChatBubble({
   const {
     text,
     replyContextText,
+    // biome-ignore lint/correctness/noUnusedVariables: used in extractMessage return shape
     senderName,
     hasToolCall,
     toolCallSummary,
@@ -775,6 +777,7 @@ export function SessionsPage() {
   const { id } = useParams<{ id: string }>();
   const endRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const { openWith } = useA2UISidebar();
 
   useEffect(() => {
     if (id) track("session_detail_view");
@@ -808,21 +811,46 @@ export function SessionsPage() {
     refetchInterval: 5000,
   });
 
-  // SSE real-time connection — invalidates chat history on new messages.
+  // SSE real-time connection — streams delta events for fast perceived response
+  // and invalidates chat history on final/aborted/error.
   // Polling (5s refetchInterval above) handles the fallback regardless of SSE state.
+  const [streamingText, setStreamingText] = useState("");
+
   useEffect(() => {
     if (!id || !session?.botId || !session?.sessionKey) return;
 
-    const client = createSSEClient({
+    const client = createLocalStreamSSEClient({
       botId: session.botId,
       sessionKey: session.sessionKey,
-      onMessage: (msg: SSEMessage) => {
-        // Clear waiting state immediately when assistant reply arrives via SSE
-        if (msg.role === "assistant" && sentAtRef.current > 0) {
+      onConnected: () => {
+        // Stream established — no action needed
+      },
+      onDelta: (delta) => {
+        // Accumulate streaming text for real-time display
+        setStreamingText((prev) =>
+          delta.replace ? delta.deltaText : prev + delta.deltaText,
+        );
+      },
+      onFinal: () => {
+        // Full message received — clear streaming state & refresh
+        setStreamingText("");
+        if (sentAtRef.current > 0) {
           setWaitingForReply(false);
           sentAtRef.current = 0;
           setPendingMessages([]);
         }
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onAborted: () => {
+        setStreamingText("");
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onError: () => {
+        setStreamingText("");
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
     });
@@ -878,6 +906,28 @@ export function SessionsPage() {
       } as BotItem)
     : null;
 
+  // Stable A2UI action handler shared by inline rendering and sidebar
+  const onA2UIAction = useCallback(
+    (actionName: string, context: Record<string, unknown>) => {
+      if (!selectedBot || !id || !session?.sessionKey) return;
+      void postApiV1ChatLocal({
+        body: {
+          botId: selectedBot.id,
+          sessionKey: session.sessionKey,
+          message: {
+            type: "text",
+            content: JSON.stringify({
+              type: "a2ui_action",
+              actionName,
+              data: context,
+            }),
+          },
+        },
+      });
+    },
+    [selectedBot, id, session?.sessionKey],
+  );
+
   // Send message handler
   const [pendingMessages, setPendingMessages] = useState<
     { id: string; text: string; timestamp: number }[]
@@ -889,10 +939,12 @@ export function SessionsPage() {
   const sentAtRef = useRef(0);
 
   // Reset waiting state when switching sessions
+  // biome-ignore lint/correctness/useExhaustiveDependencies: id triggers reset on session navigation
   useEffect(() => {
     setWaitingForReply(false);
     sentAtRef.current = 0;
     setPendingMessages([]);
+    setStreamingText("");
   }, [id]);
 
   const handleSend = useCallback(
@@ -1091,6 +1143,20 @@ export function SessionsPage() {
       }
     }
   }
+
+  // Detect sidebar-bound surfaces (surfaceId starts with "sidebar:")
+  const sidebarSurfaceIds = new Set<string>();
+  for (const msgs of a2uiFromToolResults.values()) {
+    for (const m of msgs) {
+      if (
+        "createSurface" in m &&
+        m.createSurface?.surfaceId?.startsWith("sidebar:")
+      ) {
+        sidebarSurfaceIds.add(m.createSurface.surfaceId);
+      }
+    }
+  }
+
   const enrichedMessages = displayMessages
     .map((msg) => {
       const rm = msg as unknown as Record<string, unknown>;
@@ -1106,8 +1172,41 @@ export function SessionsPage() {
                 String(block.id ?? ""),
               );
               if (a2uiFromResult?.length) {
-                extracted.hasA2UI = true;
-                extracted.a2uiMessages = a2uiFromResult;
+                const isSidebarOnly = a2uiFromResult.every((m) => {
+                  if ("createSurface" in m && m.createSurface?.surfaceId) {
+                    return sidebarSurfaceIds.has(m.createSurface.surfaceId);
+                  }
+                  // For update/delete messages, check if they reference a known sidebar surface
+                  const sid =
+                    "updateComponents" in m
+                      ? m.updateComponents?.surfaceId
+                      : "updateDataModel" in m
+                        ? m.updateDataModel?.surfaceId
+                        : "deleteSurface" in m
+                          ? m.deleteSurface?.surfaceId
+                          : undefined;
+                  return sid ? sidebarSurfaceIds.has(sid) : false;
+                });
+                if (isSidebarOnly) {
+                  // Route to sidebar
+                  const createMsg = a2uiFromResult.find(
+                    (m) => "createSurface" in m,
+                  );
+                  const sid = (
+                    createMsg as
+                      | { createSurface: { surfaceId: string } }
+                      | undefined
+                  )?.createSurface?.surfaceId;
+                  if (sid) {
+                    queueMicrotask(() => {
+                      openWith(sid, a2uiFromResult, onA2UIAction);
+                    });
+                  }
+                  // Don't set hasA2UI — skip inline rendering
+                } else {
+                  extracted.hasA2UI = true;
+                  extracted.a2uiMessages = a2uiFromResult;
+                }
                 break;
               }
             }
@@ -1330,27 +1429,11 @@ export function SessionsPage() {
                     key={msg.id}
                     msg={msg}
                     extracted={extracted}
-                    onA2UIAction={(actionName, context) => {
-                      if (!selectedBot || !id || !session?.sessionKey) return;
-                      void postApiV1ChatLocal({
-                        body: {
-                          botId: selectedBot.id,
-                          sessionKey: session.sessionKey,
-                          message: {
-                            type: "text",
-                            content: JSON.stringify({
-                              type: "a2ui_action",
-                              actionName,
-                              data: context,
-                            }),
-                          },
-                        },
-                      });
-                    }}
+                    onA2UIAction={onA2UIAction}
                   />,
                 ];
               })}
-              {waitingForReply && (
+              {waitingForReply && !streamingText && (
                 <div className="flex gap-3 items-start">
                   <img
                     src={BOT_AVATAR}
@@ -1367,6 +1450,21 @@ export function SessionsPage() {
                         defaultValue: "Thinking...",
                       })}
                     </span>
+                  </div>
+                </div>
+              )}
+              {waitingForReply && streamingText && (
+                <div className="flex gap-3 items-start">
+                  <img
+                    src={BOT_AVATAR}
+                    alt=""
+                    className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+                  />
+                  <div className="rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] max-w-[80%]">
+                    <p className="text-[13px] text-text-secondary whitespace-pre-wrap break-words">
+                      {streamingText}
+                      <span className="inline-block w-1.5 h-4 ml-0.5 bg-text-secondary animate-pulse align-text-bottom" />
+                    </p>
                   </div>
                 </div>
               )}

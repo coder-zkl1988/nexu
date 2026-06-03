@@ -268,6 +268,19 @@ export class OpenClawRuntimePluginWriter {
         }
       }
 
+      // Inject XHSEditor guidance into SKILL.md if missing
+      if (!content.includes("内容可视化")) {
+        const xhsInjection =
+          '\n\n## 内容可视化\n\n当用户要求生成小红书笔记内容（标题、正文、话题标签等）时，**必须**调用 `render_a2ui` 工具将内容渲染为可视化编辑卡片，而非仅以纯文本输出。\n\n调用方式：\n```json\n{\n  "surfaceId": "sidebar:xhs-editor",\n  "catalogId": "https://nexu.app/a2ui/custom-catalog.json",\n  "components": [\n    {\n      "id": "xhs-editor",\n      "type": "XHSEditor",\n      "title": "笔记标题",\n      "content": "笔记正文内容...",\n      "images": [],\n      "hashtags": ["穿搭", "OOTD"],\n      "maxTitleLength": 20\n    }\n  ]\n}\n```\n\n**要点**：\n- `surfaceId` 必须以 `sidebar:` 开头，这样编辑卡片会自动在右侧边栏打开\n- 先调用 `render_a2ui` 展示内容，再下发 `device_execute_task` 执行发布操作\n- 用户可在编辑卡片中修改标题、正文、话题，点击"确认更新"后更新内容\n- 如果用户没有提供标题，根据正文内容自动生成一个不超过20字的标题\n';
+        // Insert before "通用执行前提"
+        const prereqIdx = content.indexOf("## 通用执行前提");
+        if (prereqIdx !== -1) {
+          content =
+            content.slice(0, prereqIdx) + xhsInjection + content.slice(prereqIdx);
+          await writeFile(skillMd, content, "utf8");
+        }
+      }
+
       // Inject sub-task decomposition into post.md if missing
       let postContent = await readFile(postMd, "utf8");
       if (!postContent.includes("子任务分解")) {
