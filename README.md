@@ -1,8 +1,19 @@
 # Tabby
 
-Tabby is a desktop-first AI workspace that helps you run local AI agents, connect them to chat channels, and control device workflows from one application.
+Tabby is a desktop-first AI workspace for running local AI partners, connecting them to chat channels, and controlling device workflows from one application.
 
-It is built for individuals and small teams who want a practical local control plane: create AI partners, connect channels, use your own model providers, and keep runtime state on your own machine.
+<p align="center">
+  <a href="README.md">English</a> |
+  <a href="README.zh-CN.md">简体中文</a> |
+  <a href="README.ja.md">日本語</a> |
+  <a href="README.ko.md">한국어</a>
+</p>
+
+<p align="center">
+  <img src="site/media/tabby-desktop-screenshot.png" width="100%" alt="Tabby desktop interface" />
+</p>
+
+Tabby is built for individuals and small teams who want a practical local control plane: create AI partners, connect channels, use your own model providers, and keep runtime state on your own machine.
 
 ## Download
 
