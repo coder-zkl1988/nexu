@@ -1,6 +1,6 @@
 {
   "name": "@nexu/desktop",
-  "version": "0.1.12",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -19,6 +19,9 @@
     "dist:mac": "node ./scripts/dist-mac.mjs",
     "dist:mac:arm64": "NEXU_DESKTOP_TARGET_ARCH=arm64 node ./scripts/dist-mac.mjs",
     "dist:mac:x64": "NEXU_DESKTOP_TARGET_ARCH=x64 node ./scripts/dist-mac.mjs",
+    "dist:mac:production": "node ./scripts/dist-mac-production.mjs",
+    "dist:mac:production:arm64": "NEXU_DESKTOP_TARGET_ARCH=arm64 node ./scripts/dist-mac-production.mjs",
+    "dist:mac:production:x64": "NEXU_DESKTOP_TARGET_ARCH=x64 node ./scripts/dist-mac-production.mjs",
     "dist:mac:unsigned": "node ./scripts/dist-mac.mjs --unsigned",
     "dist:win": "node ./scripts/dist-win.mjs",
     "dist:win:local": "node ./scripts/dist-win-stage.mjs --local",
