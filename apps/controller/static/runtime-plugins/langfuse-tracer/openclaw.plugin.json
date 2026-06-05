@@ -7,5 +7,8 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "activation": {
+    "onStartup": true
   }
 }

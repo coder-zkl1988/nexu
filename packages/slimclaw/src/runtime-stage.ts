@@ -7,19 +7,20 @@ import {
   readdir,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, relative, resolve } from "node:path";
 
 const OPENCLAW_PACKAGE_PATCH_DIRNAME = "openclaw";
 const STAGE_MANIFEST_FILENAME = "manifest.json";
-const STAGE_PATCH_VERSION = "2026-04-09-slimclaw-runtime-stage-v1";
+const STAGE_PATCH_VERSION = "2026-05-26-slimclaw-runtime-stage-v3";
 const REPLY_OUTCOME_HELPER_SEARCH = `
-const sessionKey = ctx.SessionKey;
+const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const startTime = diagnosticsEnabled ? Date.now() : 0;
 `.trim();
 const REPLY_OUTCOME_HELPER_REPLACEMENT = `
-const sessionKey = ctx.SessionKey;
+const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const emitReplyOutcome = (status, reasonCode, error) => {
 		try {
 			console.log("NEXU_EVENT channel.reply_outcome " + JSON.stringify({
@@ -42,28 +43,31 @@ const sessionKey = ctx.SessionKey;
 `.trim();
 const REPLY_OUTCOME_SILENT_SEARCH = `
 const counts = dispatcher.getQueuedCounts();
-		counts.final += routedFinalCount;
-		recordProcessed("completed");
+			counts.final += routedFinalCount;
+			recordProcessed("completed", { reason: "fast_abort" });
 `.trim();
 const REPLY_OUTCOME_SILENT_REPLACEMENT = `
 const counts = dispatcher.getQueuedCounts();
-		counts.final += routedFinalCount;
-		if (!queuedFinal) emitReplyOutcome("silent", "no_final_reply");
-		recordProcessed("completed");
+			counts.final += routedFinalCount;
+			if (!queuedFinal) emitReplyOutcome("silent", "no_final_reply");
+			recordProcessed("completed", { reason: "fast_abort" });
 `.trim();
 const REPLY_OUTCOME_ERROR_SEARCH = `
 recordProcessed("error", { error: String(err) });
 		markIdle("message_error");
+		failDispatchReplyOperation(err);
+		throw err;
 `.trim();
 const REPLY_OUTCOME_ERROR_REPLACEMENT = `
 emitReplyOutcome("failed", "dispatch_threw", err instanceof Error ? err.message : String(err));
 		recordProcessed("error", { error: String(err) });
 		markIdle("message_error");
+		failDispatchReplyOperation(err);
+		throw err;
 `.trim();
 const FEISHU_ERROR_REPLY_SUPPRESS_GUARD_SEARCH = `
 const genericErrorText = "The AI service returned an error. Please try again.";
-	const suppressErrorTextReply = params.messageChannel === "feishu" && lastAssistantErrored;
-	if (errorText && !suppressErrorTextReply) replyItems.push({
+	if (errorText) replyItems.push({
 `.trim();
 const FEISHU_ERROR_REPLY_SUPPRESS_GUARD_REPLACEMENT = `
 const genericErrorText = "The AI service returned an error. Please try again.";
@@ -72,42 +76,33 @@ const genericErrorText = "The AI service returned an error. Please try again.";
 `.trim();
 const CORE_EMBEDDED_PAYLOAD_MESSAGE_CHANNEL_SEARCH = `
 toolResultFormat: resolvedToolResultFormat,
-					messageChannel: params.messageChannel,
-					suppressToolErrorWarnings: params.suppressToolErrorWarnings,
-					inlineToolResultsAllowed: false,
+\t\t\t\t\t\tsuppressToolErrorWarnings: params.suppressToolErrorWarnings,
+\t\t\t\t\t\tinlineToolResultsAllowed: false,
 `.trim();
 const CORE_EMBEDDED_PAYLOAD_MESSAGE_CHANNEL_REPLACEMENT = `
 toolResultFormat: resolvedToolResultFormat,
-					messageChannel: params.messageChannel,
-					messageProvider: params.messageProvider,
-					suppressToolErrorWarnings: params.suppressToolErrorWarnings,
-					inlineToolResultsAllowed: false,
+\t\t\t\t\t\tmessageChannel: params.messageChannel,
+\t\t\t\t\t\tmessageProvider: params.messageProvider,
+\t\t\t\t\t\tsuppressToolErrorWarnings: params.suppressToolErrorWarnings,
+\t\t\t\t\t\tinlineToolResultsAllowed: false,
 `.trim();
 const FEISHU_PRE_REPLY_FINAL_SEARCH = [
-  "defaultRuntime.error(`Embedded agent failed before reply: ${message}`);",
-  '\t\tconst trimmedMessage = (isTransientHttp ? sanitizeUserFacingText(message, { errorContext: true }) : message).replace(/\\.\\s*$/, "");',
+  'params.replyOperation?.fail("run_failed", err);',
   "\t\treturn {",
   '\t\t\tkind: "final",',
-  '\t\t\tpayload: { text: isContextOverflow ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model." : isRoleOrderingError ? "⚠️ Message ordering conflict - please try again. If this persists, use /new to start a fresh session." : `⚠️ Agent failed before reply: ${trimmedMessage}.\\nLogs: openclaw logs --follow` }',
+  "\t\t\tpayload: markAgentRunFailureReplyPayload({ text: userVisibleFallbackText })",
   "\t\t};",
 ].join("\n");
 const FEISHU_PRE_REPLY_FINAL_REPLACEMENT = [
-  "defaultRuntime.error(`Embedded agent failed before reply: ${message}`);",
-  '\t\tconst trimmedMessage = (isTransientHttp ? sanitizeUserFacingText(message, { errorContext: true }) : message).replace(/\\.\\s*$/, "");',
+  'params.replyOperation?.fail("run_failed", err);',
   '\t\tif (resolveMessageChannel(params.sessionCtx.Surface, params.sessionCtx.Provider) === "feishu") return {',
   '\t\t\tkind: "success",',
   "\t\t\trunId,",
   "\t\t\trunResult: { payloads: [] },",
-  "\t\t\tfallbackProvider,",
-  "\t\t\tfallbackModel,",
-  "\t\t\tfallbackAttempts,",
-  "\t\t\tdidLogHeartbeatStrip,",
-  "\t\t\tautoCompactionCompleted,",
-  "\t\t\tdirectlySentBlockKeys: directlySentBlockKeys.size > 0 ? directlySentBlockKeys : void 0",
   "\t\t};",
   "\t\treturn {",
   '\t\t\tkind: "final",',
-  '\t\t\tpayload: { text: isContextOverflow ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model." : isRoleOrderingError ? "⚠️ Message ordering conflict - please try again. If this persists, use /new to start a fresh session." : `⚠️ Agent failed before reply: ${trimmedMessage}.\\nLogs: openclaw logs --follow` }',
+  "\t\t\tpayload: markAgentRunFailureReplyPayload({ text: userVisibleFallbackText })",
   "\t\t};",
 ].join("\n");
 const CONTEXT_OVERFLOW_PATCHES = [
@@ -125,29 +120,34 @@ const CONTEXT_OVERFLOW_PATCHES = [
   },
 ] as const;
 const FORMATTED_ASSISTANT_ERROR_PRIORITY_SEARCH =
-  'const assistantErrorText = lastAssistant?.stopReason === "error" ? lastAssistant.errorMessage?.trim() || formattedAssistantErrorText : void 0;';
+  'const assistantErrorText = sessionAssistantForCandidate?.stopReason === "error" ? sessionAssistantForCandidate.errorMessage?.trim() || formattedAssistantErrorText : void 0;';
 const FORMATTED_ASSISTANT_ERROR_PRIORITY_REPLACEMENT =
-  'const assistantErrorText = lastAssistant?.stopReason === "error" ? formattedAssistantErrorText || lastAssistant.errorMessage?.trim() : void 0;';
+  'const assistantErrorText = sessionAssistantForCandidate?.stopReason === "error" ? formattedAssistantErrorText || sessionAssistantForCandidate.errorMessage?.trim() : void 0;';
 const FAILOVER_ERROR_PRIORITY_SEARCH =
-  '}) : void 0) || lastAssistant?.errorMessage?.trim() || (timedOut ? "LLM request timed out." : rateLimitFailure ? "LLM request rate limited." : billingFailure ? formatBillingErrorMessage(activeErrorContext.provider, activeErrorContext.model) : authFailure ? "LLM request unauthorized." : "LLM request failed.");';
+  '}) : void 0) || params.lastAssistant?.errorMessage?.trim() || (timeoutFailure ? "LLM request timed out." : params.rateLimitFailure ? "LLM request rate limited." : params.billingFailure ? formatBillingErrorMessage(params.activeErrorContext.provider, params.activeErrorContext.model) : params.authFailure ? "LLM request unauthorized." : "LLM request failed.");';
 const FAILOVER_ERROR_PRIORITY_REPLACEMENT =
-  '}) : void 0) || (timedOut ? "LLM request timed out." : rateLimitFailure ? "LLM request rate limited." : billingFailure ? formatBillingErrorMessage(activeErrorContext.provider, activeErrorContext.model) : authFailure ? "LLM request unauthorized." : lastAssistant?.errorMessage?.trim() || "LLM request failed.");';
+  '}) : void 0) || (timeoutFailure ? "LLM request timed out." : params.rateLimitFailure ? "LLM request rate limited." : params.billingFailure ? formatBillingErrorMessage(params.activeErrorContext.provider, params.activeErrorContext.model) : params.authFailure ? "LLM request unauthorized." : params.lastAssistant?.errorMessage?.trim() || "LLM request failed.");';
 const FAST_EXIT_BILLING_AUTH_SEARCH =
-  "const authFailure = isAuthAssistantError(lastAssistant);";
+  "const authFailure = isAuthAssistantError(assistantForFailover);";
 const FAST_EXIT_BILLING_AUTH_REPLACEMENT =
-  "const authFailure = isAuthAssistantError(lastAssistant);\n\t\t\t\tparams.__nexuNrCount = (params.__nexuNrCount || 0) + 1; if (params.__nexuNrCount >= 2) break;";
+  "const authFailure = isAuthAssistantError(assistantForFailover);\n\t\t\t\tparams.__nexuNrCount = (params.__nexuNrCount || 0) + 1; if (params.__nexuNrCount >= 2) break;";
 const EMPTY_PAYLOADS_FALLBACK_SEARCH =
   '\treturn {\n\t\tkind: "success",\n\t\trunId,\n\t\trunResult,';
 const EMPTY_PAYLOADS_FALLBACK_REPLACEMENT =
   '\tif (!runResult?.payloads?.length && runResult?.meta?.error) {\n\t\tconst _errMsg = runResult.meta.error.message || runResult.meta.error;\n\t\treturn {\n\t\t\tkind: "final",\n\t\t\tpayload: { text: typeof _errMsg === "string" ? _errMsg : "⚠️ An error occurred. Please try again." }\n\t\t};\n\t}\n\treturn {\n\t\tkind: "success",\n\t\trunId,\n\t\trunResult,';
-const COMPACTION_NEXU_EVENT_SEARCH =
-  "function handleAutoCompactionStart(ctx) {";
-const COMPACTION_NEXU_EVENT_REPLACEMENT =
-  'function handleAutoCompactionStart(ctx) {\n\tfetch("http://127.0.0.1:" + (process.env.CONTROLLER_PORT || "50800") + "/api/internal/compaction-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionKey: ctx.params.sessionKey, channel: ctx.params.messageChannel, runId: ctx.params.runId }) }).catch(() => {});';
-const COMPACTION_FEEDBACK_SEARCH =
-  'if ((typeof evt.data.phase === "string" ? evt.data.phase : "") === "end") autoCompactionCompleted = true;';
-const COMPACTION_FEEDBACK_REPLACEMENT =
-  '{ const _cp = typeof evt.data.phase === "string" ? evt.data.phase : ""; if (_cp === "start") { const _cl = globalThis.__nexuCgLocale || "zh-CN"; params.typingSignals.signalTextDelta(_cl === "en" ? "\\u23f3 Compacting conversation history..." : "\\u23f3 \\u6b63\\u5728\\u6574\\u7406\\u5bf9\\u8bdd\\u8bb0\\u5f55...").catch(() => {}); } if (_cp === "end") autoCompactionCompleted = true; }';
+const COMPACTION_NEXU_EVENT_SEARCH = [
+  'if (evt.stream === "compaction") {',
+  '\t\t\t\t\t\t\t\t\tconst phase = readStringValue(evt.data.phase) ?? "";',
+  "\t\t\t\t\t\t\t\t\tconst hookMessages = readCompactionHookMessages(evt.data.messages);",
+  '\t\t\t\t\t\t\t\t\tif (phase === "start") {',
+].join("\n");
+const COMPACTION_NEXU_EVENT_REPLACEMENT = [
+  'if (evt.stream === "compaction") {',
+  '\t\t\t\t\t\t\t\t\tconst phase = readStringValue(evt.data.phase) ?? "";',
+  "\t\t\t\t\t\t\t\t\tconst hookMessages = readCompactionHookMessages(evt.data.messages);",
+  '\t\t\t\t\t\t\t\t\tif (phase === "start") {',
+  '\t\t\t\t\t\t\t\t\t\tfetch("http://127.0.0.1:" + (process.env.CONTROLLER_PORT || "50800") + "/api/internal/compaction-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionKey: params.sessionCtx.SessionKey ?? params.sessionCtx.CommandTargetSessionKey, channel: resolveMessageChannel(params.sessionCtx.Surface, params.sessionCtx.Provider) ?? "" }) }).catch(() => {});',
+].join("\n");
 const EMPTY_PAYLOAD_ARRAY_SEARCH =
   "const payloadArray = runResult.payloads ?? [];\n\t\t\tif (payloadArray.length === 0) return;";
 const EMPTY_PAYLOAD_ARRAY_REPLACEMENT =
@@ -157,13 +157,9 @@ const FOLLOWUP_COMPACTION_FEEDBACK_SEARCH =
 const FOLLOWUP_COMPACTION_FEEDBACK_REPLACEMENT =
   'if (evt.stream === "compaction") {\n\t\t\t\t\t\t\tconst _phase = typeof evt.data.phase === "string" ? evt.data.phase : "";\n\t\t\t\t\t\t\tif (_phase === "start") { const _l = globalThis.__nexuCgLocale || "zh-CN"; sendFollowupPayloads([{ text: _l === "en" ? "\\u23f3 Compacting conversation, estimated ~30s..." : "\\u23f3 \\u6b63\\u5728\\u6574\\u7406\\u5bf9\\u8bdd\\u8bb0\\u5f55\\uff0c\\u9884\\u8ba130\\u79d2\\u5185\\u5b8c\\u6210..." }], queued).catch(() => {}); }\n\t\t\t\t\t\t\tif (_phase === "end") memoryCompactionCompleted = true;\n\t\t\t\t\t\t}';
 const COMPACTION_COMPLETE_VERBOSE_SEARCH =
-  'if (queued.run.verboseLevel && queued.run.verboseLevel !== "off") {\n\t\t\t\t\tconst suffix = typeof count === "number" ? ` (count ${count})` : "";\n\t\t\t\t\tfinalPayloads.unshift({ text: `🧹 Auto-compaction complete${suffix}.` });\n\t\t\t\t}';
+  'if (shouldEmitVerboseProgress()) deliveryPayloads = [{ text: `🧹 Auto-compaction complete${typeof count === "number" ? ` (count ${count})` : ""}.` }, ...finalPayloads];';
 const COMPACTION_COMPLETE_VERBOSE_REPLACEMENT =
-  '{ const _l = globalThis.__nexuCgLocale || "zh-CN"; finalPayloads.unshift({ text: _l === "en" ? "\\u2705 Conversation compacted successfully." : "\\u2705 \\u5bf9\\u8bdd\\u8bb0\\u5f55\\u6574\\u7406\\u5b8c\\u6210\\u3002" }); }';
-const STOP_FOLLOWUP_ON_EMPTY_SEARCH =
-  "if (payloadArray.length === 0) return finalizeWithFollowup(void 0, queueKey, runFollowupTurn);";
-const STOP_FOLLOWUP_ON_EMPTY_REPLACEMENT =
-  "if (payloadArray.length === 0) return;";
+  '{ const _l = globalThis.__nexuCgLocale || "zh-CN"; deliveryPayloads = [{ text: _l === "en" ? "\\u2705 Conversation compacted successfully." : "\\u2705 \\u5bf9\\u8bdd\\u8bb0\\u5f55\\u6574\\u7406\\u5b8c\\u6210\\u3002" }, ...finalPayloads]; }';
 const LOCALE_READER_LINES = [
   'const _nexuLocale = (() => { try { const _fs = require("node:fs"); const _path = require("node:path"); const _stateDir = process.env.OPENCLAW_STATE_DIR; if (!_stateDir) return "zh-CN"; const _fp = _path.join(_stateDir, "nexu-credit-guard-state.json"); const _mt = _fs.statSync(_fp).mtimeMs; if (globalThis.__nexuCgMt === _mt) return globalThis.__nexuCgLocale || "zh-CN"; const _d = JSON.parse(_fs.readFileSync(_fp, "utf8")); globalThis.__nexuCgMt = _mt; globalThis.__nexuCgLocale = _d.locale || "zh-CN"; return globalThis.__nexuCgLocale; } catch { return globalThis.__nexuCgLocale || "zh-CN"; } })();',
 ] as const;
@@ -184,12 +180,18 @@ const KNOWN_LINK_ERROR_MAPPING_LINES = [
   'if (lowered.includes("[code=streaming_unsupported]") || lowered.includes("streaming unsupported")) return _nexuLocale === "en" ? "⚠️ Streaming is not supported for this request. Please try a different approach or try again later. If the issue persists, see https://docs.nexu.io/guide/contact" : "⚠️ 当前暂不支持这种返回方式，请换一种方式再试，或稍后重试。如仍无法解决，请查看 https://docs.nexu.io/zh/guide/contact";',
   'if (lowered.includes("[code=upstream_error]") || lowered.includes("upstream provider is unavailable") || lowered.includes("upstream_error")) return _nexuLocale === "en" ? "⚠️ The upstream model service is temporarily unavailable. Please try again later or switch to a different model. If the issue persists, see https://docs.nexu.io/guide/contact" : "⚠️ 当前连接的模型服务暂时不可用，请稍后重试，或更换其他模型后再试。如仍无法解决，请查看 https://docs.nexu.io/zh/guide/contact";',
 ] as const;
-const HELPER_BUNDLE_PATTERNS = [/^pi-embedded-helpers-.*\.js$/u] as const;
+const HELPER_BUNDLE_PATTERNS = [/^assistant-error-format-.*\.js$/u] as const;
 const PLUGIN_SDK_BUNDLE_PATTERNS = [
   /^reply-.*\.js$/u,
   /^dispatch-.*\.js$/u,
 ] as const;
-const CORE_DIST_REPLY_BUNDLE_PATTERNS = [/^reply-.*\.js$/u] as const;
+const CORE_DIST_REPLY_BUNDLE_PATTERNS = [
+  /^reply-.*\.js$/u,
+  /^dispatch-.*\.js$/u,
+  /^pi-embedded-.*\.js$/u,
+  /^reply-turn-admission-.*\.js$/u,
+  /^agent-runner\.runtime.*\.js$/u,
+] as const;
 const FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH = `
       // --- Single-agent dispatch (existing behavior) ---
       const ctxPayload = buildCtxPayloadForAgent(
@@ -469,68 +471,94 @@ async function patchReplyOutcomeBridge(
   const patchedFiles = new Map<string, string>();
   const feishuBotPath = resolve(
     openclawPackageRoot,
+    "dist",
     "extensions",
     "feishu",
     "src",
     "bot.ts",
   );
-  let feishuBotSource = await readFile(feishuBotPath, "utf8");
 
-  if (feishuBotSource.includes(LEGACY_FEISHU_PRE_LLM_BLOCK)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      LEGACY_FEISHU_PRE_LLM_BLOCK,
-      "",
-    );
-  }
-
-  if (feishuBotSource.includes(LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK,
-      FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
-    );
-  }
-
-  if (feishuBotSource.includes(LEGACY_FEISHU_TRIGGER_CALLSITE)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      LEGACY_FEISHU_TRIGGER_CALLSITE,
-      LEGACY_FEISHU_TRIGGER_CALLSITE_REPLACEMENT,
-    );
-  }
-
-  if (feishuBotSource.includes(FEISHU_SYNTHETIC_PRE_LLM_BLOCK)) {
-    feishuBotSource = feishuBotSource.replaceAll(
-      FEISHU_SYNTHETIC_PRE_LLM_BLOCK,
-      "",
-    );
-  }
-
-  if (feishuBotSource.includes(FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH)) {
-    feishuBotSource = feishuBotSource.replace(
-      FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH,
-      FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
-    );
+  try {
+    const feishuBotStat = await stat(feishuBotPath);
+    if (!feishuBotStat.isFile()) {
+      throw new Error("not a file");
+    }
+  } catch {
     emitLog(
       log,
-      "[slimclaw-runtime-stage] patched feishu single-agent pre-llm trigger",
+      "[slimclaw-runtime-stage] feishu bot.ts not found — skipping feishu source patching (OpenClaw >=2026.5.18 bundles feishu into dist)",
     );
   }
 
-  if (countOccurrences(feishuBotSource, FEISHU_SYNTHETIC_PRE_LLM_BLOCK) !== 1) {
-    throw new Error(
-      "Feishu bot patch did not converge to a single synthetic pre-llm block.",
-    );
+  // Only patch feishu source if it still exists as a standalone extension.
+  let feishuBotSource: string | undefined;
+  try {
+    feishuBotSource = await readFile(feishuBotPath, "utf8");
+  } catch {
+    // skip feishu source patching
   }
 
-  if (feishuBotSource.includes("return;\n      }\n        route.sessionKey,")) {
-    throw new Error(
-      "Feishu bot patch left a dangling buildCtxPayloadForAgent argument tail.",
+  if (feishuBotSource !== undefined) {
+    if (feishuBotSource.includes(LEGACY_FEISHU_PRE_LLM_BLOCK)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        LEGACY_FEISHU_PRE_LLM_BLOCK,
+        "",
+      );
+    }
+
+    if (feishuBotSource.includes(LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        LEGACY_FEISHU_SINGLE_AGENT_TRIGGER_BLOCK,
+        FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
+      );
+    }
+
+    if (feishuBotSource.includes(LEGACY_FEISHU_TRIGGER_CALLSITE)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        LEGACY_FEISHU_TRIGGER_CALLSITE,
+        LEGACY_FEISHU_TRIGGER_CALLSITE_REPLACEMENT,
+      );
+    }
+
+    if (feishuBotSource.includes(FEISHU_SYNTHETIC_PRE_LLM_BLOCK)) {
+      feishuBotSource = feishuBotSource.replaceAll(
+        FEISHU_SYNTHETIC_PRE_LLM_BLOCK,
+        "",
+      );
+    }
+
+    if (feishuBotSource.includes(FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH)) {
+      feishuBotSource = feishuBotSource.replace(
+        FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH,
+        FEISHU_PRE_LLM_SINGLE_AGENT_REPLACEMENT,
+      );
+      emitLog(
+        log,
+        "[slimclaw-runtime-stage] patched feishu single-agent pre-llm trigger",
+      );
+    }
+
+    if (
+      countOccurrences(feishuBotSource, FEISHU_SYNTHETIC_PRE_LLM_BLOCK) !== 1
+    ) {
+      throw new Error(
+        "Feishu bot patch did not converge to a single synthetic pre-llm block.",
+      );
+    }
+
+    if (
+      feishuBotSource.includes("return;\n      }\n        route.sessionKey,")
+    ) {
+      throw new Error(
+        "Feishu bot patch left a dangling buildCtxPayloadForAgent argument tail.",
+      );
+    }
+
+    patchedFiles.set(
+      relative(openclawPackageRoot, feishuBotPath),
+      feishuBotSource,
     );
   }
-
-  patchedFiles.set(
-    relative(openclawPackageRoot, feishuBotPath),
-    feishuBotSource,
-  );
 
   const patchBundleGroup = async (
     bundleDir: string,
@@ -550,7 +578,10 @@ async function patchReplyOutcomeBridge(
       const bundlePath = resolve(bundleDir, bundleName);
       let source = await readFile(bundlePath, "utf8");
 
-      if (!source.includes("NEXU_EVENT channel.reply_outcome")) {
+      if (
+        !source.includes("NEXU_EVENT channel.reply_outcome") &&
+        source.includes(REPLY_OUTCOME_HELPER_SEARCH)
+      ) {
         source = applyExactReplacement(
           source,
           REPLY_OUTCOME_HELPER_SEARCH,
@@ -659,19 +690,6 @@ async function patchReplyOutcomeBridge(
         );
       }
 
-      if (source.includes(COMPACTION_FEEDBACK_SEARCH)) {
-        source = applyExactReplacement(
-          source,
-          COMPACTION_FEEDBACK_SEARCH,
-          COMPACTION_FEEDBACK_REPLACEMENT,
-          `${bundleName}: compaction status feedback`,
-        );
-        emitLog(
-          log,
-          `[slimclaw-runtime-stage] patched compaction status feedback in ${bundleName}`,
-        );
-      }
-
       if (source.includes(COMPACTION_COMPLETE_VERBOSE_SEARCH)) {
         source = applyExactReplacement(
           source,
@@ -737,19 +755,6 @@ async function patchReplyOutcomeBridge(
         );
       }
 
-      if (source.includes(STOP_FOLLOWUP_ON_EMPTY_SEARCH)) {
-        source = applyExactReplacement(
-          source,
-          STOP_FOLLOWUP_ON_EMPTY_SEARCH,
-          STOP_FOLLOWUP_ON_EMPTY_REPLACEMENT,
-          `${bundleName}: stop followup on empty payloads`,
-        );
-        emitLog(
-          log,
-          `[slimclaw-runtime-stage] patched stop followup on empty payloads in ${bundleName}`,
-        );
-      }
-
       for (const overflow of CONTEXT_OVERFLOW_PATCHES) {
         if (source.includes(overflow.search)) {
           source = source.replaceAll(overflow.search, overflow.zhReplace);
@@ -810,10 +815,6 @@ async function patchReplyOutcomeBridge(
     resolve(openclawPackageRoot, "dist"),
     "core dist",
   );
-  await patchHelperBundleGroup(
-    resolve(openclawPackageRoot, "dist", "plugin-sdk"),
-    "plugin-sdk",
-  );
 
   const allDistFiles = await readdir(resolve(openclawPackageRoot, "dist"));
   for (const fileName of allDistFiles.sort((left, right) =>
@@ -856,7 +857,14 @@ async function collectFingerprintFiles(
   const files: Array<{ label: string; path: string }> = [];
   const sourceCandidates = [
     resolve(sourceOpenclawRoot, "package.json"),
-    resolve(sourceOpenclawRoot, "extensions", "feishu", "src", "bot.ts"),
+    resolve(
+      sourceOpenclawRoot,
+      "dist",
+      "extensions",
+      "feishu",
+      "src",
+      "bot.ts",
+    ),
   ];
 
   for (const sourceFilePath of sourceCandidates) {

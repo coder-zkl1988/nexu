@@ -72,24 +72,29 @@ export async function runManagedColdStart({
   orchestrator,
   rotateDesktopLogSession,
   waitForControllerReadiness,
+  onProgress,
 }: RunPlatformColdStartArgs) {
   logStartupStep("managedColdStart:start");
   diagnosticsReporter?.markColdStartRunning("starting controller");
   logColdStart("starting controller");
+  onProgress?.("starting_controller");
   await orchestrator.startOne("controller");
 
   diagnosticsReporter?.markColdStartRunning("waiting for controller readiness");
   logColdStart("waiting for controller readiness");
+  onProgress?.("waiting_controller");
   await waitForControllerReadiness();
 
   diagnosticsReporter?.markColdStartRunning("starting web");
   logColdStart("starting web");
+  onProgress?.("starting_web");
   await orchestrator.startOne("web");
 
   const sessionId = rotateDesktopLogSession();
   logColdStart(`cold start session ready sessionId=${sessionId}`);
   logColdStart("cold start complete");
   diagnosticsReporter?.markColdStartSucceeded();
+  onProgress?.("complete");
   logStartupStep("managedColdStart:done");
 
   return {
@@ -103,21 +108,25 @@ export async function runExternalColdStart({
   logStartupStep,
   rotateDesktopLogSession,
   waitForControllerReadiness,
+  onProgress,
 }: RunPlatformColdStartArgs) {
   logStartupStep("externalColdStart:start");
   diagnosticsReporter?.markColdStartRunning("attaching to external runtime");
   logColdStart("attaching to external runtime");
+  onProgress?.("attaching_external");
 
   diagnosticsReporter?.markColdStartRunning(
     "waiting for external controller readiness",
   );
   logColdStart("waiting for external controller readiness");
+  onProgress?.("waiting_controller");
   await waitForControllerReadiness();
 
   const sessionId = rotateDesktopLogSession();
   logColdStart(`external runtime session ready sessionId=${sessionId}`);
   logColdStart("external runtime attach complete");
   diagnosticsReporter?.markColdStartSucceeded();
+  onProgress?.("complete");
   logStartupStep("externalColdStart:done");
 
   return {

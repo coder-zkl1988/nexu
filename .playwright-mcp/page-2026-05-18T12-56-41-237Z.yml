@@ -1,0 +1,71 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]:
+        - img "Tabby"
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - link "首页" [ref=e9] [cursor=pointer]:
+            - /url: /workspace/home
+            - img [ref=e10]
+            - text: 首页
+          - link "新对话" [ref=e13] [cursor=pointer]:
+            - /url: /workspace/chat
+            - img [ref=e14]
+            - text: 新对话
+          - link "技能商店" [ref=e16] [cursor=pointer]:
+            - /url: /workspace/skills
+            - img [ref=e17]
+            - text: 技能商店
+          - link "自动化 Beta" [ref=e19] [cursor=pointer]:
+            - /url: /workspace/automations
+            - img [ref=e20]
+            - text: 自动化
+            - generic [ref=e22]: Beta
+          - link "AI·伙伴" [ref=e23] [cursor=pointer]:
+            - /url: /workspace/experts
+            - img [ref=e24]
+            - text: AI·伙伴
+          - link "设备" [ref=e27] [cursor=pointer]:
+            - /url: /workspace/devices
+            - img [ref=e28]
+            - text: 设备
+        - generic [ref=e31]: 对话
+      - generic [ref=e47]:
+        - button "设置" [ref=e48] [cursor=pointer]:
+          - img [ref=e49]
+          - generic [ref=e52]: 设置
+        - generic [ref=e53]:
+          - button "Help" [ref=e55] [cursor=pointer]:
+            - img [ref=e56]
+          - link "GitHub" [ref=e59] [cursor=pointer]:
+            - /url: https://github.com/nexu-io/nexu
+            - img "GitHub" [ref=e60]
+      - button "D Desktop User desktop@nexu.local" [ref=e64] [cursor=pointer]:
+        - generic [ref=e65]: D
+        - generic [ref=e66]:
+          - generic [ref=e67]: Desktop User
+          - generic [ref=e68]: desktop@nexu.local
+        - img [ref=e69]
+    - main [ref=e75]:
+      - generic [ref=e77]:
+        - img [ref=e79]
+        - heading "暂无对话" [level=2] [ref=e81]
+        - paragraph [ref=e82]: 请先配置平台 Bot，然后在 Slack / Discord / WhatsApp 中 @nexu 或直接私信小龙虾 🦞 —— 对话会自动出现在这里。
+        - generic [ref=e83]:
+          - button "配置 Bot" [ref=e84] [cursor=pointer]:
+            - img [ref=e85]
+            - text: 配置 Bot
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - generic [ref=e90]: "1"
+              - text: 连接平台
+            - generic [ref=e91]:
+              - generic [ref=e92]: →
+              - generic [ref=e93]: "2"
+              - text: 提及 @nexu
+            - generic [ref=e94]:
+              - generic [ref=e95]: →
+              - generic [ref=e96]: "3"
+              - text: 对话出现
+  - region "Notifications alt+T"

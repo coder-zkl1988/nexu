@@ -196,6 +196,10 @@ if (needsSetupExtraction) {
   process.env.NEXU_NEEDS_SETUP_ANIMATION = "1";
 }
 
+if (!app.isPackaged && process.env.NEXU_DEV_IMMERSIVE !== "0") {
+  process.env.NEXU_DEV_IMMERSIVE = "1";
+}
+
 const runtimeUnitManifests = createRuntimeUnitManifests(
   electronRoot,
   app.getPath("userData"),
@@ -349,6 +353,8 @@ let launchdQuitOptsForResidentEntry:
   | Parameters<typeof installLaunchdQuitHandler>[0]
   | null = null;
 let diagnosticsReporter: DesktopDiagnosticsReporter | null = null;
+
+let unsubscribeIpc: (() => void) | null = null;
 let systemTray: Tray | null = null;
 let pendingMacResidentEntryPreferences: DesktopShellPreferences | null = null;
 
@@ -562,6 +568,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
 
   try {
     sleepGuard?.dispose(reason);
+    unsubscribeIpc?.();
+    unsubscribeIpc = null;
     await diagnosticsReporter?.flushNow().catch(() => undefined);
     flushRuntimeLoggers();
     flushV8CoverageIfEnabled();
@@ -616,6 +624,10 @@ function sendHostDesktopCommand(command: HostDesktopCommand): void {
   mainWindow?.webContents.send("host:desktop-command", command);
 }
 
+function sendSetupProgress(stage: string, detail?: string): void {
+  sendHostDesktopCommand({ type: "setup:progress", stage, detail });
+}
+
 function showAboutDialog(): void {
   const version = app.getVersion();
   const detailLines = [
@@ -626,8 +638,8 @@ function showAboutDialog(): void {
   ];
   const options = {
     type: "info" as const,
-    title: "About Nexu",
-    message: "Nexu",
+    title: "About Tabby",
+    message: "Tabby",
     detail: detailLines.join("\n"),
     buttons: ["OK"],
     noLink: true,
@@ -658,12 +670,9 @@ function installApplicationMenu(): void {
         click: () => sendDesktopCommand("control", "full"),
       },
       {
-        label: "Show Web In Shell",
-        click: () => sendDesktopCommand("web", "full"),
-      },
-      {
-        label: "Show OpenClaw In Shell",
-        click: () => sendDesktopCommand("openclaw", "full"),
+        label: "Hide Desktop Shell",
+        accelerator: "CmdOrCtrl+Shift+H",
+        click: () => sendDesktopCommand("web", "immersive"),
       },
       { type: "separator" },
       {
@@ -860,26 +869,31 @@ async function waitForControllerReadiness(): Promise<void> {
 async function runDesktopColdStart(): Promise<void> {
   diagnosticsReporter?.markColdStartRunning("starting controller");
   logColdStart("starting controller");
+  sendSetupProgress("starting_controller");
   await orchestrator.startOne("controller");
 
   diagnosticsReporter?.markColdStartRunning("waiting for controller readiness");
   logColdStart("waiting for controller readiness");
+  sendSetupProgress("waiting_controller");
   await waitForControllerReadiness();
 
   diagnosticsReporter?.markColdStartRunning("starting web");
   logColdStart("starting web");
+  sendSetupProgress("starting_web");
   await orchestrator.startOne("web");
 
   const sessionId = rotateDesktopLogSession();
   logColdStart(`cold start session ready sessionId=${sessionId}`);
 
   logColdStart("cold start complete");
+  sendSetupProgress("complete");
   diagnosticsReporter?.markColdStartSucceeded();
 }
 
 async function runLaunchdColdStart(): Promise<void> {
   diagnosticsReporter?.markColdStartRunning("launchd bootstrap");
   logColdStart("starting launchd bootstrap");
+  sendSetupProgress("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
   const paths = await resolveLaunchdPaths(
@@ -925,6 +939,9 @@ async function runLaunchdColdStart(): Promise<void> {
   const skillhubStaticSkillsDir = app.isPackaged
     ? resolve(electronRoot, "static/bundled-skills")
     : resolve(repoRoot, "apps/desktop/static/bundled-skills");
+  const experthubStaticExpertsDir = app.isPackaged
+    ? resolve(electronRoot, "static/bundled-experts")
+    : resolve(repoRoot, "apps/desktop/static/bundled-experts");
   const platformTemplatesDir = app.isPackaged
     ? resolve(electronRoot, "static/platform-templates")
     : resolve(repoRoot, "apps/controller/static/platform-templates");
@@ -949,6 +966,7 @@ async function runLaunchdColdStart(): Promise<void> {
     webUrl: runtimeConfig.urls.web,
     openclawSkillsDir,
     skillhubStaticSkillsDir,
+    experthubStaticExpertsDir,
     platformTemplatesDir,
     openclawBinPath,
     openclawExtensionsDir,
@@ -1009,11 +1027,13 @@ async function runLaunchdColdStart(): Promise<void> {
     logColdStart(
       `attached to running services (controller=${controllerPort} openclaw=${openclawPort} web=${webPort})`,
     );
+    sendSetupProgress("attached");
   } else {
     logColdStart("launchd services started, waiting for controller readiness");
     diagnosticsReporter?.markColdStartRunning(
       "waiting for controller readiness",
     );
+    sendSetupProgress("waiting_controller");
   }
 
   const controllerReady = await launchdResult.controllerReady;
@@ -1026,6 +1046,7 @@ async function runLaunchdColdStart(): Promise<void> {
 
   const sessionId = rotateDesktopLogSession();
   logColdStart(`launchd cold start complete sessionId=${sessionId}`);
+  sendSetupProgress("complete");
   diagnosticsReporter?.markColdStartSucceeded();
 }
 
@@ -1178,7 +1199,7 @@ function ensureResidentTray(): void {
 
   const tray = new Tray(trayIcon);
   residentTray = tray;
-  tray.setToolTip("nexu");
+  tray.setToolTip("Tabby");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -1225,7 +1246,7 @@ async function ensureWindowsTray(): Promise<void> {
   }
 
   systemTray = new Tray(trayIcon);
-  systemTray.setToolTip("Nexu");
+  systemTray.setToolTip("Tabby");
   updateSystemTrayMenu();
 
   systemTray.on("click", () => {
@@ -1307,7 +1328,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: needsSetupExtraction ? 1280 : 1120,
     minHeight: 720,
     backgroundColor: isMacOS ? "#00000000" : "#0B1020",
-    title: "nexu",
+    title: "tabby",
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 18, y: 18 },
     ...(isMacOS
@@ -1666,6 +1687,10 @@ app.on("web-contents-created", (_event, contents) => {
       windowId: contents.id,
     });
   });
+
+  contents.on("destroyed", () => {
+    diagnosticsReporter?.removeEmbedded(contents.id);
+  });
 });
 
 logLaunchTimeline("electron main module evaluated");
@@ -1719,7 +1744,7 @@ app.whenReady().then(async () => {
     applyResidentEntryPreferences(preferences);
   });
   applyDesktopShellPreferencesOnStartup();
-  registerIpcHandlers(
+  unsubscribeIpc = registerIpcHandlers(
     orchestrator,
     runtimeConfig,
     diagnosticsReporter,
@@ -1762,11 +1787,13 @@ app.whenReady().then(async () => {
         diagnosticsReporter?.markColdStartRunning(
           "extracting openclaw sidecar",
         );
+        sendSetupProgress("extracting", "解压OpenClaw运行时...");
         await extractOpenclawSidecarAsync(
           electronRoot,
           app.getPath("userData"),
         );
         logColdStart("openclaw sidecar extraction complete");
+        sendSetupProgress("extracted");
       }
 
       logColdStart(
@@ -1784,6 +1811,7 @@ app.whenReady().then(async () => {
           logStartupStep: logLaunchTimeline,
           rotateDesktopLogSession,
           waitForControllerReadiness,
+          onProgress: sendSetupProgress,
         });
       } else if (useLaunchdMode) {
         await runLaunchdColdStart();
@@ -1794,11 +1822,14 @@ app.whenReady().then(async () => {
           "attaching to external runtime",
         );
         logColdStart("attaching to external runtime");
+        sendSetupProgress("attaching_external");
         logColdStart("waiting for external controller readiness");
+        sendSetupProgress("waiting_controller");
         await waitForControllerReadiness();
         const sessionId = rotateDesktopLogSession();
         logColdStart(`cold start session ready sessionId=${sessionId}`);
         logColdStart("cold start complete");
+        sendSetupProgress("complete");
         diagnosticsReporter?.markColdStartSucceeded();
       } else {
         await runDesktopColdStart();

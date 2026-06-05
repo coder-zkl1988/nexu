@@ -68,6 +68,7 @@ const hostBridge: HostBridge = {
     isPackaged: !process.defaultApp,
     needsSetupAnimation: process.env.NEXU_NEEDS_SETUP_ANIMATION === "1",
     webviewPreloadUrl: resolveWebviewPreloadUrl(import.meta.dirname),
+    devImmersive: process.env.NEXU_DEV_IMMERSIVE === "1",
   },
 
   invoke<TChannel extends HostInvokeChannel>(

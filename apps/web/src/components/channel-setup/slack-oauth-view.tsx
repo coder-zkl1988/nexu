@@ -1,5 +1,7 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { Input } from "@/components/ui/input";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
@@ -11,10 +13,11 @@ import {
   Lock,
   MessageSquare,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  getApiV1Channels,
   getApiV1ChannelsSlackOauthUrl,
   getApiV1ChannelsSlackRedirectUri,
   postApiV1ChannelsSlackConnect,
@@ -132,11 +135,26 @@ export function SlackOAuthView({
   const [botToken, setBotToken] = useState("");
   const [signingSecret, setSigningSecret] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [botId, setBotId] = useState<string>("");
   const [oauthFailed, setOauthFailed] = useState(!!oauthError);
   const [oauthErrorMsg, setOauthErrorMsg] = useState(oauthError || "");
   const [eventsUrl, setEventsUrl] = useState(
     `${window.location.origin}/api/slack/events`,
   );
+
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels.filter((ch) => ch.channelType === "slack").map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   // Fetch server base URL so the events URL matches the actual deployment
   useEffect(() => {
@@ -210,6 +228,7 @@ export function SlackOAuthView({
         body: {
           botToken: botToken.trim(),
           signingSecret: signingSecret.trim(),
+          botId,
         },
       });
       if (error) {
@@ -628,6 +647,15 @@ export function SlackOAuthView({
                 {t("slackSetup.dmWarning")}
               </p>
             </div>
+            <div className="mb-4">
+              <BotPicker
+                value={botId || null}
+                onChange={setBotId}
+                required
+                disabled={disabled || connecting}
+                disabledBotIds={disabledBotIds}
+              />
+            </div>
             <button
               type="button"
               onClick={handleManualConnect}
@@ -635,7 +663,8 @@ export function SlackOAuthView({
                 disabled ||
                 connecting ||
                 !botToken.trim() ||
-                !signingSecret.trim()
+                !signingSecret.trim() ||
+                !botId
               }
               className="flex gap-1.5 items-center px-5 py-2.5 text-[13px] font-medium text-white rounded-lg bg-[#4A154B] hover:bg-[#3a1039] transition-all disabled:opacity-60 cursor-pointer"
             >

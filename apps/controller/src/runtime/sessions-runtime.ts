@@ -192,10 +192,40 @@ export class SessionsRuntime {
     users: QqbotKnownUser[];
   } | null = null;
 
+  private _sessionsCache: SessionResponse[] | null = null;
+  private _sessionsCacheMtime = 0;
+  private static SESSIONS_CACHE_TTL_MS = 2000;
+
   constructor(private readonly env: ControllerEnv) {}
 
-  async listSessions(): Promise<SessionResponse[]> {
+  async listSessions(forceRefresh = false): Promise<SessionResponse[]> {
+    // Check if cache is still valid
+    if (!forceRefresh && this._sessionsCache !== null) {
+      const elapsed = Date.now() - this._sessionsCacheMtime;
+      if (elapsed < SessionsRuntime.SESSIONS_CACHE_TTL_MS) {
+        return this._sessionsCache;
+      }
+    }
+
+    // Run the full scan
     const agentsDir = path.join(this.env.openclawStateDir, "agents");
+    const sessions = await this._listSessionsUncached(agentsDir);
+
+    // Update cache
+    this._sessionsCache = sessions;
+    this._sessionsCacheMtime = Date.now();
+
+    return sessions;
+  }
+
+  invalidateSessionsCache(): void {
+    this._sessionsCache = null;
+    this._sessionsCacheMtime = 0;
+  }
+
+  private async _listSessionsUncached(
+    agentsDir: string,
+  ): Promise<SessionResponse[]> {
     const qqbotKnownUsers = await this.readQqbotKnownUsers();
 
     try {
@@ -231,6 +261,7 @@ export class SessionsRuntime {
         const activeFileNames = new Set<string>();
         const subagentFileNames = new Set<string>();
         const heartbeatFileNames = new Set<string>();
+        const fileNameToIndexKey = new Map<string, string>();
         for (const [indexKey, entry] of Object.entries(sessionsIndex)) {
           let fileName: string | null = null;
           if (
@@ -247,6 +278,7 @@ export class SessionsRuntime {
           if (!fileName) {
             continue;
           }
+          fileNameToIndexKey.set(fileName, indexKey);
           activeFileNames.add(fileName);
           if (indexKey.includes(":subagent:")) {
             subagentFileNames.add(fileName);
@@ -294,7 +326,9 @@ export class SessionsRuntime {
           const filePath = path.join(sessionsDir, file.name);
           const metadata = await stat(filePath);
           let extra = await this.readSessionMetadata(filePath);
-          const sessionKey = file.name.replace(/\.jsonl$/, "");
+          const sessionKey =
+            fileNameToIndexKey.get(file.name) ??
+            file.name.replace(/\.jsonl$/, "");
 
           // Read the first user message metadata block and backfill exact
           // Feishu chat targets for existing sessions without touching
@@ -450,11 +484,20 @@ export class SessionsRuntime {
       updatedAt: now,
     });
 
-    const session = await this.getSessionByKey(input.botId, input.sessionKey);
-    if (!session) {
-      throw new Error("Failed to create or update session");
-    }
-    return session;
+    return {
+      id: `${input.sessionKey}.jsonl`,
+      botId: input.botId,
+      sessionKey: input.sessionKey,
+      title: input.title,
+      channelType: input.channelType ?? null,
+      channelId: input.channelId ?? null,
+      status: input.status ?? existing.status ?? "active",
+      messageCount: input.messageCount ?? existing.messageCount ?? 0,
+      lastMessageAt: input.lastMessageAt ?? existing.lastMessageAt ?? now,
+      metadata: input.metadata ?? existing.metadata ?? null,
+      createdAt: existing.createdAt ?? now,
+      updatedAt: now,
+    };
   }
 
   async updateSession(
@@ -482,6 +525,7 @@ export class SessionsRuntime {
       createdAt: existing.createdAt ?? session.createdAt,
       updatedAt: now,
     });
+    this.invalidateSessionsCache();
     return this.getSession(id);
   }
 
@@ -500,6 +544,7 @@ export class SessionsRuntime {
       lastMessageAt: null,
       updatedAt: now,
     });
+    this.invalidateSessionsCache();
     return this.getSession(id);
   }
 
@@ -508,9 +553,29 @@ export class SessionsRuntime {
     if (!session) {
       return false;
     }
-    const filePath = this.getSessionFilePath(session.botId, session.sessionKey);
-    await rm(filePath, { force: true });
-    await rm(sessionMetadataPath(filePath), { force: true });
+
+    // Resolve the actual file path — OpenClaw stores sessions as
+    // UUID-named files (e.g. {uuid}.jsonl) and maps sessionKey → UUID
+    // in sessions.json.  The legacy getSessionFilePath() constructs a
+    // key-based path that usually does NOT exist on disk.
+    const resolvedPath = await this.resolveSessionFilePath(
+      session.botId,
+      session.sessionKey,
+    );
+
+    // Delete all session-related files (JSONL transcript, metadata,
+    // trajectory, trajectory-path).
+    const base = resolvedPath.replace(/\.jsonl$/, "");
+    await rm(`${base}.jsonl`, { force: true });
+    await rm(`${base}.meta.json`, { force: true });
+    await rm(`${base}.trajectory.jsonl`, { force: true });
+    await rm(`${base}.trajectory-path.json`, { force: true });
+
+    // Remove the entry from OpenClaw's sessions.json index so the
+    // session does not reappear after a restart.
+    await this.removeSessionIndexEntry(session.botId, session.sessionKey);
+
+    this.invalidateSessionsCache();
     return true;
   }
 
@@ -916,6 +981,13 @@ export class SessionsRuntime {
         continue;
       }
 
+      // A2UI interactive content blocks — passed through for frontend rendering.
+      if (blockType === "a2ui") {
+        normalizedBlocks.push(block);
+        hasVisibleContent = true;
+        continue;
+      }
+
       // Media blocks (image / file) are user-visible content — if the user
       // sends just an image with no accompanying text, the text block is
       // reduced to the empty string by the sanitizer and would otherwise
@@ -1267,6 +1339,42 @@ export class SessionsRuntime {
       return parsed;
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Remove a sessionKey entry from OpenClaw's sessions.json index.
+   *
+   * OpenClaw owns sessions.json and writes to it during normal operation.
+   * When the user deletes a session through the Nexu UI we must also
+   * remove the index entry, otherwise the session would reappear after
+   * an OpenClaw restart (the index entry still points to the now-deleted
+   * file, and OpenClaw recreates it on next message).
+   */
+  private async removeSessionIndexEntry(
+    botId: string,
+    sessionKey: string,
+  ): Promise<void> {
+    const sessionsDir = path.join(
+      this.env.openclawStateDir,
+      "agents",
+      botId,
+      "sessions",
+    );
+    const indexPath = path.join(sessionsDir, "sessions.json");
+    try {
+      const raw = await readFile(indexPath, "utf8");
+      const index = JSON.parse(raw) as Record<string, SessionsIndexEntry>;
+      if (!(sessionKey in index)) {
+        return;
+      }
+      delete index[sessionKey];
+      await writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+    } catch (err) {
+      logger.warn(
+        { botId, sessionKey, err },
+        "removeSessionIndexEntry: failed to update sessions.json",
+      );
     }
   }
 

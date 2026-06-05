@@ -1,4 +1,3 @@
-import { GitHubStarCta } from "@/components/github-star-cta";
 import ImportSkillModal from "@/components/skills/import-skill-modal";
 import {
   useCancelInstall,
@@ -7,7 +6,6 @@ import {
   useRefreshCatalog,
   useUninstallSkill,
 } from "@/hooks/use-community-catalog";
-import { useGitHubStars } from "@/hooks/use-github-stars";
 import { useLocale } from "@/hooks/use-locale";
 import { getTagLabel } from "@/lib/skill-translations";
 import {
@@ -366,7 +364,6 @@ function SkillCard({
 
 export function SkillsPage() {
   const { t } = useTranslation();
-  const { stars } = useGitHubStars();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isDesktopClient = useMemo(
@@ -384,6 +381,20 @@ export function SkillsPage() {
     [searchParams],
   );
   const { topTab, yoursSubTab, activeTag, searchQuery } = viewState;
+
+  const [inputValue, setInputValue] = useState(searchQuery);
+  const debouncedInput = useDebounce(inputValue, 150);
+
+  useEffect(() => {
+    if (debouncedInput !== searchQuery) {
+      setSearchParams(
+        (current) =>
+          applySkillsViewStatePatch(current, { searchQuery: debouncedInput }),
+        { replace: true },
+      );
+    }
+  }, [debouncedInput, searchQuery, setSearchParams]);
+
   const debouncedQuery = useDebounce(searchQuery, 150);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -721,14 +732,12 @@ export function SkillsPage() {
 
   if (isLoading) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-6 sm:pb-8">
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <Loader2 size={24} className="animate-spin text-text-muted" />
-            <p className="text-[13px] text-text-muted">
-              {t("skills.loadingCatalog")}
-            </p>
-          </div>
+      <div className="h-full overflow-y-auto px-6 py-6">
+        <div className="flex flex-col items-center justify-center py-16 gap-2">
+          <Loader2 size={24} className="animate-spin text-text-muted" />
+          <p className="text-[13px] text-text-muted">
+            {t("skills.loadingCatalog")}
+          </p>
         </div>
       </div>
     );
@@ -736,208 +745,159 @@ export function SkillsPage() {
 
   if (isError && allSkills.length === 0) {
     return (
-      <div className="h-full overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-6 pb-6 sm:pb-8">
-          <div className="text-center py-16">
-            <div className="flex justify-center items-center mx-auto mb-3 w-12 h-12 rounded-xl bg-red-500/10">
-              <Zap size={20} className="text-red-500" />
-            </div>
-            <p className="text-[13px] text-text-muted mb-2">
-              {t("skills.catalogUnavailable")}
-            </p>
-            <button
-              type="button"
-              onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
-              className="text-[12px] text-accent hover:underline"
-            >
-              {refreshMutation.isPending
-                ? t("skills.retrying")
-                : t("skills.tryAgain")}
-            </button>
+      <div className="h-full overflow-y-auto px-6 py-6">
+        <div className="text-center py-16">
+          <div className="flex justify-center items-center mx-auto mb-3 w-12 h-12 rounded-xl bg-red-500/10">
+            <Zap size={20} className="text-red-500" />
           </div>
+          <p className="text-[13px] text-text-muted mb-2">
+            {t("skills.catalogUnavailable")}
+          </p>
+          <button
+            type="button"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            className="text-[12px] text-accent hover:underline"
+          >
+            {refreshMutation.isPending
+              ? t("skills.retrying")
+              : t("skills.tryAgain")}
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div
-        className="max-w-4xl mx-auto px-4 sm:px-6 pb-6 sm:pb-8"
-        style={{ paddingTop: isDesktopClient ? "2rem" : "0.5rem" }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-10">
-          <div>
-            <h1 className="heading-page">{t("skills.pageTitle")}</h1>
-            <p className="heading-page-desc">{t("skills.pageSubtitle")}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <GitHubStarCta
-              label={t("home.starGithub")}
-              stars={stars}
-              variant="button"
-            />
-            <div className="relative">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) =>
-                  updateViewState({ searchQuery: e.target.value })
-                }
-                placeholder={t("skills.searchPlaceholder")}
-                className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
+    <div className="h-full flex flex-col">
+      {/* Fixed header area */}
+      <div className="shrink-0 px-6 pt-6">
+        <div style={{ paddingTop: isDesktopClient ? "2rem" : "0" }}>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
+                {t("skills.pageTitle")}
+              </h1>
+              <p className="text-xs text-[var(--color-tabby-muted)] mt-0.5">
+                {t("skills.pageSubtitle")}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+                />
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder={t("skills.searchPlaceholder")}
+                  className="w-48 pl-9 pr-3 py-1.5 rounded-lg border border-border bg-surface-1 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20 transition-colors"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-text-primary text-white text-[12px] font-medium hover:opacity-85 transition-opacity"
+              >
+                <Plus size={12} />
+                {t("skills.import")}
+              </button>
+              <ImportSkillModal
+                open={importModalOpen}
+                onClose={() => setImportModalOpen(false)}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setImportModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-text-primary text-white text-[12px] font-medium hover:opacity-85 transition-opacity"
-            >
-              <Plus size={12} />
-              {t("skills.import")}
-            </button>
-            <ImportSkillModal
-              open={importModalOpen}
-              onClose={() => setImportModalOpen(false)}
-            />
           </div>
-        </div>
 
-        {/* Top-level tabs: Yours / Explore — segment control */}
-        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2 mb-4">
-          {(
-            [
-              {
-                id: "yours" as const,
-                label: t("skills.yours"),
-                icon: Settings2,
-              },
-              {
-                id: "explore" as const,
-                label: t("skills.explore"),
-                icon: Compass,
-              },
-            ] as const
-          ).map((tab) => {
-            const active = topTab === tab.id;
-            const TabIcon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  updateViewState({
-                    topTab: tab.id,
-                    yoursSubTab: "all",
-                    activeTag: tab.id === "yours" ? null : activeTag,
-                  });
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
-                  active
-                    ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
-                    : "text-text-secondary hover:text-text-primary",
-                )}
-              >
-                <TabIcon size={14} />
-                {tab.label}
-                {tab.id === "yours" && totalYoursCount > 0 && active && (
-                  <span
-                    className={cn(
-                      "tabular-nums text-[12px]",
-                      active ? "text-text-secondary" : "text-text-tertiary",
-                    )}
-                  >
-                    {totalYoursCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Yours sub-tabs: All / Built-in / Custom */}
-        {topTab === "yours" && (
-          <div className="flex items-center gap-2 mb-3">
+          {/* Top-level tabs: Yours / Explore — segment control */}
+          <div className="inline-flex items-center gap-1 p-1 rounded-full bg-surface-2 mb-4">
             {(
               [
                 {
-                  id: "all" as const,
-                  label: t("skills.all"),
-                  count: totalYoursCount,
+                  id: "yours" as const,
+                  label: t("skills.yours"),
+                  icon: Settings2,
                 },
                 {
-                  id: "builtin" as const,
-                  label: t("skills.builtin"),
-                  count: builtinCount,
-                },
-                {
-                  id: "custom" as const,
-                  label: t("skills.custom"),
-                  count: customCount,
+                  id: "explore" as const,
+                  label: t("skills.explore"),
+                  icon: Compass,
                 },
               ] as const
             ).map((tab) => {
-              const active = yoursSubTab === tab.id;
+              const active = topTab === tab.id;
+              const TabIcon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => {
                     updateViewState({
-                      yoursSubTab: tab.id,
-                      activeTag: null,
+                      topTab: tab.id,
+                      yoursSubTab: "all",
+                      activeTag: tab.id === "yours" ? null : activeTag,
                     });
                   }}
                   className={cn(
-                    "shrink-0 inline-flex items-center justify-center rounded-full h-7 px-3 text-[11px] leading-none font-medium transition-all",
+                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-medium transition-all",
                     active
-                      ? "bg-[var(--color-accent)] text-white"
-                      : "border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-border-hover",
+                      ? "bg-white text-text-primary shadow-[var(--shadow-rest)]"
+                      : "text-text-secondary hover:text-text-primary",
                   )}
                 >
+                  <TabIcon size={14} />
                   {tab.label}
-                  <span
-                    className={cn(
-                      "ml-1 tabular-nums",
-                      active ? "opacity-80" : "opacity-50",
-                    )}
-                  >
-                    {tab.count}
-                  </span>
+                  {tab.id === "yours" && totalYoursCount > 0 && active && (
+                    <span
+                      className={cn(
+                        "tabular-nums text-[12px]",
+                        active ? "text-text-secondary" : "text-text-tertiary",
+                      )}
+                    >
+                      {totalYoursCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
-        )}
 
-        {/* Category pill filters (Explore only) */}
-        {topTab === "explore" && (
-          <div className="relative mb-5">
-            <div
-              ref={pillScrollRef}
-              onScroll={checkPillOverflow}
-              className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5"
-            >
-              {categoryTabs.map((tab) => {
-                const active =
-                  (activeTag === null && tab.id === "all") ||
-                  activeTag === tab.id;
+          {/* Yours sub-tabs: All / Built-in / Custom */}
+          {topTab === "yours" && (
+            <div className="flex items-center gap-2 mb-3">
+              {(
+                [
+                  {
+                    id: "all" as const,
+                    label: t("skills.all"),
+                    count: totalYoursCount,
+                  },
+                  {
+                    id: "builtin" as const,
+                    label: t("skills.builtin"),
+                    count: builtinCount,
+                  },
+                  {
+                    id: "custom" as const,
+                    label: t("skills.custom"),
+                    count: customCount,
+                  },
+                ] as const
+              ).map((tab) => {
+                const active = yoursSubTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
                       updateViewState({
-                        activeTag: tab.id === "all" ? null : tab.id,
-                      })
-                    }
+                        yoursSubTab: tab.id,
+                        activeTag: null,
+                      });
+                    }}
                     className={cn(
                       "shrink-0 inline-flex items-center justify-center rounded-full h-7 px-3 text-[11px] leading-none font-medium transition-all",
                       active
@@ -958,111 +918,153 @@ export function SkillsPage() {
                 );
               })}
             </div>
-            {showPillFadeLeft && (
-              <>
-                <div className="pointer-events-none absolute top-0 left-0 bottom-0 w-12 bg-gradient-to-r from-[var(--color-surface-0)] to-transparent z-[1]" />
-                <button
-                  type="button"
-                  aria-label="Scroll categories left"
-                  onClick={() => scrollPillBy("left")}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 z-[2] flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-1/95 text-text-secondary shadow-sm backdrop-blur transition-colors hover:text-text-primary hover:border-border-hover cursor-pointer"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-              </>
-            )}
-            {showPillFade && (
-              <>
-                <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-12 bg-gradient-to-l from-[var(--color-surface-0)] to-transparent z-[1]" />
-                <button
-                  type="button"
-                  aria-label="Scroll categories right"
-                  onClick={() => scrollPillBy("right")}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 z-[2] flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-1/95 text-text-secondary shadow-sm backdrop-blur transition-colors hover:text-text-primary hover:border-border-hover cursor-pointer"
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </>
-            )}
+          )}
+
+          {/* Category pill filters (Explore only) */}
+          {topTab === "explore" && (
+            <div className="relative mb-5">
+              <div
+                ref={pillScrollRef}
+                onScroll={checkPillOverflow}
+                className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5"
+              >
+                {categoryTabs.map((tab) => {
+                  const active =
+                    (activeTag === null && tab.id === "all") ||
+                    activeTag === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() =>
+                        updateViewState({
+                          activeTag: tab.id === "all" ? null : tab.id,
+                        })
+                      }
+                      className={cn(
+                        "shrink-0 inline-flex items-center justify-center rounded-full h-7 px-3 text-[11px] leading-none font-medium transition-all",
+                        active
+                          ? "bg-[var(--color-accent)] text-white"
+                          : "border border-border bg-surface-1 text-text-secondary hover:text-text-primary hover:border-border-hover",
+                      )}
+                    >
+                      {tab.label}
+                      <span
+                        className={cn(
+                          "ml-1 tabular-nums",
+                          active ? "opacity-80" : "opacity-50",
+                        )}
+                      >
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {showPillFadeLeft && (
+                <>
+                  <div className="pointer-events-none absolute top-0 left-0 bottom-0 w-12 bg-gradient-to-r from-[var(--color-surface-0)] to-transparent z-[1]" />
+                  <button
+                    type="button"
+                    aria-label="Scroll categories left"
+                    onClick={() => scrollPillBy("left")}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 z-[2] flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-1/95 text-text-secondary shadow-sm backdrop-blur transition-colors hover:text-text-primary hover:border-border-hover cursor-pointer"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                </>
+              )}
+              {showPillFade && (
+                <>
+                  <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-12 bg-gradient-to-l from-[var(--color-surface-0)] to-transparent z-[1]" />
+                  <button
+                    type="button"
+                    aria-label="Scroll categories right"
+                    onClick={() => scrollPillBy("right")}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 z-[2] flex h-7 w-7 items-center justify-center rounded-full border border-border bg-surface-1/95 text-text-secondary shadow-sm backdrop-blur transition-colors hover:text-text-primary hover:border-border-hover cursor-pointer"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ClawHub disclaimer */}
+          <p className="text-[12px] text-text-tertiary mb-4 font-medium">
+            {t("skills.clawhubDisclaimer")}{" "}
+            <a
+              href="https://github.com/nexu-io/nexu/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--color-accent)] hover:underline"
+            >
+              GitHub Issues
+            </a>{" "}
+            {t("skills.clawhubDisclaimerAfterLink")}
+          </p>
+        </div>
+      </div>
+
+      {/* Scrollable grid area */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6">
+        {/* Skill Grid */}
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(max(160px,calc(25%-9px)),1fr))]">
+          {visibleSkills.map((skill) => {
+            const firstTag = skill.tags[0];
+            return (
+              <SkillCard
+                key={skill.slug}
+                skill={skill}
+                isInstalled={installedSlugs.has(skill.slug)}
+                queueStatus={queueBySlug.get(skill.slug)}
+                queueErrorCode={queueErrorBySlug.get(skill.slug) ?? null}
+                queueErrorMessage={
+                  queueErrorMessageBySlug.get(skill.slug) ?? null
+                }
+                detailTo={createSkillDetailPath(
+                  skill.slug,
+                  location.search,
+                  installationBySlug.get(skill.slug),
+                )}
+                installation={installationBySlug.get(skill.slug)}
+                isDetailAvailable={!unavailableDetailSlugs.has(skill.slug)}
+                skillSource={
+                  topTab === "explore"
+                    ? "explore"
+                    : mapInstalledSkillSource(
+                        installedSkills.find((item) => item.slug === skill.slug)
+                          ?.source ??
+                          queueSourceBySlug.get(skill.slug) ??
+                          "managed",
+                      )
+                }
+                categoryLabel={
+                  firstTag ? getTagLabel(firstTag, locale) : undefined
+                }
+              />
+            );
+          })}
+        </div>
+
+        {/* Sentinel for infinite scroll */}
+        {visibleCount < filteredSkills.length && (
+          <div ref={sentinelRef} className="flex justify-center py-8">
+            <Loader2 size={20} className="animate-spin text-text-muted" />
           </div>
         )}
 
-        {/* ClawHub disclaimer */}
-        <p className="text-[12px] text-text-tertiary mb-4 font-medium">
-          {t("skills.clawhubDisclaimer")}{" "}
-          <a
-            href="https://github.com/nexu-io/nexu/issues"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--color-accent)] hover:underline"
-          >
-            GitHub Issues
-          </a>{" "}
-          {t("skills.clawhubDisclaimerAfterLink")}
-        </p>
-
-        {
-          <>
-            {/* Skill Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {visibleSkills.map((skill) => {
-                const firstTag = skill.tags[0];
-                return (
-                  <SkillCard
-                    key={skill.slug}
-                    skill={skill}
-                    isInstalled={installedSlugs.has(skill.slug)}
-                    queueStatus={queueBySlug.get(skill.slug)}
-                    queueErrorCode={queueErrorBySlug.get(skill.slug) ?? null}
-                    queueErrorMessage={
-                      queueErrorMessageBySlug.get(skill.slug) ?? null
-                    }
-                    detailTo={createSkillDetailPath(
-                      skill.slug,
-                      location.search,
-                      installationBySlug.get(skill.slug),
-                    )}
-                    installation={installationBySlug.get(skill.slug)}
-                    isDetailAvailable={!unavailableDetailSlugs.has(skill.slug)}
-                    skillSource={
-                      topTab === "explore"
-                        ? "explore"
-                        : mapInstalledSkillSource(
-                            installedSkills.find(
-                              (item) => item.slug === skill.slug,
-                            )?.source ??
-                              queueSourceBySlug.get(skill.slug) ??
-                              "managed",
-                          )
-                    }
-                    categoryLabel={
-                      firstTag ? getTagLabel(firstTag, locale) : undefined
-                    }
-                  />
-                );
-              })}
+        {/* Empty state */}
+        {filteredSkills.length === 0 && (
+          <div className="text-center py-12">
+            <Search size={24} className="mx-auto text-text-muted mb-3" />
+            <div className="text-[13px] text-text-muted">
+              {topTab === "yours" && !debouncedQuery.trim()
+                ? t("skills.noInstalledSkills")
+                : t("skills.noMatchingSkills")}
             </div>
-
-            {/* Sentinel for infinite scroll */}
-            {visibleCount < filteredSkills.length && (
-              <div ref={sentinelRef} className="flex justify-center py-8">
-                <Loader2 size={20} className="animate-spin text-text-muted" />
-              </div>
-            )}
-
-            {/* Empty state */}
-            {filteredSkills.length === 0 && (
-              <div className="text-center py-12">
-                <Search size={24} className="mx-auto text-text-muted mb-3" />
-                <div className="text-[13px] text-text-muted">
-                  {topTab === "yours" && !debouncedQuery.trim()
-                    ? t("skills.noInstalledSkills")
-                    : t("skills.noMatchingSkills")}
-                </div>
-              </div>
-            )}
-          </>
-        }
+          </div>
+        )}
       </div>
     </div>
   );

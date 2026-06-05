@@ -42,6 +42,7 @@ const plugin = {
   description:
     "Injects Nexu runtime model selection into model routing and prompt context.",
   register(api) {
+    try { api.logger.info("[nexu-runtime-model] loaded — intercepting before_model_resolve"); } catch {}
     api.on("before_model_resolve", async () => {
       const state = loadState();
       if (!state) {

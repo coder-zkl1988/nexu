@@ -39,9 +39,7 @@ async function waitForStableControlPlane(
   let stableSince: number | null = null;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const result = await container.controlPlaneHealth.probe({
-      timeoutMs: 1500,
-    });
+    const result = await container.controlPlaneHealth.bootstrapProbe();
 
     if (result.ok) {
       stableSince ??= Date.now();
@@ -100,6 +98,15 @@ export async function bootstrapController(
   // invisible to the running agent until a restart.
   container.skillhubService.bootstrap();
 
+  // Auto-install default experts on startup (fire-and-forget so startup
+  // isn't blocked; failures are logged inside installDefaultExperts).
+  void container.installDefaultExpertsFn().catch((err) => {
+    logger.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "default_experts_auto_install_failed",
+    );
+  });
+
   container.channelFallbackService.start();
 
   container.wsClient.onGatewayShutdown(({ restartExpectedMs }) => {
@@ -150,6 +157,15 @@ export async function bootstrapController(
       configChanged ? STABLE_CONTROL_PLANE_WINDOW_MS : 1_000,
     );
   }
+
+  // Register existing schedules with OpenClaw now that the WS connection
+  // is established. Fire-and-forget so bootstrap isn't blocked.
+  void container.scheduleService.bootstrap().catch((err) => {
+    logger.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "schedule_bootstrap_failed",
+    );
+  });
 
   container.runtimeState.bootPhase = "ready";
 

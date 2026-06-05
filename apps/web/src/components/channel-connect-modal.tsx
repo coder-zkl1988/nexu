@@ -1,13 +1,16 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import {
   formatChannelConnectErrorMessage,
   isAlreadyConnectedError,
 } from "@/lib/channel-connect-errors";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Eye, EyeOff, FileText, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
+  getApiV1Channels,
   postApiV1ChannelsDiscordConnect,
   postApiV1ChannelsFeishuConnect,
   postApiV1ChannelsSlackConnect,
@@ -153,8 +156,29 @@ export function ChannelConnectModal({
   );
   const [loading, setLoading] = useState(false);
   const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
+  const [botId, setBotId] = useState<string>("");
 
-  const allFilled = config.fields.every((f) => fieldValues[f.id]?.trim());
+  // Fetch existing channels to determine which bots are already bound
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === channelType)
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData, channelType]);
+
+  const requiresBot = true;
+  const allFilled =
+    config.fields.every((f) => fieldValues[f.id]?.trim()) &&
+    (!requiresBot || !!botId);
 
   const handleClose = useCallback(() => {
     if (!submittedSuccessfully && !loading) {
@@ -185,6 +209,10 @@ export function ChannelConnectModal({
 
   const handleSubmit = async () => {
     if (!allFilled || loading) return;
+    if (requiresBot && !botId) {
+      toast.error(t("channels.errors.botRequired"));
+      return;
+    }
     setLoading(true);
 
     try {
@@ -197,6 +225,7 @@ export function ChannelConnectModal({
           body: {
             appId: fieldValues.appId ?? "",
             appSecret: fieldValues.appSecret ?? "",
+            botId,
           },
         }));
       } else if (channelType === "slack") {
@@ -204,6 +233,7 @@ export function ChannelConnectModal({
           body: {
             botToken: fieldValues.botToken ?? "",
             signingSecret: fieldValues.signingSecret ?? "",
+            botId,
           },
         }));
       } else if (channelType === "discord") {
@@ -211,6 +241,7 @@ export function ChannelConnectModal({
           body: {
             botToken: fieldValues.botToken ?? "",
             appId: fieldValues.appId ?? "",
+            botId,
           },
         }));
       }
@@ -298,6 +329,15 @@ export function ChannelConnectModal({
 
         {/* Body */}
         <div className="px-6 py-5 space-y-4">
+          {requiresBot ? (
+            <BotPicker
+              value={botId || null}
+              onChange={setBotId}
+              required
+              disabled={loading}
+              disabledBotIds={disabledBotIds}
+            />
+          ) : null}
           {/* Credential fields */}
           {config.fields.map((field) => (
             <div key={field.id} className="space-y-1.5">

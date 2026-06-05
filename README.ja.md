@@ -1,329 +1,134 @@
-<p align="center">
-  <img src="site/media/readme-hero.png" width="100%" alt="nexu" />
-</p>
+# Tabby
 
-<h1 align="center">nexu</h1>
+Tabby は、ローカルで AI パートナーを実行し、チャットチャネルへ接続し、デバイス操作ワークフローをひとつのアプリから扱うためのデスクトップファーストな AI ワークスペースです。
 
 <p align="center">
-  <strong>AI Agent を WeChat、Feishu、Slack などの IM で直接動かせるオープンソースのデスクトップクライアント</strong>
-</p>
-
-<p align="center">
-  <a href="https://github.com/nexu-io/nexu/releases"><img src="https://img.shields.io/github/v/release/nexu-io/nexu?color=blue" alt="Release" /></a>
-  <a href="https://github.com/nexu-io/nexu/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
-  <a href="https://github.com/nexu-io/nexu/stargazers"><img src="https://img.shields.io/github/stars/nexu-io/nexu?style=social" alt="Stars" /></a>
+  <a href="README.md">English</a> |
+  <a href="README.zh-CN.md">简体中文</a> |
+  日本語 |
+  <a href="README.ko.md">한국어</a>
 </p>
 
 <p align="center">
-  <a href="https://nexu.io" target="_blank" rel="noopener"><strong>🌐 公式サイト</strong></a> &nbsp;·&nbsp;
-  <a href="https://docs.nexu.io" target="_blank" rel="noopener"><strong>📖 ドキュメント</strong></a> &nbsp;·&nbsp;
-  <a href="https://github.com/nexu-io/nexu/discussions"><strong>💬 Discussions</strong></a> &nbsp;·&nbsp;
-  <a href="https://github.com/nexu-io/nexu/issues"><strong>🐛 Issues</strong></a> &nbsp;·&nbsp;
-  <a href="https://x.com/nexudotio" target="_blank" rel="noopener"><strong>𝕏 Twitter</strong></a>
+  <img src="site/media/tabby-desktop-screenshot.png" width="100%" alt="Tabby デスクトップ画面" />
 </p>
 
-<p align="center">
-  <a href="README.md">English</a> &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a> &nbsp;·&nbsp; 日本語 &nbsp;·&nbsp; <a href="README.ko.md">한국어</a>
-</p>
+Tabby は、実用的なローカルコントロールプレーンを求める個人や小規模チーム向けです。AI パートナーの作成、チャットチャネルの接続、任意のモデルプロバイダーの利用、そして実行状態のローカル保存をまとめて扱えます。
 
----
+## ダウンロード
 
-> 🦞 **WeChat × OpenClaw を最もスムーズに接続**：スキャンして即接続、すぐ使える。
->
-> 🖥 **対応プラットフォーム**：macOS（Apple Silicon）· macOS（Intel）· Windows — [ダウンロード](https://nexu.io)
+現在の公開リリースは GitHub Releases から入手できます。
 
----
+- macOS Apple Silicon: [tabby-0.3.0-arm64.dmg](../../releases/download/v0.3.0/tabby-0.3.0-arm64.dmg)
+- リリースページ: [Tabby 0.3.0](../../releases/tag/v0.3.0)
 
-## 📋 nexu とは？
+現在のリリースには Intel macOS 版と Windows 版は含まれていません。
 
-**nexu**（next to you）は、**OpenClaw 🦞** の Agent を WeChat、Feishu、Slack、Discord などの IM 上で直接動かせるオープンソースのデスクトップクライアントです。
+## Tabby でできること
 
-WeChat ＋ OpenClaw に対応 — WeChat 8.0.7 の OpenClaw プラグインと連携します。接続をクリックし、WeChat でスキャンするだけで、AI Agent とチャットを始められます。
+Tabby は、次のためのローカルデスクトップ環境を提供します。
 
-ダウンロードしてすぐ使える — グラフィカルなセットアップ、Feishu Skills 内蔵、複数モデル対応（Gemini など）、お持ちの API キーも利用可能です。
+- AI パートナーの作成と管理
+- WeChat、Feishu、Slack、Discord などのチャットチャネルへの AI パートナー接続
+- デスクトップアプリからの OpenClaw ベースのローカルランタイムサービス実行
+- OAuth と bring-your-own-key を含むモデルプロバイダー管理
+- スキルとエキスパートテンプレートのインストールと利用
+- Android デバイス制御とリアルタイムミラー表示
+- スケジュール済みタスクと自動化タスクの実行
 
-IM に接続すれば、Agent は 24 時間オンライン — スマートフォンからいつでもどこでもチャットできます。
+## ハイライト
 
-データはすべて端末に留まります。プライバシーは完全にあなたの手の中にあります。
+### ローカルファーストのデスクトップランタイム
 
-<h3 align="center">🎬 製品デモ</h3>
+Tabby は controller、Web UI、OpenClaw ランタイムをデスクトップアプリから実行します。ユーザー設定とランタイム状態はローカルに保存されるため、データと自動化ワークフローを自分の管理下に置けます。
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/d7a801e4-6d0c-40f2-aa0c-d28fd78fdcaa" width="100%" autoplay loop muted playsinline>
-    お使いのブラウザは動画再生に対応していません。<a href="https://github.com/user-attachments/assets/d7a801e4-6d0c-40f2-aa0c-d28fd78fdcaa">動画をダウンロード</a>してご覧ください。
-  </video>
-</p>
+### AI パートナーとエキスパート
 
----
+役割ごとにカスタム AI パートナーを作成し、エキスパートテンプレートをインストールし、構造化されたワークスペースファイルで各パートナーに明確な identity とタスク文脈を与えられます。
 
-## 📊 他のソリューションとの比較
+### チャットチャネル連携
 
-| | OpenClaw（公式） | 典型的なホスト型 Feishu ＋ エージェント構成 | **nexu** ✅ |
-|---|---|---|---|
-| **🧠 モデル** | 持ち込み可だが手動設定が必要 ⚠️ | プラットフォーム固定で切り替え不可 ❌ | **Gemini などを選択 — GUI でワンクリック切り替え；MiniMax / Codex / GLM は OAuth 対応** ✅ |
-| **📡 データ経路** | ローカル | ベンダー経由でサーバー外に出る、コントロール不能 ❌ | **ローカルファースト。ビジネスデータは当社がホストしません** ✅ |
-| **💰 コスト** | 無料だが自前デプロイが必要 ⚠️ | サブスク / 席課金など ❌ | **クライアントは無料。プロバイダーへの支払いはご自身の API キー経由** ✅ |
-| **📜 ソース** | オープンソース | クローズドソースで監査不可 ❌ | **MIT — フォークして監査可能** ✅ |
-| **🔗 チャネル** | 自前連携が必要 ⚠️ | ベンダー次第でしばしば限定的 ❌ | **WeChat、Feishu、Slack、Discord を内蔵 — すぐ使える** ✅ |
-| **🖥 インターフェース** | CLI、技術スキルが必要 ❌ | ベンダー次第 | **純 GUI、CLI 不要、ダブルクリックで起動** ✅ |
+普段使っている IM ツールに AI パートナーを接続できます。Tabby にはチャネル設定と bot バインディングのフローがあり、各チャネルを適切な AI パートナーへルーティングできます。
 
----
+### デバイス制御
 
-## 機能
+Tabby は Android デバイス制御とリアルタイムミラー表示をサポートします。デバイス接続、ライブ画面確認、タスク送信、タスク履歴の確認をデスクトップダッシュボードから行えます。
 
-### 🖱 ダブルクリックでインストール
+### スキルと自動化
 
-ダウンロードしてダブルクリック、すぐ利用開始。環境変数も、依存関係の格闘も、長いインストール手順も不要。nexu の初回起動時点で十分な機能が揃っており、そのまま使い始められます。
+スキルをインストールし、ランタイム設定を同期し、定期的な自動化タスクを設定できます。Tabby は一度きりのチャットコマンドから、再利用可能な Agent ワークフローへ進むために設計されています。
 
-### 🔗 内蔵 OpenClaw 🦞 Skills ＋ フル Feishu Skills
+## システム要件
 
-ネイティブな OpenClaw 🦞 Skills とフル Feishu Skills を同梱。追加の連携なしに、チームがすでに使っている実務ワークフローに Agent を組み込めます。
+- macOS 12 以降
+- 現在の `arm64` リリースには Apple Silicon Mac が必要
+- ローカル開発には pnpm 10+ と Node.js 22+ が必要
 
-### 🧠 トップモデルをすぐに
+## インストール
 
-nexu アカウント経由で Gemini などをそのまま利用。余計な設定は不要。いつでもお持ちの API キーに切り替え可能です。
+1. リリースページから `tabby-0.3.0-arm64.dmg` をダウンロードします。
+2. DMG を開きます。
+3. `Tabby.app` を Applications にドラッグします。
+4. Applications から Tabby を起動します。
 
-### 🔐 OAuth ログイン、キー不要
+macOS パッケージは Developer ID で署名され、Apple による notarization を受け、リリース前に stapler でチケットが付与されています。
 
-MiniMax、OpenAI Codex、GLM（Z.AI Coding Plan）は OAuth ログインに対応——ワンクリックで認証、API キーのコピペは不要です。
+## 開発
 
-### 🔑 お持ちの API キー、アカウント不要
-
-ご自身のモデルプロバイダーを使いたい場合は API キーを追加するだけ。アカウント作成やログインなしでクライアントを利用できます。
-
-### 📱 IM 連携、モバイル対応
-
-WeChat、Feishu、Slack、Discord に接続すれば、スマートフォンですぐに AI エージェントが使えます。別アプリは不要 — WeChat やチームチャットを開いて、移動中でもエージェントと会話できます。
-
-### 👥 チーム向けに設計
-
-中核はオープンソース。実際に動くデスクトップ体験。チームがすでに信頼しているツールとモデルスタックと互換性があります。
-
----
-
-## ユースケース
-
-nexu は **ワンパーソンカンパニー** と小規模チーム向け — 一人で、ひとつの AI チーム。
-
-### 🛒 個人 EC / 越境販売
-
-> *「週末まるごと 3 言語でリスティングを書いていました。今は Feishu で Agent に商品スペックを伝えるだけ。コーヒーを飲み終える頃には、Amazon、Shopee、TikTok Shop 向けのリスティングができあがっています。」*
-
-商品調査、競合価格、リスティング最適化、多言語マーケ素材 — 一週間分を午後ひとつぶりに圧縮。
-
-### ✍️ クリエイター / ナレッジブロガー
-
-> *「月曜の朝：Slack で Agent に今週のトレンドを聞く。昼までに Xiaohongshu、WeChat、Twitter 向けに下書きが 5 本 — それぞれプラットフォームに合ったトーンで。」*
-
-トレンド追跡、ネタ出し、マルチプラットフォームのコンテンツ制作、コメント対応 — ひとりでコンテンツマトリクスを回せます。
-
-### 💻 インディー開発者
-
-> *「深夜 3 時のバグ調査？スタックトレースを Discord に貼ると、Agent がレース条件まで追い、修正案を提案し、PR の説明文まで下書きしてくれる。眠らないペアプロ。」*
-
-コードレビュー、ドキュメント生成、バグ分析、反復作業の自動化 — Agent がペアプロの相手になります。
-
-### ⚖️ 法務 / 金融 / コンサル
-
-> *「クライアントが Feishu で 40 ページの契約書を送ってくる。Agent に転送する — 10 分後にはリスク要約、要注意条項、修正案の提案が届く。半日かかっていたのが、コーヒーブレイクで済む。」*
-
-契約レビュー、規制調査、レポート作成、クライアント Q&A — ドメイン知識を Agent のスキルに変換。
-
-### 🏪 地域ビジネス / 小売
-
-> *「真夜中に客から『在庫ある？』とメッセージ。Feishu の Agent がリアルタイム在庫で自動返信し、返品対応までして、プロモクーポンまで送る。ようやく眠れる。」*
-
-在庫管理、注文フォロー、顧客メッセージへの自動返信、マーケ文面 — AI に店舗運営を手伝ってもらう。
-
-### 🎨 デザイン / クリエイティブ
-
-> *「Slack にざっくりブリーフを投げる：『ペットフード向け LP、遊び心ある雰囲気』。キックオフの前に、コピー案、カラーパレットの提案、参考画像が返ってくる。」*
-
-要件の分解、アセット検索、コピーライティング、デザイン注釈 — 創作時間を確保し、反復作業を減らす。
-
----
-
-## 🚀 はじめに
-
-### 動作環境
-
-- 🍎 **macOS**：macOS 12 以降（Apple Silicon & Intel）
-- 🪟 **Windows**：Windows 10 以降
-- 💾 **ストレージ**：約 500 MB
-
-### インストール
-
-| プラットフォーム | ダウンロード |
-|------------------|-------------|
-| 🍎 macOS（Apple Silicon） | [nexu.io](https://nexu.io) · [Releases](https://github.com/nexu-io/nexu/releases) |
-| 🍎 macOS（Intel） | [nexu.io](https://nexu.io) · [Releases](https://github.com/nexu-io/nexu/releases) |
-| 🪟 Windows | [nexu.io](https://nexu.io) · [Releases](https://github.com/nexu-io/nexu/releases) |
-
-### 初回起動
-
-nexu アカウントでサインインすれば対応モデルにすぐアクセスできるほか、お持ちの API キーを追加してアカウントなしで利用することもできます 🔑。
-
----
-
-## 🛠 開発
-
-### 前提条件
-
-- **Node.js** 22 以上（LTS 推奨）
-- **pnpm** 10 以上
-
-### リポジトリ構成（抜粋）
-
-```text
-nexu/
-├── apps/
-│   ├── web/              # Web frontend
-│   ├── desktop/          # Desktop client (Electron)
-│   └── controller/       # Controller service
-├── packages/shared/      # Shared libraries
-├── docs/
-├── tests/
-└── specs/
-```
-
-### コマンド
+依存関係をインストールします。
 
 ```bash
-pnpm dev start           # フル開発スタック起動（ホットリロード）
-pnpm dev stop            # 開発スタック停止
-pnpm build               # プロダクションビルド
+pnpm install
+```
+
+ローカルデスクトップスタックを起動します。
+
+```bash
+pnpm dev start
+```
+
+ローカルデスクトップスタックを停止します。
+
+```bash
+pnpm dev stop
+```
+
+一般的なチェックを実行します。
+
+```bash
+pnpm typecheck
 pnpm lint
 pnpm test
 ```
 
----
+macOS Apple Silicon の production パッケージをビルドします。
 
-## 🤝 コントリビュート
+```bash
+pnpm dist:mac:production:arm64
+```
 
-コントリビュート歓迎！詳細ガイドはリポジトリルートの [CONTRIBUTING.md](CONTRIBUTING.md)、または [docs.nexu.io — Contributing](https://docs.nexu.io/guide/contributing) をご覧ください。
+## リポジトリ構成
 
-1. 🍴 このリポジトリをフォーク
-2. 🌿 フィーチャーブランチを作成（`git checkout -b feature/amazing-feature`）
-3. 💾 変更をコミット（`git commit -m 'Add amazing feature'`）
-4. 📤 ブランチにプッシュ（`git push origin feature/amazing-feature`）
-5. 🔀 Pull Request を開く
+```text
+apps/
+  controller/   ローカルコントロールプレーンと HTTP API
+  desktop/      Electron デスクトップシェルと同梱ランタイム
+  web/          React ダッシュボード
+packages/
+  shared/       共有 schema と型
+  slimclaw/     OpenClaw ランタイムパッケージング契約
+tests/          統合テストと回帰テスト
+specs/          製品、ランタイム、アーキテクチャのメモ
+```
 
-### ガイドライン
+## リリースノート
 
-- 既存のコードスタイルに従う（Biome; `pnpm lint` を実行）
-- 新機能にはテストを書く
-- 必要に応じてドキュメントを更新
-- コミットはアトミックかつ説明的に
+最新のリリースノートは [GitHub Releases](../../releases) ページをご覧ください。
 
----
+## 謝辞
 
-## ❓ FAQ
+このリポジトリは Nexu プロジェクトの基礎的な成果をもとにしています。Tabby の土台となる作業を行った Nexu に感謝します。
 
-**Q: nexu は無料ですか？**
-A: クライアントは完全無料かつオープンソース（MIT）です。複数のトップモデルを内蔵しており、お持ちの API キーを使用することも可能です。
+## ライセンス
 
-**Q: どの OS に対応していますか？**
-A: macOS 12 以降（Apple Silicon & Intel）および Windows 10 以降に対応しています。
-
-**Q: どの IM プラットフォームに対応していますか？**
-A: WeChat、Feishu、Slack、Discord を内蔵しており、すぐに使えます。
-
-**Q: データは安全ですか？**
-A: すべてのデータは端末に保存されます。nexu がビジネスデータをホストすることはありません。ソースコードはオープンで監査可能です。
-
-**Q: 自分の API キーを使えますか？**
-A: はい。API キーを追加するだけで、アカウント作成やログインなしで利用できます。
-
-**Q: WeChat に接続するには何が必要ですか？**
-A: WeChat 8.0.7 の OpenClaw プラグインに対応しています。接続をクリックし、WeChat でスキャンするだけで完了です。追加の設定は不要です。
-
----
-
-## 💬 コミュニティ
-
-コミュニティの主な場所は GitHub です。新しいスレッドを立てる前に、既存のものを検索して重複を避けてください。
-
-| チャンネル | 用途 |
-|---------|-------------|
-| 💡 [**Discussions**](https://github.com/nexu-io/nexu/discussions) | 質問、アイデアの提案、ユースケースの共有など。**Q&A** カテゴリでトラブルシューティング、**Ideas** で機能ブレスト。 |
-| 🐛 [**Issues**](https://github.com/nexu-io/nexu/issues) | バグ報告や機能リクエスト。Issue テンプレートをご利用ください。 |
-| 📋 [**Roadmap & RFCs**](https://github.com/nexu-io/nexu/discussions/categories/rfc-roadmap) | 今後の計画をフォローし、設計ディスカッションに参加。 |
-| 📧 [**support@nexu.ai**](mailto:support@nexu.ai) | プライベートなお問い合わせ、パートナーシップなど。 |
-
-### コミュニティグループに参加する
-
-<table>
-  <tr>
-    <td align="center" width="220">
-      <strong>💬 WeChat グループ</strong><br/><br/>
-      <img src="site/media/wechat-qr.png" width="200" height="200" alt="WeChat コミュニティ QR コード" /><br/>
-      <sub>スキャンして WeChat コミュニティに参加</sub>
-    </td>
-    <td align="center" width="220">
-      <strong><a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=8b7k7b5b-ac27-4748-9165-78606dc16913">🪁 Feishu グループ</a></strong><br/><br/>
-      <img src="site/media/feishu-qr.png" width="200" height="200" alt="Feishu コミュニティ QR コード" /><br/>
-      <sub>スキャンまたはクリックして Feishu コミュニティに参加</sub>
-    </td>
-    <td align="center" width="220">
-      <strong><a href="https://discord.gg/Q6AxCUuMNU">🎮 Discord</a></strong><br/><br/>
-      <img src="site/media/discord-qr.png" width="200" height="200" alt="Discord コミュニティ QR コード" /><br/>
-      <sub>スキャンまたはクリックして Discord サーバーに参加</sub>
-    </td>
-  </tr>
-</table>
-
-### Nexu オープンソース共創プログラム
-
-Nexu はオープンソースコントリビューターを募集中です。コードを書いてポイントを獲得し、リーダーボードに名前を載せましょう。手軽に始めたい方は、まず [Good First Issue コントリビューターガイド](https://docs.nexu.io/zh/guide/first-pr) をご覧ください。
-
-[Good First Issue リスト](https://github.com/nexu-io/nexu/labels/good-first-issue) を常時メンテナンスしています。タスクはスコープが明確で、単一の技術領域に絞られており、AI Prompt テンプレートも用意しているので、すぐに取り組めます。初めてのコントリビューターや `good-first-issue` を担当する方には、できる限りガイダンスとフィードバックを提供します。詳細は [コントリビューター報酬＆サポート](https://docs.nexu.io/zh/guide/contributor-rewards) をご覧ください。
-
-### コントリビューター
-
-nexu をより良くするために貢献してくださったすべての方に感謝します。コード、ドキュメント、フィードバック、アイデアなど、あらゆる貢献が大切です。
-
-特に [NickHood1984](https://github.com/NickHood1984) さんには、nexu に PR を提出しマージしていただきました。このような一つひとつの貢献を大切にしています。ぜひ多くの方のご参加をお待ちしています。
-
-<a href="https://github.com/nexu-io/nexu/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=nexu-io/nexu" alt="Contributors" />
-</a>
-
----
-
-## 📊 GitHub Stats
-
-<picture>
-  <img alt="GitHub Stats" src="docs/github-metrics.svg" />
-</picture>
-
----
-
-## ⭐ Star 履歴
-
-<a href="https://star-history.com/#nexu-io/nexu&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=nexu-io/nexu&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=nexu-io/nexu&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=nexu-io/nexu&type=Date" />
- </picture>
-</a>
-
----
-
-## 📄 ライセンス
-
-nexu は [MIT License](LICENSE) のもとでオープンソース化されています。商用利用を含め、自由に使用・改変・配布できます。
-
-オープンソースは AI インフラの未来だと信じています。フォーク、コントリビュート、または nexu をベースに自分のプロダクトを構築してください。
-
----
-
-<p align="center">
-  <a href="https://github.com/nexu-io/nexu/stargazers">
-    <img src="https://github.com/user-attachments/assets/a44df6d4-7056-4cd0-b778-32248a7fd26b" width="600" alt="Star nexu on GitHub" />
-  </a>
-</p>
-
----
-
-<p align="center">nexu チームが ❤️ を込めて開発</p>
+このプロジェクトは [MIT License](LICENSE) のもとで公開されています。

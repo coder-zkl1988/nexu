@@ -1,0 +1,534 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Tabby" [ref=e7]
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - link "首页" [ref=e10] [cursor=pointer]:
+            - /url: /workspace/home
+            - img [ref=e11]
+            - text: 首页
+          - link "新对话" [ref=e14] [cursor=pointer]:
+            - /url: /workspace/chat
+            - img [ref=e15]
+            - text: 新对话
+          - link "技能商店 56" [ref=e17] [cursor=pointer]:
+            - /url: /workspace/skills
+            - img [ref=e18]
+            - text: 技能商店
+            - generic [ref=e20]: "56"
+          - link "自动化 Beta" [ref=e21] [cursor=pointer]:
+            - /url: /workspace/automations
+            - img [ref=e22]
+            - text: 自动化
+            - generic [ref=e24]: Beta
+          - link "AI·伙伴" [ref=e25] [cursor=pointer]:
+            - /url: /workspace/experts
+            - img [ref=e26]
+            - text: AI·伙伴
+          - link "设备" [ref=e29] [cursor=pointer]:
+            - /url: /workspace/devices
+            - img [ref=e30]
+            - text: 设备
+        - generic [ref=e32]:
+          - generic [ref=e33]: 对话
+          - generic [ref=e34]:
+            - generic [ref=e36]:
+              - button "Web gateway-client · webchat Live Web · 43m ago" [ref=e37] [cursor=pointer]:
+                - img "Web" [ref=e39]
+                - generic [ref=e42]:
+                  - generic [ref=e43]:
+                    - generic [ref=e44]: gateway-client · webchat
+                    - generic [ref=e45]: Live
+                  - generic [ref=e46]:
+                    - generic [ref=e47]: Web
+                    - generic [ref=e48]: ·
+                    - generic [ref=e49]: 43m ago
+              - button "Web gateway-client · webchat Live Web · 2026/4/28" [ref=e52] [cursor=pointer]:
+                - img "Web" [ref=e54]
+                - generic [ref=e57]:
+                  - generic [ref=e58]:
+                    - generic [ref=e59]: gateway-client · webchat
+                    - generic [ref=e60]: Live
+                  - generic [ref=e61]:
+                    - generic [ref=e62]: Web
+                    - generic [ref=e63]: ·
+                    - generic [ref=e64]: 2026/4/28
+            - button "WeChat WeChat ClawBot Live WeChat · 2h ago" [ref=e69] [cursor=pointer]:
+              - img "WeChat" [ref=e71]
+              - generic [ref=e77]:
+                - generic [ref=e78]:
+                  - generic [ref=e79]: WeChat ClawBot
+                  - generic [ref=e80]: Live
+                - generic [ref=e81]:
+                  - generic [ref=e82]: WeChat
+                  - generic [ref=e83]: ·
+                  - generic [ref=e84]: 2h ago
+      - button "✦ 积分余额 积分同步中…" [ref=e90] [cursor=pointer]:
+        - generic [ref=e91]:
+          - generic [ref=e92]:
+            - generic [ref=e93]: ✦
+            - generic [ref=e94]: 积分余额
+          - generic [ref=e95]: 积分同步中…
+      - generic [ref=e96]:
+        - button "设置" [ref=e97] [cursor=pointer]:
+          - img [ref=e98]
+          - generic [ref=e101]: 设置
+        - generic [ref=e102]:
+          - button "Help" [ref=e104] [cursor=pointer]:
+            - img [ref=e105]
+          - link "GitHub" [ref=e108] [cursor=pointer]:
+            - /url: https://github.com/nexu-io/nexu
+            - img "GitHub" [ref=e109]
+      - button "D Desktop User desktop@nexu.local" [ref=e113] [cursor=pointer]:
+        - generic [ref=e114]: D
+        - generic [ref=e115]:
+          - generic [ref=e116]: Desktop User
+          - generic [ref=e117]: desktop@nexu.local
+        - img [ref=e118]
+    - main [ref=e124]:
+      - generic [ref=e125]:
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - heading "技能" [level=1] [ref=e130]
+              - paragraph [ref=e131]: 管理 AI 能力
+            - generic [ref=e132]:
+              - link "Star on GitHub" [ref=e133] [cursor=pointer]:
+                - /url: https://github.com/nexu-io/nexu
+                - img [ref=e134]
+                - generic [ref=e136]: Star on GitHub
+                - img [ref=e137]
+              - generic [ref=e140]:
+                - img [ref=e141]
+                - textbox "搜索" [ref=e144]
+              - button "导入" [ref=e145] [cursor=pointer]:
+                - img [ref=e146]
+                - text: 导入
+          - generic [ref=e147]:
+            - button "我的 56" [ref=e148] [cursor=pointer]:
+              - img [ref=e149]
+              - text: 我的
+              - generic [ref=e152]: "56"
+            - button "ClawHub" [ref=e153] [cursor=pointer]:
+              - img [ref=e154]
+              - text: ClawHub
+          - generic [ref=e157]:
+            - button "全部 56" [ref=e158] [cursor=pointer]:
+              - text: 全部
+              - generic [ref=e159]: "56"
+            - button "内置 33" [ref=e160] [cursor=pointer]:
+              - text: 内置
+              - generic [ref=e161]: "33"
+            - button "自定义 23" [ref=e162] [cursor=pointer]:
+              - text: 自定义
+              - generic [ref=e163]: "23"
+          - paragraph [ref=e164]:
+            - text: Skill 来自 ClawHub，网络或服务偶有不稳定；若遇到问题，欢迎在
+            - link "GitHub Issues" [ref=e165] [cursor=pointer]:
+              - /url: https://github.com/nexu-io/nexu/issues
+            - text: 反馈。
+        - generic [ref=e166]:
+          - generic [ref=e167]:
+            - 'link "Apple Notes 最新 Manage Apple Notes via the `memo` CLI on macOS (create, view, edit, delete, search, move, and export notes). Use when a user asks Clawdbot to add a no 卸载" [ref=e168] [cursor=pointer]':
+              - /url: /workspace/skills/apple-notes?skillSource=managed
+              - generic [ref=e169]:
+                - img [ref=e171]
+                - generic [ref=e173]:
+                  - generic [ref=e174]: Apple Notes
+                  - text: 最新
+              - paragraph [ref=e175]: "Manage Apple Notes via the `memo` CLI on macOS (create, view, edit, delete, search, move, and export notes). Use when a user asks Clawdbot to add a no"
+              - button "卸载" [ref=e177]
+            - 'link "coding-agent Delegate coding tasks to Codex, Claude Code, or Pi agents via background process. Use when: (1) building/creating new features or apps, (2) reviewing PRs (spawn in temp dir), (3) refactoring large codebases, (4) iterative coding that needs file exploration. NOT for: simple one-liner fixes (just edit), reading code (use read tool), thread-bound ACP harness requests in chat (for example spawn/run Codex or Claude Code in a Discord thread; use sessions_spawn with runtime:\"acp\"), or any work in ~/clawd workspace (never spawn agents here). Claude Code: use --print --permission-mode bypassPermissions (no PTY). Codex/Pi/OpenCode: pty:true required. 卸载" [ref=e178] [cursor=pointer]':
+              - /url: /workspace/skills/coding-agent?skillSource=managed
+              - generic [ref=e179]:
+                - img [ref=e181]
+                - generic [ref=e184]: coding-agent
+              - paragraph [ref=e185]: "Delegate coding tasks to Codex, Claude Code, or Pi agents via background process. Use when: (1) building/creating new features or apps, (2) reviewing PRs (spawn in temp dir), (3) refactoring large codebases, (4) iterative coding that needs file exploration. NOT for: simple one-liner fixes (just edit), reading code (use read tool), thread-bound ACP harness requests in chat (for example spawn/run Codex or Claude Code in a Discord thread; use sessions_spawn with runtime:\"acp\"), or any work in ~/clawd workspace (never spawn agents here). Claude Code: use --print --permission-mode bypassPermissions (no PTY). Codex/Pi/OpenCode: pty:true required."
+              - button "卸载" [ref=e187]
+            - link "deep-research 深度调研方法论（8步法）：将模糊主题转化为高质量调研报告。 触发词：/deep-research、深度调研、帮我调研、调研一下、对比分析 注意：如果用户需要的是可视化图谱而非报告，请使用 research-to-diagram skill。 卸载" [ref=e188] [cursor=pointer]:
+              - /url: /workspace/skills/deep-research?skillSource=managed
+              - generic [ref=e189]:
+                - img [ref=e191]
+                - generic [ref=e194]: deep-research
+              - paragraph [ref=e195]: 深度调研方法论（8步法）：将模糊主题转化为高质量调研报告。 触发词：/deep-research、深度调研、帮我调研、调研一下、对比分析 注意：如果用户需要的是可视化图谱而非报告，请使用 research-to-diagram skill。
+              - button "卸载" [ref=e197]
+            - link "File Organizer Skill 最新 Organize files in directories by grouping them into folders based on their extensions or date. Includes Dry-Run, Recursive, and Undo capabilities. 卸载" [ref=e198] [cursor=pointer]:
+              - /url: /workspace/skills/file-organizer-skill?skillSource=managed
+              - generic [ref=e199]:
+                - img [ref=e201]
+                - generic [ref=e203]:
+                  - generic [ref=e204]: File Organizer Skill
+                  - text: 最新
+              - paragraph [ref=e205]: Organize files in directories by grouping them into folders based on their extensions or date. Includes Dry-Run, Recursive, and Undo capabilities.
+              - button "卸载" [ref=e207]
+            - 'link "gh-issues Fetch GitHub issues, spawn sub-agents to implement fixes and open PRs, then monitor and address PR review comments. Usage: /gh-issues [owner/repo] [--label bug] [--limit 5] [--milestone v1.0] [--assignee @me] [--fork user/repo] [--watch] [--interval 5] [--reviews-only] [--cron] [--dry-run] [--model glm-5] [--notify-channel -1002381931352] 卸载" [ref=e208] [cursor=pointer]':
+              - /url: /workspace/skills/gh-issues?skillSource=managed
+              - generic [ref=e209]:
+                - img [ref=e211]
+                - generic [ref=e214]: gh-issues
+              - paragraph [ref=e215]: "Fetch GitHub issues, spawn sub-agents to implement fixes and open PRs, then monitor and address PR review comments. Usage: /gh-issues [owner/repo] [--label bug] [--limit 5] [--milestone v1.0] [--assignee @me] [--fork user/repo] [--watch] [--interval 5] [--reviews-only] [--cron] [--dry-run] [--model glm-5] [--notify-channel -1002381931352]"
+              - button "卸载" [ref=e217]
+            - 'link "Github 最新 Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries. 卸载" [ref=e218] [cursor=pointer]':
+              - /url: /workspace/skills/github?skillSource=managed
+              - generic [ref=e219]:
+                - img [ref=e221]
+                - generic [ref=e223]:
+                  - generic [ref=e224]: Github
+                  - text: 最新
+              - paragraph [ref=e225]: "Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries."
+              - button "卸载" [ref=e227]
+            - link "healthcheck 最新 Track water and sleep with JSON file storage 卸载" [ref=e228] [cursor=pointer]:
+              - /url: /workspace/skills/healthcheck?skillSource=managed
+              - generic [ref=e229]:
+                - img [ref=e231]
+                - generic [ref=e233]:
+                  - generic [ref=e234]: healthcheck
+                  - text: 最新
+              - paragraph [ref=e235]: Track water and sleep with JSON file storage
+              - button "卸载" [ref=e237]
+            - link "Humanizer 最新 Remove signs of AI-generated writing from text. Use when editing or reviewing text to make it sound more natural and human-written. Based on Wikipedia 卸载" [ref=e238] [cursor=pointer]:
+              - /url: /workspace/skills/humanizer?skillSource=managed
+              - generic [ref=e239]:
+                - img [ref=e241]
+                - generic [ref=e243]:
+                  - generic [ref=e244]: Humanizer
+                  - text: 最新
+              - paragraph [ref=e245]: Remove signs of AI-generated writing from text. Use when editing or reviewing text to make it sound more natural and human-written. Based on Wikipedia
+              - button "卸载" [ref=e247]
+            - link "imap-smtp-email 最新 Read and send email via IMAP/SMTP. Check for new/unread messages, fetch content, search mailboxes, mark as read/unread, and send emails with attachmen 卸载" [ref=e248] [cursor=pointer]:
+              - /url: /workspace/skills/imap-smtp-email?skillSource=managed
+              - generic [ref=e249]:
+                - img [ref=e251]
+                - generic [ref=e253]:
+                  - generic [ref=e254]: imap-smtp-email
+                  - text: 最新
+              - paragraph [ref=e255]: Read and send email via IMAP/SMTP. Check for new/unread messages, fetch content, search mailboxes, mark as read/unread, and send emails with attachmen
+              - button "卸载" [ref=e257]
+            - link "LiblibAI Image & Video Gen 最新 Generate images with Seedream4.5 and videos with Kling via LiblibAI API. Use when user asks to generate/create images, pictures, illustrations, or vid 卸载" [ref=e258] [cursor=pointer]:
+              - /url: /workspace/skills/liblib-ai-gen?skillSource=managed
+              - generic [ref=e259]:
+                - img [ref=e261]
+                - generic [ref=e263]:
+                  - generic [ref=e264]: LiblibAI Image & Video Gen
+                  - text: 最新
+              - paragraph [ref=e265]: Generate images with Seedream4.5 and videos with Kling via LiblibAI API. Use when user asks to generate/create images, pictures, illustrations, or vid
+              - button "卸载" [ref=e267]
+            - link "ListenHub 最新 Turn ideas into podcasts, explainer videos, voice narration, and AI images via ListenHub. Use when the user wants to \"make a podcast\", \"create an expl 卸载" [ref=e268] [cursor=pointer]:
+              - /url: /workspace/skills/listenhub-ai?skillSource=managed
+              - generic [ref=e269]:
+                - img [ref=e271]
+                - generic [ref=e273]:
+                  - generic [ref=e274]: ListenHub
+                  - text: 最新
+              - paragraph [ref=e275]: Turn ideas into podcasts, explainer videos, voice narration, and AI images via ListenHub. Use when the user wants to "make a podcast", "create an expl
+              - button "卸载" [ref=e277]
+            - 'link "Medeo Video AI video generation via Medeo Gateway - generate short videos (15-20 seconds). Supports text-only and image+text generation. Trigger phrases: \"generate video\", \"make a video\", \"medeo\". 卸载" [ref=e278] [cursor=pointer]':
+              - /url: /workspace/skills/medeo-video?skillSource=managed
+              - generic [ref=e279]:
+                - img [ref=e281]
+                - generic [ref=e284]: Medeo Video
+              - paragraph [ref=e285]: "AI video generation via Medeo Gateway - generate short videos (15-20 seconds). Supports text-only and image+text generation. Trigger phrases: \"generate video\", \"make a video\", \"medeo\"."
+              - button "卸载" [ref=e287]
+            - link "Multi Search Engine 最新 Multi search engine integration with 17 engines (8 CN + 9 Global). Supports advanced search operators, time filters, site search, privacy engines, and 卸载" [ref=e288] [cursor=pointer]:
+              - /url: /workspace/skills/multi-search-engine?skillSource=managed
+              - generic [ref=e289]:
+                - img [ref=e291]
+                - generic [ref=e293]:
+                  - generic [ref=e294]: Multi Search Engine
+                  - text: 最新
+              - paragraph [ref=e295]: Multi search engine integration with 17 engines (8 CN + 9 Global). Supports advanced search operators, time filters, site search, privacy engines, and
+              - button "卸载" [ref=e297]
+            - link "Nano Banana One Shop All-in-one image generation with Gemini models. Supports Nano Banana (3.1 Flash), Nano Banana Pro (3 Pro), and Nano Banana 2 (2.5 Flash). Triggers on \"generate image\", \"image generation\", \"nano banana\", \"edit image\". 卸载" [ref=e298] [cursor=pointer]:
+              - /url: /workspace/skills/nano-banana-one-shop?skillSource=managed
+              - generic [ref=e299]:
+                - img [ref=e301]
+                - generic [ref=e304]: Nano Banana One Shop
+              - paragraph [ref=e305]: All-in-one image generation with Gemini models. Supports Nano Banana (3.1 Flash), Nano Banana Pro (3 Pro), and Nano Banana 2 (2.5 Flash). Triggers on "generate image", "image generation", "nano banana", "edit image".
+              - button "卸载" [ref=e307]
+            - link "Nano Pdf 最新 Edit PDFs with natural-language instructions using the nano-pdf CLI. 卸载" [ref=e308] [cursor=pointer]:
+              - /url: /workspace/skills/nano-pdf?skillSource=managed
+              - generic [ref=e309]:
+                - img [ref=e311]
+                - generic [ref=e313]:
+                  - generic [ref=e314]: Nano Pdf
+                  - text: 最新
+              - paragraph [ref=e315]: Edit PDFs with natural-language instructions using the nano-pdf CLI.
+              - button "卸载" [ref=e317]
+            - link "Obsidian 最新 Work with Obsidian vaults (plain Markdown notes) and automate via obsidian-cli. 卸载" [ref=e318] [cursor=pointer]:
+              - /url: /workspace/skills/obsidian?skillSource=managed
+              - generic [ref=e319]:
+                - img [ref=e321]
+                - generic [ref=e323]:
+                  - generic [ref=e324]: Obsidian
+                  - text: 最新
+              - paragraph [ref=e325]: Work with Obsidian vaults (plain Markdown notes) and automate via obsidian-cli.
+              - button "卸载" [ref=e327]
+            - link "Ontology 最新 Typed knowledge graph for structured agent memory and composable skills. Use when creating/querying entities (Person, Project, Task, Event, Document), 卸载" [ref=e328] [cursor=pointer]:
+              - /url: /workspace/skills/ontology?skillSource=managed
+              - generic [ref=e329]:
+                - img [ref=e331]
+                - generic [ref=e333]:
+                  - generic [ref=e334]: Ontology
+                  - text: 最新
+              - paragraph [ref=e335]: Typed knowledge graph for structured agent memory and composable skills. Use when creating/querying entities (Person, Project, Task, Event, Document),
+              - button "卸载" [ref=e337]
+            - link "qiaomu-mondo-poster-design 一句话生成大师级海报、书籍封面、专辑封面和各类设计作品。无需懂PS、配色或艺术史，AI自动选择最佳风格（基于33+位传奇设计师）。支持多平台多比例：公众号封面(21:9)、小红书配图(3:4)、文章配图(16:9)、书籍封面(9:16)、专辑封面(1:1)、电影海报(9:16)。包含AI提示词优化、风格对比、图生图转换功能。触发词：\"Mondo风格\"、\"书籍封面设计\"、\"专辑封面\"、\"海报设计\"、\"读书笔记配图\"、\"公众号封面\"、\"小红书配图\"、\"文章配图\"。One-sentence generation of master-level posters, book covers, album covers and designs. 33+ legendary designer styles with multi-platform aspect ratio support (21:9, 16:9, 3:4, 1:1, 9:16). 卸载" [ref=e338] [cursor=pointer]:
+              - /url: /workspace/skills/qiaomu-mondo-poster-design?skillSource=managed
+              - generic [ref=e339]:
+                - img [ref=e341]
+                - generic [ref=e344]: qiaomu-mondo-poster-design
+              - paragraph [ref=e345]: 一句话生成大师级海报、书籍封面、专辑封面和各类设计作品。无需懂PS、配色或艺术史，AI自动选择最佳风格（基于33+位传奇设计师）。支持多平台多比例：公众号封面(21:9)、小红书配图(3:4)、文章配图(16:9)、书籍封面(9:16)、专辑封面(1:1)、电影海报(9:16)。包含AI提示词优化、风格对比、图生图转换功能。触发词："Mondo风格"、"书籍封面设计"、"专辑封面"、"海报设计"、"读书笔记配图"、"公众号封面"、"小红书配图"、"文章配图"。One-sentence generation of master-level posters, book covers, album covers and designs. 33+ legendary designer styles with multi-platform aspect ratio support (21:9, 16:9, 3:4, 1:1, 9:16).
+              - button "卸载" [ref=e347]
+            - link "research-to-diagram 深度调研主题并自动生成知识关系图谱PDF。接收研究主题后自动进行网络调研、信息收集、知识整理，最终生成专业的可视化关系图谱。适用于\"研究...并做图\"、\"深度分析...并可视化\"、\"生成知识图谱\"等场景。 卸载" [ref=e348] [cursor=pointer]:
+              - /url: /workspace/skills/research-to-diagram?skillSource=managed
+              - generic [ref=e349]:
+                - img [ref=e351]
+                - generic [ref=e354]: research-to-diagram
+              - paragraph [ref=e355]: 深度调研主题并自动生成知识关系图谱PDF。接收研究主题后自动进行网络调研、信息收集、知识整理，最终生成专业的可视化关系图谱。适用于"研究...并做图"、"深度分析...并可视化"、"生成知识图谱"等场景。
+              - button "卸载" [ref=e357]
+            - link "Session-logs 最新 Search and analyze your own session logs (older/parent conversations) using jq. 卸载" [ref=e358] [cursor=pointer]:
+              - /url: /workspace/skills/session-logs?skillSource=managed
+              - generic [ref=e359]:
+                - img [ref=e361]
+                - generic [ref=e363]:
+                  - generic [ref=e364]: Session-logs
+                  - text: 最新
+              - paragraph [ref=e365]: Search and analyze your own session logs (older/parent conversations) using jq.
+              - button "卸载" [ref=e367]
+            - link "Video Frames 最新 Extract frames or short clips from videos using ffmpeg. 卸载" [ref=e368] [cursor=pointer]:
+              - /url: /workspace/skills/video-frames?skillSource=managed
+              - generic [ref=e369]:
+                - img [ref=e371]
+                - generic [ref=e373]:
+                  - generic [ref=e374]: Video Frames
+                  - text: 最新
+              - paragraph [ref=e375]: Extract frames or short clips from videos using ffmpeg.
+              - button "卸载" [ref=e377]
+            - link "Weather 最新 Get current weather and forecasts (no API key required). 卸载" [ref=e378] [cursor=pointer]:
+              - /url: /workspace/skills/weather?skillSource=managed
+              - generic [ref=e379]:
+                - img [ref=e381]
+                - generic [ref=e383]:
+                  - generic [ref=e384]: Weather
+                  - text: 最新
+              - paragraph [ref=e385]: Get current weather and forecasts (no API key required).
+              - button "卸载" [ref=e387]
+            - link "Wechat Article Search 最新 搜索微信公众号文章技能。通过微信搜索获取文章列表，覆盖科技/AI、社会热点、财经、教育、职场等各类中文资讯；可按关键词检索并返回标题、概要、发布时间、来源公众号与链接。当用户需要查找微信公众号文章、整理参考资料或快速获取文章信息时使用此技能。 卸载" [ref=e388] [cursor=pointer]:
+              - /url: /workspace/skills/wechat-article-search?skillSource=managed
+              - generic [ref=e389]:
+                - img [ref=e391]
+                - generic [ref=e393]:
+                  - generic [ref=e394]: Wechat Article Search
+                  - text: 最新
+              - paragraph [ref=e395]: 搜索微信公众号文章技能。通过微信搜索获取文章列表，覆盖科技/AI、社会热点、财经、教育、职场等各类中文资讯；可按关键词检索并返回标题、概要、发布时间、来源公众号与链接。当用户需要查找微信公众号文章、整理参考资料或快速获取文章信息时使用此技能。
+              - button "卸载" [ref=e397]
+            - link "Browser Use 最新 Automates browser interactions for web testing, form filling, screenshots, and data extraction. Use when the user needs to navigate websites, interact 卸载" [ref=e398] [cursor=pointer]:
+              - /url: /workspace/skills/browser-use?skillSource=managed
+              - generic [ref=e399]:
+                - img [ref=e401]
+                - generic [ref=e403]:
+                  - generic [ref=e404]: Browser Use
+                  - text: 最新
+              - paragraph [ref=e405]: Automates browser interactions for web testing, form filling, screenshots, and data extraction. Use when the user needs to navigate websites, interact
+              - button "卸载" [ref=e407]
+            - link "Auto-Updater Skill 最新 Automatically update Clawdbot and all installed skills once daily. Runs via cron, checks for updates, applies them, and messages the user with a summa 卸载" [ref=e408] [cursor=pointer]:
+              - /url: /workspace/skills/auto-updater?skillSource=managed
+              - generic [ref=e409]:
+                - img [ref=e411]
+                - generic [ref=e413]:
+                  - generic [ref=e414]: Auto-Updater Skill
+                  - text: 最新
+              - paragraph [ref=e415]: Automatically update Clawdbot and all installed skills once daily. Runs via cron, checks for updates, applies them, and messages the user with a summa
+              - button "卸载" [ref=e417]
+            - link "Calendar 最新 Calendar management and scheduling. Create events, manage meetings, and sync across calendar providers. 卸载" [ref=e418] [cursor=pointer]:
+              - /url: /workspace/skills/calendar?skillSource=managed
+              - generic [ref=e419]:
+                - img [ref=e421]
+                - generic [ref=e423]:
+                  - generic [ref=e424]: Calendar
+                  - text: 最新
+              - paragraph [ref=e425]: Calendar management and scheduling. Create events, manage meetings, and sync across calendar providers.
+              - button "卸载" [ref=e427]
+            - link "Find Skills 最新 Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or e 卸载" [ref=e428] [cursor=pointer]:
+              - /url: /workspace/skills/find-skill?skillSource=managed
+              - generic [ref=e429]:
+                - img [ref=e431]
+                - generic [ref=e433]:
+                  - generic [ref=e434]: Find Skills
+                  - text: 最新
+              - paragraph [ref=e435]: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or e
+              - button "卸载" [ref=e437]
+            - link "Mcporter 最新 Use the mcporter CLI to list, configure, auth, and call MCP servers/tools directly (HTTP or stdio), including ad-hoc servers, config edits, and CLI/ty 卸载" [ref=e438] [cursor=pointer]:
+              - /url: /workspace/skills/mcporter?skillSource=managed
+              - generic [ref=e439]:
+                - img [ref=e441]
+                - generic [ref=e443]:
+                  - generic [ref=e444]: Mcporter
+                  - text: 最新
+              - paragraph [ref=e445]: Use the mcporter CLI to list, configure, auth, and call MCP servers/tools directly (HTTP or stdio), including ad-hoc servers, config edits, and CLI/ty
+              - button "卸载" [ref=e447]
+            - link "Proactive Agent 最新 Transform AI agents from task-followers into proactive partners that anticipate needs and continuously improve. Now with WAL Protocol, Working Buffer, 卸载" [ref=e448] [cursor=pointer]:
+              - /url: /workspace/skills/proactive-agent?skillSource=managed
+              - generic [ref=e449]:
+                - img [ref=e451]
+                - generic [ref=e453]:
+                  - generic [ref=e454]: Proactive Agent
+                  - text: 最新
+              - paragraph [ref=e455]: Transform AI agents from task-followers into proactive partners that anticipate needs and continuously improve. Now with WAL Protocol, Working Buffer,
+              - button "卸载" [ref=e457]
+            - link "Skill Vetter 最新 Security-first skill vetting for AI agents. Use before installing any skill from ClawdHub, GitHub, or other sources. Checks for red flags, permission 卸载" [ref=e458] [cursor=pointer]:
+              - /url: /workspace/skills/skill-vetter?skillSource=managed
+              - generic [ref=e459]:
+                - img [ref=e461]
+                - generic [ref=e463]:
+                  - generic [ref=e464]: Skill Vetter
+                  - text: 最新
+              - paragraph [ref=e465]: Security-first skill vetting for AI agents. Use before installing any skill from ClawdHub, GitHub, or other sources. Checks for red flags, permission
+              - button "卸载" [ref=e467]
+            - link "Skill Creator 最新 Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude 卸载" [ref=e468] [cursor=pointer]:
+              - /url: /workspace/skills/skill-creator?skillSource=managed
+              - generic [ref=e469]:
+                - img [ref=e471]
+                - generic [ref=e473]:
+                  - generic [ref=e474]: Skill Creator
+                  - text: 最新
+              - paragraph [ref=e475]: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude
+              - button "卸载" [ref=e477]
+            - 'link "Xiaohongshu (小红书) Automation 最新 Automate Xiaohongshu (RedNote) content operations using a Python client for the xiaohongshu-mcp server. Use for: (1) Publishing image, text, and video 卸载" [ref=e478] [cursor=pointer]':
+              - /url: /workspace/skills/xiaohongshu-mcp?skillSource=managed
+              - generic [ref=e479]:
+                - img [ref=e481]
+                - generic [ref=e483]:
+                  - generic [ref=e484]: Xiaohongshu (小红书) Automation
+                  - text: 最新
+              - paragraph [ref=e485]: "Automate Xiaohongshu (RedNote) content operations using a Python client for the xiaohongshu-mcp server. Use for: (1) Publishing image, text, and video"
+              - button "卸载" [ref=e487]
+            - 'link "LibTV - Image&Video（Seedance 2.0） Seedance 2.0 video & image generation via LibTV Gateway - AI text-to-video, image-to-video, video continuation, style transfer, and text-to-image using Seedance 2.0 model. Also supports Kling 3.0, Wan 2.6, Midjourney, Seedream 5.0. Trigger phrases: seedance, generate video, make a video, generate image, make an image, draw, libtv, liblib. 卸载" [ref=e488] [cursor=pointer]':
+              - /url: /workspace/skills/libtv-video?skillSource=managed
+              - generic [ref=e489]:
+                - img [ref=e491]
+                - generic [ref=e494]: LibTV - Image&Video（Seedance 2.0）
+              - paragraph [ref=e495]: "Seedance 2.0 video & image generation via LibTV Gateway - AI text-to-video, image-to-video, video continuation, style transfer, and text-to-image using Seedance 2.0 model. Also supports Kling 3.0, Wan 2.6, Midjourney, Seedream 5.0. Trigger phrases: seedance, generate video, make a video, generate image, make an image, draw, libtv, liblib."
+              - button "卸载" [ref=e497]
+            - link "deploy-to-vercel Deploy applications and websites to Vercel. Use when the user requests deployment actions like \"deploy my app\", \"deploy and give me the link\", \"push this live\", or \"create a preview deployment\". 卸载" [ref=e498] [cursor=pointer]:
+              - /url: /workspace/skills/deploy-to-vercel?skillSource=user
+              - generic [ref=e499]:
+                - img [ref=e501]
+                - generic [ref=e504]: deploy-to-vercel
+              - paragraph [ref=e505]: Deploy applications and websites to Vercel. Use when the user requests deployment actions like "deploy my app", "deploy and give me the link", "push this live", or "create a preview deployment".
+              - button "卸载" [ref=e507]
+            - link "find-skills Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill. 卸载" [ref=e508] [cursor=pointer]:
+              - /url: /workspace/skills/find-skills?skillSource=user
+              - generic [ref=e509]:
+                - img [ref=e511]
+                - generic [ref=e514]: find-skills
+              - paragraph [ref=e515]: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
+              - button "卸载" [ref=e517]
+            - 'link "gitnexus-cli Use when the user needs to run GitNexus CLI commands like analyze/index a repo, check status, clean the index, generate a wiki, or list indexed repos. Examples: \\\"Index this repo\\\", \\\"Reanalyze the codebase\\\", \\\"Generate a wiki\\\" 卸载" [ref=e518] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-cli?skillSource=user
+              - generic [ref=e519]:
+                - img [ref=e521]
+                - generic [ref=e524]: gitnexus-cli
+              - paragraph [ref=e525]: "Use when the user needs to run GitNexus CLI commands like analyze/index a repo, check status, clean the index, generate a wiki, or list indexed repos. Examples: \\\"Index this repo\\\", \\\"Reanalyze the codebase\\\", \\\"Generate a wiki\\\""
+              - button "卸载" [ref=e527]
+            - 'link "gitnexus-debugging Use when the user is debugging a bug, tracing an error, or asking why something fails. Examples: \\\"Why is X failing?\\\", \\\"Where does this error come from?\\\", \\\"Trace this bug\\\" 卸载" [ref=e528] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-debugging?skillSource=user
+              - generic [ref=e529]:
+                - img [ref=e531]
+                - generic [ref=e534]: gitnexus-debugging
+              - paragraph [ref=e535]: "Use when the user is debugging a bug, tracing an error, or asking why something fails. Examples: \\\"Why is X failing?\\\", \\\"Where does this error come from?\\\", \\\"Trace this bug\\\""
+              - button "卸载" [ref=e537]
+            - 'link "gitnexus-exploring Use when the user asks how code works, wants to understand architecture, trace execution flows, or explore unfamiliar parts of the codebase. Examples: \\\"How does X work?\\\", \\\"What calls this function?\\\", \\\"Show me the auth flow\\\" 卸载" [ref=e538] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-exploring?skillSource=user
+              - generic [ref=e539]:
+                - img [ref=e541]
+                - generic [ref=e544]: gitnexus-exploring
+              - paragraph [ref=e545]: "Use when the user asks how code works, wants to understand architecture, trace execution flows, or explore unfamiliar parts of the codebase. Examples: \\\"How does X work?\\\", \\\"What calls this function?\\\", \\\"Show me the auth flow\\\""
+              - button "卸载" [ref=e547]
+            - 'link "gitnexus-guide Use when the user asks about GitNexus itself — available tools, how to query the knowledge graph, MCP resources, graph schema, or workflow reference. Examples: \\\"What GitNexus tools are available?\\\", \\\"How do I use GitNexus?\\\" 卸载" [ref=e548] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-guide?skillSource=user
+              - generic [ref=e549]:
+                - img [ref=e551]
+                - generic [ref=e554]: gitnexus-guide
+              - paragraph [ref=e555]: "Use when the user asks about GitNexus itself — available tools, how to query the knowledge graph, MCP resources, graph schema, or workflow reference. Examples: \\\"What GitNexus tools are available?\\\", \\\"How do I use GitNexus?\\\""
+              - button "卸载" [ref=e557]
+            - 'link "gitnexus-impact-analysis Use when the user wants to know what will break if they change something, or needs safety analysis before editing code. Examples: \\\"Is it safe to change X?\\\", \\\"What depends on this?\\\", \\\"What will break?\\\" 卸载" [ref=e558] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-impact-analysis?skillSource=user
+              - generic [ref=e559]:
+                - img [ref=e561]
+                - generic [ref=e564]: gitnexus-impact-analysis
+              - paragraph [ref=e565]: "Use when the user wants to know what will break if they change something, or needs safety analysis before editing code. Examples: \\\"Is it safe to change X?\\\", \\\"What depends on this?\\\", \\\"What will break?\\\""
+              - button "卸载" [ref=e567]
+            - 'link "gitnexus-pr-review Use when the user wants to review a pull request, understand what a PR changes, assess risk of merging, or check for missing test coverage. Examples: \\\"Review this PR\\\", \\\"What does PR #42 change?\\\", \\\"Is this PR safe to merge?\\\" 卸载" [ref=e568] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-pr-review?skillSource=user
+              - generic [ref=e569]:
+                - img [ref=e571]
+                - generic [ref=e574]: gitnexus-pr-review
+              - paragraph [ref=e575]: "Use when the user wants to review a pull request, understand what a PR changes, assess risk of merging, or check for missing test coverage. Examples: \\\"Review this PR\\\", \\\"What does PR #42 change?\\\", \\\"Is this PR safe to merge?\\\""
+              - button "卸载" [ref=e577]
+            - 'link "gitnexus-refactoring Use when the user wants to rename, extract, split, move, or restructure code safely. Examples: \\\"Rename this function\\\", \\\"Extract this into a module\\\", \\\"Refactor this class\\\", \\\"Move this to a separate file\\\" 卸载" [ref=e578] [cursor=pointer]':
+              - /url: /workspace/skills/gitnexus-refactoring?skillSource=user
+              - generic [ref=e579]:
+                - img [ref=e581]
+                - generic [ref=e584]: gitnexus-refactoring
+              - paragraph [ref=e585]: "Use when the user wants to rename, extract, split, move, or restructure code safely. Examples: \\\"Rename this function\\\", \\\"Extract this into a module\\\", \\\"Refactor this class\\\", \\\"Move this to a separate file\\\""
+              - button "卸载" [ref=e587]
+            - link "graphify any input (code, docs, papers, images) → knowledge graph → clustered communities → HTML + JSON + audit report 卸载" [ref=e588] [cursor=pointer]:
+              - /url: /workspace/skills/graphify?skillSource=user
+              - generic [ref=e589]:
+                - img [ref=e591]
+                - generic [ref=e594]: graphify
+              - paragraph [ref=e595]: any input (code, docs, papers, images) → knowledge graph → clustered communities → HTML + JSON + audit report
+              - button "卸载" [ref=e597]
+            - link [ref=e598] [cursor=pointer]:
+              - /url: /workspace/skills/microsoft-foundry?skillSource=user
+              - generic [ref=e599]:
+                - img [ref=e601]
+                - generic [ref=e604]: microsoft-foundry
+              - paragraph [ref=e605]: "Deploy, evaluate, and manage Foundry agents end-to-end: Docker build, ACR push, hosted/prompt agent create, container start, batch eval, continuous eval, prompt optimizer workflows, agent.yaml, dataset curation from traces. USE FOR: deploy agent to Foundry, hosted agent, create agent, invoke agent, evaluate agent, run batch eval, continuous eval, continuous monitoring, continuous eval status, optimize prompt, improve prompt, prompt optimizer, optimize agent instructions, improve agent instructions, optimize system prompt, deploy model, Foundry project, RBAC, role assignment, permissions, quota, capacity, region, troubleshoot agent, deployment failure, create dataset from traces, dataset versioning, eval trending, create AI Services, Cognitive Services, create Foundry resource, provision resource, knowledge index, agent monitoring, customize deployment, onboard, availability. DO NOT USE FOR: Azure Functions, App Service, general Azure deploy (use azure-deploy), general Azure prep (use azure-prepare)."
+              - button "卸载" [ref=e607]
+            - link "paseo Paseo reference for managing agents and worktrees. Load whenever you need to create agents, send them prompts, or manage worktrees. 卸载" [ref=e608] [cursor=pointer]:
+              - /url: /workspace/skills/paseo?skillSource=user
+              - generic [ref=e609]:
+                - img [ref=e611]
+                - generic [ref=e614]: paseo
+              - paragraph [ref=e615]: Paseo reference for managing agents and worktrees. Load whenever you need to create agents, send them prompts, or manage worktrees.
+              - button "卸载" [ref=e617]
+            - link "paseo-advisor Spin up a single agent as an advisor — second opinion on the current task. Use when the user says \"advisor\", \"second opinion\", \"what does X think\", or wants an outside take without delegating the work itself. 卸载" [ref=e618] [cursor=pointer]:
+              - /url: /workspace/skills/paseo-advisor?skillSource=user
+              - generic [ref=e619]:
+                - img [ref=e621]
+                - generic [ref=e624]: paseo-advisor
+              - paragraph [ref=e625]: Spin up a single agent as an advisor — second opinion on the current task. Use when the user says "advisor", "second opinion", "what does X think", or wants an outside take without delegating the work itself.
+              - button "卸载" [ref=e627]
+            - link "paseo-committee Form a committee of two high-reasoning agents to step back, do root cause analysis, and produce a plan. Use when stuck, looping, tunnel-visioning, or facing a hard planning problem. 卸载" [ref=e628] [cursor=pointer]:
+              - /url: /workspace/skills/paseo-committee?skillSource=user
+              - generic [ref=e629]:
+                - img [ref=e631]
+                - generic [ref=e634]: paseo-committee
+              - paragraph [ref=e635]: Form a committee of two high-reasoning agents to step back, do root cause analysis, and produce a plan. Use when stuck, looping, tunnel-visioning, or facing a hard planning problem.
+              - button "卸载" [ref=e637]
+            - link "paseo-epic Heavy-ceremony orchestration for big work — research, planning, adversarial review, phased implementation, audit, delivery. Use when the user says \"epic\", \"long task\", \"build this end to end\", or wants a feature that runs all night. 卸载" [ref=e638] [cursor=pointer]:
+              - /url: /workspace/skills/paseo-epic?skillSource=user
+              - generic [ref=e639]:
+                - img [ref=e641]
+                - generic [ref=e644]: paseo-epic
+              - paragraph [ref=e645]: Heavy-ceremony orchestration for big work — research, planning, adversarial review, phased implementation, audit, delivery. Use when the user says "epic", "long task", "build this end to end", or wants a feature that runs all night.
+              - button "卸载" [ref=e647]
+            - link "paseo-handoff Hand off the current task to another agent with full context. Use when the user says \"handoff\", \"hand off\", \"hand this to\", or wants to pass work to another agent. 卸载" [ref=e648] [cursor=pointer]:
+              - /url: /workspace/skills/paseo-handoff?skillSource=user
+              - generic [ref=e649]:
+                - img [ref=e651]
+                - generic [ref=e654]: paseo-handoff
+              - paragraph [ref=e655]: Hand off the current task to another agent with full context. Use when the user says "handoff", "hand off", "hand this to", or wants to pass work to another agent.
+              - button "卸载" [ref=e657]
+            - link "paseo-loop Run an agent loop until an exit condition is met. Use when the user says \"loop\", \"babysit\", \"keep trying until\", \"check every X\", \"watch\", or wants iterative autonomous execution. 卸载" [ref=e658] [cursor=pointer]:
+              - /url: /workspace/skills/paseo-loop?skillSource=user
+              - generic [ref=e659]:
+                - img [ref=e661]
+                - generic [ref=e664]: paseo-loop
+              - paragraph [ref=e665]: Run an agent loop until an exit condition is met. Use when the user says "loop", "babysit", "keep trying until", "check every X", "watch", or wants iterative autonomous execution.
+              - button "卸载" [ref=e667]
+          - img [ref=e669]
+  - region "Notifications alt+T"

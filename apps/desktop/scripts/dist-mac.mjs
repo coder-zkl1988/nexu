@@ -464,7 +464,7 @@ async function stapleNotarizedAppBundles() {
   }
 
   for (const entry of appBundleDirs) {
-    const appPath = resolve(releaseRoot, entry.name, "Nexu.app");
+    const appPath = resolve(releaseRoot, entry.name, "Tabby.app");
 
     console.log(`[dist:mac] stapling notarized app bundle: ${appPath}`);
     await run("xcrun", ["stapler", "staple", appPath], { cwd: electronRoot });
@@ -485,6 +485,11 @@ const requiredBundledPluginArtifacts = [
     requiredPath: ["node_modules", "dingtalk-stream", "package.json"],
     label: "dingtalk-stream",
   },
+  {
+    pluginId: "tabby-control",
+    requiredPath: ["openclaw.plugin.json"],
+    label: "plugin-manifest",
+  },
 ];
 
 async function validatePackagedBundledPluginDependencies(releaseRoot) {
@@ -502,7 +507,7 @@ async function validatePackagedBundledPluginDependencies(releaseRoot) {
   }
 
   for (const entry of packagedMacBundles) {
-    const appRoot = resolve(releaseRoot, entry.name, "Nexu.app");
+    const appRoot = resolve(releaseRoot, entry.name, "Tabby.app");
     for (const artifact of requiredBundledPluginArtifacts) {
       const pluginRoot = resolve(
         appRoot,
@@ -574,7 +579,7 @@ async function ensureBuildConfig() {
       merged.NEXU_DESKTOP_UPDATE_CHANNEL ??
       existingConfig.NEXU_DESKTOP_UPDATE_CHANNEL ??
       "stable",
-    NEXU_DESKTOP_BUILD_SOURCE: merged.NEXU_DESKTOP_BUILD_SOURCE ?? "local-dist",
+    NEXU_DESKTOP_BUILD_SOURCE: merged.NEXU_DESKTOP_BUILD_SOURCE ?? "stable",
     NEXU_DESKTOP_BUILD_BRANCH:
       merged.NEXU_DESKTOP_BUILD_BRANCH ?? (gitBranch || undefined),
     NEXU_DESKTOP_BUILD_COMMIT:
@@ -748,6 +753,7 @@ async function main() {
     APPLE_ID: appleId,
     APPLE_APP_SPECIFIC_PASSWORD: appleAppSpecificPassword,
     APPLE_TEAM_ID: appleTeamId,
+    APPLE_NOTARY_PROFILE: appleNotaryProfile,
     ...notarizeEnv
   } = env;
 
@@ -761,6 +767,14 @@ async function main() {
 
   if (appleTeamId) {
     notarizeEnv.NEXU_APPLE_TEAM_ID = appleTeamId;
+  }
+
+  if (appleNotaryProfile) {
+    notarizeEnv.NEXU_APPLE_NOTARY_PROFILE = appleNotaryProfile;
+  }
+
+  if (appleTeamId && !notarizeEnv.CSC_NAME) {
+    notarizeEnv.CSC_NAME = appleTeamId;
   }
 
   await timedStep(

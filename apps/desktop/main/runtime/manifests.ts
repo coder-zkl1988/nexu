@@ -395,6 +395,9 @@ export function createRuntimeUnitManifests(
   const skillhubStaticSkillsDir = isPackaged
     ? path.resolve(electronRoot, "static", "bundled-skills")
     : path.resolve(repoRoot, "apps", "desktop", "static", "bundled-skills");
+  const experthubStaticExpertsDir = isPackaged
+    ? path.resolve(electronRoot, "static", "bundled-experts")
+    : path.resolve(repoRoot, "apps", "desktop", "static", "bundled-experts");
   const platformTemplatesDir = isPackaged
     ? path.resolve(electronRoot, "static", "platform-templates")
     : path.resolve(
@@ -450,6 +453,7 @@ export function createRuntimeUnitManifests(
       ),
       OPENCLAW_SKILLS_DIR: openclawSkillsDir,
       SKILLHUB_STATIC_SKILLS_DIR: skillhubStaticSkillsDir,
+      EXPERTHUB_STATIC_EXPERTS_DIR: experthubStaticExpertsDir,
       PLATFORM_TEMPLATES_DIR: platformTemplatesDir,
       OPENCLAW_BIN: effectiveOpenclawBinPath,
       ...(isPackaged

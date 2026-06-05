@@ -1,32 +1,23 @@
 import { track } from "@/lib/tracking";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   getApiInternalDesktopDefaultModel,
   getApiV1Models,
   putApiInternalDesktopDefaultModel,
 } from "../../lib/api/sdk.gen";
-import { ModelPickerDropdown } from "./model-picker-dropdown";
 
-/**
- * Inline Model Selector for Hero status bar
- *
- * A compact dropdown that shows the current model and allows switching.
- * Reuses the same data flow as the Models page.
- */
-
-interface Model {
-  id: string;
-  name: string;
-  provider: string;
-  isDefault?: boolean;
-  description?: string;
+export interface InlineModelSelectorProps {
+  selectedModelId?: string;
+  onSelectModel?: (modelId: string) => void;
 }
 
 function getProviderIdFromModelId(
-  models: Model[],
+  models: Array<{ id: string; name: string; provider: string }>,
   modelId: string,
 ): string | null {
   const matched = models.find((model) => model.id === modelId);
@@ -37,18 +28,25 @@ function getProviderIdFromModelId(
   return provider || null;
 }
 
-export function InlineModelSelector() {
+export function InlineModelSelector(props: InlineModelSelectorProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Fetch current model
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Controlled mode (props provided)
+  const controlledMode =
+    props.selectedModelId !== undefined && props.onSelectModel !== undefined;
+
+  // Fetch current model (uncontrolled/standalone mode)
   const { data: defaultModelData } = useQuery({
     queryKey: ["desktop-default-model"],
     queryFn: async () => {
       const { data } = await getApiInternalDesktopDefaultModel();
       return data as { modelId: string | null } | undefined;
     },
+    enabled: !controlledMode,
   });
 
   // Fetch available models
@@ -58,13 +56,19 @@ export function InlineModelSelector() {
       const { data } = await getApiV1Models();
       return data;
     },
+    staleTime: 5 * 60 * 1000,
   });
+  const models = (modelsData?.models ?? []) as Array<{
+    id: string;
+    name: string;
+    provider: string;
+  }>;
 
-  const models = (modelsData?.models ?? []) as Model[];
-  const currentModelId = defaultModelData?.modelId ?? "";
-  const emptyModelLabel = t("models.noModelConfigured");
+  const currentModelId = controlledMode
+    ? (props.selectedModelId ?? "")
+    : (defaultModelData?.modelId ?? "");
 
-  // Update model mutation
+  // Update model mutation (uncontrolled/standalone mode)
   const updateModel = useMutation({
     mutationFn: async (modelId: string) => {
       const toastId = toast.loading(t("models.switchingModel"));
@@ -88,20 +92,96 @@ export function InlineModelSelector() {
         model_name: modelId,
       });
       queryClient.invalidateQueries({ queryKey: ["desktop-default-model"] });
-      // Config push triggers SIGUSR1 restart; immediately refetch live status
-      // so the UI reflects the restart sooner.
       queryClient.invalidateQueries({ queryKey: ["channels-live-status"] });
     },
   });
 
+  const handleSelect = (modelId: string) => {
+    if (controlledMode && props.onSelectModel) {
+      props.onSelectModel(modelId);
+    } else {
+      updateModel.mutate(modelId);
+    }
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const currentModel = models.find((m) => m.id === currentModelId);
+  const displayName = (currentModel?.name ?? currentModelId) || "Default";
+
   return (
-    <ModelPickerDropdown
-      compact
-      models={models}
-      currentModelId={currentModelId}
-      emptyLabel={emptyModelLabel}
-      onSelectModel={(modelId) => updateModel.mutate(modelId)}
-      onOpenSettings={() => navigate("/workspace/models?tab=providers")}
-    />
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm",
+          open && "bg-[var(--color-tabby-canvas)]",
+        )}
+      >
+        <span className="max-w-[120px] truncate">{displayName}</span>
+        <ChevronDown
+          size={13}
+          className={cn("transition-transform shrink-0", open && "rotate-180")}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-52 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg max-h-72 overflow-y-auto">
+          {(() => {
+            const filtered = models.filter((m) => m.id && m.name);
+            const groups = new Map<string, typeof filtered>();
+            for (const m of filtered) {
+              const provider = m.provider || "Other";
+              if (!groups.has(provider)) groups.set(provider, []);
+              groups.get(provider)?.push(m);
+            }
+            return Array.from(groups.entries()).map(
+              ([provider, providerModels], gi) => (
+                <div key={provider}>
+                  <div
+                    className={cn(
+                      "px-3 py-1.5 text-[10px] font-semibold text-[var(--color-tabby-muted)] uppercase tracking-wide",
+                      gi > 0 && "border-t border-[var(--color-tabby-border)]",
+                    )}
+                  >
+                    {provider}
+                  </div>
+                  {providerModels.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleSelect(m.id ?? "")}
+                      className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
+                          {m.name}
+                        </div>
+                      </div>
+                      {currentModelId === m.id && (
+                        <Check
+                          size={14}
+                          className="text-[var(--color-tabby-orange)] shrink-0"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ),
+            );
+          })()}
+        </div>
+      )}
+    </div>
   );
 }

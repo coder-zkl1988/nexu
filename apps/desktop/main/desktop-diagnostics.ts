@@ -125,9 +125,11 @@ export class DesktopDiagnosticsReporter {
     DesktopEmbeddedContentSnapshot
   >();
 
+  private readonly embeddedCleanup = new Map<number, () => void>();
+
   private proxy: ProxyDiagnosticsSnapshot | null = null;
 
-  private flushScheduled = false;
+  private flushDebounceTimer: NodeJS.Timeout | null = null;
 
   private flushInFlight: Promise<void> | null = null;
 
@@ -299,20 +301,22 @@ export class DesktopDiagnosticsReporter {
   }
 
   async flushNow(): Promise<void> {
+    if (this.flushDebounceTimer) {
+      clearTimeout(this.flushDebounceTimer);
+      this.flushDebounceTimer = null;
+    }
     await this.flush();
   }
 
   private scheduleFlush(): void {
-    if (this.flushScheduled) {
-      this.needsFlush = true;
+    if (this.flushDebounceTimer) {
       return;
     }
 
-    this.flushScheduled = true;
-    queueMicrotask(() => {
-      this.flushScheduled = false;
+    this.flushDebounceTimer = setTimeout(() => {
+      this.flushDebounceTimer = null;
       void this.flush().catch(() => undefined);
-    });
+    }, 5000);
   }
 
   private async flush(): Promise<void> {
@@ -419,5 +423,15 @@ export class DesktopDiagnosticsReporter {
 
     this.embeddedContents.set(id, snapshot);
     return snapshot;
+  }
+
+  removeEmbedded(id: number): void {
+    this.embeddedContents.delete(id);
+    const cleanup = this.embeddedCleanup.get(id);
+    if (cleanup) {
+      cleanup();
+      this.embeddedCleanup.delete(id);
+    }
+    this.scheduleFlush();
   }
 }

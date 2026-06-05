@@ -143,7 +143,12 @@ function buildDescriptor(runtimeRoot: string): SlimclawRuntimeDescriptor {
         "bin",
         process.platform === "win32" ? "openclaw.cmd" : "openclaw",
       ),
-      builtinExtensionsDir: path.join("node_modules", "openclaw", "extensions"),
+      builtinExtensionsDir: path.join(
+        "node_modules",
+        "openclaw",
+        "dist",
+        "extensions",
+      ),
     },
   };
 }
@@ -188,6 +193,7 @@ export function resolveSlimclawRuntimeArtifacts(
     runtimeRoot,
     "node_modules",
     "openclaw",
+    "dist",
     "extensions",
   );
 

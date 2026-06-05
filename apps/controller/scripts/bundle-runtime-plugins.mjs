@@ -17,12 +17,25 @@ const bundledPlugins = [
     npmName: "@dingtalk-real-ai/dingtalk-connector",
   },
   {
-    id: "wecom",
-    npmName: "@wecom/wecom-openclaw-plugin",
+    id: "openclaw-lark",
+    npmName: "@larksuite/openclaw-lark",
+  },
+  {
+    id: "openclaw-weixin",
+    npmName: "@tencent-weixin/openclaw-weixin",
   },
   {
     id: "openclaw-qqbot",
     npmName: "@tencent-connect/openclaw-qqbot",
+  },
+  {
+    id: "tabby-control",
+    // Local repo — resolved from TBBY_CONTROL_DIR env or default workspace path
+    localSource: true,
+  },
+  {
+    id: "wecom",
+    npmName: "@wecom/wecom-openclaw-plugin",
   },
 ];
 
@@ -172,26 +185,306 @@ async function maybeFixPluginManifest(outputDir) {
   }
 }
 
-async function bundlePlugin({ id, npmName }) {
-  let packageJsonPath;
+/**
+ * Patch tabby-control's task-coordinator.js so SCREENSHOT_DIR honours
+ * OPENCLAW_STATE_DIR (or falls back to ~/.openclaw) and add screenshot
+ * pruning that keeps only today's screenshots.  The upstream source
+ * hard-codes `join(homedir(), '.openclaw', …)`, which only works when the
+ * OpenClaw process uses the default state dir — not in dev mode or the
+ * packaged desktop where OPENCLAW_STATE_DIR points elsewhere.
+ */
+async function patchTabbyControlTaskDescription(outputDir) {
+  const target = path.join(outputDir, "dist", "tools.js");
   try {
-    packageJsonPath = requireFromRepo.resolve(`${npmName}/package.json`);
+    let content = await readFile(target, "utf8");
+
+    // Replace the "Send ENTIRE task" guidance with autonomous sub-task mode
+    const oldDesc =
+      "            'IMPORTANT: Send the ENTIRE task to the device in one call. Do NOT split the task',\n" +
+      "            'into sub-steps yourself. The device handles all steps autonomously. For example,',\n" +
+      "            'if the user says \"open WeChat and send a message to Zhang San\", send the full',\n" +
+      "            'task \"打开微信给张三发消息：今晚吃饭吗\" in one device_execute_task call.',";
+
+    const newDesc =
+      "            'DEFAULT (autonomous mode): Send SUB-TASKS (2~3 steps each) to the device via',\n" +
+      "            'device_execute_task. The device VLM runs autonomously within each sub-task.',\n" +
+      "            'For multi-step workflows, decompose into 2~3 sub-tasks and execute them',\n" +
+      "            'sequentially, verifying results between each. This scales to multi-device.',\n" +
+      "            '',\n" +
+      "            'FALLBACK (step-by-step mode): Only use device_execute_skill when the device VLM',\n" +
+      "            'is unstable (repeated stuck/wrong-app/re-loop). It sends ≤3 steps at a time.',";
+
+    if (content.includes("ENTIRE task")) {
+      content = content.replace(oldDesc, newDesc);
+      // Also update the examples section
+      const oldExamples =
+        "            'Examples:',\n" +
+        '            \'- "打开小红书，浏览首页前三屏内容" (NOT split into "open app" + "scroll" + "report")\',\n' +
+        "            '- \"打开微信给张三发消息：今晚吃饭吗\"',\n" +
+        "            '- \"在小红书搜索美食并截图\"',";
+
+      const newExamples =
+        "            'Autonomous sub-task examples (use device_execute_task):',\n" +
+        "            '- \"在小红书点击底部+号，选择写文字\"',\n" +
+        "            '- \"填写标题和正文内容\"',\n" +
+        "            '- \"添加话题标签并点击发布\"',\n" +
+        "            '',\n" +
+        "            'Fallback step-by-step examples (use device_execute_skill only if unstable):',\n" +
+        "            '- \"在小红书发布一篇笔记\" → decompose into ≤3-step groups',";
+      content = content.replace(oldExamples, newExamples);
+      await writeFile(target, content, "utf8");
+      console.log(
+        "  [tabby-control] Patched device_execute_task description to prefer device_execute_skill for multi-step tasks",
+      );
+    } else if (content.includes("device_execute_skill")) {
+      console.log(
+        "  [tabby-control] device_execute_task description already patched — skipping",
+      );
+    } else {
+      console.warn(
+        `  [tabby-control] Could not find device_execute_task description in ${target} — manual review needed`,
+      );
+    }
   } catch {
-    throw new Error(
-      `Missing ${npmName}. Run "pnpm install" at the repo root before building controller runtime plugins.`,
+    console.warn(
+      `  [tabby-control] ${target} not found — task-description patch skipped`,
     );
   }
+}
 
-  const sourcePackageRoot = await realpath(path.dirname(packageJsonPath));
+async function patchTabbyControlScreenshotDir(outputDir) {
+  const target = path.join(outputDir, "dist", "task-coordinator.js");
+  try {
+    let content = await readFile(target, "utf8");
+    const original =
+      "const SCREENSHOT_DIR = join(homedir(), '.openclaw', 'media', 'tabby-screenshots');";
+    const patched =
+      "const SCREENSHOT_DIR = join(process.env.OPENCLAW_STATE_DIR || join(homedir(), '.openclaw'), 'media', 'tabby-screenshots');";
+    if (content.includes(original)) {
+      content = content.replace(original, patched);
+      await writeFile(target, content, "utf8");
+      console.log(
+        "  [tabby-control] Patched SCREENSHOT_DIR to respect OPENCLAW_STATE_DIR",
+      );
+    } else if (content.includes("OPENCLAW_STATE_DIR")) {
+      console.log(
+        "  [tabby-control] SCREENSHOT_DIR already patched — skipping",
+      );
+    } else {
+      console.warn(
+        `  [tabby-control] Could not find SCREENSHOT_DIR pattern in ${target} — manual review needed`,
+      );
+    }
+
+    // Add screenshot pruning (keep only today's screenshots)
+    const pruneFunc = `function pruneOldScreenshots() { try { const today = new Date(); today.setHours(0, 0, 0, 0); for (const f of fs.readdirSync(SCREENSHOT_DIR)) { if (!f.endsWith('.webp')) continue; const p = join(SCREENSHOT_DIR, f); try { if (fs.statSync(p).mtime < today) fs.unlinkSync(p); } catch {} } } catch {} }`;
+    const screenshotDirLine = content.includes("OPENCLAW_STATE_DIR")
+      ? "const SCREENSHOT_DIR = join(process.env.OPENCLAW_STATE_DIR || join(homedir(), '.openclaw'), 'media', 'tabby-screenshots');"
+      : "const SCREENSHOT_DIR = join(homedir(), '.openclaw', 'media', 'tabby-screenshots');";
+    if (!content.includes("pruneOldScreenshots")) {
+      content = content.replace(
+        screenshotDirLine,
+        `${screenshotDirLine}\n${pruneFunc}`,
+      );
+      content = content.replace(
+        /console\.log\(`\[tabby-control\] Created screenshot dir: \$\{SCREENSHOT_DIR\}`\);?\n(\s*)\}/,
+        "console.log(`[tabby-control] Created screenshot dir: ${SCREENSHOT_DIR}`);\n$1}\n$1pruneOldScreenshots();",
+      );
+      content = content.replace(
+        /(\s+)}\n(\s+)this\.ipcNotifier/,
+        "$1}\n$1pruneOldScreenshots();\n$2this.ipcNotifier",
+      );
+      await writeFile(target, content, "utf8");
+      console.log(
+        "  [tabby-control] Added screenshot pruning (keep today only)",
+      );
+    } else {
+      console.log(
+        "  [tabby-control] Screenshot pruning already present — skipping",
+      );
+    }
+  } catch {
+    console.warn(
+      `  [tabby-control] ${target} not found — screenshot-dir patch skipped`,
+    );
+  }
+}
+
+/**
+ * Patch tabby-control's task-coordinator.js so that cancelTask() rejects the
+ * pending promise (fixing a bug where executeTask hangs indefinitely) and
+ * handleTaskMessage handles 'agent.cancel' method from the phone.
+ */
+async function patchTabbyControlCancelTask(outputDir) {
+  const target = path.join(outputDir, "dist", "task-coordinator.js");
+  try {
+    let content = await readFile(target, "utf8");
+
+    // 1. cancelTask: reject the pending promise after clearing/deleting it
+    if (!content.includes("CANCELLED")) {
+      const before =
+        "clearTimeout(pending.timeout);\n            this.pending.delete(taskId);\n        }";
+      const after =
+        "clearTimeout(pending.timeout);\n            this.pending.delete(taskId);\n            pending.reject(new Error('CANCELLED'));\n        }";
+      if (content.includes(before)) {
+        content = content.replace(before, after);
+        console.log(
+          "  [tabby-control] Patched cancelTask to reject pending promise",
+        );
+      } else {
+        console.warn(
+          `  [tabby-control] Could not find cancelTask reject pattern in ${target} — manual review needed`,
+        );
+      }
+    } else {
+      console.log(
+        "  [tabby-control] cancelTask already rejects pending — skipping",
+      );
+    }
+
+    // 2. handleTaskMessage: handle 'agent.cancel' method from phone
+    if (!content.includes("'agent.cancel'")) {
+      const cancelHandlerInsert = `    // ── Cancel from phone ──
+    if (method === 'agent.cancel') {
+        const cancelTaskId = message.params?.taskId;
+        if (cancelTaskId) {
+            const pending = this.pending.get(cancelTaskId);
+            if (pending) {
+                clearTimeout(pending.timeout);
+                this.pending.delete(cancelTaskId);
+                pending.reject(new Error('CANCELLED'));
+                this.wsServer.getRegistry().updateStatus(deviceId, { status: 'idle', currentTaskId: undefined });
+                this.ipcNotifier('device:status_change', { deviceId, status: 'idle', taskId: undefined });
+            }
+        }
+        return;
+    }
+
+`;
+      // Insert after the subtask return and before "// ── Result"
+      const resultComment =
+        "        // ── Result ────────────────────────────────────────────────";
+      if (content.includes(resultComment)) {
+        content = content.replace(
+          resultComment,
+          `${cancelHandlerInsert}        ${resultComment.trim()}`,
+        );
+        console.log(
+          "  [tabby-control] Patched handleTaskMessage to handle agent.cancel from phone",
+        );
+      } else {
+        console.warn(
+          `  [tabby-control] Could not find result comment in ${target} — agent.cancel handler patch skipped`,
+        );
+      }
+    } else {
+      console.log(
+        "  [tabby-control] handleTaskMessage already handles agent.cancel — skipping",
+      );
+    }
+
+    await writeFile(target, content, "utf8");
+  } catch {
+    console.warn(
+      `  [tabby-control] ${target} not found — cancel-task patch skipped`,
+    );
+  }
+}
+
+async function bundlePlugin({ id, npmName, localSource }) {
+  let sourcePackageRoot;
+
+  if (localSource) {
+    const tabbyControlDir =
+      process.env.TABBY_CONTROL_DIR ||
+      path.resolve(repoRoot, "..", "tabby-control");
+    const tabbyDistNexu = path.join(
+      tabbyControlDir,
+      "dist-nexu",
+      "tabby-control",
+    );
+    sourcePackageRoot = await realpath(tabbyDistNexu);
+  } else {
+    // Resolve the package root directory.
+    // Some packages (e.g. @larksuite/openclaw-lark) restrict "exports" and
+    // don't expose ./package.json or a CJS main, so we try multiple strategies.
+    let sourceDir;
+    try {
+      // Strategy 1: resolve package.json directly (works for most packages)
+      const packageJsonPath = requireFromRepo.resolve(
+        `${npmName}/package.json`,
+      );
+      sourceDir = path.dirname(packageJsonPath);
+    } catch {
+      // Strategy 2: resolve the main entry and walk up to find package.json
+      try {
+        const mainEntry = requireFromRepo.resolve(npmName);
+        let dir = path.dirname(mainEntry);
+        for (let i = 0; i < 20; i++) {
+          const candidate = path.join(dir, "package.json");
+          try {
+            const pkg = await readJson(candidate);
+            if (pkg.name === npmName) {
+              sourceDir = dir;
+              break;
+            }
+          } catch {
+            // not a valid package.json, keep walking
+          }
+          const parent = path.dirname(dir);
+          if (parent === dir) break;
+          dir = parent;
+        }
+      } catch {
+        // Strategy 2 failed
+      }
+    }
+    // Strategy 3: direct path construction for scoped packages
+    // pnpm hoists to node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/
+    // but also creates a symlink at node_modules/<scope>/<pkg>/
+    if (!sourceDir) {
+      const directPath = path.join(repoRoot, "node_modules", npmName);
+      try {
+        const pkg = await readJson(path.join(directPath, "package.json"));
+        if (pkg.name === npmName) {
+          sourceDir = directPath;
+        }
+      } catch {
+        // direct path doesn't exist
+      }
+    }
+    if (!sourceDir) {
+      throw new Error(
+        `Missing ${npmName}. Run "pnpm install" at the repo root before building controller runtime plugins.`,
+      );
+    }
+    sourcePackageRoot = await realpath(sourceDir);
+  }
   const outputDir = path.join(outputRoot, id);
 
   await cp(sourcePackageRoot, outputDir, {
     recursive: true,
     force: true,
     dereference: true,
-    filter: shouldCopyPluginPath,
+    filter: localSource ? undefined : shouldCopyPluginPath,
   });
   await maybeFixPluginManifest(outputDir);
+
+  // Patch tabby-control to respect OPENCLAW_STATE_DIR when writing screenshots.
+  // Without this, SCREENSHOT_DIR resolves to ~/.openclaw/media/tabby-screenshots,
+  // which is outside the image tool's localRoots when OPENCLAW_STATE_DIR is set
+  // (dev mode / packaged desktop).  See AGENTS.md "Do not modify OpenClaw source code"
+  // — this patches a bundled extension, not the OpenClaw runtime itself.
+  if (id === "tabby-control") {
+    await patchTabbyControlScreenshotDir(outputDir);
+    await patchTabbyControlTaskDescription(outputDir);
+    await patchTabbyControlCancelTask(outputDir);
+  }
+
+  // Skip npm dependency closure for local-source plugins (they bundle their own node_modules)
+  if (localSource) {
+    return;
+  }
 
   const rootDependencyNodeModules =
     resolveDependencyNodeModules(sourcePackageRoot);

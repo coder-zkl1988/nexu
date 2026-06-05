@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { cac } from "cac";
 
 import {
@@ -138,7 +142,38 @@ function readTargetOrThrow(target: string | undefined): DevTarget {
   return target as DevTarget;
 }
 
+function getWorkspaceRoot(): string {
+  // Walk up from this file until we find pnpm-workspace.yaml
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 10; i++) {
+    if (existsSync(resolve(dir, "pnpm-workspace.yaml"))) {
+      return dir;
+    }
+    const parent = resolve(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error("Could not find workspace root (pnpm-workspace.yaml)");
+}
+
+function ensureSharedBuilt(): void {
+  const workspaceRoot = getWorkspaceRoot();
+  logger.info("[preflight] @nexu/shared build");
+  try {
+    execFileSync("pnpm", ["--filter", "@nexu/shared", "build"], {
+      cwd: workspaceRoot,
+      stdio: "pipe",
+      timeout: 30_000,
+    });
+    logger.info("[preflight] @nexu/shared build done");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Preflight failed — @nexu/shared build error: ${message}`);
+  }
+}
+
 async function startDefaultStack(): Promise<void> {
+  ensureSharedBuilt();
   await runDefaultStartStage("openclaw", createDevSessionId());
   await runDefaultStartStage("controller", createDevSessionId());
   await runDefaultStartStage("web", createDevSessionId());
@@ -326,6 +361,9 @@ cli
     }
 
     const resolvedTarget = readTargetOrThrow(target);
+    if (resolvedTarget === "controller") {
+      ensureSharedBuilt();
+    }
     const sessionId = createDevSessionId();
     await runWithCommandTimeout("start", resolvedTarget, false, () =>
       startTarget(resolvedTarget, sessionId),

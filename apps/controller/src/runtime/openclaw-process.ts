@@ -225,11 +225,14 @@ export class OpenClawProcessManager {
         await execFileAsync("launchctl", ["kickstart", "-k", domain]);
         logger.info({ reason, domain }, "openclaw_restart_launchd_kickstarted");
       } catch (err) {
+        // Best-effort: the skills nudge marker is already on disk and will
+        // be picked up on the next gateway boot. Throwing here would
+        // propagate through doSync → syncAll → HTTP 500, which is worse
+        // than a silently-retried restart.
         logger.error(
           { reason, domain, err },
           "openclaw_restart_launchd_failed",
         );
-        throw err;
       }
       return;
     }

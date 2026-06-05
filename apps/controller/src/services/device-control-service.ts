@@ -37,6 +37,8 @@ export class DeviceControlService {
     private readonly taskHistoryStore: DeviceTaskHistoryStore,
   ) {}
 
+  private healthAbortController: AbortController | null = null;
+
   private async getRpcPort(): Promise<number> {
     const config = await this.configStore.getConfig();
     return config.deviceControl.rpcPort;
@@ -71,14 +73,33 @@ export class DeviceControlService {
   }
 
   async isAvailable(): Promise<boolean> {
+    // Cancel any in-flight health check
+    this.healthAbortController?.abort();
+    const ac = new AbortController();
+    this.healthAbortController = ac;
+
+    // Auto-timeout after 5 seconds
+    const timeout = setTimeout(() => ac.abort(), 5000);
+    // Don't prevent process exit
+    if (typeof timeout === "object" && "unref" in timeout) {
+      (
+        timeout as ReturnType<typeof setTimeout> & { unref: () => void }
+      ).unref();
+    }
+
     try {
       const port = await this.getRpcPort();
       const response = await fetch(`http://127.0.0.1:${port}/health`, {
-        signal: AbortSignal.timeout(2000),
+        signal: ac.signal,
       });
       return response.ok;
     } catch {
       return false;
+    } finally {
+      clearTimeout(timeout);
+      if (this.healthAbortController === ac) {
+        this.healthAbortController = null;
+      }
     }
   }
 

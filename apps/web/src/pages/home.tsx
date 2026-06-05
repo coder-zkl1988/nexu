@@ -7,7 +7,6 @@ import { TelegramSetupView } from "@/components/channel-setup/telegram-setup-vie
 import { WechatSetupView } from "@/components/channel-setup/wechat-setup-view";
 import { WecomSetupView } from "@/components/channel-setup/wecom-setup-view";
 import { WhatsappSetupView } from "@/components/channel-setup/whatsapp-setup-view";
-import { GitHubStarCta } from "@/components/github-star-cta";
 import { InlineModelSelector } from "@/components/inline-model-selector";
 import {
   DingtalkIcon,
@@ -17,25 +16,19 @@ import {
   WecomIcon,
   WhatsAppIcon,
 } from "@/components/platform-icons";
-import {
-  SEEDANCE_PROMO_DISMISS_KEY,
-  SeedancePromoBanner,
-  SeedancePromoModal,
-} from "@/components/seedance-promo";
+import { useBots } from "@/hooks/use-bots";
 import {
   getBudgetBannerRouteVariant,
   useDesktopBudgetGuard,
 } from "@/hooks/use-desktop-budget-guard";
 import { useDesktopRewardsStatus } from "@/hooks/use-desktop-rewards";
-import { useGitHubStars } from "@/hooks/use-github-stars";
-import { getChannelChatUrl } from "@/lib/channel-links";
 import {
   type ChannelLiveStatus,
   getChannelStatusLabel,
 } from "@/lib/channel-live-status";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Cable, X } from "lucide-react";
+import { Cable, Plus, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -212,6 +205,11 @@ const ONBOARDING_CHANNELS = [
   },
 ];
 
+const MULTI_INSTANCE_PLATFORMS: ReadonlySet<string> = new Set([
+  "feishu",
+  "wechat",
+]);
+
 function getChannelOptions(t: (key: string) => string) {
   return [
     {
@@ -328,7 +326,6 @@ function getChannelStatusMeta(
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { stars } = useGitHubStars();
   const isDesktopClient = useMemo(
     () =>
       typeof navigator !== "undefined" &&
@@ -373,17 +370,8 @@ export function HomePage() {
   const [dingtalkOpen, setDingtalkOpen] = useState(false);
   const [qqbotOpen, setQqbotOpen] = useState(false);
   const [wecomOpen, setWecomOpen] = useState(false);
-  const [seedancePromoOpen, setSeedancePromoOpen] = useState(false);
-  const [showSeedancePromo, setShowSeedancePromo] = useState(() => {
-    try {
-      return sessionStorage.getItem(SEEDANCE_PROMO_DISMISS_KEY) !== "1";
-    } catch {
-      return true;
-    }
-  });
+
   const queryClient = useQueryClient();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoHover, setVideoHover] = useState(false);
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
   const connectingToastIdRef = useRef<string | number | null>(null);
   const previousLiveStatusesRef = useRef<Record<string, ChannelLiveStatus>>({});
@@ -393,6 +381,15 @@ export function HomePage() {
   const STARTUP_GRACE_MS = 15_000;
 
   const CHANNEL_OPTIONS = useMemo(() => getChannelOptions(t), [t]);
+
+  const { bots } = useBots();
+  const botNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const bot of bots) {
+      map.set(bot.id, bot.name);
+    }
+    return map;
+  }, [bots]);
 
   // Runtime health status (polls every 2s for faster feedback)
   const { data: runtimeData } = useQuery({
@@ -640,15 +637,6 @@ export function HomePage() {
   const budgetBannerRouteVariant =
     getBudgetBannerRouteVariant("/workspace/home");
 
-  const dismissSeedancePromo = useCallback(() => {
-    setShowSeedancePromo(false);
-    try {
-      sessionStorage.setItem(SEEDANCE_PROMO_DISMISS_KEY, "1");
-    } catch {
-      // noop
-    }
-  }, []);
-
   const handleChannelCreated = useCallback(
     (channelId: string) => {
       setPendingChannelId(channelId);
@@ -708,33 +696,6 @@ export function HomePage() {
     }
   }, [liveStatus, pendingChannelId, t]);
 
-  // Video playback effects — reset when channel state changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasChannel triggers reset intentionally
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = 0;
-    v.loop = false;
-    v.play().catch(() => {});
-    const onEnded = () => {
-      v.pause();
-    };
-    v.addEventListener("ended", onEnded);
-    return () => v.removeEventListener("ended", onEnded);
-  }, [hasChannel]);
-
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (videoHover) {
-      v.currentTime = 0;
-      v.loop = true;
-      v.play().catch(() => {});
-    } else {
-      v.loop = false;
-    }
-  }, [videoHover]);
-
   /* ══════════════════════════════════════════════════════════════════════
      Scene A: First-run — No channels connected (Idle state)
      ══════════════════════════════════════════════════════════════════════ */
@@ -744,28 +705,23 @@ export function HomePage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
           {/* ═══ TOP: Hero — Bot idle, waiting to be activated ═══ */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="relative w-32 h-32 mb-5 cursor-default"
-              onMouseEnter={() => setVideoHover(true)}
-              onMouseLeave={() => setVideoHover(false)}
-            >
-              <video
-                ref={videoRef}
-                src="/nexu-alpha.mp4"
-                poster="/nexu-alpha-poster.jpg"
-                preload="auto"
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-contain"
+            <div className="relative w-32 h-32 mb-5 cursor-default">
+              <img
+                src="/images/tabby-mascot.png"
+                alt="Tabby"
+                className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+              />
+              <img
+                src="/images/tabby-mascot-colorful.png"
+                alt="Tabby colorful"
+                className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
               />
             </div>
             <h2
-              className="text-[26px] font-normal tracking-tight text-text-primary mb-1.5"
+              className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)] mb-1.5"
               style={{ fontFamily: "var(--font-script)" }}
             >
-              nexu alpha
+              Happy Tabby
             </h2>
             <div className="flex items-center gap-3 text-[11px] text-text-muted">
               <span
@@ -861,14 +817,6 @@ export function HomePage() {
               </div>
             </div>
           </div>
-
-          {showSeedancePromo ? (
-            <SeedancePromoBanner
-              isDismissed={false}
-              onOpen={() => setSeedancePromoOpen(true)}
-              onDismiss={dismissSeedancePromo}
-            />
-          ) : null}
         </div>
         {modalChannel && (
           <ChannelConnectModal
@@ -940,12 +888,6 @@ export function HomePage() {
             }}
           />
         )}
-
-        <SeedancePromoModal
-          open={seedancePromoOpen}
-          onClose={() => setSeedancePromoOpen(false)}
-          shouldAutoAdvanceAfterStar={false}
-        />
       </div>
     );
   }
@@ -961,30 +903,25 @@ export function HomePage() {
       >
         {/* ═══ TOP: Hero — Bot running (horizontal layout) ═══ */}
         <div className="flex items-center gap-4">
-          <div
-            className="relative w-28 h-28 cursor-default shrink-0"
-            onMouseEnter={() => setVideoHover(true)}
-            onMouseLeave={() => setVideoHover(false)}
-          >
-            <video
-              ref={videoRef}
-              src="/nexu-alpha.mp4"
-              poster="/nexu-alpha-poster.jpg"
-              preload="auto"
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-contain"
+          <div className="relative w-28 h-28 cursor-default shrink-0">
+            <img
+              src="/images/tabby-mascot.png"
+              alt="Tabby"
+              className="w-full h-full object-contain transition-opacity duration-300 hover:opacity-0"
+            />
+            <img
+              src="/images/tabby-mascot-colorful.png"
+              alt="Tabby colorful"
+              className="absolute inset-0 w-full h-full object-contain opacity-0 transition-opacity duration-300 hover:opacity-100"
             />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5">
               <h2
-                className="text-[26px] font-normal tracking-tight text-text-primary"
+                className="text-[26px] font-normal tracking-tight text-[var(--color-tabby-foreground)]"
                 style={{ fontFamily: "var(--font-script)" }}
               >
-                nexu alpha
+                Happy Tabby
               </h2>
               <span
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
@@ -999,15 +936,6 @@ export function HomePage() {
                 />
                 {runtimeDisplay.label}
               </span>
-              <GitHubStarCta
-                label={t("home.starGithub")}
-                stars={stars}
-                variant="inline"
-                className="ml-auto shrink-0"
-                onClick={() =>
-                  track("workspace_github_click", { source: "home_card" })
-                }
-              />
             </div>
             <div className="flex items-center gap-2 mt-1.5">
               <InlineModelSelector />
@@ -1047,14 +975,6 @@ export function HomePage() {
           />
         ) : null}
 
-        {showSeedancePromo ? (
-          <SeedancePromoBanner
-            isDismissed={false}
-            onOpen={() => setSeedancePromoOpen(true)}
-            onDismiss={dismissSeedancePromo}
-          />
-        ) : null}
-
         {/* ═══ MIDDLE: Channels panel ═══ */}
         <div className="card card-static">
           <div className="px-5 pt-4 pb-3">
@@ -1070,9 +990,11 @@ export function HomePage() {
                 {CHANNEL_OPTIONS.filter((ch) =>
                   effectiveConnectedTypes.has(ch.id),
                 ).map((ch) => {
-                  const connectedChannel = activeChannels.find(
+                  const isMulti = MULTI_INSTANCE_PLATFORMS.has(ch.id);
+                  const instances = channels.filter(
                     (c) => c.channelType === ch.id,
                   );
+                  const connectedChannel = instances[0];
                   const statusEntry = connectedChannel
                     ? liveStatusByChannelId.get(connectedChannel.id)
                     : liveStatusByChannelType.get(ch.id);
@@ -1087,126 +1009,178 @@ export function HomePage() {
                       : statusEntry?.status;
                   const statusMeta = getChannelStatusMeta(effectiveStatus, t);
                   const isConnectedLive = effectiveStatus === "connected";
-                  const channelChatUrl = connectedChannel
-                    ? getChannelChatUrl(
-                        ch.id,
-                        connectedChannel.appId,
-                        connectedChannel.botUserId,
-                        connectedChannel.accountId,
-                      )
-                    : "";
-                  const handleOpenChannel = () => {
-                    const channel = normalizeChannel(ch.id);
-                    if (!channelChatUrl || !channel) {
-                      return;
-                    }
-                    track("workspace_chat_in_im_click", {
-                      channel,
-                      where: "home",
-                    });
-                    window.open(
-                      channelChatUrl,
-                      "_blank",
-                      "noopener,noreferrer",
-                    );
-                  };
 
                   return (
                     <div
                       key={ch.id}
-                      role={channelChatUrl ? "button" : undefined}
-                      tabIndex={channelChatUrl ? 0 : undefined}
-                      className="flex w-full items-center gap-3 rounded-xl border border-border bg-white px-4 py-3 text-left transition-all hover:bg-surface-1"
-                      onClick={handleOpenChannel}
-                      onKeyDown={(event) => {
-                        if (!channelChatUrl) {
-                          return;
-                        }
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          handleOpenChannel();
-                        }
-                      }}
+                      className="rounded-xl border border-border bg-white px-4 py-3 text-left transition-all hover:bg-surface-1"
                     >
-                      <div className="w-8 h-8 rounded-[10px] flex items-center justify-center border border-border bg-white shrink-0">
-                        {homeChannelIcon(ch)}
-                      </div>
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-[13px] font-semibold text-text-primary">
-                          {ch.name}
-                        </span>
-                        <span
-                          title={statusMeta.label}
-                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.colorClass} ${statusMeta.pulse ? "animate-pulse" : ""}`}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        aria-label={
-                          isConnectedLive
-                            ? t("home.disconnect")
-                            : statusMeta.label
-                        }
-                        title={
-                          isConnectedLive
-                            ? t("home.disconnect")
-                            : statusMeta.label
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (actionableChannelId) {
-                            const channel = normalizeChannel(ch.id);
-                            track("workspace_channel_disconnect_click", {
-                              channel: channel ?? ch.id,
-                            });
-                            disconnectChannel.mutate(actionableChannelId);
-                          }
-                        }}
-                        disabled={
-                          disconnectChannel.isPending || !actionableChannelId
-                        }
-                        className="group rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium bg-surface-2 text-text-secondary hover:text-[var(--color-danger)] hover:bg-surface-3 transition-colors shrink-0 disabled:opacity-50"
-                      >
-                        {isConnectedLive ? (
-                          <>
-                            <span
-                              className="group-hover:hidden"
-                              aria-hidden="true"
-                            >
-                              {statusMeta.label}
-                            </span>
-                            <span
-                              className="hidden group-hover:inline"
-                              aria-hidden="true"
-                            >
-                              {t("home.disconnect")}
-                            </span>
-                          </>
-                        ) : (
-                          statusMeta.label
-                        )}
-                      </button>
-                      {ch.id !== "wechat" && channelChatUrl && (
-                        <a
-                          href={channelChatUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          onClickCapture={() => {
-                            const channel = normalizeChannel(ch.id);
-                            if (!channel) {
-                              return;
+                      <div className="flex w-full items-center gap-3">
+                        <div className="w-8 h-8 rounded-[10px] flex items-center justify-center border border-border bg-white shrink-0">
+                          {homeChannelIcon(ch)}
+                        </div>
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <span className="text-[13px] font-semibold text-text-primary">
+                            {ch.name}
+                          </span>
+                        </div>
+                        {!isMulti && (
+                          <button
+                            type="button"
+                            aria-label={
+                              isConnectedLive
+                                ? t("home.disconnect")
+                                : statusMeta.label
                             }
-                            track("workspace_chat_in_im_click", {
-                              channel,
-                              where: "home",
-                            });
-                          }}
-                          className="inline-flex items-center gap-1 text-[12px] font-medium text-text-secondary hover:text-text-primary transition-colors ml-3 shrink-0 leading-none"
-                        >
-                          {t("home.chat")}
-                          <ArrowUpRight size={12} className="-mt-px" />
-                        </a>
+                            title={
+                              isConnectedLive
+                                ? t("home.disconnect")
+                                : statusMeta.label
+                            }
+                            onClick={() => {
+                              if (actionableChannelId) {
+                                const channel = normalizeChannel(ch.id);
+                                track("workspace_channel_disconnect_click", {
+                                  channel: channel ?? ch.id,
+                                });
+                                disconnectChannel.mutate(actionableChannelId);
+                              }
+                            }}
+                            disabled={
+                              disconnectChannel.isPending ||
+                              !actionableChannelId
+                            }
+                            className="group rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium bg-surface-2 text-text-secondary hover:text-[var(--color-danger)] hover:bg-surface-3 transition-colors shrink-0 disabled:opacity-50"
+                          >
+                            {isConnectedLive ? (
+                              <>
+                                <span
+                                  className="group-hover:hidden"
+                                  aria-hidden="true"
+                                >
+                                  {statusMeta.label}
+                                </span>
+                                <span
+                                  className="hidden group-hover:inline"
+                                  aria-hidden="true"
+                                >
+                                  {t("home.disconnect")}
+                                </span>
+                              </>
+                            ) : (
+                              statusMeta.label
+                            )}
+                          </button>
+                        )}
+                        {isMulti && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (ch.id === "wechat") {
+                                setWechatQrOpen(true);
+                              } else {
+                                setModalChannel(
+                                  ch.id as "feishu" | "slack" | "discord",
+                                );
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium bg-surface-2 text-accent hover:bg-accent/10 transition-colors shrink-0"
+                          >
+                            <Plus size={12} />
+                            {t("home.addBinding")}
+                          </button>
+                        )}
+                      </div>
+                      {isMulti && instances.length > 0 && (
+                        <div className="mt-2 grid grid-cols-3 gap-1.5">
+                          {instances.map((instance) => {
+                            const instStatusEntry = liveStatusByChannelId.get(
+                              instance.id,
+                            );
+                            const instEffectiveStatus:
+                              | ChannelLiveStatus
+                              | undefined =
+                              instance.id === pendingChannelId &&
+                              (!instStatusEntry ||
+                                instStatusEntry.status === "disconnected")
+                                ? "connecting"
+                                : instStatusEntry?.status;
+                            const instStatusMeta = getChannelStatusMeta(
+                              instEffectiveStatus,
+                              t,
+                            );
+                            const instConnected =
+                              instEffectiveStatus === "connected";
+                            return (
+                              <div
+                                key={instance.id}
+                                className="flex items-center gap-2 min-w-0 rounded-lg border border-border/60 bg-surface-0 px-3 py-2"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[12px] font-medium text-text-primary truncate">
+                                      {botNameMap.get(instance.botId) ||
+                                        instance.botId}
+                                    </span>
+                                    <span
+                                      title={instStatusMeta.label}
+                                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${instStatusMeta.colorClass} ${instStatusMeta.pulse ? "animate-pulse" : ""}`}
+                                    />
+                                  </div>
+                                  <div className="text-[11px] text-text-muted truncate">
+                                    {instance.teamName ||
+                                      instance.accountId ||
+                                      ""}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label={
+                                    instConnected
+                                      ? t("home.disconnect")
+                                      : instStatusMeta.label
+                                  }
+                                  title={
+                                    instConnected
+                                      ? t("home.disconnect")
+                                      : instStatusMeta.label
+                                  }
+                                  onClick={() => {
+                                    const channel = normalizeChannel(ch.id);
+                                    track(
+                                      "workspace_channel_disconnect_click",
+                                      {
+                                        channel: channel ?? ch.id,
+                                      },
+                                    );
+                                    disconnectChannel.mutate(instance.id);
+                                  }}
+                                  disabled={disconnectChannel.isPending}
+                                  className="group rounded-[6px] px-2 py-1 text-[11px] font-medium bg-surface-2 text-text-secondary hover:text-[var(--color-danger)] hover:bg-surface-3 transition-colors shrink-0 disabled:opacity-50"
+                                >
+                                  {instConnected ? (
+                                    <>
+                                      <span
+                                        className="group-hover:hidden"
+                                        aria-hidden="true"
+                                      >
+                                        {instStatusMeta.label}
+                                      </span>
+                                      <span
+                                        className="hidden group-hover:inline"
+                                        aria-hidden="true"
+                                      >
+                                        {t("home.disconnect")}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    instStatusMeta.label
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   );
@@ -1268,17 +1242,6 @@ export function HomePage() {
 
         {/* Activity Feed */}
         <ActivityFeed />
-
-        <GitHubStarCta
-          label={t("home.starNexu")}
-          description={t("home.starCta")}
-          badgeLabel="GitHub"
-          stars={stars}
-          variant="banner"
-          onClick={() =>
-            track("workspace_github_click", { source: "home_card" })
-          }
-        />
       </div>
       {modalChannel && (
         <ChannelConnectModal
@@ -1349,12 +1312,6 @@ export function HomePage() {
           }}
         />
       )}
-
-      <SeedancePromoModal
-        open={seedancePromoOpen}
-        onClose={() => setSeedancePromoOpen(false)}
-        shouldAutoAdvanceAfterStar={!hasChannel}
-      />
     </div>
   );
 }

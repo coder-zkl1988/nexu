@@ -1,0 +1,128 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Tabby" [ref=e7]
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - link "首页" [ref=e10] [cursor=pointer]:
+            - /url: /workspace/home
+            - img [ref=e11]
+            - text: 首页
+          - link "新对话" [ref=e14] [cursor=pointer]:
+            - /url: /workspace/chat
+            - img [ref=e15]
+            - text: 新对话
+          - link "技能商店" [ref=e17] [cursor=pointer]:
+            - /url: /workspace/skills
+            - img [ref=e18]
+            - text: 技能商店
+          - link "自动化 Beta" [ref=e20] [cursor=pointer]:
+            - /url: /workspace/automations
+            - img [ref=e21]
+            - text: 自动化
+            - generic [ref=e23]: Beta
+          - link "AI·伙伴" [ref=e24] [cursor=pointer]:
+            - /url: /workspace/experts
+            - img [ref=e25]
+            - text: AI·伙伴
+          - link "设备" [ref=e28] [cursor=pointer]:
+            - /url: /workspace/devices
+            - img [ref=e29]
+            - text: 设备
+        - generic [ref=e32]: 对话
+      - button "✦ 积分余额 积分同步中…" [ref=e36] [cursor=pointer]:
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]: ✦
+            - generic [ref=e40]: 积分余额
+          - generic [ref=e41]: 积分同步中…
+      - generic [ref=e42]:
+        - button "设置" [ref=e43] [cursor=pointer]:
+          - img [ref=e44]
+          - generic [ref=e47]: 设置
+        - generic [ref=e48]:
+          - button "Help" [ref=e50] [cursor=pointer]:
+            - img [ref=e51]
+          - link "GitHub" [ref=e54] [cursor=pointer]:
+            - /url: https://github.com/nexu-io/nexu
+            - img "GitHub" [ref=e55]
+      - button "D Desktop User desktop@nexu.local" [ref=e59] [cursor=pointer]:
+        - generic [ref=e60]: D
+        - generic [ref=e61]:
+          - generic [ref=e62]: Desktop User
+          - generic [ref=e63]: desktop@nexu.local
+        - img [ref=e64]
+    - main [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - generic [ref=e73]:
+            - generic [ref=e74]:
+              - img "Tabby" [ref=e75]
+              - img "Tabby colorful" [ref=e76]
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - heading "Happy Tabby" [level=2] [ref=e79]
+                - generic [ref=e80]: 正在启动
+              - generic [ref=e82]:
+                - button "MiniMax-M2.7-highspeed" [ref=e84] [cursor=pointer]:
+                  - generic [ref=e85]: MiniMax-M2.7-highspeed
+                  - img [ref=e86]
+                - generic [ref=e88]:
+                  - generic [ref=e89]: ...
+                  - generic [ref=e90]: ·
+                  - generic [ref=e91]: ...
+          - generic [ref=e92]:
+            - heading "Channels" [level=2] [ref=e94]
+            - generic [ref=e95]:
+              - button "Feishu 飞书 / Feishu 已断开 已断开 对话" [ref=e97] [cursor=pointer]:
+                - img "Feishu" [ref=e99]
+                - generic [ref=e100]:
+                  - generic [ref=e101]: 飞书 / Feishu
+                  - generic "已断开" [ref=e102]
+                - button "已断开" [ref=e103]
+                - link "对话" [ref=e104]:
+                  - /url: https://applink.feishu.cn/client/bot/open?appId=cli_a750eebc116b500b
+                  - text: 对话
+                  - img [ref=e105]
+              - generic [ref=e108]:
+                - button "WeChat 微信" [ref=e109] [cursor=pointer]:
+                  - img "WeChat" [ref=e111]
+                  - generic [ref=e117]: 微信
+                  - img [ref=e118]
+                - button "WhatsApp WhatsApp" [ref=e124] [cursor=pointer]:
+                  - img "WhatsApp" [ref=e126]
+                  - generic [ref=e129]: WhatsApp
+                  - img [ref=e130]
+                - button "Telegram Telegram" [ref=e136] [cursor=pointer]:
+                  - img "Telegram" [ref=e138]
+                  - generic [ref=e141]: Telegram
+                  - img [ref=e142]
+                - button "DingTalk 钉钉" [ref=e148] [cursor=pointer]:
+                  - img "DingTalk" [ref=e150]
+                  - generic [ref=e151]: 钉钉
+                  - img [ref=e152]
+                - button "QQ QQ" [ref=e158] [cursor=pointer]:
+                  - img "QQ" [ref=e160]
+                  - generic [ref=e161]: QQ
+                  - img [ref=e162]
+                - button "WeCom 企微" [ref=e168] [cursor=pointer]:
+                  - img "WeCom" [ref=e170]
+                  - generic [ref=e171]: 企微
+                  - img [ref=e172]
+                - button "Slack Slack" [ref=e178] [cursor=pointer]:
+                  - img "Slack" [ref=e180]
+                  - generic [ref=e185]: Slack
+                  - img [ref=e186]
+                - button "Discord Discord" [ref=e192] [cursor=pointer]:
+                  - img "Discord" [ref=e194]
+                  - generic [ref=e196]: Discord
+                  - img [ref=e197]
+          - heading "最近活动" [level=3] [ref=e205]
+        - generic [ref=e222]:
+          - generic [ref=e223]: Budget Debug
+          - generic [ref=e224]: 当前真实状态：healthy
+          - generic [ref=e225]:
+            - button "真实状态" [ref=e226] [cursor=pointer]
+            - button "预警" [ref=e227] [cursor=pointer]
+            - button "耗尽" [ref=e228] [cursor=pointer]
+  - region "Notifications alt+T"

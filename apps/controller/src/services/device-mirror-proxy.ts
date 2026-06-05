@@ -1,34 +1,64 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import { mirrorClientActionSchema } from "@nexu/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import { logger } from "../lib/logger.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 
-const MIRROR_PATH_PREFIX = "/api/v1/devices/";
-const MIRROR_PATH_SUFFIX = "/mirror";
-const DEVICE_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+type Channel = "video" | "control" | "audio" | "unknown";
 
-function isPrivateAddress(remote: string): boolean {
-  if (
-    remote === "127.0.0.1" ||
-    remote === "::1" ||
-    remote === "::ffff:127.0.0.1"
-  ) {
-    return true;
-  }
-  // Accept RFC-1918 private addresses so that the Vite dev proxy
-  // and desktop webview on the same LAN can reach mirror sessions.
-  const ipv4 = remote.startsWith("::ffff:") ? remote.slice(7) : remote;
-  return (
-    ipv4.startsWith("192.168.") ||
-    ipv4.startsWith("10.") ||
-    ipv4 === "172.16.0.0" ||
-    // 172.16.0.0/12 — check the full second octet range
-    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(ipv4)
-  );
+interface ParsedChannel {
+  deviceId: string;
+  channel: Channel;
 }
 
+/**
+ * Parse the request URL into { deviceId, channel }.
+ *
+ * Expected paths:
+ *   /api/v1/devices/{deviceId}/mirror   → video channel
+ *   /api/v1/devices/{deviceId}/control  → control channel
+ *
+ * Returns null when the URL doesn't match either pattern.
+ */
+function parseChannel(url: string): ParsedChannel | null {
+  const prefix = "/api/v1/devices/";
+  if (!url.startsWith(prefix)) return null;
+
+  const rest = url.slice(prefix.length);
+
+  if (rest.endsWith("/mirror")) {
+    const deviceId = rest.slice(0, rest.length - "/mirror".length);
+    if (deviceId === "" || deviceId.includes("/")) return null;
+    return { deviceId, channel: "video" };
+  }
+
+  if (rest.endsWith("/control")) {
+    const deviceId = rest.slice(0, rest.length - "/control".length);
+    if (deviceId === "" || deviceId.includes("/")) return null;
+    return { deviceId, channel: "control" };
+  }
+
+  if (rest.endsWith("/audio")) {
+    const deviceId = rest.slice(0, rest.length - "/audio".length);
+    if (deviceId === "" || deviceId.includes("/")) return null;
+    return { deviceId, channel: "audio" };
+  }
+
+  return null;
+}
+
+/**
+ * DeviceMirrorProxy manages WebSocket connections between the Nexu web frontend
+ * and the upstream tabby-control plugin (port 18790 by default).
+ *
+ * It provides two separate endpoints per device:
+ *   - `/mirror`  → video frames (binary H.264, server→client only)
+ *   - `/control` → control messages (bidirectional JSON/binary)
+ *
+ * Upstream, both channels connect to the tabby-control plugin's single `/mirror`
+ * endpoint. The control bridge filters out binary (video) frames so they only
+ * flow through the video bridge.
+ */
 export class DeviceMirrorProxy {
   private readonly wss: WebSocketServer;
 
@@ -36,123 +66,275 @@ export class DeviceMirrorProxy {
     this.wss = new WebSocketServer({ noServer: true });
   }
 
-  /** Attach HTTP server upgrade handler. */
+  /**
+   * Attempt to handle an HTTP upgrade request.
+   * Returns `true` if the URL matched a known channel (regardless of success),
+   * or `false` if the URL was not recognized (caller should let other handlers try).
+   */
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
     const url = req.url ?? "";
-    if (
-      !url.startsWith(MIRROR_PATH_PREFIX) ||
-      !url.endsWith(MIRROR_PATH_SUFFIX)
-    ) {
-      return false;
-    }
-    const deviceId = url.slice(
-      MIRROR_PATH_PREFIX.length,
-      url.length - MIRROR_PATH_SUFFIX.length,
-    );
-    if (deviceId === "") {
-      socket.destroy();
-      return true;
-    }
-    if (!DEVICE_ID_PATTERN.test(deviceId)) {
-      logger.warn({ deviceId }, "rejected mirror upgrade: invalid deviceId");
-      socket.destroy();
-      return true;
-    }
+    const parsed = parseChannel(url);
+    if (parsed === null) return false;
 
-    const remote = req.socket.remoteAddress ?? "";
-    if (!isPrivateAddress(remote)) {
-      logger.warn({ remote, deviceId }, "rejected non-private mirror upgrade");
-      socket.destroy();
-      return true;
-    }
+    const { deviceId, channel } = parsed;
 
     this.wss.handleUpgrade(req, socket, head, (clientWs) => {
-      void this.bridge(clientWs, deviceId);
+      if (channel === "video") {
+        void this.bridgeVideo(clientWs, deviceId);
+      } else if (channel === "audio") {
+        void this.bridgeAudio(clientWs, deviceId);
+      } else {
+        void this.bridgeControl(clientWs, deviceId);
+      }
     });
     return true;
   }
 
-  private async bridge(clientWs: WebSocket, deviceId: string): Promise<void> {
+  /**
+   * Bridge the video stream:
+   *   - Connects upstream to the tabby-control `/mirror` endpoint
+   *   - Subscribes with `{ deviceId, fps: 30 }`
+   *   - Forwards ALL upstream messages (binary H.264 frames + JSON notifications) to client
+   *   - Ignores client messages (they go through the control channel)
+   */
+  private async bridgeVideo(
+    clientWs: WebSocket,
+    deviceId: string,
+  ): Promise<void> {
     const config = await this.configStore.getConfig();
     if (!config.deviceControl.enabled) {
-      logger.info(
-        { deviceId },
-        "mirror upgrade rejected: device control disabled",
-      );
       clientWs.close(4404, "Device control disabled");
       return;
     }
 
-    logger.info({ deviceId }, "mirror bridge opened");
-
-    // Connect to the /mirror upgrade path on the device-control plugin.
-    // The plugin uses `/phone` for device auth and `/mirror` for screen
-    // mirror subscriptions.  Connecting to `/mirror` causes the plugin
-    // to enter handleMirrorConnection which expects the first message
-    // to contain { deviceId } to subscribe to that device's frames.
     const upstream = new WebSocket(
       `ws://127.0.0.1:${config.deviceControl.wsPort}/mirror`,
     );
+    upstream.binaryType = "arraybuffer";
 
     upstream.on("open", () => {
-      // The /mirror handler expects the first message to carry the
-      // deviceId of the device to subscribe to. Include fps hint so
-      // the phone agent can adjust its screenshot interval.
-      upstream.send(JSON.stringify({ deviceId, fps: 20 }));
+      // Subscribe to mirror stream for this device
+      upstream.send(JSON.stringify({ deviceId, fps: 30, adaptive: true }));
     });
 
+    // Forward upstream→client:
+    //   - String messages → forward as-is (JSON notifications)
+    //   - Binary frames: only forward H.264 video (frameType 0x01, always >100B)
+    //     Skip CLIPBOARD (0x00), audio (0x02), and small 0x01 frames (ACK device messages)
+    //     — those belong on the control/audio channels
     upstream.on("message", (data) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      clientWs.send(typeof data === "string" ? data : data.toString());
-    });
-
-    clientWs.on("message", (raw) => {
-      if (upstream.readyState !== WebSocket.OPEN) return;
-      try {
-        const parsed = JSON.parse(raw.toString());
-        const action = mirrorClientActionSchema.parse(parsed);
-        upstream.send(
-          JSON.stringify({
-            channel: "mirror",
-            type: action.type,
-            deviceId,
-            params: action,
-          }),
-        );
-      } catch (err) {
-        logger.warn(
-          {
-            error: err instanceof Error ? err.message : String(err),
-            deviceId,
-          },
-          "dropped malformed mirror client frame",
-        );
+      if (typeof data === "string") {
+        clientWs.send(data);
+      } else if (
+        (Buffer.isBuffer(data) || data instanceof ArrayBuffer) &&
+        (Buffer.isBuffer(data) ? data : Buffer.from(data)).length > 0
+      ) {
+        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        if (buf[0] === 0x01 && buf.length > 100) {
+          clientWs.send(data);
+        }
       }
     });
 
-    let torn = false;
-    const teardown = (source: "client" | "upstream") => {
-      if (torn) return;
-      torn = true;
-      logger.info({ deviceId, source }, "mirror bridge closed");
+    // Video channel is downstream-only; discard any client messages
+    clientWs.on("message", () => {
+      // Discard — video channel doesn't accept upstream messages
+    });
+
+    const teardown = (): void => {
       if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
       if (upstream.readyState === WebSocket.OPEN) upstream.close();
     };
-    clientWs.on("close", () => teardown("client"));
-    clientWs.on("error", () => teardown("client"));
-    upstream.on("close", () => teardown("upstream"));
-    upstream.on("error", (err) => {
-      logger.warn(
-        {
-          error: err instanceof Error ? err.message : String(err),
-          deviceId,
-        },
-        "mirror upstream error",
-      );
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.close(4502, "Mirror upstream unavailable");
+    clientWs.on("close", teardown);
+    clientWs.on("error", teardown);
+    upstream.on("close", teardown);
+    upstream.on("error", teardown);
+  }
+
+  /**
+   * Bridge the audio stream:
+   *   - Connects upstream to the tabby-control `/mirror` endpoint
+   *   - Subscribes with `{ deviceId, audio: true }`
+   *   - From upstream:
+   *     - String messages → forward as-is (JSON notifications)
+   *     - Binary frames with `frameType === 0x02` (audio/Opus) → forward to client
+   *     - Binary frames with `frameType !== 0x02` (video, etc.) → discard
+   *   - Client messages are discarded (audio is receive-only)
+   */
+  private async bridgeAudio(
+    clientWs: WebSocket,
+    deviceId: string,
+  ): Promise<void> {
+    const config = await this.configStore.getConfig();
+    if (!config.deviceControl.enabled) {
+      clientWs.close(4404, "Device control disabled");
+      return;
+    }
+
+    const upstream = new WebSocket(
+      `ws://127.0.0.1:${config.deviceControl.wsPort}/mirror`,
+    );
+    upstream.binaryType = "arraybuffer";
+
+    upstream.on("open", () => {
+      upstream.send(JSON.stringify({ deviceId, audio: true }));
+    });
+
+    // Forward upstream→client:
+    //   - String messages → forward as-is (JSON notifications)
+    //   - Binary frames with frameType === 0x02 (audio/Opus) → forward
+    //   - Other binary frames → discard
+    upstream.on("message", (data) => {
+      if (clientWs.readyState !== WebSocket.OPEN) return;
+      if (typeof data === "string") {
+        clientWs.send(data);
+      } else if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+        // Binary frame: byte 0 is frameType (0x02 = Opus audio)
+        if (buf.length > 0 && buf[0] === 0x02) {
+          clientWs.send(data);
+        }
+        // All other binary frames (video, etc.) — discard
       }
     });
+
+    // Audio channel is receive-only; discard any client messages
+    clientWs.on("message", () => {
+      // Discard — audio channel doesn't accept upstream messages
+    });
+
+    const teardown = (): void => {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+      if (upstream.readyState === WebSocket.OPEN) upstream.close();
+    };
+    clientWs.on("close", teardown);
+    clientWs.on("error", teardown);
+    upstream.on("close", teardown);
+    upstream.on("error", teardown);
+  }
+
+  /**
+   * Bridge the control channel:
+   *   - Connects upstream to the tabby-control `/mirror` endpoint
+   *   - Subscribes with `{ deviceId }`
+   *   - Client→upstream: JSON actions wrapped in `{ channel: "mirror", type, params }`
+   *   - Upstream→client:
+   *     - Text (JSON) → forwarded as-is (device messages: clipboard, acks)
+   *     - Small binary frames (clipboard/ack) → forwarded
+   *     - Large binary frames → discarded (video goes through video bridge)
+   */
+  private async bridgeControl(
+    clientWs: WebSocket,
+    deviceId: string,
+  ): Promise<void> {
+    const config = await this.configStore.getConfig();
+    if (!config.deviceControl.enabled) {
+      clientWs.close(4404, "Device control disabled");
+      return;
+    }
+
+    const upstream = new WebSocket(
+      `ws://127.0.0.1:${config.deviceControl.wsPort}/mirror`,
+    );
+    upstream.binaryType = "arraybuffer";
+
+    upstream.on("open", () => {
+      upstream.send(JSON.stringify({ deviceId }));
+    });
+
+    // Forward upstream→client:
+    //   - String messages → forward as-is (JSON device messages)
+    //   - Binary frames: use byte-0 frameType + size to distinguish device control from video
+    //     - CLIPBOARD (0x00): always forward regardless of size
+    //     - ACK (0x01): only if small (<100B) — video frames also start with 0x01 but are always large
+    //   - Large binary frames >100B with 0x01 → discard (video goes through video bridge)
+    upstream.on("message", (data) => {
+      if (clientWs.readyState !== WebSocket.OPEN) return;
+      if (typeof data === "string") {
+        // JSON device messages — forward
+        clientWs.send(data);
+      } else if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
+        const buf = data instanceof ArrayBuffer ? Buffer.from(data) : data;
+        if (buf.length > 0) {
+          const frameType = buf[0];
+          // Forward binary device control messages:
+          //   - CLIPBOARD (0x00): always forward regardless of size
+          //   - ACK (0x01): only if small (<100B) — video frames also start with 0x01 but are always large
+          if (frameType === 0x00 || (frameType === 0x01 && buf.length < 100)) {
+            clientWs.send(buf);
+          }
+        }
+      }
+    });
+
+    // Forward client→upstream: control actions
+    //   - Text (JSON) → wrapped in channel envelope and sent upstream
+    //     tabby-control expects: { channel: "mirror", type, deviceId, params }
+    //   - Binary → forward as-is (binary control protocol frames).
+    //     tabby-control will forward them to the Android device.
+    clientWs.on("message", (raw) => {
+      if (upstream.readyState !== WebSocket.OPEN) {
+        logger.warn(
+          { deviceId, upstreamState: upstream.readyState },
+          "control bridge: client msg DROPPED — upstream not OPEN",
+        );
+        return;
+      }
+
+      if (typeof raw === "string") {
+        try {
+          const parsed: Record<string, unknown> = JSON.parse(raw);
+          upstream.send(
+            JSON.stringify({
+              channel: "mirror",
+              type: parsed.type,
+              deviceId,
+              params: parsed,
+            }),
+          );
+          logger.info(
+            { deviceId, type: parsed.type },
+            "control bridge: text action → upstream",
+          );
+        } catch {
+          // Drop malformed messages
+        }
+      } else {
+        // Binary control frame — forward as-is (transparent bridge).
+        // tabby-control will forward it to the Android device.
+        const size = Buffer.isBuffer(raw)
+          ? raw.length
+          : (raw as ArrayBuffer).byteLength;
+        const buf = Buffer.isBuffer(raw)
+          ? raw
+          : Buffer.from(raw as ArrayBuffer);
+        const firstByte = buf[0] ?? 0;
+        // Decode touch events for diagnostic logging
+        let detail = `firstByte=0x${firstByte.toString(16).padStart(2, "0")}`;
+        if (firstByte === 0x03 && size >= 36) {
+          // INJECT_TOUCH_EVENT (0x03)
+          const touchAction = buf[1] ?? -1; // 0=DOWN, 1=UP, 2=MOVE
+          const actionNames = ["DOWN", "UP", "MOVE"] as const;
+          const pressure = buf.readUInt16LE(26);
+          detail = `TOUCH ${actionNames[touchAction as 0 | 1 | 2] ?? touchAction} pressure=${pressure} size=${size}`;
+        }
+        logger.info(
+          { deviceId, detail },
+          "control bridge: binary frame → upstream",
+        );
+        upstream.send(raw);
+      }
+    });
+
+    const teardown = (): void => {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
+      if (upstream.readyState === WebSocket.OPEN) upstream.close();
+    };
+    clientWs.on("close", teardown);
+    clientWs.on("error", teardown);
+    upstream.on("close", teardown);
+    upstream.on("error", teardown);
   }
 
   close(): void {

@@ -22,13 +22,15 @@ function getWebviewPreloadUrl(): string {
 
 export function DesktopShell() {
   const isPackaged = window.nexuHost.bootstrap.isPackaged;
+  const devImmersive = window.nexuHost.bootstrap.devImmersive;
+  const startImmersive = isPackaged || devImmersive;
   const [activeSurface, setActiveSurface] = useState<DesktopSurface>(
-    isPackaged ? "web" : "control",
+    startImmersive ? "web" : "control",
+  );
+  const [chromeMode, setChromeMode] = useState<DesktopChromeMode>(
+    startImmersive ? "immersive" : "full",
   );
   const [showSetBalanceDialog, setShowSetBalanceDialog] = useState(false);
-  const [chromeMode, setChromeMode] = useState<DesktopChromeMode>(
-    isPackaged ? "immersive" : "full",
-  );
   const webSurfaceVersion = 0;
   const { desktopOpenClawUrl, desktopWebUrl, runtimeConfig } =
     useDesktopRuntimeConfig();

@@ -1,5 +1,7 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { Input } from "@/components/ui/input";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
@@ -9,10 +11,13 @@ import {
   Loader2,
   Lock,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { postApiV1ChannelsFeishuConnect } from "../../../lib/api/sdk.gen";
+import {
+  getApiV1Channels,
+  postApiV1ChannelsFeishuConnect,
+} from "../../../lib/api/sdk.gen";
 
 const FEISHU_SETUP_STEP_KEYS = [
   "feishuSetup.stepCreateApp",
@@ -124,8 +129,26 @@ export function FeishuSetupView({
   const [activeStep, setActiveStep] = useState(0);
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
+  const [botId, setBotId] = useState<string>("");
   const [connecting, setConnecting] = useState(false);
   const [jsonCopied, setJsonCopied] = useState(false);
+
+  // Fetch existing channels to determine which bots are already bound
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels
+        .filter((ch) => ch.channelType === "feishu")
+        .map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(FEISHU_PERMISSIONS_JSON);
@@ -134,10 +157,14 @@ export function FeishuSetupView({
   };
 
   const handleConnect = async () => {
+    if (!botId) {
+      toast.error(t("channels.errors.botRequired"));
+      return;
+    }
     setConnecting(true);
     try {
       const { error } = await postApiV1ChannelsFeishuConnect({
-        body: { appId: appId.trim(), appSecret: appSecret.trim() },
+        body: { appId: appId.trim(), appSecret: appSecret.trim(), botId },
       });
       if (error) {
         track("workspace_channel_config_submit", {
@@ -341,6 +368,13 @@ export function FeishuSetupView({
             </div>
           </div>
           <div className="ml-11 space-y-4">
+            <BotPicker
+              value={botId || null}
+              onChange={setBotId}
+              required
+              disabled={connecting}
+              disabledBotIds={disabledBotIds}
+            />
             <div>
               <div className="flex items-baseline gap-1.5 mb-1.5">
                 <label
@@ -390,7 +424,11 @@ export function FeishuSetupView({
               type="button"
               onClick={handleConnect}
               disabled={
-                disabled || connecting || !appId.trim() || !appSecret.trim()
+                disabled ||
+                connecting ||
+                !appId.trim() ||
+                !appSecret.trim() ||
+                !botId
               }
               className="flex gap-1.5 items-center px-5 py-2.5 text-[13px] font-medium text-white rounded-lg bg-[#3370FF] hover:bg-[#2860E6] transition-all disabled:opacity-60 cursor-pointer"
             >

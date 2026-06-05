@@ -12,6 +12,11 @@ export const createBotSchema = z.object({
   systemPrompt: z.string().optional(),
   modelId: z.string().default("gpt-4o"),
   poolId: z.string().optional(),
+  expertSlug: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .nullable()
+    .optional(),
 });
 
 export const updateBotSchema = z.object({
@@ -28,6 +33,7 @@ export const botResponseSchema = z.object({
   status: botStatusSchema,
   modelId: z.string(),
   systemPrompt: z.string().nullable(),
+  expertSlug: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

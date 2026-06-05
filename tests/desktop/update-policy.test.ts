@@ -52,19 +52,19 @@ describe("desktop update policy", () => {
   it("keeps non-local builds on the normal update path", () => {
     expect(
       resolveDesktopUpdateExperience({
-        buildSource: "nightly-prod",
+        buildSource: "stable",
         updateFeed: null,
       }),
     ).toBe("normal");
     expect(
       shouldEnableDesktopUpdateManager({
-        buildSource: "nightly-prod",
+        buildSource: "stable",
         updateFeed: null,
       }),
     ).toBe(true);
     expect(
       shouldStartDesktopPeriodicUpdateChecks({
-        buildSource: "nightly-prod",
+        buildSource: "stable",
         updateFeed: null,
       }),
     ).toBe(true);

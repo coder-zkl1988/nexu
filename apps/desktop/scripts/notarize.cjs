@@ -16,24 +16,31 @@ module.exports = async function notarize(context) {
     return;
   }
 
+  const keychainProfile =
+    process.env.NEXU_APPLE_NOTARY_PROFILE ??
+    process.env.APPLE_NOTARY_PROFILE ??
+    null;
   const appleId = process.env.NEXU_APPLE_ID ?? process.env.APPLE_ID;
   const appleIdPassword =
     process.env.NEXU_APPLE_APP_SPECIFIC_PASSWORD ??
     process.env.APPLE_APP_SPECIFIC_PASSWORD;
   const teamId = process.env.NEXU_APPLE_TEAM_ID ?? process.env.APPLE_TEAM_ID;
-  const missingEnv = [
-    ["NEXU_APPLE_ID", appleId],
-    ["NEXU_APPLE_APP_SPECIFIC_PASSWORD", appleIdPassword],
-    ["NEXU_APPLE_TEAM_ID", teamId],
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
 
-  if (missingEnv.length > 0) {
-    console.log(
-      `[notarize] skipping notarization; missing env: ${missingEnv.join(", ")}`,
-    );
-    return;
+  if (!keychainProfile) {
+    const missingEnv = [
+      ["NEXU_APPLE_ID", appleId],
+      ["NEXU_APPLE_APP_SPECIFIC_PASSWORD", appleIdPassword],
+      ["NEXU_APPLE_TEAM_ID", teamId],
+    ]
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+
+    if (missingEnv.length > 0) {
+      console.log(
+        `[notarize] skipping notarization; missing env: ${missingEnv.join(", ")}`,
+      );
+      return;
+    }
   }
 
   const productFilename = context.packager.appInfo.productFilename;
@@ -50,10 +57,9 @@ module.exports = async function notarize(context) {
 
   const { notarize: notarizeApp } = await import("@electron/notarize");
 
-  await notarizeApp({
-    appPath,
-    appleId,
-    appleIdPassword,
-    teamId,
-  });
+  const notarizeOptions = keychainProfile
+    ? { appPath, keychainProfile }
+    : { appPath, appleId, appleIdPassword, teamId };
+
+  await notarizeApp(notarizeOptions);
 };

@@ -13,6 +13,7 @@ import {
   parseCustomProviderKey,
   persistedModelsConfigSchema,
   providerResponseSchema,
+  scheduleResponseSchema,
 } from "@nexu/shared";
 import { z } from "zod";
 
@@ -575,6 +576,7 @@ const nexuConfigObjectSchema = z.object({
     rpcPort: 18801,
   }),
   secrets: z.record(z.string(), z.string()).default({}),
+  schedules: z.array(scheduleResponseSchema).default([]),
 });
 
 export const nexuConfigSchema = z.preprocess((input) => {
@@ -664,6 +666,7 @@ export const nexuConfigSchema = z.preprocess((input) => {
       typeof candidate.secrets === "object" && candidate.secrets !== null
         ? candidate.secrets
         : {},
+    schedules: Array.isArray(candidate.schedules) ? candidate.schedules : [],
   };
 }, nexuConfigObjectSchema);
 

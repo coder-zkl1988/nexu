@@ -1,0 +1,19 @@
+{
+  "id": "nexu-a2ui",
+  "name": "Nexu A2UI Renderer",
+  "description": "Registers the render_a2ui tool that generates A2UI v0.9 JSONL for interactive UI rendering in chat.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "contracts": {
+    "tools": [
+      "render_a2ui",
+      "render_skill_confirmation"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  }
+}

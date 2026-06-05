@@ -106,6 +106,11 @@ interface LiveStatusChannelInput {
   id: string;
   channelType: string;
   accountId: string;
+  /** The persisted channel status from the controller store. Used to short-circuit
+   *  live-status derivation when the channel is not in a "connected" state locally —
+   *  e.g. a "disconnected" or "error" channel should never be reported as "connected"
+   *  just because OpenClaw's gateway snapshot doesn't have an entry for it. */
+  storedStatus?: string;
 }
 
 function isImplicitlyReadyChannelType(channelType: string): boolean {
@@ -425,6 +430,29 @@ export class OpenClawGatewayService {
     );
   }
 
+  /**
+   * Abort all active runs for a chat session via OpenClaw's chat.abort RPC.
+   *
+   * OpenClaw returns `{ ok, aborted, runIds }` indicating which runs were
+   * actually interrupted.
+   */
+  async abortChatSession(sessionKey: string): Promise<{
+    ok: boolean;
+    aborted: boolean;
+    runIds: string[];
+  }> {
+    const result = await this.wsClient.request(
+      "chat.abort",
+      { sessionKey },
+      { timeoutMs: 10_000 },
+    );
+    return {
+      ok: (result as Record<string, unknown>).ok as boolean,
+      aborted: (result as Record<string, unknown>).aborted as boolean,
+      runIds: ((result as Record<string, unknown>).runIds ?? []) as string[],
+    };
+  }
+
   async logoutChannelAccount(
     channelType: string,
     accountId?: string,
@@ -485,6 +513,29 @@ export class OpenClawGatewayService {
       return {
         gatewayConnected: true,
         channels: channels.map((channel) => {
+          // If the controller store says this channel is not connected,
+          // trust that over the OpenClaw gateway snapshot. This prevents
+          // disconnected channels from being reported as "connected" when
+          // OpenClaw's snapshot doesn't have an entry for them (e.g. after
+          // a channel was deleted from the compiled config).
+          if (
+            channel.storedStatus &&
+            channel.storedStatus !== "connected" &&
+            channel.storedStatus !== "connecting"
+          ) {
+            return {
+              channelType: channel.channelType,
+              channelId: channel.id,
+              accountId: channel.accountId,
+              status: channel.storedStatus as ChannelLiveStatus,
+              ready: false,
+              connected: false,
+              running: false,
+              configured: false,
+              lastError: null,
+            };
+          }
+
           const openclawChannelId = resolveOpenClawChannelType(
             channel.channelType,
           );

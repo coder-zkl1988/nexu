@@ -1,0 +1,761 @@
+const COMPONENT_SCHEMAS = [
+  {
+    type: "Text",
+    required: ["id", "type", "content"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Text" },
+      content: {
+        oneOf: [
+          { type: "string", description: "Static text content" },
+          {
+            type: "object",
+            properties: { path: { type: "string" } },
+            description: "Data binding to a JSON pointer path",
+          },
+        ],
+      },
+      variant: {
+        type: "string",
+        enum: ["h1", "h2", "h3", "h4", "h5", "body", "caption", "code"],
+      },
+    },
+  },
+  {
+    type: "Button",
+    required: ["id", "type", "label"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Button" },
+      label: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      variant: {
+        type: "string",
+        enum: ["primary", "secondary", "outlined", "text"],
+      },
+      action: {
+        type: "object",
+        properties: {
+          event: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              context: { type: "object" },
+            },
+            required: ["name"],
+          },
+        },
+      },
+      disabled: { type: "boolean" },
+      children: {
+        type: "array",
+        items: { type: "string" },
+        description: "Child component IDs",
+      },
+    },
+  },
+  {
+    type: "TextField",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "TextField" },
+      label: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      value: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      placeholder: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      hint: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      multiline: { type: "boolean" },
+      required: { type: "boolean" },
+    },
+  },
+  {
+    type: "DateTimeInput",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "DateTimeInput" },
+      label: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      value: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      mode: { type: "string", enum: ["date", "time", "datetime"] },
+    },
+  },
+  {
+    type: "CheckBox",
+    required: ["id", "type", "label"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "CheckBox" },
+      label: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      checked: { type: "boolean" },
+    },
+  },
+  {
+    type: "ChoicePicker",
+    required: ["id", "type", "choices"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "ChoicePicker" },
+      label: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      choices: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string" },
+            value: { type: "string" },
+          },
+          required: ["label", "value"],
+        },
+      },
+      selected: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+    },
+  },
+  {
+    type: "Slider",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Slider" },
+      label: {
+        oneOf: [
+          { type: "string" },
+          { type: "object", properties: { path: { type: "string" } } },
+        ],
+      },
+      value: { type: "number" },
+      min: { type: "number" },
+      max: { type: "number" },
+      step: { type: "number" },
+    },
+  },
+  {
+    type: "Column",
+    required: ["id", "type", "children"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Column" },
+      children: {
+        type: "array",
+        items: { type: "string" },
+        description: "Child component IDs",
+      },
+      gap: { type: "number" },
+      alignment: {
+        type: "string",
+        enum: ["start", "center", "end", "stretch"],
+      },
+    },
+  },
+  {
+    type: "Row",
+    required: ["id", "type", "children"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Row" },
+      children: {
+        type: "array",
+        items: { type: "string" },
+        description: "Child component IDs",
+      },
+      gap: { type: "number" },
+      alignment: {
+        type: "string",
+        enum: ["start", "center", "end", "stretch"],
+      },
+    },
+  },
+  {
+    type: "Card",
+    required: ["id", "type", "children"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Card" },
+      children: {
+        type: "array",
+        items: { type: "string" },
+        description: "Child component IDs",
+      },
+      padding: { type: "number" },
+      elevation: { type: "number" },
+    },
+  },
+  {
+    type: "List",
+    required: ["id", "type", "children"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "List" },
+      children: {
+        type: "array",
+        items: { type: "string" },
+        description: "Child component IDs",
+      },
+      orientation: { type: "string", enum: ["vertical", "horizontal"] },
+      gap: { type: "number" },
+    },
+  },
+  {
+    type: "Tabs",
+    required: ["id", "type", "tabs"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Tabs" },
+      tabs: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string" },
+            children: {
+              type: "array",
+              items: { type: "string" },
+              description: "Child component IDs for this tab",
+            },
+          },
+          required: ["label", "children"],
+        },
+      },
+      selectedIndex: { type: "number" },
+    },
+  },
+  {
+    type: "Modal",
+    required: ["id", "type", "children", "open"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Modal" },
+      children: {
+        type: "array",
+        items: { type: "string" },
+        description: "Child component IDs",
+      },
+      open: { type: "boolean" },
+      title: { type: "string" },
+    },
+  },
+  {
+    type: "Image",
+    required: ["id", "type", "source"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Image" },
+      source: { type: "string", description: "Image URL" },
+      alt: { type: "string" },
+      width: { type: "number" },
+      height: { type: "number" },
+    },
+  },
+  {
+    type: "Icon",
+    required: ["id", "type", "name"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Icon" },
+      name: { type: "string", description: "Icon name" },
+      color: { type: "string" },
+      size: { type: "number" },
+    },
+  },
+  {
+    type: "Divider",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Divider" },
+      orientation: { type: "string", enum: ["horizontal", "vertical"] },
+    },
+  },
+  {
+    type: "Video",
+    required: ["id", "type", "source"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "Video" },
+      source: { type: "string", description: "Video URL" },
+      autoplay: { type: "boolean" },
+      muted: { type: "boolean" },
+    },
+  },
+  {
+    type: "AudioPlayer",
+    required: ["id", "type", "source"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "AudioPlayer" },
+      source: { type: "string", description: "Audio URL" },
+      title: { type: "string" },
+    },
+  },
+  {
+    type: "PhonePreview",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "PhonePreview" },
+      devices: {
+        type: "array",
+        description: "Array of connected phone devices to display",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Device name" },
+            model: { type: "string", description: "Device model" },
+            status: {
+              type: "string",
+              enum: ["online", "offline", "busy"],
+              description: "Connection status",
+            },
+            screenshot: {
+              type: "string",
+              description: "Screenshot image URL or data URI",
+            },
+          },
+          required: ["name"],
+        },
+      },
+    },
+  },
+  {
+    type: "MarkdownEditor",
+    required: ["id", "type", "content"],
+    properties: {
+      id: { type: "string" },
+      type: { const: "MarkdownEditor" },
+      title: { type: "string", description: "Optional editor title" },
+      content: { type: "string", description: "Markdown content to display" },
+    },
+  },
+  {
+    type: "XHSEditor",
+    label: "Xiaohongshu Content Editor",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Unique component ID" },
+        type: { const: "XHSEditor" },
+        title: {
+          type: "string",
+          description: "Initial title text for the post"
+        },
+        content: {
+          type: "string",
+          description: "Initial content/body text for the post"
+        },
+        images: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of image URLs or base64 data URIs to display as preview"
+        },
+        hashtags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Array of hashtag strings (without # prefix)"
+        },
+        maxTitleLength: {
+          type: "number",
+          description: "Maximum title character count (default 20)",
+          default: 20
+        },
+        visibility: {
+          type: "string",
+          enum: ["visible", "hidden"],
+          description: "Component visibility",
+          default: "visible"
+        }
+      },
+      required: ["id", "type"],
+      additionalProperties: false
+    }
+  },
+];
+
+/**
+ * Convert simplified component definitions to A2UI v0.9 JSONL.
+ *
+ * IMPORTANT: This is NOT OpenClaw Canvas format. Do NOT use literalString,
+ * explicitList, function, or beginRendering. Use plain strings, plain arrays,
+ * and event-based actions ONLY.
+ */
+function generateA2UIJSONL(surfaceId, components, initialData, catalogId) {
+  const lines = [];
+
+  const createSurface = { surfaceId };
+  if (catalogId) createSurface.catalogId = catalogId;
+
+  lines.push(
+    JSON.stringify({
+      version: "v0.9",
+      createSurface,
+    }),
+  );
+
+  lines.push(
+    JSON.stringify({
+      version: "v0.9",
+      updateComponents: { surfaceId, components },
+    }),
+  );
+
+  if (initialData && typeof initialData === "object") {
+    for (const [key, value] of Object.entries(initialData)) {
+      lines.push(
+        JSON.stringify({
+          version: "v0.9",
+          updateDataModel: {
+            surfaceId,
+            path: `/${key}`,
+            value,
+          },
+        }),
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
+const plugin = {
+  id: "nexu-a2ui",
+  name: "Nexu A2UI Renderer",
+  description:
+    "Registers the render_a2ui tool for rendering interactive UI components directly in chat messages.",
+  register(api) {
+    api.registerTool({
+      name: "render_a2ui",
+      label: "Render Interactive UI",
+      description: `Render interactive UI components (forms, buttons, date pickers, sliders, etc.) directly in the chat.
+
+WHEN TO USE:
+- Displaying connected phone/device status — use PhonePreview component
+- Showing copywriting, markdown, or generated text content — use MarkdownEditor component
+- Collecting structured input from the user (forms, date/time, choices)
+- Offering selectable actions (confirm/cancel, option selection)
+- Any situation where plain text alone is insufficient
+
+HOW TO USE:
+1. Call this tool with a unique surfaceId and an array of component definitions.
+2. The tool result is automatically rendered as interactive UI. Do NOT copy, repeat, or echo the JSONL in your text response. Just reply naturally — the UI appears alongside your message.
+3. CRITICAL: NEVER include raw JSONL or \`\`\`a2ui code blocks in your text output. The system renders UI automatically. Your text and A2UI are separate.
+
+BUTTON ACTIONS:
+- Use \`"action": {"event": {"name": "actionName", "context": {}}}\` for buttons.
+- When the user clicks, you receive the action name and context in your next message.
+
+DATA BINDING:
+- Use \`{"path": "/json/pointer"}\` instead of a literal value to bind to the data model.
+- Use \`updateDataModel\` messages to change data values.
+
+COMPONENT TREE:
+- Each component has a unique "id". Container components (Column, Row, Card, List, Tabs, Modal) reference child components by their IDs in the "children" array.
+- The root-level components become the top-level UI elements.
+
+NOTE: This is standard A2UI v0.9 format. It is NOT OpenClaw Canvas format — do not use "literalString", "explicitList", "function", or "beginRendering".
+
+CUSTOM COMPONENTS:
+- PhonePreview: Show connected phone devices with name, model, status, and screenshot.
+- MarkdownEditor: Display markdown/copywriting content with a copy button.
+- XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags.
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, or XHSEditor.`,
+
+            parameters: {
+              type: "object",
+              properties: {
+                surfaceId: {
+                  type: "string",
+                  description:
+                    "Unique identifier for this UI surface (e.g. 'registration-form', 'booking-ui')",
+                },
+                catalogId: {
+                  type: "string",
+                  description:
+                    "Catalog ID for custom components. Use 'https://nexu.app/a2ui/custom-catalog.json' when using PhonePreview, MarkdownEditor, or XHSEditor components. Omit for standard components.",
+                },
+              components: {
+                type: "array",
+                description:
+                  "Array of component definitions. Each component must have a unique 'id' and a 'type'. Container components reference children by ID.",
+                items: {
+                  oneOf: COMPONENT_SCHEMAS.map((s) => ({
+                    type: "object",
+                    properties: s.properties,
+                    required: s.required,
+                    additionalProperties: false,
+                  })),
+                },
+              },
+              initialData: {
+                type: "object",
+                description:
+                  "Optional initial data model values. Each key becomes a top-level path in the data model. Use this to pre-fill form values.",
+              },
+            },
+            required: ["surfaceId", "components"],
+          },
+
+          async execute(_toolCallId, params) {
+            const jsonl = generateA2UIJSONL(
+              params.surfaceId,
+              params.components,
+              params.initialData,
+              params.catalogId,
+            );
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: ["```a2ui", jsonl, "```"].join("\n"),
+                },
+              ],
+            };
+          },
+    });
+
+    api.registerTool({
+      name: "render_skill_confirmation",
+      label: "Render Skill Confirmation Card",
+      description: `Render a confirmation card for skill operations that require user approval (posting, commenting, etc.).
+
+WHEN TO USE:
+- The device_execute_skill tool returns a result with status "needs_confirmation"
+- The user needs to review and approve/cancel a write operation before it executes
+
+HOW TO USE:
+- Call this tool with the pending operation details from the needs_confirmation result
+- It generates a standardized confirmation card with screenshot preview, operation summary, and confirm/cancel buttons
+- When the user clicks a button, you receive the action and can call device_execute_skill with action="resume" to proceed or abort
+
+PARAMETERS:
+- surfaceId: Unique surface ID for this confirmation UI
+- appName: Display name of the target app (e.g. "小红书")
+- operationName: Name of the pending operation (e.g. "发布笔记", "发表评论")
+- contentSummary: Key-value pairs of the content to be confirmed (e.g. {"标题": "周末羽毛球", "正文": "..."})
+- screenshotUrl: URL or data URI of the current phone screenshot showing the filled content
+- taskId: The orchestration taskId (needed for resume)
+- subtaskId: The pending subtaskId (needed for resume)`,
+
+      parameters: {
+        type: "object",
+        properties: {
+          surfaceId: {
+            type: "string",
+            description: "Unique identifier for this confirmation surface (e.g. 'xhs-post-confirm')",
+          },
+          appName: {
+            type: "string",
+            description: "Display name of the app (e.g. '小红书')",
+          },
+          operationName: {
+            type: "string",
+            description: "Name of the operation pending confirmation (e.g. '发布笔记')",
+          },
+          contentSummary: {
+            type: "object",
+            description: "Key-value pairs of content to be reviewed (e.g. {\"标题\": \"周末羽毛球\"})",
+            additionalProperties: { type: "string" },
+          },
+          screenshotUrl: {
+            type: "string",
+            description: "Data URI or URL of the current phone screenshot",
+          },
+          taskId: {
+            type: "string",
+            description: "The orchestration taskId for resume",
+          },
+          subtaskId: {
+            type: "string",
+            description: "The pending subtaskId for resume",
+          },
+        },
+        required: ["surfaceId", "appName", "operationName", "contentSummary", "taskId", "subtaskId"],
+      },
+
+      async execute(_toolCallId, params) {
+        // Build component tree for confirmation card
+        const components = [];
+        const rootChildren = [];
+
+        // Header section
+        components.push({
+          id: "confirm-header",
+          type: "Text",
+          content: `📱 ${params.appName} - ${params.operationName}确认`,
+          variant: "h3",
+        });
+        rootChildren.push("confirm-header");
+
+        // Screenshot section (if provided)
+        if (params.screenshotUrl) {
+          components.push({
+            id: "confirm-screenshot",
+            type: "Image",
+            source: params.screenshotUrl,
+            alt: "当前屏幕截图",
+            width: 270,
+            height: 480,
+          });
+          rootChildren.push("confirm-screenshot");
+        }
+
+        // Content summary section
+        const contentChildren = [];
+        components.push({
+          id: "content-label",
+          type: "Text",
+          content: "📋 待确认内容",
+          variant: "h4",
+        });
+        contentChildren.push("content-label");
+
+        const entries = Object.entries(params.contentSummary);
+        for (const [key, value] of entries) {
+          const keyId = `content-key-${key}`;
+          const valueId = `content-value-${key}`;
+          const rowId = `content-row-${key}`;
+
+          components.push({ id: keyId, type: "Text", content: `${key}：`, variant: "body" });
+          components.push({
+            id: valueId,
+            type: "Text",
+            content: value.length > 100 ? value.slice(0, 100) + "..." : value,
+            variant: "body",
+          });
+          components.push({
+            id: rowId,
+            type: "Row",
+            children: [keyId, valueId],
+            gap: 4,
+          });
+          contentChildren.push(rowId);
+        }
+
+        components.push({
+          id: "content-section",
+          type: "Column",
+          children: contentChildren,
+          gap: 6,
+        });
+        rootChildren.push("content-section");
+
+        // Divider
+        components.push({ id: "confirm-divider", type: "Divider" });
+        rootChildren.push("confirm-divider");
+
+        // Action buttons
+        components.push({
+          id: "btn-cancel",
+          type: "Button",
+          label: "❌ 取消",
+          variant: "secondary",
+          action: {
+            event: {
+              name: "skill_confirmation",
+              context: {
+                taskId: params.taskId,
+                subtaskId: params.subtaskId,
+                confirmed: false,
+              },
+            },
+          },
+        });
+
+        components.push({
+          id: "btn-confirm",
+          type: "Button",
+          label: "✅ 确认执行",
+          variant: "primary",
+          action: {
+            event: {
+              name: "skill_confirmation",
+              context: {
+                taskId: params.taskId,
+                subtaskId: params.subtaskId,
+                confirmed: true,
+              },
+            },
+          },
+        });
+
+        components.push({
+          id: "action-buttons",
+          type: "Row",
+          children: ["btn-cancel", "btn-confirm"],
+          gap: 12,
+          alignment: "center",
+        });
+        rootChildren.push("action-buttons");
+
+        // Root card
+        components.push({
+          id: "confirm-card",
+          type: "Card",
+          children: rootChildren,
+          padding: 16,
+          elevation: 2,
+        });
+
+        const jsonl = generateA2UIJSONL(params.surfaceId, components, undefined, undefined);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: ["```a2ui", jsonl, "```"].join("\n"),
+            },
+          ],
+        };
+      },
+    });
+  },
+};
+
+export default plugin;

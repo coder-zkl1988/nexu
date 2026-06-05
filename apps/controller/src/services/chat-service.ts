@@ -40,6 +40,7 @@ export interface LocalChatMessageInput {
 
 export interface LocalChatMessageOutput {
   id: string;
+  runId?: string | null;
   role: "user" | "assistant";
   type: "text" | "image" | "video" | "audio" | "file";
   content: unknown;
@@ -66,6 +67,7 @@ export interface SendToMainSessionInput {
 }
 
 export interface SendToMainSessionResult {
+  runId?: string;
   messageId?: string;
   content?: unknown;
 }
@@ -104,9 +106,9 @@ export class ChatService {
   async sendLocalMessage(
     botId: string,
     message: LocalChatMessageInput,
+    sessionKey?: string,
   ): Promise<LocalChatMessageOutput> {
-    // Build main session key: agent:{botId}:main
-    const sessionKey = `agent:${botId}:main`;
+    const effectiveSessionKey = sessionKey ?? `agent:${botId}:main`;
 
     const incomingAttachments = message.attachments ?? [];
     const imageAttachments: LocalChatAttachment[] = [];
@@ -127,7 +129,7 @@ export class ChatService {
           try {
             const saved = await this.attachmentStore.saveAttachment({
               botId,
-              sessionKey,
+              sessionKey: effectiveSessionKey,
               base64: att.content,
               filename: att.metadata?.filename,
               mimeType: att.metadata?.mimeType ?? "application/octet-stream",
@@ -197,7 +199,7 @@ export class ChatService {
       {
         route: "chat.sendLocalMessage",
         botId,
-        sessionKey,
+        effectiveSessionKey,
         messageType: message.type,
         imageAttachments: imageAttachments.length,
         fileAttachments: fileAttachments.length,
@@ -210,7 +212,7 @@ export class ChatService {
     // Throws on failure; the route handler will propagate a 500 to the client.
     const result = await this.sendToMainSession({
       botId,
-      sessionKey,
+      sessionKey: effectiveSessionKey,
       message: messageContent,
       messageType: message.type,
       metadata: message.metadata,
@@ -223,6 +225,7 @@ export class ChatService {
 
     return {
       id: result.messageId ?? `local_${Date.now()}`,
+      runId: result.runId ?? null,
       role: "assistant",
       type: message.type,
       content: result.content ?? null,

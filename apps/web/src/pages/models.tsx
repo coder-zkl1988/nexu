@@ -1846,12 +1846,12 @@ export function ModelsPage() {
   }, [desktopReadyData?.workspacePath]);
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-hidden flex flex-col">
       <div
-        className="max-w-4xl mx-auto px-4 sm:px-6 pb-6 sm:pb-8"
+        className="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col flex-1 overflow-hidden w-full"
         style={{ paddingTop: isDesktopClient ? "2rem" : "0.5rem" }}
       >
-        <div className="mb-6">
+        <div className="mb-6 shrink-0">
           <PageHeader
             title={t("models.pageTitle")}
             description={t("models.pageSubtitle")}
@@ -1908,272 +1908,277 @@ export function ModelsPage() {
           </div>
         </div>
 
-        {settingsTab === "general" ? (
-          <_GeneralSettings />
-        ) : (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-border bg-surface-1 px-4 py-3.5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent/10 to-accent/5">
-                    <img
-                      src="/brand/logo-black-1.svg"
-                      alt="nexu"
-                      className="h-5 w-5 object-contain"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-text-primary">
-                      {t("settings.providers.botModelTitle")}
-                    </div>
-                    <div className="text-[11px] text-text-tertiary">
-                      {t("settings.providers.botModelDesc")}
-                    </div>
-                  </div>
-                </div>
-                <ModelPickerDropdown
-                  compact
-                  dropdownAlign="end"
-                  models={models}
-                  currentModelId={currentModelId}
-                  emptyLabel={t("models.noModelConfigured")}
-                  onSelectModel={(modelId) => {
-                    const providerId = getSettingsProviderSelectionIdForModel(
-                      sidebarItems.map((item) => item.id),
-                      models,
-                      modelId,
-                    );
-                    if (providerId) {
-                      setSelectedProviderId(providerId);
-                    }
-                    clearSetupParam();
-                    updateModel.mutate(modelId);
-                  }}
-                  className="shrink-0"
-                  triggerClassName="min-w-[220px] justify-between"
-                  dropdownClassName="shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
-                />
-              </div>
+        <div className="flex-1 overflow-hidden">
+          {settingsTab === "general" ? (
+            <div className="overflow-y-auto h-full">
+              <_GeneralSettings />
             </div>
-
-            <div
-              className="flex gap-0 overflow-hidden rounded-xl border border-border bg-surface-1"
-              style={{ minHeight: 500 }}
-            >
-              {/* Left: Provider list */}
-              <div className="w-56 shrink-0 bg-surface-0 flex flex-col border-r border-border-subtle">
-                <div className="flex-1 overflow-y-auto p-2">
-                  <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
-                    {t("settings.tabProviders")}
+          ) : (
+            <div className="flex flex-col h-full space-y-6 overflow-hidden">
+              <div className="shrink-0 rounded-xl border border-border bg-surface-1 px-4 py-3.5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent/10 to-accent/5">
+                      <img
+                        src="/brand/logo-black-1.svg"
+                        alt="nexu"
+                        className="h-5 w-5 object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-text-primary">
+                        {t("settings.providers.botModelTitle")}
+                      </div>
+                      <div className="text-[11px] text-text-tertiary">
+                        {t("settings.providers.botModelDesc")}
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {sidebarItems.map((item) => {
-                      const isActive = activeProvider?.id === item.id;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedProviderId(item.id);
-                            clearSetupParam();
-                          }}
-                          className={cn(
-                            "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors",
-                            isActive ? "bg-surface-3" : "hover:bg-surface-2",
-                          )}
-                        >
-                          <span className="w-6 h-6 shrink-0 flex items-center justify-center rounded-md bg-white border border-border-subtle">
-                            <ProviderLogo
-                              provider={item.registryEntry?.id ?? item.id}
-                              size={14}
-                            />
-                          </span>
-                          <span
+                  <ModelPickerDropdown
+                    compact
+                    dropdownAlign="end"
+                    models={models}
+                    currentModelId={currentModelId}
+                    emptyLabel={t("models.noModelConfigured")}
+                    onSelectModel={(modelId) => {
+                      const providerId = getSettingsProviderSelectionIdForModel(
+                        sidebarItems.map((item) => item.id),
+                        models,
+                        modelId,
+                      );
+                      if (providerId) {
+                        setSelectedProviderId(providerId);
+                      }
+                      clearSetupParam();
+                      updateModel.mutate(modelId);
+                    }}
+                    className="shrink-0"
+                    triggerClassName="min-w-[220px] justify-between"
+                    dropdownClassName="shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface-1">
+                {/* Left: Provider list */}
+                <div className="w-56 shrink-0 bg-surface-0 flex flex-col border-r border-border-subtle">
+                  <div className="flex-1 overflow-y-auto p-2">
+                    <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      {t("settings.tabProviders")}
+                    </div>
+                    <div className="space-y-1">
+                      {sidebarItems.map((item) => {
+                        const isActive = activeProvider?.id === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProviderId(item.id);
+                              clearSetupParam();
+                            }}
                             className={cn(
-                              "flex-1 text-[12px] truncate",
-                              isActive
-                                ? "font-semibold text-text-primary"
-                                : "font-medium text-text-primary",
+                              "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-colors",
+                              isActive ? "bg-surface-3" : "hover:bg-surface-2",
                             )}
                           >
-                            {item.name}
-                          </span>
-                          {item.modelCount > 0 ? (
-                            <span className="text-[10px] text-text-muted">
-                              {item.modelCount}
+                            <span className="w-6 h-6 shrink-0 flex items-center justify-center rounded-md bg-white border border-border-subtle">
+                              <ProviderLogo
+                                provider={item.registryEntry?.id ?? item.id}
+                                size={14}
+                              />
                             </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
+                            <span
+                              className={cn(
+                                "flex-1 text-[12px] truncate",
+                                isActive
+                                  ? "font-semibold text-text-primary"
+                                  : "font-medium text-text-primary",
+                              )}
+                            >
+                              {item.name}
+                            </span>
+                            {item.modelCount > 0 ? (
+                              <span className="text-[10px] text-text-muted">
+                                {item.modelCount}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border-subtle p-3">
+                    <button
+                      type="button"
+                      onClick={handleAddCustomProvider}
+                      className={cn(
+                        "w-full inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors",
+                        "border-border bg-surface-0 text-text-secondary hover:bg-surface-2 hover:text-text-primary",
+                      )}
+                    >
+                      <span className="text-[14px] leading-none">+</span>
+                      {t("models.customProvider.addButton")}
+                    </button>
                   </div>
                 </div>
 
-                <div className="border-t border-border-subtle p-3">
-                  <button
-                    type="button"
-                    onClick={handleAddCustomProvider}
-                    className={cn(
-                      "w-full inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors",
-                      "border-border bg-surface-0 text-text-secondary hover:bg-surface-2 hover:text-text-primary",
-                    )}
-                  >
-                    <span className="text-[14px] leading-none">+</span>
-                    {t("models.customProvider.addButton")}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-5">
-                {activeProvider ? (
-                  activeProvider.managed ? (
-                    modelsLoading ? (
+                <div className="flex-1 overflow-y-auto p-5">
+                  {activeProvider ? (
+                    activeProvider.managed ? (
+                      modelsLoading ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="text-[13px] text-text-muted">
+                            {t("models.loading")}
+                          </div>
+                        </div>
+                      ) : modelsError ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="text-center">
+                            <div className="text-[13px] text-red-500 mb-2">
+                              {t("models.loadFailed")}
+                            </div>
+                            <p className="text-[12px] text-text-muted mb-3">
+                              {t("models.loadFailedHint")}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                queryClient.invalidateQueries({
+                                  queryKey: ["models"],
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium bg-surface-2 hover:bg-surface-3 text-text-primary transition-colors"
+                            >
+                              <RefreshCw size={12} />
+                              {t("models.retry")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <ManagedProviderDetail
+                          provider={
+                            providers.find(
+                              (p) => p.id === activeProvider.id,
+                            ) ?? {
+                              id: activeProvider.id,
+                              name: activeProvider.name,
+                              description: "models.provider.nexu.description",
+                              managed: true,
+                              models: [],
+                            }
+                          }
+                          currentModelId={currentModelId}
+                          onSelectModel={(modelId) =>
+                            updateModel.mutate(modelId)
+                          }
+                        />
+                      )
+                    ) : providerConfigDoc === undefined ? (
                       <div className="flex items-center justify-center h-full">
                         <div className="text-[13px] text-text-muted">
                           {t("models.loading")}
                         </div>
                       </div>
-                    ) : modelsError ? (
-                      <div className="flex items-center justify-center h-full">
-                        <div className="text-center">
-                          <div className="text-[13px] text-red-500 mb-2">
-                            {t("models.loadFailed")}
-                          </div>
-                          <p className="text-[12px] text-text-muted mb-3">
-                            {t("models.loadFailedHint")}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              queryClient.invalidateQueries({
-                                queryKey: ["models"],
-                              })
-                            }
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium bg-surface-2 hover:bg-surface-3 text-text-primary transition-colors"
-                          >
-                            <RefreshCw size={12} />
-                            {t("models.retry")}
-                          </button>
-                        </div>
-                      </div>
+                    ) : activeProvider.kind === "custom-draft" ? (
+                      activeCustomProviderDraft ? (
+                        <AddCustomProviderDetail
+                          draft={activeCustomProviderDraft}
+                          customTemplates={Array.from(
+                            customTemplateRegistryMap.values(),
+                          )}
+                          onChange={(draft) => {
+                            setCustomProviderDrafts((previous) =>
+                              previous.map((item) =>
+                                item.id === draft.id ? draft : item,
+                              ),
+                            );
+                          }}
+                          onCreate={async (input) => {
+                            const providerKey = buildCustomProviderKey(
+                              input.template
+                                .id as (typeof customProviderTemplateIds)[number],
+                              input.instanceId,
+                            );
+                            await upsertProviderConfigByKey(providerKey, {
+                              providerTemplateId: input.template.id,
+                              instanceId: input.instanceId,
+                              enabled: true,
+                              api: input.template.apiKind,
+                              baseUrl: input.baseUrl,
+                              displayName: input.displayName,
+                              models: [],
+                            });
+                            removeCustomProviderDraft(
+                              activeCustomProviderDraft.id,
+                            );
+                            setSelectedProviderId(providerKey);
+                          }}
+                          onRemove={() => {
+                            removeCustomProviderDraft(
+                              activeCustomProviderDraft.id,
+                            );
+                          }}
+                        />
+                      ) : null
                     ) : (
-                      <ManagedProviderDetail
-                        provider={
-                          providers.find((p) => p.id === activeProvider.id) ?? {
-                            id: activeProvider.id,
-                            name: activeProvider.name,
-                            description: "models.provider.nexu.description",
-                            managed: true,
-                            models: [],
-                          }
+                      <ByokProviderDetail
+                        key={
+                          activeProvider.providerKey ??
+                          activeBuiltinProviderMatch?.key ??
+                          (activeProvider.registryEntry as ByokProviderEntry).id
                         }
+                        provider={
+                          activeProvider.registryEntry as ByokProviderEntry
+                        }
+                        providerKey={
+                          activeProvider.providerKey ??
+                          activeBuiltinProviderMatch?.key ??
+                          (activeProvider.registryEntry as ByokProviderEntry).id
+                        }
+                        providerConfig={
+                          activeProvider.registryEntry
+                            ? activeProvider.providerKey
+                              ? providerConfigDoc.providers?.[
+                                  activeProvider.providerKey
+                                ]
+                              : activeBuiltinProviderMatch?.config
+                            : undefined
+                        }
+                        onSaveProviderConfig={
+                          activeProvider.providerKey
+                            ? (_, config) =>
+                                upsertProviderConfigByKey(
+                                  activeProvider.providerKey ?? "",
+                                  config,
+                                )
+                            : upsertBuiltinProviderConfig
+                        }
+                        onDeleteProviderConfig={
+                          activeProvider.providerKey
+                            ? () =>
+                                removeProviderConfigByKey(
+                                  activeProvider.providerKey ?? "",
+                                )
+                            : removeBuiltinProviderConfig
+                        }
+                        queryClient={queryClient}
                         currentModelId={currentModelId}
+                        onAutoSelectModel={handleAutoSelectModel}
                         onSelectModel={(modelId) => updateModel.mutate(modelId)}
                       />
                     )
-                  ) : providerConfigDoc === undefined ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-[13px] text-text-muted">
-                        {t("models.loading")}
-                      </div>
-                    </div>
-                  ) : activeProvider.kind === "custom-draft" ? (
-                    activeCustomProviderDraft ? (
-                      <AddCustomProviderDetail
-                        draft={activeCustomProviderDraft}
-                        customTemplates={Array.from(
-                          customTemplateRegistryMap.values(),
-                        )}
-                        onChange={(draft) => {
-                          setCustomProviderDrafts((previous) =>
-                            previous.map((item) =>
-                              item.id === draft.id ? draft : item,
-                            ),
-                          );
-                        }}
-                        onCreate={async (input) => {
-                          const providerKey = buildCustomProviderKey(
-                            input.template
-                              .id as (typeof customProviderTemplateIds)[number],
-                            input.instanceId,
-                          );
-                          await upsertProviderConfigByKey(providerKey, {
-                            providerTemplateId: input.template.id,
-                            instanceId: input.instanceId,
-                            enabled: true,
-                            api: input.template.apiKind,
-                            baseUrl: input.baseUrl,
-                            displayName: input.displayName,
-                            models: [],
-                          });
-                          removeCustomProviderDraft(
-                            activeCustomProviderDraft.id,
-                          );
-                          setSelectedProviderId(providerKey);
-                        }}
-                        onRemove={() => {
-                          removeCustomProviderDraft(
-                            activeCustomProviderDraft.id,
-                          );
-                        }}
-                      />
-                    ) : null
                   ) : (
-                    <ByokProviderDetail
-                      key={
-                        activeProvider.providerKey ??
-                        activeBuiltinProviderMatch?.key ??
-                        (activeProvider.registryEntry as ByokProviderEntry).id
-                      }
-                      provider={
-                        activeProvider.registryEntry as ByokProviderEntry
-                      }
-                      providerKey={
-                        activeProvider.providerKey ??
-                        activeBuiltinProviderMatch?.key ??
-                        (activeProvider.registryEntry as ByokProviderEntry).id
-                      }
-                      providerConfig={
-                        activeProvider.registryEntry
-                          ? activeProvider.providerKey
-                            ? providerConfigDoc.providers?.[
-                                activeProvider.providerKey
-                              ]
-                            : activeBuiltinProviderMatch?.config
-                          : undefined
-                      }
-                      onSaveProviderConfig={
-                        activeProvider.providerKey
-                          ? (_, config) =>
-                              upsertProviderConfigByKey(
-                                activeProvider.providerKey ?? "",
-                                config,
-                              )
-                          : upsertBuiltinProviderConfig
-                      }
-                      onDeleteProviderConfig={
-                        activeProvider.providerKey
-                          ? () =>
-                              removeProviderConfigByKey(
-                                activeProvider.providerKey ?? "",
-                              )
-                          : removeBuiltinProviderConfig
-                      }
-                      queryClient={queryClient}
-                      currentModelId={currentModelId}
-                      onAutoSelectModel={handleAutoSelectModel}
-                      onSelectModel={(modelId) => updateModel.mutate(modelId)}
-                    />
-                  )
-                ) : (
-                  <div className="flex items-center justify-center h-full text-[13px] text-text-muted">
-                    {t("models.selectProvider")}
-                  </div>
-                )}
+                    <div className="flex items-center justify-center h-full text-[13px] text-text-muted">
+                      {t("models.selectProvider")}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

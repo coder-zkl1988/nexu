@@ -77,6 +77,8 @@ describe("controller plist: real function output", () => {
         "/Users/alice/Library/Application Support/@nexu/desktop/runtime/openclaw/state/skills",
       skillhubStaticSkillsDir:
         "/Applications/Nexu.app/Contents/Resources/static/bundled-skills",
+      experthubStaticExpertsDir:
+        "/Applications/Nexu.app/Contents/Resources/static/bundled-experts",
       platformTemplatesDir:
         "/Applications/Nexu.app/Contents/Resources/static/platform-templates",
       openclawBinPath: "/sidecar/bin/openclaw",
@@ -200,6 +202,7 @@ describe("openclaw plist: real function output", () => {
       webUrl: "http://127.0.0.1:50810",
       openclawSkillsDir: "/state/skills",
       skillhubStaticSkillsDir: "/app/bundled-skills",
+      experthubStaticExpertsDir: "/app/bundled-experts",
       platformTemplatesDir: "/app/templates",
       openclawBinPath: "/app/bin/openclaw",
       openclawExtensionsDir: "/app/extensions",

@@ -14,11 +14,12 @@
  * full PDF content never enters the main conversation context.  That is
  * exactly the behaviour we want for large documents.
  *
- * OpenClaw's media-tool path policy (`getDefaultMediaLocalRoots` in
- * `dist/local-roots-*.js`) allows anything under
- *   <state-dir>/media/, <state-dir>/agents/, <state-dir>/workspace/,
- *   <state-dir>/sandboxes/, or the preferred tmp dir.
- * We pick `<state-dir>/agents/<botId>/attachments/<sessionKey>/…` so every
+ * OpenClaw's media-tool path policy (`buildMediaLocalRoots` in
+ * `dist/local-roots-*.js`) trusts:
+ *   <state-dir>/media/, <state-dir>/canvas/, <state-dir>/workspace/,
+ *   <state-dir>/sandboxes/, <config-dir>/media/, and the preferred tmp dir.
+ * Notably, `<state-dir>/agents/` is NOT in the default roots.
+ * We pick `<state-dir>/workspace/<botId>/attachments/<sessionKey>/…` so every
  * attachment is scoped to the owning bot+session and stays inside an
  * already-trusted root.
  *
@@ -134,14 +135,20 @@ export class AttachmentStore {
 
   /**
    * Resolve the directory that holds attachments for a given bot+session.
-   * Sits under `<stateDir>/agents/<botId>/attachments/<sessionKey>/` —
-   * inside OpenClaw's trusted `agents/` root so the `pdf` / `image` tools
+   * Sits under `<stateDir>/workspace/<botId>/attachments/<sessionKey>/` —
+   * inside OpenClaw's trusted `workspace/` root so the `pdf` / `image` tools
    * can open files without extra sandbox dance.
+   *
+   * NOTE: Previous versions used `agents/<botId>/attachments/`, but OpenClaw's
+   * local-roots policy does NOT include `agents/` as a trusted root for media
+   * tools.  The `workspace/` directory IS in the default roots returned by
+   * `buildMediaLocalRoots()`, so files stored here are accessible to the
+   * `pdf` sub-agent and other on-demand media tools.
    */
   private attachmentsDirFor(botId: string, sessionKey: string): string {
     return path.join(
       this.stateDir,
-      "agents",
+      "workspace",
       sanitizeBotId(botId),
       "attachments",
       sanitizeSessionDir(sessionKey),
@@ -150,7 +157,7 @@ export class AttachmentStore {
 
   /** Root directory used by {@link cleanupExpired}. */
   private attachmentsRoot(): string {
-    return path.join(this.stateDir, "agents");
+    return path.join(this.stateDir, "workspace");
   }
 
   async saveAttachment(

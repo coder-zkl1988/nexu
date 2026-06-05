@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { registerArtifactRoutes } from "../routes/artifact-routes.js";
@@ -10,12 +11,14 @@ import { registerDesktopRewardsRoutes } from "../routes/desktop-rewards-routes.j
 import { registerDesktopRoutes } from "../routes/desktop-routes.js";
 import { registerDeviceControlRoutes } from "../routes/device-control-routes.js";
 import { registerDeviceTaskHistoryRoutes } from "../routes/device-task-history-routes.js";
+import { buildExperthubRoutes } from "../routes/experthub-routes.js";
 import { registerIntegrationRoutes } from "../routes/integration-routes.js";
 import { registerMediaRoutes } from "../routes/media-routes.js";
 import { registerMiscCompatRoutes } from "../routes/misc-compat-routes.js";
 import { registerModelRoutes } from "../routes/model-routes.js";
 import { registerProviderOAuthRoutes } from "../routes/provider-oauth-routes.js";
 import { registerRuntimeConfigRoutes } from "../routes/runtime-config-routes.js";
+import { registerScheduleRoutes } from "../routes/schedule-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillhubRoutes } from "../routes/skillhub-routes.js";
 import { registerUserRoutes } from "../routes/user-routes.js";
@@ -51,25 +54,36 @@ export function createApp(container: ControllerContainer) {
   registerIntegrationRoutes(app, container);
   registerArtifactRoutes(app, container);
   registerSkillhubRoutes(app, container);
+  app.route(
+    "/api/v1/experthub",
+    buildExperthubRoutes({
+      catalog: container.experthubCatalogManager,
+      installExpert: container.installExpertFn,
+      createCustomExpert: container.createCustomExpertFn,
+      updateExpertSkills: container.updateExpertSkillsFn,
+      botService: container.agentService,
+      agentsDir: path.join(container.env.openclawStateDir, "agents"),
+      platformTemplatesDir: container.env.platformTemplatesDir ?? "",
+    }),
+  );
   registerUserRoutes(app, container);
   registerRuntimeConfigRoutes(app, container);
   registerWorkspaceTemplateRoutes(app, container);
   registerDeviceTaskHistoryRoutes(app, container);
   registerDeviceControlRoutes(app, container);
+  registerScheduleRoutes(app, container);
   registerMediaRoutes(app, container);
 
   app.doc("/openapi.json", {
     openapi: "3.1.0",
     info: {
-      title: "Nexu Controller API",
+      title: "Tabby Controller API",
       version: "0.1.0",
     },
   });
 
   app.get("/health", async (c) => {
-    const controlPlane = await container.controlPlaneHealth.probe({
-      timeoutMs: 1500,
-    });
+    const controlPlane = await container.controlPlaneHealth.bootstrapProbe();
     return c.json(
       {
         status: container.runtimeState.status,

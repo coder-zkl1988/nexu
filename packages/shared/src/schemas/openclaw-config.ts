@@ -17,6 +17,7 @@ const gatewayReloadSchema = z.object({
 
 const controlUiSchema = z
   .object({
+    root: z.string().optional(),
     allowedOrigins: z.array(z.string()).optional(),
     dangerouslyAllowHostHeaderOriginFallback: z.boolean().optional(),
   })
@@ -276,6 +277,10 @@ const feishuAccountSchema = z
     webhookPort: z.number().optional(),
     webhookHost: z.string().optional(),
     verificationToken: z.string().optional(),
+    requireMention: z.boolean().optional(),
+    dmPolicy: z.enum(["pairing", "allowlist", "open", "disabled"]).optional(),
+    groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional(),
+    allowFrom: z.array(z.string()).optional(),
   })
   .passthrough();
 

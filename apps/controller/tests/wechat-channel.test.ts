@@ -175,10 +175,14 @@ describe("WeChat connect/disconnect lifecycle", () => {
   });
 
   it("connectWechat returns immediately without blocking on readiness", async () => {
-    const channel = await service.connectWechat("test-account");
+    const channel = await service.connectWechat({
+      accountId: "test-account",
+      botId: "bot-1",
+    });
 
     expect(configStore.connectWechat).toHaveBeenCalledWith({
       accountId: "test-account",
+      botId: "bot-1",
     });
     // Connecting a channel must NOT re-seed platform templates — re-seeding
     // would clobber agent self-edits to AGENTS.md / IDENTITY.md / SOUL.md /
@@ -197,7 +201,10 @@ describe("WeChat connect/disconnect lifecycle", () => {
       lastError: "monitor failed to start",
     });
 
-    const channel = await service.connectWechat("slow-account");
+    const channel = await service.connectWechat({
+      accountId: "slow-account",
+      botId: "bot-1",
+    });
 
     expect(channel.channelType).toBe("wechat");
     expect(configStore.disconnectChannel).not.toHaveBeenCalled();

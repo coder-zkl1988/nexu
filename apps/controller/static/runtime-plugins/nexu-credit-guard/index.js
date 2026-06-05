@@ -221,6 +221,7 @@ const plugin = {
   description:
     "Replaces generic error replies with Nexu-specific localised messages.",
   register(api) {
+    try { api.logger.info("[nexu-credit-guard] loaded — intercepting LLM error messages"); } catch {}
     const contactUrl = api.pluginConfig?.contactUrl || DEFAULT_CONTACT_URL;
 
     // Phase 1: capture the raw error code from the LLM response

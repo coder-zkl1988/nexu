@@ -581,6 +581,11 @@ export type HostDesktopCommand =
       type: "desktop:rewards-updated";
     }
   | {
+      type: "setup:progress";
+      stage: string;
+      detail?: string;
+    }
+  | {
       type: "setup:complete";
     };
 
@@ -706,6 +711,7 @@ export type HostBootstrap = {
   isPackaged: boolean;
   needsSetupAnimation: boolean;
   webviewPreloadUrl: string;
+  devImmersive: boolean;
 };
 
 export type UpdateSource = "r2" | "github";

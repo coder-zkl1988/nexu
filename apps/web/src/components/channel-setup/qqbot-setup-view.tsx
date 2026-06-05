@@ -1,4 +1,6 @@
+import { BotPicker } from "@/components/channels/bot-picker";
 import { identify, track } from "@/lib/tracking";
+import { useQuery } from "@tanstack/react-query";
 import {
   ExternalLink,
   FileText,
@@ -6,10 +8,13 @@ import {
   Loader2,
   MessageCircleMore,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { postApiV1ChannelsQqbotConnect } from "../../../lib/api/sdk.gen";
+import {
+  getApiV1Channels,
+  postApiV1ChannelsQqbotConnect,
+} from "../../../lib/api/sdk.gen";
 
 const QQBOT_LOGIN_URL = "https://q.qq.com/qqbot/openclaw/login.html";
 const QQBOT_DOCS_URL = "https://docs.nexu.io/guide/channels/qq";
@@ -28,7 +33,22 @@ export function QqbotSetupView({
   const { t } = useTranslation();
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
+  const [botId, setBotId] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
+
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await getApiV1Channels();
+      return data;
+    },
+  });
+  const disabledBotIds = useMemo(() => {
+    const channels = channelsData?.channels ?? [];
+    return new Set(
+      channels.filter((ch) => ch.channelType === "qqbot").map((ch) => ch.botId),
+    );
+  }, [channelsData]);
 
   const getTrimmedCredentials = () => {
     const trimmedAppId = appId.trim();
@@ -50,7 +70,7 @@ export function QqbotSetupView({
     setSubmitting(true);
     try {
       const { data, error } = await postApiV1ChannelsQqbotConnect({
-        body: { appId: trimmedAppId, appSecret: trimmedAppSecret },
+        body: { appId: trimmedAppId, appSecret: trimmedAppSecret, botId },
       });
 
       if (error || !data) {
@@ -175,11 +195,21 @@ export function QqbotSetupView({
           <ExternalLink size={12} />
         </a>
 
+        <div className="mb-4">
+          <BotPicker
+            value={botId || null}
+            onChange={setBotId}
+            required
+            disabled={submitting}
+            disabledBotIds={disabledBotIds}
+          />
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleConnect}
-            disabled={disabled || submitting}
+            disabled={disabled || submitting || !botId}
             className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-medium text-accent-fg transition-all hover:bg-accent-hover disabled:opacity-60"
           >
             {submitting ? (

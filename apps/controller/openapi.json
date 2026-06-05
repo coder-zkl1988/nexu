@@ -55,6 +55,11 @@
                             "type": "string",
                             "nullable": true
                           },
+                          "expertSlug": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -115,6 +120,11 @@
                   },
                   "poolId": {
                     "type": "string"
+                  },
+                  "expertSlug": {
+                    "type": "string",
+                    "nullable": true,
+                    "pattern": "^[a-z0-9-]+$"
                   }
                 },
                 "required": [
@@ -160,6 +170,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -226,6 +241,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -320,6 +340,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -434,6 +459,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -564,6 +594,11 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -657,6 +692,11 @@
                     "systemPrompt": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
                     },
                     "createdAt": {
                       "type": "string"
@@ -4008,6 +4048,42 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "feishuPermissions": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "requireMention": {
+                                "type": "boolean",
+                                "default": true
+                              },
+                              "dmPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "open",
+                                  "allowlist",
+                                  "disabled"
+                                ],
+                                "default": "open"
+                              },
+                              "groupPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "open",
+                                  "allowlist",
+                                  "disabled"
+                                ],
+                                "default": "open"
+                              },
+                              "allowFrom": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "default": []
+                              }
+                            }
                           }
                         },
                         "required": [
@@ -4128,11 +4204,16 @@
                   },
                   "appId": {
                     "type": "string"
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botToken",
-                  "signingSecret"
+                  "signingSecret",
+                  "botId"
                 ]
               }
             }
@@ -4195,6 +4276,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4256,11 +4373,16 @@
                   },
                   "guildName": {
                     "type": "string"
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botToken",
-                  "appId"
+                  "appId",
+                  "botId"
                 ]
               }
             }
@@ -4323,6 +4445,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4570,11 +4728,16 @@
                   },
                   "verificationToken": {
                     "type": "string"
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "appId",
-                  "appSecret"
+                  "appSecret",
+                  "botId"
                 ]
               }
             }
@@ -4637,6 +4800,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4689,10 +4888,15 @@
                   "botToken": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
-                  "botToken"
+                  "botToken",
+                  "botId"
                 ]
               }
             }
@@ -4755,6 +4959,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4992,11 +5232,16 @@
                   "clientSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "clientId",
-                  "clientSecret"
+                  "clientSecret",
+                  "botId"
                 ]
               }
             }
@@ -5059,6 +5304,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5296,11 +5577,16 @@
                   "clientSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "clientId",
-                  "clientSecret"
+                  "clientSecret",
+                  "botId"
                 ]
               }
             }
@@ -5368,11 +5654,16 @@
                   "appSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "appId",
-                  "appSecret"
+                  "appSecret",
+                  "botId"
                 ]
               }
             }
@@ -5435,6 +5726,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5490,11 +5817,16 @@
                   "appSecret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "appId",
-                  "appSecret"
+                  "appSecret",
+                  "botId"
                 ]
               }
             }
@@ -5562,11 +5894,16 @@
                   "secret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "nexuBotId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botId",
-                  "secret"
+                  "secret",
+                  "nexuBotId"
                 ]
               }
             }
@@ -5629,6 +5966,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5684,11 +6057,16 @@
                   "secret": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "nexuBotId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
                   "botId",
-                  "secret"
+                  "secret",
+                  "nexuBotId"
                 ]
               }
             }
@@ -5810,6 +6188,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5916,6 +6330,407 @@
                   },
                   "required": [
                     "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Channels"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "channelId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "botId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string",
+                      "enum": [
+                        "slack",
+                        "discord",
+                        "feishu",
+                        "dingtalk",
+                        "wecom",
+                        "wechat",
+                        "telegram",
+                        "whatsapp",
+                        "qqbot"
+                      ]
+                    },
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "connected",
+                        "disconnected",
+                        "error"
+                      ]
+                    },
+                    "teamName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "appId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "botUserId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "channelType",
+                    "accountId",
+                    "status",
+                    "teamName",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid botId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Bot already bound to another channel of same type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{channelId}/feishu-permissions": {
+      "patch": {
+        "tags": [
+          "Channels"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "channelId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requireMention": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "dmPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "allowlist",
+                      "disabled"
+                    ],
+                    "default": "open"
+                  },
+                  "groupPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "allowlist",
+                      "disabled"
+                    ],
+                    "default": "open"
+                  },
+                  "allowFrom": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "default": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated channel with new feishu permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string",
+                      "enum": [
+                        "slack",
+                        "discord",
+                        "feishu",
+                        "dingtalk",
+                        "wecom",
+                        "wechat",
+                        "telegram",
+                        "whatsapp",
+                        "qqbot"
+                      ]
+                    },
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "connected",
+                        "disconnected",
+                        "error"
+                      ]
+                    },
+                    "teamName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "appId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "botUserId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "channelType",
+                    "accountId",
+                    "status",
+                    "teamName",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a Feishu channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }
@@ -6067,10 +6882,15 @@
                   "accountId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
-                  "accountId"
+                  "accountId",
+                  "botId"
                 ]
               }
             }
@@ -6133,6 +6953,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6307,10 +7163,15 @@
                   "accountId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "required": [
-                  "accountId"
+                  "accountId",
+                  "botId"
                 ]
               }
             }
@@ -6373,6 +7234,42 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6695,6 +7592,240 @@
         }
       }
     },
+    "/api/v1/chat/local/start": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string"
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "text",
+                          "image",
+                          "video",
+                          "audio",
+                          "file"
+                        ]
+                      },
+                      "content": {
+                        "type": "string",
+                        "maxLength": 10000000
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "properties": {
+                          "width": {
+                            "type": "number"
+                          },
+                          "height": {
+                            "type": "number"
+                          },
+                          "duration": {
+                            "type": "number"
+                          },
+                          "mimeType": {
+                            "type": "string"
+                          },
+                          "filename": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "attachments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "image",
+                                "file"
+                              ]
+                            },
+                            "content": {
+                              "type": "string",
+                              "maxLength": 10000000
+                            },
+                            "metadata": {
+                              "type": "object",
+                              "properties": {
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "filename": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "content"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "content"
+                    ]
+                  }
+                },
+                "required": [
+                  "botId",
+                  "sessionKey",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local chat run started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "session": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "botId": {
+                          "type": "string"
+                        },
+                        "sessionKey": {
+                          "type": "string"
+                        },
+                        "channelType": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "channelId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "messageCount": {
+                          "type": "number"
+                        },
+                        "lastMessageAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": {
+                            "nullable": true
+                          }
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "botId",
+                        "sessionKey",
+                        "channelType",
+                        "channelId",
+                        "title",
+                        "status",
+                        "messageCount",
+                        "lastMessageAt",
+                        "metadata",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "message": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "runId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "nullable": true
+                        },
+                        "timestamp": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "role",
+                        "type",
+                        "timestamp",
+                        "createdAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sessionKey",
+                    "session",
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat/local": {
       "post": {
         "tags": [
@@ -6878,9 +8009,14 @@
                     },
                     "message": {
                       "type": "object",
+                      "nullable": true,
                       "properties": {
                         "id": {
                           "type": "string"
+                        },
+                        "runId": {
+                          "type": "string",
+                          "nullable": true
                         },
                         "role": {
                           "type": "string"
@@ -6912,6 +8048,65 @@
                   "required": [
                     "session",
                     "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/cancel": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string"
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "botId",
+                  "sessionKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat session aborted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "aborted": {
+                      "type": "boolean"
+                    },
+                    "runIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "aborted",
+                    "runIds"
                   ]
                 }
               }
@@ -11597,6 +12792,718 @@
         }
       }
     },
+    "/api/v1/experthub/catalog": {
+      "get": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog of experts (bundled + managed) with ledger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "experts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64,
+                            "pattern": "^[a-z0-9-]+$"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "emoji": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8
+                          },
+                          "category": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 32
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 280
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 32
+                            },
+                            "maxItems": 10,
+                            "default": []
+                          },
+                          "version": {
+                            "type": "string",
+                            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                          },
+                          "author": {
+                            "type": "string",
+                            "maxLength": 80,
+                            "default": ""
+                          },
+                          "avatarDataUrl": {
+                            "type": "string",
+                            "maxLength": 200000
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "name",
+                          "emoji",
+                          "category",
+                          "description",
+                          "version"
+                        ]
+                      }
+                    },
+                    "installedSlugs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "installedExperts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "botId": {
+                            "type": "string"
+                          },
+                          "installedAt": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "avatarDataUrl": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "configuredSkills": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "version",
+                          "botId",
+                          "installedAt"
+                        ]
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "updatedAt",
+                        "count"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "experts",
+                    "installedSlugs",
+                    "installedExperts",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/install": {
+      "post": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expert installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "botId",
+                    "slug"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Expert not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/uninstall": {
+      "post": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "slug"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expert uninstalled (ledger entry removed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/experts/{slug}/skills": {
+      "put": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "skills"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Expert skills updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "configuredSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "configuredSkills"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Expert not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/refresh": {
+      "post": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "responses": {
+          "200": {
+            "description": "Remote catalog refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "meta": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "updatedAt",
+                        "count"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "meta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/experts/{slug}": {
+      "get": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full expert manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schemaVersion": {
+                      "type": "number",
+                      "enum": [
+                        1
+                      ]
+                    },
+                    "slug": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[a-z0-9-]+$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "emoji": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 8
+                    },
+                    "category": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 280
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32
+                      },
+                      "maxItems": 10,
+                      "default": []
+                    },
+                    "version": {
+                      "type": "string",
+                      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                    },
+                    "author": {
+                      "type": "string",
+                      "maxLength": 80,
+                      "default": ""
+                    },
+                    "systemPrompt": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32000
+                    },
+                    "modelId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "default": "gpt-4o"
+                    },
+                    "requiredSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9-]+$"
+                      },
+                      "default": []
+                    },
+                    "workspaceFiles": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "default": {}
+                    },
+                    "avatarDataUrl": {
+                      "type": "string",
+                      "maxLength": 200000
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "slug",
+                    "name",
+                    "emoji",
+                    "category",
+                    "description",
+                    "version",
+                    "systemPrompt"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Expert not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/custom": {
+      "post": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "avatarDataUrl": {
+                    "type": "string",
+                    "maxLength": 2000000
+                  },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 280
+                  },
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": []
+                  },
+                  "existingSlug": {
+                    "type": "string"
+                  },
+                  "workspaceFiles": {
+                    "type": "object",
+                    "properties": {
+                      "AGENTS.md": {
+                        "type": "string"
+                      },
+                      "IDENTITY.md": {
+                        "type": "string"
+                      },
+                      "MEMORY.md": {
+                        "type": "string"
+                      },
+                      "SOUL.md": {
+                        "type": "string"
+                      },
+                      "USER.md": {
+                        "type": "string"
+                      }
+                    },
+                    "default": {}
+                  }
+                },
+                "required": [
+                  "name",
+                  "modelId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Custom expert created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "botId",
+                    "slug"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/experthub/platform-templates/{filename}": {
+      "get": {
+        "tags": [
+          "ExpertHub"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "AGENTS.md",
+                "IDENTITY.md",
+                "SOUL.md",
+                "USER.md"
+              ]
+            },
+            "required": true,
+            "name": "filename",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "default": "en"
+            },
+            "required": false,
+            "name": "lang",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform template file content",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Template file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [
@@ -13360,6 +15267,566 @@
           },
           "504": {
             "description": "Request timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules": {
+      "get": {
+        "tags": [
+          "Schedules"
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "schedules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "botId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255
+                          },
+                          "cron": {
+                            "type": "string"
+                          },
+                          "timezone": {
+                            "type": "string",
+                            "default": "UTC"
+                          },
+                          "prompt": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "ui",
+                              "agent"
+                            ],
+                            "default": "ui"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "channelType": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          },
+                          "externalId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "botId",
+                          "name",
+                          "cron",
+                          "prompt",
+                          "id",
+                          "createdAt",
+                          "updatedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "schedules"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Schedules"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "cron": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "default": "UTC"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "ui",
+                      "agent"
+                    ],
+                    "default": "ui"
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "channelType": {
+                    "type": "string"
+                  },
+                  "channelId": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "botId",
+                  "name",
+                  "cron",
+                  "prompt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "botId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    },
+                    "cron": {
+                      "type": "string"
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "default": "UTC"
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "ui",
+                        "agent"
+                      ],
+                      "default": "ui"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "botId",
+                    "name",
+                    "cron",
+                    "prompt",
+                    "id",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules/{scheduleId}": {
+      "patch": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "cron": {
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "ui",
+                      "agent"
+                    ]
+                  },
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "channelType": {
+                    "type": "string"
+                  },
+                  "channelId": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "botId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    },
+                    "cron": {
+                      "type": "string"
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "default": "UTC"
+                    },
+                    "prompt": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "ui",
+                        "agent"
+                      ],
+                      "default": "ui"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "externalId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "botId",
+                    "name",
+                    "cron",
+                    "prompt",
+                    "id",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules/{scheduleId}/runs": {
+      "get": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "number",
+              "nullable": true,
+              "minimum": 0,
+              "default": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Schedule run history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ts": {
+                            "type": "number"
+                          },
+                          "jobId": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "finished"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ok",
+                              "error",
+                              "skipped"
+                            ]
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "runAtMs": {
+                            "type": "number"
+                          },
+                          "durationMs": {
+                            "type": "number"
+                          },
+                          "nextRunAtMs": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "ts",
+                          "jobId",
+                          "action"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entries",
+                    "total",
+                    "hasMore"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schedule not found or no cron job registered",
             "content": {
               "application/json": {
                 "schema": {

@@ -25,6 +25,7 @@ export const connectSlackSchema = z.object({
   teamId: z.string().optional(),
   teamName: z.string().optional(),
   appId: z.string().optional(),
+  botId: z.string().min(1),
 });
 
 export const connectDiscordSchema = z.object({
@@ -32,6 +33,7 @@ export const connectDiscordSchema = z.object({
   appId: z.string().min(1),
   guildId: z.string().optional(),
   guildName: z.string().optional(),
+  botId: z.string().min(1),
 });
 
 export const connectFeishuSchema = z.object({
@@ -39,34 +41,59 @@ export const connectFeishuSchema = z.object({
   appSecret: z.string().min(1),
   connectionMode: z.enum(["websocket", "webhook"]).optional(),
   verificationToken: z.string().optional(),
+  botId: z.string().min(1),
 });
 
 export const connectWecomSchema = z.object({
   botId: z.string().min(1),
   secret: z.string().min(1),
+  nexuBotId: z.string().min(1),
 });
 
 export const connectDingtalkSchema = z.object({
   clientId: z.string().min(1),
   clientSecret: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const connectWechatSchema = z.object({
   accountId: z.string().min(1),
+  botId: z.string().min(1),
 });
+
+export const updateChannelBotSchema = z.object({
+  botId: z.string().min(1),
+});
+
+export type UpdateChannelBotInput = z.infer<typeof updateChannelBotSchema>;
 
 export const connectTelegramSchema = z.object({
   botToken: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const connectWhatsappSchema = z.object({
   accountId: z.string().min(1),
+  botId: z.string().min(1),
 });
 
 export const connectQqbotSchema = z.object({
   appId: z.string().min(1),
   appSecret: z.string().min(1),
+  botId: z.string().min(1),
 });
+
+export const feishuPolicySchema = z.enum(["open", "allowlist", "disabled"]);
+
+export const feishuPermissionsSchema = z.object({
+  requireMention: z.boolean().default(true),
+  dmPolicy: feishuPolicySchema.default("open"),
+  groupPolicy: feishuPolicySchema.default("open"),
+  allowFrom: z.array(z.string().min(1)).default([]),
+});
+
+export type FeishuPolicy = z.infer<typeof feishuPolicySchema>;
+export type FeishuPermissions = z.infer<typeof feishuPermissionsSchema>;
 
 export const channelConnectErrorCodeSchema = z.enum([
   "already_connected",
@@ -149,6 +176,7 @@ export const channelResponseSchema = z.object({
   botUserId: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  feishuPermissions: feishuPermissionsSchema.nullable().optional(),
 });
 
 export const channelListResponseSchema = z.object({

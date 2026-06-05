@@ -1,28 +1,45 @@
+import {
+  type BotItem,
+  ChatInputArea,
+  type PendingAttachment,
+} from "@/components/chat-input-area";
 import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
+import { A2UIRenderer } from "@/lib/a2ui";
+import type { A2UIMessage } from "@/lib/a2ui";
+import { useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
+import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   CheckCircle2,
+  FileImage,
+  FileText,
   FolderOpen,
+  Loader2,
   MessageSquare,
   WifiOff,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
+  getApiV1Bots,
+  getApiV1BotsByBotId,
   getApiV1Channels,
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
+  postApiV1ChatLocal,
+  postApiV1SessionsByIdReset,
 } from "../../lib/api/sdk.gen";
 
-const BOT_AVATAR = "/brand/ip-nexu.svg";
+const BOT_AVATAR = "/images/claw-avatar.png";
+const USER_AVATAR = "/images/tabby-avatar.png";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,7 +88,10 @@ function stripMetadata(raw: string): string {
 }
 
 function stripAssistantReplyPrefix(raw: string): string {
-  return raw.replace(/^\s*\[\[reply_to_current\]\]\s*/u, "");
+  return raw
+    .replace(/^\s*\[\[reply_to_current\]\]\s*/u, "")
+    .replace(/<final>\s*/giu, "")
+    .replace(/\s*<\/final>/giu, "");
 }
 
 /**
@@ -90,12 +110,56 @@ function extractSenderName(raw: string): string | null {
   return null;
 }
 
+/** Strip ```a2ui fenced code blocks from text, extracting A2UI JSONL messages. */
+function stripA2UIBlock(text: string): {
+  cleanText: string;
+  a2uiMessages: A2UIMessage[];
+} {
+  const a2uiMessages: A2UIMessage[] = [];
+  const a2uiBlockRegex = /```a2ui\n([\s\S]*?)```/g;
+  const cleanText = text.replace(a2uiBlockRegex, (_match, content: string) => {
+    for (const line of content.split("\n")) {
+      try {
+        const parsed = JSON.parse(line.trim());
+        if (
+          parsed?.version === "v0.9" &&
+          (parsed.createSurface ||
+            parsed.updateComponents ||
+            parsed.updateDataModel ||
+            parsed.deleteSurface)
+        ) {
+          a2uiMessages.push(parsed as A2UIMessage);
+        }
+      } catch {
+        // skip non-JSON lines (blank lines, malformed)
+      }
+    }
+    return "";
+  });
+  return { cleanText, a2uiMessages };
+}
+
+interface ImageBlockInfo {
+  mimeType: string;
+  data: string;
+}
+
+interface FileCardInfo {
+  name: string;
+  mimeType: string;
+  size?: number;
+}
+
 interface ExtractedMessage {
   text: string;
   replyContextText: string | null;
   senderName: string | null;
   hasToolCall: boolean;
   toolCallSummary: string | null;
+  hasA2UI: boolean;
+  a2uiMessages: A2UIMessage[] | null;
+  images: ImageBlockInfo[];
+  fileCards: FileCardInfo[];
 }
 
 function extractReplyContextPrefix(raw: string): {
@@ -128,26 +192,77 @@ function extractReplyContextPrefix(raw: string): {
   };
 }
 
+/** Extract display text, sender name, tool call info, and A2UI messages from various message content formats. */
+function parseFileBlocksFromText(text: string): {
+  cleanText: string;
+  fileCards: FileCardInfo[];
+} {
+  const fileCards: FileCardInfo[] = [];
+  const fileRegex = /<file\s+([^>]*)>([\s\S]*?)<\/file>/g;
+  let cleanText = text;
+  let match = fileRegex.exec(text);
+  while (match !== null) {
+    const attrs = match[1] ?? "";
+    const innerText = match[2] ?? "";
+    const nameMatch = attrs.match(/name="([^"]*)"/);
+    const mimeMatch = attrs.match(/mime="([^"]*)"/);
+    const sizeMatch = attrs.match(/size="([^"]*)"/);
+    if (nameMatch?.[1]) {
+      fileCards.push({
+        name: nameMatch[1],
+        mimeType: mimeMatch?.[1] ?? "application/octet-stream",
+        size: sizeMatch?.[1] ? Number(sizeMatch[1]) : undefined,
+      });
+    }
+    cleanText = cleanText.replace(match[0], innerText);
+    match = fileRegex.exec(text);
+  }
+  return { cleanText, fileCards };
+}
+
 /** Extract display text, sender name, and tool call info from various message content formats. */
 function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   let raw = "";
   let replyContextText: string | null = null;
   let hasToolCall = false;
   let toolCallSummary: string | null = null;
+  let hasA2UI = false;
+  let a2uiMessages: A2UIMessage[] | null = null;
+  const images: ImageBlockInfo[] = [];
+  const fileCards: FileCardInfo[] = [];
 
   // Format 1: msg.text (shorthand)
   if (typeof msg.text === "string") {
-    raw = msg.text;
+    const stripped = stripA2UIBlock(msg.text);
+    raw = stripped.cleanText;
+    if (stripped.a2uiMessages.length > 0) {
+      hasA2UI = true;
+      if (!a2uiMessages) a2uiMessages = [];
+      a2uiMessages.push(...stripped.a2uiMessages);
+    }
   } else if (typeof msg.content === "string") {
     // Format 2: msg.content (string)
-    raw = msg.content;
+    const stripped = stripA2UIBlock(msg.content);
+    raw = stripped.cleanText;
+    if (stripped.a2uiMessages.length > 0) {
+      hasA2UI = true;
+      if (!a2uiMessages) a2uiMessages = [];
+      a2uiMessages.push(...stripped.a2uiMessages);
+    }
   } else if (Array.isArray(msg.content)) {
     // Format 3: msg.content (array of blocks)
     const blocks = msg.content as Record<string, unknown>[];
     const textParts: string[] = [];
     for (const b of blocks) {
       if (b?.type === "text") {
-        textParts.push(String(b?.text ?? ""));
+        const textContent = String(b?.text ?? "");
+        const stripped = stripA2UIBlock(textContent);
+        textParts.push(stripped.cleanText);
+        if (stripped.a2uiMessages.length > 0) {
+          hasA2UI = true;
+          if (!a2uiMessages) a2uiMessages = [];
+          a2uiMessages.push(...stripped.a2uiMessages);
+        }
       } else if (b?.type === "replyContext") {
         const candidate = String(b?.text ?? "").trim();
         if (candidate.length > 0) {
@@ -157,6 +272,36 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
         hasToolCall = true;
         const name = String(b?.name ?? b?.toolName ?? "tool");
         toolCallSummary = name;
+      } else if (b?.type === "a2ui" && typeof b.data === "object" && b.data) {
+        hasA2UI = true;
+        if (!a2uiMessages) a2uiMessages = [];
+        a2uiMessages.push(b.data as A2UIMessage);
+      } else if (b?.type === "image") {
+        const source = b?.source as Record<string, unknown> | undefined;
+        const sourceData = typeof source?.data === "string" ? source.data : "";
+        if (sourceData.length > 0) {
+          const mimeType = String(source?.media_type ?? "image/png");
+          const base64 = sourceData.includes(",")
+            ? sourceData.slice(sourceData.indexOf(",") + 1)
+            : sourceData;
+          images.push({ mimeType, data: base64 });
+        }
+      } else if (b?.type === "file") {
+        const metadata = (b?.metadata ?? b) as Record<string, unknown>;
+        const filename =
+          typeof metadata?.filename === "string"
+            ? metadata.filename
+            : typeof b?.filename === "string"
+              ? b.filename
+              : "file";
+        fileCards.push({
+          name: filename,
+          mimeType:
+            typeof metadata?.mimeType === "string"
+              ? metadata.mimeType
+              : "application/octet-stream",
+          size: typeof metadata?.size === "number" ? metadata.size : undefined,
+        });
       }
     }
     raw = textParts.join("\n");
@@ -171,12 +316,19 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   const text = extractedReply.text;
   replyContextText ??= extractedReply.replyContextText;
 
+  // Parse <file> XML blocks from text so they render as file cards instead of raw markup
+  const parsedFiles = parseFileBlocksFromText(text);
+
   return {
-    text,
+    text: parsedFiles.cleanText,
     replyContextText,
     senderName,
     hasToolCall,
     toolCallSummary,
+    hasA2UI,
+    a2uiMessages,
+    images,
+    fileCards: [...fileCards, ...parsedFiles.fileCards],
   };
 }
 
@@ -328,37 +480,6 @@ function getPlatformConfig(platform: string): PlatformConfig {
   return PLATFORM_CONFIG[platform as Platform] ?? DEFAULT_PLATFORM_CONFIG;
 }
 
-/** Deterministic gradient for user avatar based on name string */
-const AVATAR_GRADIENTS = [
-  "from-violet-500 to-purple-600",
-  "from-blue-500 to-cyan-500",
-  "from-[var(--color-success)] to-teal-500",
-  "from-orange-400 to-rose-500",
-  "from-pink-500 to-fuchsia-500",
-  "from-amber-400 to-orange-500",
-  "from-sky-400 to-indigo-500",
-  "from-lime-400 to-[var(--color-success)]",
-];
-
-function getAvatarGradient(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  const idx = Math.abs(hash) % AVATAR_GRADIENTS.length;
-  return AVATAR_GRADIENTS[idx] as string;
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2 && parts[0] && parts[parts.length - 1]) {
-    return (
-      (parts[0][0] ?? "") + (parts[parts.length - 1]?.[0] ?? "")
-    ).toUpperCase();
-  }
-  return name.slice(0, 1).toUpperCase();
-}
-
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
@@ -447,13 +568,7 @@ function ArtifactCard({ summary }: { summary: string | null }) {
   );
 }
 
-function ReplyContextCard({
-  text,
-  isBot,
-}: {
-  text: string;
-  isBot: boolean;
-}) {
+function ReplyContextCard({ text, isBot }: { text: string; isBot: boolean }) {
   const { t } = useTranslation();
 
   return (
@@ -501,31 +616,106 @@ function SessionPlatformBadge({
   );
 }
 
+function InlineImage({ mimeType, data }: ImageBlockInfo) {
+  const [expanded, setExpanded] = useState(false);
+  const src = `data:${mimeType};base64,${data}`;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="block max-w-[240px] cursor-pointer rounded-xl overflow-hidden border border-border hover:opacity-90 transition-opacity"
+      >
+        <img
+          src={src}
+          alt=""
+          className="w-full h-auto max-h-[200px] object-cover"
+        />
+      </button>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setExpanded(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setExpanded(false);
+          }}
+        >
+          <img
+            src={src}
+            alt=""
+            className="max-w-full max-h-full rounded-xl object-contain"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function MessageFileCard({ name, mimeType, size }: FileCardInfo) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const isImage = mimeType.startsWith("image/");
+  return (
+    <div className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-1 px-3 py-2 max-w-[240px]">
+      <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-surface-2">
+        {isImage ? (
+          <FileImage size={14} className="text-purple-500" />
+        ) : (
+          <FileText size={14} className="text-text-muted" />
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[12px] text-text-primary truncate font-medium">
+          {name}
+        </div>
+        <div className="text-[10px] text-text-muted">
+          {ext.toUpperCase()}
+          {size !== undefined && ` · ${formatBytes(size)}`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function ChatBubble({
   msg,
   extracted,
+  onA2UIAction,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
+  onA2UIAction?: (actionName: string, context: Record<string, unknown>) => void;
 }) {
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
-  const { text, replyContextText, senderName, hasToolCall, toolCallSummary } =
-    resolvedExtracted;
+  const {
+    text,
+    replyContextText,
+    // biome-ignore lint/correctness/noUnusedVariables: used in extractMessage return shape
+    senderName,
+    hasToolCall,
+    toolCallSummary,
+    hasA2UI,
+    a2uiMessages,
+    images,
+    fileCards,
+  } = resolvedExtracted;
   const time = formatTs(msg.timestamp);
   const isBot = msg.role === "assistant";
   const hasText = text.trim().length > 0;
   const hasReplyContext = (replyContextText?.trim().length ?? 0) > 0;
-
-  const displayName = senderName ?? "User";
-  const gradient = getAvatarGradient(displayName);
-  const initials = getInitials(displayName);
+  const hasMedia = images.length > 0 || fileCards.length > 0;
 
   return (
     <div
       data-chat-message={msg.id}
       data-chat-role={msg.role}
-      className={`flex gap-3 ${isBot ? "items-start" : "flex-row-reverse items-end"}`}
+      className="flex gap-3 items-start"
     >
       {isBot ? (
         <img
@@ -534,46 +724,45 @@ function ChatBubble({
           className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
         />
       ) : (
-        <div
-          className={cn(
-            "w-7 h-7 mt-0.5 rounded-lg bg-gradient-to-br flex items-center justify-center shrink-0 ring-1 ring-border/50",
-            gradient,
-          )}
-        >
-          <span className="text-[11px] font-semibold text-white leading-none">
-            {initials}
-          </span>
-        </div>
+        <img
+          src={USER_AVATAR}
+          alt=""
+          className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+        />
       )}
-      <div
-        className={cn(
-          "flex max-w-[44rem] flex-col gap-2",
-          isBot ? "items-start" : "items-end text-right",
-        )}
-      >
+      <div className={cn("flex max-w-[44rem] flex-col gap-2", "items-start")}>
         {hasReplyContext && replyContextText && (
           <ReplyContextCard text={replyContextText} isBot={isBot} />
+        )}
+        {hasMedia && (
+          <div className="flex flex-col gap-1.5">
+            {images.map((img, i) => (
+              <InlineImage key={`img-${img.mimeType}-${i}`} {...img} />
+            ))}
+            {fileCards.map((fc, i) => (
+              <MessageFileCard key={`fc-${fc.name}-${i}`} {...fc} />
+            ))}
+          </div>
         )}
         {hasText && (
           <div
             className={cn(
               "inline-block max-w-full rounded-[20px] px-4 py-3 text-[13px] break-words shadow-[0_10px_24px_rgba(15,23,42,0.04)]",
               isBot
-                ? "border border-border bg-surface-1 text-text-primary rounded-tl-sm"
-                : "bg-surface-3 text-text-primary rounded-tr-sm",
+                ? "border border-border bg-surface-1 text-text-primary"
+                : "bg-surface-3 text-text-primary",
             )}
           >
             <ChatMarkdown content={text} />
           </div>
         )}
         {isBot && hasToolCall && <ArtifactCard summary={toolCallSummary} />}
-        {time && (
-          <div
-            className={`text-[10px] text-text-muted ${isBot ? "pl-1" : "pr-1 text-right"}`}
-          >
-            {time}
+        {isBot && hasA2UI && a2uiMessages && (
+          <div className="mt-1 inline-block max-w-full">
+            <A2UIRenderer messages={a2uiMessages} onAction={onA2UIAction} />
           </div>
         )}
+        {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
     </div>
   );
@@ -587,6 +776,8 @@ export function SessionsPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const endRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const { openWith } = useA2UISidebar();
 
   useEffect(() => {
     if (id) track("session_detail_view");
@@ -602,7 +793,7 @@ export function SessionsPage() {
     enabled: !!id,
   });
 
-  // Chat history
+  // Chat history — polls every 5s as reliable fallback. SSE invalidates for instant updates.
   const {
     data: chatData,
     isLoading: chatLoading,
@@ -620,6 +811,56 @@ export function SessionsPage() {
     refetchInterval: 5000,
   });
 
+  // SSE real-time connection — streams delta events for fast perceived response
+  // and invalidates chat history on final/aborted/error.
+  // Polling (5s refetchInterval above) handles the fallback regardless of SSE state.
+  const [streamingText, setStreamingText] = useState("");
+
+  useEffect(() => {
+    if (!id || !session?.botId || !session?.sessionKey) return;
+
+    const client = createLocalStreamSSEClient({
+      botId: session.botId,
+      sessionKey: session.sessionKey,
+      onConnected: () => {
+        // Stream established — no action needed
+      },
+      onDelta: (delta) => {
+        // Accumulate streaming text for real-time display
+        setStreamingText((prev) =>
+          delta.replace ? delta.deltaText : prev + delta.deltaText,
+        );
+      },
+      onFinal: () => {
+        // Full message received — clear streaming state & refresh
+        setStreamingText("");
+        if (sentAtRef.current > 0) {
+          setWaitingForReply(false);
+          sentAtRef.current = 0;
+          setPendingMessages([]);
+        }
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onAborted: () => {
+        setStreamingText("");
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onError: () => {
+        setStreamingText("");
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+    });
+
+    client.connect();
+    return () => {
+      client.disconnect();
+    };
+  }, [id, session?.botId, session?.sessionKey, queryClient]);
+
   const { data: channelsData } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
@@ -629,17 +870,371 @@ export function SessionsPage() {
     enabled: !!id,
   });
 
+  // Bots list (for ChatInputArea)
+  const { data: botsData } = useQuery({
+    queryKey: ["bots"],
+    queryFn: async () => {
+      const { data } = await getApiV1Bots();
+      return data;
+    },
+  });
+  const bots = (botsData?.bots ?? []) as BotItem[];
+
+  // Selected bot for this session
+  const { data: botData } = useQuery({
+    queryKey: ["bot", session?.botId],
+    queryFn: async () => {
+      if (!session?.botId) return null;
+      const { data } = await getApiV1BotsByBotId({
+        path: { botId: session.botId },
+      });
+      return data;
+    },
+    enabled: !!session?.botId,
+  });
+  const bot = (botData as Record<string, unknown> | null) ?? null;
+  const selectedBot: BotItem | null = bot
+    ? ({
+        id: (bot as Record<string, unknown>).id as string,
+        name: (bot as Record<string, unknown>).name as string,
+        slug: (bot as Record<string, unknown>).slug as string,
+        status: (bot as Record<string, unknown>).status as
+          | "active"
+          | "paused"
+          | "deleted",
+        modelId: (bot as Record<string, unknown>).modelId as string,
+      } as BotItem)
+    : null;
+
+  // Stable A2UI action handler shared by inline rendering and sidebar
+  const onA2UIAction = useCallback(
+    (actionName: string, context: Record<string, unknown>) => {
+      if (!selectedBot || !id || !session?.sessionKey) return;
+      void postApiV1ChatLocal({
+        body: {
+          botId: selectedBot.id,
+          sessionKey: session.sessionKey,
+          message: {
+            type: "text",
+            content: JSON.stringify({
+              type: "a2ui_action",
+              actionName,
+              data: context,
+            }),
+          },
+        },
+      });
+    },
+    [selectedBot, id, session?.sessionKey],
+  );
+
+  // Send message handler
+  const [pendingMessages, setPendingMessages] = useState<
+    { id: string; text: string; timestamp: number }[]
+  >([]);
+  const [waitingForReply, setWaitingForReply] = useState(false);
+  const [newSessionDividerTime, setNewSessionDividerTime] = useState<
+    number | null
+  >(null);
+  const sentAtRef = useRef(0);
+
+  // Reset waiting state when switching sessions
+  // biome-ignore lint/correctness/useExhaustiveDependencies: id triggers reset on session navigation
+  useEffect(() => {
+    setWaitingForReply(false);
+    sentAtRef.current = 0;
+    setPendingMessages([]);
+    setStreamingText("");
+  }, [id]);
+
+  const handleSend = useCallback(
+    async (text: string, attachments: PendingAttachment[]) => {
+      if (!selectedBot || !id || !session?.sessionKey) return;
+
+      // Intercept /new command
+      const trimmed = text.trim().toLowerCase();
+      if (["/new", "/reset", "/clear"].includes(trimmed)) {
+        try {
+          await postApiV1SessionsByIdReset({ path: { id } });
+          setNewSessionDividerTime(Date.now());
+          setWaitingForReply(false);
+          sentAtRef.current = 0;
+          await queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          toast.success(
+            t("sessions.chat.newSession", { defaultValue: "New conversation" }),
+          );
+        } catch {
+          toast.error(
+            t("sessions.chat.newSession", { defaultValue: "New conversation" }),
+          );
+        }
+        return;
+      }
+
+      // Format message payload with attachment support (mirrors local-chat.tsx)
+      const onlyImage = attachments[0];
+      const isImageOnly =
+        attachments.length === 1 && onlyImage?.type === "image" && !text.trim();
+      const msgContent = isImageOnly
+        ? {
+            type: "image" as const,
+            content: onlyImage?.content ?? "",
+            metadata: { mimeType: onlyImage?.mimeType ?? "image/png" },
+          }
+        : {
+            type: "text" as const,
+            content: text,
+            attachments:
+              attachments.length > 0
+                ? attachments.map((a) => ({
+                    type: a.type,
+                    content: a.content,
+                    metadata: {
+                      mimeType: a.mimeType,
+                      filename: a.filename,
+                      size: a.size,
+                    },
+                  }))
+                : undefined,
+          };
+
+      const optimisticId = `pending-${Date.now()}`;
+      const now = Date.now();
+      sentAtRef.current = now;
+      setPendingMessages((prev) => [
+        ...prev,
+        {
+          id: optimisticId,
+          text: text || (isImageOnly ? "[Image]" : "[File]"),
+          timestamp: now,
+        },
+      ]);
+      setWaitingForReply(true);
+
+      try {
+        await postApiV1ChatLocal({
+          body: {
+            botId: selectedBot.id,
+            sessionKey: session.sessionKey,
+            message: msgContent,
+          },
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ["chat-history", id],
+        });
+      } catch {
+        setWaitingForReply(false);
+        setPendingMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+      }
+    },
+    [selectedBot, id, session?.sessionKey, queryClient, t],
+  );
+
+  const handleCancel = useCallback(async () => {
+    if (!session?.sessionKey || !selectedBot) return;
+    try {
+      const res = await fetch("/api/v1/chat/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botId: selectedBot.id,
+          sessionKey: session.sessionKey,
+        }),
+      });
+      if (res.ok) {
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+      }
+    } catch {
+      // Silently ignore — the reply may have already finished
+    }
+  }, [session?.sessionKey, selectedBot]);
+
   // null = not yet loaded, [] = loaded but empty, [...] = loaded with messages
   const messages = (
     chatData ? ((chatData as Record<string, unknown>)?.messages ?? []) : null
   ) as ChatMessageData[] | null;
-  const safeMessages = chatLoading ? [] : (messages ?? []);
+  // Keep existing data during refetch so optimistic messages and Thinking remain visible
+  const safeMessages = chatLoading && !chatData ? [] : (messages ?? []);
 
-  // Auto-scroll on new messages
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages change
+  // Build a set of server user message texts to deduplicate against optimistic messages
+  const serverUserTexts = new Set(
+    safeMessages
+      .filter((m) => m.role === "user")
+      .map((m) => extractMessage(m as unknown as Record<string, unknown>).text),
+  );
+
+  // Clear optimistic messages that already appear in server data
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatData]);
+    if (pendingMessages.length === 0) return;
+    const remaining = pendingMessages.filter(
+      (pm) => !serverUserTexts.has(pm.text),
+    );
+    if (remaining.length < pendingMessages.length) {
+      setPendingMessages(remaining);
+    }
+  }, [serverUserTexts, pendingMessages]);
+
+  // Detect when assistant reply arrives — clear waiting state
+  const assistantMessages = safeMessages.filter((m) => m.role === "assistant");
+  const lastAssistantMsg =
+    assistantMessages.length > 0
+      ? assistantMessages[assistantMessages.length - 1]
+      : undefined;
+  const lastAssistantTimestamp = lastAssistantMsg?.timestamp ?? 0;
+
+  useEffect(() => {
+    if (
+      waitingForReply &&
+      sentAtRef.current > 0 &&
+      lastAssistantTimestamp >= sentAtRef.current
+    ) {
+      setWaitingForReply(false);
+      sentAtRef.current = 0;
+      setPendingMessages([]);
+    }
+  }, [lastAssistantTimestamp, waitingForReply]);
+
+  // Safety timeout: clear waitingForReply after 2 minutes regardless of SSE/polling state
+  const waitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (waitingForReply) {
+      waitingTimerRef.current = setTimeout(() => {
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+        setPendingMessages([]);
+      }, 120_000);
+    }
+    return () => {
+      if (waitingTimerRef.current) {
+        clearTimeout(waitingTimerRef.current);
+        waitingTimerRef.current = null;
+      }
+    };
+  }, [waitingForReply]);
+
+  // Optimistic messages: use text-based key so React reuses the DOM node
+  // when the server message replaces the optimistic one
+  const optimisticMessages: ChatMessageData[] = pendingMessages
+    .filter((pm) => !serverUserTexts.has(pm.text))
+    .map((pm) => ({
+      id: `user-${pm.text.slice(0, 40)}`, // stable key based on text content
+      role: "user" as const,
+      content: pm.text,
+      timestamp: pm.timestamp,
+      createdAt: new Date(pm.timestamp).toISOString(),
+    }));
+
+  const displayMessages = [...safeMessages, ...optimisticMessages];
+
+  // Enrich assistant messages with A2UI from matching render_a2ui toolResults.
+  // render_a2ui results contain A2UI JSONL in ```a2ui code blocks, but
+  // ChatBubble only renders A2UI for assistant (bot) messages.
+  // Inject the A2UI into the assistant message that called render_a2ui.
+  const a2uiFromToolResults = new Map<string, A2UIMessage[]>();
+  for (const m of displayMessages) {
+    const rm = m as unknown as Record<string, unknown>;
+    if (rm.role === "toolResult" && rm.toolName === "render_a2ui") {
+      const te = extractMessage(rm);
+      if (te.a2uiMessages?.length) {
+        a2uiFromToolResults.set(String(rm.toolCallId ?? ""), te.a2uiMessages);
+      }
+    }
+  }
+
+  // Detect sidebar-bound surfaces (surfaceId starts with "sidebar:")
+  const sidebarSurfaceIds = new Set<string>();
+  for (const msgs of a2uiFromToolResults.values()) {
+    for (const m of msgs) {
+      if (
+        "createSurface" in m &&
+        m.createSurface?.surfaceId?.startsWith("sidebar:")
+      ) {
+        sidebarSurfaceIds.add(m.createSurface.surfaceId);
+      }
+    }
+  }
+
+  const enrichedMessages = displayMessages
+    .map((msg) => {
+      const rm = msg as unknown as Record<string, unknown>;
+      const extracted = extractMessage(rm);
+
+      // Inject A2UI from matching render_a2ui toolResult
+      if (rm.role === "assistant" && !extracted.hasA2UI) {
+        const content = rm.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === "toolCall" && block?.name === "render_a2ui") {
+              const a2uiFromResult = a2uiFromToolResults.get(
+                String(block.id ?? ""),
+              );
+              if (a2uiFromResult?.length) {
+                const isSidebarOnly = a2uiFromResult.every((m) => {
+                  if ("createSurface" in m && m.createSurface?.surfaceId) {
+                    return sidebarSurfaceIds.has(m.createSurface.surfaceId);
+                  }
+                  // For update/delete messages, check if they reference a known sidebar surface
+                  const sid =
+                    "updateComponents" in m
+                      ? m.updateComponents?.surfaceId
+                      : "updateDataModel" in m
+                        ? m.updateDataModel?.surfaceId
+                        : "deleteSurface" in m
+                          ? m.deleteSurface?.surfaceId
+                          : undefined;
+                  return sid ? sidebarSurfaceIds.has(sid) : false;
+                });
+                if (isSidebarOnly) {
+                  // Route to sidebar
+                  const createMsg = a2uiFromResult.find(
+                    (m) => "createSurface" in m,
+                  );
+                  const sid = (
+                    createMsg as
+                      | { createSurface: { surfaceId: string } }
+                      | undefined
+                  )?.createSurface?.surfaceId;
+                  if (sid) {
+                    queueMicrotask(() => {
+                      openWith(sid, a2uiFromResult, onA2UIAction);
+                    });
+                  }
+                  // Don't set hasA2UI — skip inline rendering
+                } else {
+                  extracted.hasA2UI = true;
+                  extracted.a2uiMessages = a2uiFromResult;
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      return { msg, extracted };
+    })
+    .filter(({ msg, extracted }) => {
+      const rm = msg as unknown as Record<string, unknown>;
+      // Hide render_a2ui toolResult — A2UI shown on parent assistant msg
+      if (rm.role === "toolResult" && rm.toolName === "render_a2ui") {
+        return false;
+      }
+      if (extracted.text.trim().length > 0) return true;
+      if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
+      if (extracted.hasToolCall) return true;
+      if (extracted.images.length > 0) return true;
+      if (extracted.fileCards.length > 0) return true;
+      return false;
+    });
+
+  // Auto-scroll on new messages or state changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages or waiting state changes
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "instant" });
+  }, [chatData, waitingForReply, pendingMessages.length]);
 
   if (!id) {
     return <EmptyState />;
@@ -706,7 +1301,7 @@ export function SessionsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="shrink-0 border-b border-border px-6 py-4 md:pt-12">
+      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-7">
         <div className="flex items-center justify-between">
           <div className="flex gap-3 items-center">
             <SessionPlatformBadge
@@ -755,7 +1350,7 @@ export function SessionsPage() {
               <FolderOpen className="size-[18px] text-text-secondary" />
               <span>{t("sessions.openFolder")}</span>
             </button>
-            {platform !== "web" &&
+            {!!session?.channelId &&
               platform !== "wechat" &&
               (externalChatUrl ? (
                 <a
@@ -794,39 +1389,110 @@ export function SessionsPage() {
       </div>
 
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
         {chatError ? (
           <ChatUnavailable />
-        ) : chatLoading ? null : safeMessages.length === 0 ? (
+        ) : chatLoading ? null : displayMessages.length === 0 ? (
           <ChatEmpty />
         ) : (
-          <div data-chat-thread={id} className="px-4 py-8 sm:px-6">
+          <div data-chat-thread={id} className="px-4 pt-12 pb-8 sm:px-6">
             <div
               data-chat-layout="centered"
-              className="mx-auto flex w-full max-w-[920px] flex-col gap-5"
+              className="mx-auto flex max-w-[800px] flex-col gap-5"
             >
-              {safeMessages
-                .map((msg) => ({
-                  msg,
-                  extracted: extractMessage(
-                    msg as unknown as Record<string, unknown>,
-                  ),
-                }))
-                .filter(({ extracted }) => {
-                  const { text, replyContextText, hasToolCall } = extracted;
-                  return (
-                    text.trim().length > 0 ||
-                    (replyContextText?.trim().length ?? 0) > 0 ||
-                    hasToolCall
-                  );
-                })
-                .map(({ msg, extracted }) => (
-                  <ChatBubble key={msg.id} msg={msg} extracted={extracted} />
-                ))}
+              {enrichedMessages.flatMap(({ msg, extracted }, idx, arr) => {
+                const msgTime = msg.timestamp ?? 0;
+                const prevTime =
+                  idx > 0 ? (arr[idx - 1]?.msg.timestamp ?? 0) : 0;
+                const divider =
+                  newSessionDividerTime &&
+                  msgTime >= newSessionDividerTime &&
+                  prevTime < newSessionDividerTime
+                    ? [
+                        <div
+                          key="session-divider"
+                          className="flex items-center gap-3 my-4"
+                        >
+                          <div className="flex-1 h-px bg-border" />
+                          <span className="text-[11px] text-text-muted shrink-0">
+                            {t("sessions.chat.newSession", {
+                              defaultValue: "New conversation",
+                            })}
+                          </span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>,
+                      ]
+                    : [];
+                return [
+                  ...divider,
+                  <ChatBubble
+                    key={msg.id}
+                    msg={msg}
+                    extracted={extracted}
+                    onA2UIAction={onA2UIAction}
+                  />,
+                ];
+              })}
+              {waitingForReply && !streamingText && (
+                <div className="flex gap-3 items-start">
+                  <img
+                    src={BOT_AVATAR}
+                    alt=""
+                    className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+                  />
+                  <div className="inline-flex items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                    <Loader2
+                      size={14}
+                      className="animate-spin text-text-muted"
+                    />
+                    <span className="text-[13px] text-text-muted">
+                      {t("sessions.chat.thinking", {
+                        defaultValue: "Thinking...",
+                      })}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {waitingForReply && streamingText && (
+                <div className="flex gap-3 items-start">
+                  <img
+                    src={BOT_AVATAR}
+                    alt=""
+                    className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+                  />
+                  <div className="rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] max-w-[80%]">
+                    <p className="text-[13px] text-text-secondary whitespace-pre-wrap break-words">
+                      {streamingText}
+                      <span className="inline-block w-1.5 h-4 ml-0.5 bg-text-secondary animate-pulse align-text-bottom" />
+                    </p>
+                  </div>
+                </div>
+              )}
               <div ref={endRef} />
             </div>
           </div>
         )}
+      </div>
+
+      {/* Chat Input */}
+      <div className="shrink-0 px-4 py-3">
+        <div className="mx-auto w-full max-w-[800px]">
+          <ChatInputArea
+            bots={bots}
+            selectedBot={selectedBot}
+            onSelectBot={() => {}}
+            onSend={(text, attachments) => {
+              void handleSend(text, attachments);
+            }}
+            onCancel={handleCancel}
+            sending={false}
+            waitingReply={waitingForReply}
+            disabled={!session?.botId}
+            placeholder={t("localChat.inputPlaceholder")}
+            showBotSelector={false}
+            modelReadOnly
+          />
+        </div>
       </div>
     </div>
   );

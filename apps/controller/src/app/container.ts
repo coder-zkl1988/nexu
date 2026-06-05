@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import fsp from "node:fs/promises";
+import path from "node:path";
 import { logger } from "../lib/logger.js";
 import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
 import { CreditGuardStateWriter } from "../runtime/credit-guard-state-writer.js";
@@ -27,16 +30,29 @@ import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
 import { DeviceControlService } from "../services/device-control-service.js";
 import { DeviceMirrorProxy } from "../services/device-mirror-proxy.js";
+import { DevicePollingService } from "../services/device-polling-service.js";
+import { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
+import {
+  DEFAULT_EXPERT_SLUGS,
+  type InstallExpertResult,
+  createCustomExpert,
+  installDefaultExperts,
+  installExpert,
+  updateExpertSkills,
+} from "../services/experthub/install-flow.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
 import { ModelProviderService } from "../services/model-provider-service.js";
 import { OpenClawAuthService } from "../services/openclaw-auth-service.js";
+import { OpenClawCronGateway } from "../services/openclaw-cron-gateway.js";
 import { OpenClawGatewayService } from "../services/openclaw-gateway-service.js";
 import { OpenClawSyncService } from "../services/openclaw-sync-service.js";
 import { QuotaFallbackService } from "../services/quota-fallback-service.js";
 import { RuntimeConfigService } from "../services/runtime-config-service.js";
 import { RuntimeModelStateService } from "../services/runtime-model-state-service.js";
+import { ScheduleService } from "../services/schedule-service.js";
+import { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.js";
 import { SessionService } from "../services/session-service.js";
 import { SkillhubService } from "../services/skillhub-service.js";
 import { TemplateService } from "../services/template-service.js";
@@ -67,16 +83,37 @@ export interface ControllerContainer {
   attachmentStore: AttachmentStore;
   templateService: TemplateService;
   skillhubService: SkillhubService;
+  experthubCatalogManager: ExperthubCatalogManager;
+  installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
+  installDefaultExpertsFn: () => Promise<{
+    installed: string[];
+    skipped: string[];
+  }>;
+  createCustomExpertFn: (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) => Promise<{ ok: true; botId: string; slug: string }>;
+  updateExpertSkillsFn: (args: {
+    slug: string;
+    skills: string[];
+  }) => Promise<{ ok: true; configuredSkills: string[] }>;
   openclawSyncService: OpenClawSyncService;
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
   deviceMirrorProxy: DeviceMirrorProxy;
+  devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   deviceNameStore: Map<string, string>;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
+  scheduleService: ScheduleService;
   runtimeState: ControllerRuntimeState;
   startBackgroundLoops: () => () => void;
 }
@@ -103,6 +140,7 @@ export async function createContainer(): Promise<ControllerContainer> {
   const runtimeModelWriter = new OpenClawRuntimeModelWriter(env);
   const creditGuardStateWriter = new CreditGuardStateWriter(env);
   const templateWriter = new WorkspaceTemplateWriter(env);
+  const scheduleWorkspaceWriter = new ScheduleWorkspaceWriter(env);
   const gatewayClient = new GatewayClient(env);
   const sessionsRuntime = new SessionsRuntime(env);
   const runtimeState = createRuntimeState();
@@ -147,12 +185,19 @@ export async function createContainer(): Promise<ControllerContainer> {
     runtimeModelWriter,
     creditGuardStateWriter,
     templateWriter,
+    scheduleWorkspaceWriter,
     watchTrigger,
     gatewayService,
     skillhubService.skillDb,
     skillhubService.workspaceSkillScanner,
   );
   syncService = openclawSyncService;
+  const cronGateway = new OpenClawCronGateway(wsClient, env);
+  const scheduleService = new ScheduleService(
+    configStore,
+    cronGateway,
+    openclawSyncService,
+  );
   const openclawAuthService = new OpenClawAuthService(env, authProfilesStore);
   const analyticsService = new AnalyticsService(
     env,
@@ -177,6 +222,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     deviceTaskHistoryStore,
   );
   const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
+  const devicePollingService = new DevicePollingService(deviceControlService);
   const attachmentStore = new AttachmentStore({
     openclawStateDir: env.openclawStateDir,
   });
@@ -190,6 +236,222 @@ export async function createContainer(): Promise<ControllerContainer> {
     );
   });
 
+  // Experts (ExpertHub): catalog manager + install flow.
+  // The catalog manager reads bundled manifests from the static dir and
+  // managed manifests from the cache dir; if staticExpertsDir is undefined
+  // (e.g. when SKILLHUB_STATIC_SKILLS_DIR is unset and no workspaceRoot was
+  // detected), we pass an empty string which the manager treats as "no
+  // bundled entries" via its existsSync guard.
+  const experthubCatalogManager = new ExperthubCatalogManager({
+    cacheDir: env.experthubCacheDir,
+    ledgerPath: env.expertDbPath,
+    staticDir: env.staticExpertsDir ?? "",
+    versionUrl: env.experthubVersionUrl,
+    downloadUrl: env.experthubDownloadUrl,
+    log: (level, message) => {
+      logger[level === "error" ? "error" : level === "warn" ? "warn" : "info"](
+        { subsystem: "experthub" },
+        message,
+      );
+    },
+  });
+
+  // AgentService is used by both the return block and the experthub install
+  // flow. Construct it once so both paths share the same cache/syncAll semantics.
+  const agentService = new AgentService(configStore, openclawSyncService);
+
+  const installExpertFn = (args: { slug: string }) =>
+    installExpert({
+      slug: args.slug,
+      deps: {
+        catalog: {
+          resolveExpert: (slug) => experthubCatalogManager.resolveExpert(slug),
+          readLedger: () => experthubCatalogManager.readLedger(),
+          writeLedger: (ledger) => experthubCatalogManager.writeLedger(ledger),
+        },
+        botService: {
+          createBot: async (input) => {
+            const bot = await agentService.createBot({
+              name: input.name,
+              slug: input.slug,
+              systemPrompt: input.systemPrompt,
+              modelId: input.modelId,
+              expertSlug: input.expertSlug,
+            });
+            return { id: bot.id, slug: bot.slug };
+          },
+        },
+        skillhub: {
+          install: async (input) => {
+            return skillhubService.installWorkspaceSkill(
+              input.slug,
+              input.agentId,
+            );
+          },
+        },
+        sync: openclawSyncService,
+        fs: {
+          writeFile: (p, data) => fsp.writeFile(p, data),
+          mkdir: async (p, opts) => {
+            await fsp.mkdir(p, opts);
+          },
+          rm: (p) => fsp.rm(p, { force: true }),
+        },
+        agentsDir: path.join(env.openclawStateDir, "agents"),
+        genBotSlug: (expertSlug) =>
+          `${expertSlug}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+        defaultModelId: env.defaultModelId,
+      },
+    });
+
+  const installDefaultExpertsDeps = {
+    catalog: {
+      resolveExpert: (slug: string) =>
+        experthubCatalogManager.resolveExpert(slug),
+      readLedger: () => experthubCatalogManager.readLedger(),
+      writeLedger: (
+        ledger: Parameters<typeof experthubCatalogManager.writeLedger>[0],
+      ) => experthubCatalogManager.writeLedger(ledger),
+    },
+    botService: {
+      createBot: async (input: {
+        name: string;
+        slug: string;
+        systemPrompt: string;
+        modelId: string;
+        expertSlug: string;
+      }) => {
+        const bot = await agentService.createBot({
+          name: input.name,
+          slug: input.slug,
+          systemPrompt: input.systemPrompt,
+          modelId: input.modelId,
+          expertSlug: input.expertSlug,
+        });
+        return { id: bot.id, slug: bot.slug };
+      },
+    },
+    skillhub: {
+      install: async (input: {
+        slug: string;
+        agentId: string;
+        source: "workspace";
+      }) => {
+        return skillhubService.installWorkspaceSkill(input.slug, input.agentId);
+      },
+    },
+    sync: openclawSyncService,
+    fs: {
+      writeFile: (p: string, data: string) => fsp.writeFile(p, data),
+      mkdir: async (p: string, opts?: { recursive: boolean }) => {
+        await fsp.mkdir(p, opts);
+      },
+      rm: (p: string) => fsp.rm(p, { force: true }),
+    },
+    agentsDir: path.join(env.openclawStateDir, "agents"),
+    genBotSlug: (expertSlug: string) =>
+      `${expertSlug}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+    defaultModelId: env.defaultModelId,
+  };
+
+  const installDefaultExpertsFn = () =>
+    installDefaultExperts({
+      slugs: DEFAULT_EXPERT_SLUGS,
+      deps: installDefaultExpertsDeps,
+    });
+
+  const createCustomExpertFn = (args: {
+    name: string;
+    avatarDataUrl?: string;
+    modelId: string;
+    description?: string;
+    skills: string[];
+    existingSlug?: string;
+    workspaceFiles: Record<string, string>;
+  }) =>
+    createCustomExpert({
+      ...args,
+      deps: {
+        catalog: {
+          readLedger: () => experthubCatalogManager.readLedger(),
+          writeLedger: (ledger) => experthubCatalogManager.writeLedger(ledger),
+        },
+        botService: {
+          createBot: async (input) => {
+            const bot = await agentService.createBot({
+              name: input.name,
+              slug: input.slug,
+              systemPrompt: input.systemPrompt,
+              modelId: input.modelId,
+              expertSlug: input.expertSlug,
+            });
+            return { id: bot.id, slug: bot.slug };
+          },
+          getBotByExpertSlug: async (slug) => {
+            const bots = await agentService.listBots();
+            const match = (
+              bots as Array<{ id: string; expertSlug: string }>
+            ).find((b) => b.expertSlug === slug);
+            return match ? { id: match.id } : null;
+          },
+          deleteBot: async (id) => {
+            await agentService.deleteBot(id);
+          },
+        },
+        skillhub: {
+          install: async (input) => {
+            return skillhubService.installWorkspaceSkill(
+              input.slug,
+              input.agentId,
+            );
+          },
+        },
+        sync: openclawSyncService,
+        fs: {
+          writeFile: (p, data) => fsp.writeFile(p, data),
+          mkdir: async (p, opts) => {
+            await fsp.mkdir(p, opts);
+          },
+          rm: async (p, opts) => {
+            await fsp.rm(p, opts ?? { recursive: true });
+          },
+        },
+        agentsDir: path.join(env.openclawStateDir, "agents"),
+      },
+    });
+
+  const updateExpertSkillsFn = (args: { slug: string; skills: string[] }) =>
+    updateExpertSkills({
+      slug: args.slug,
+      skills: args.skills,
+      deps: {
+        catalog: {
+          resolveExpert: (slug) => experthubCatalogManager.resolveExpert(slug),
+          readLedger: () => experthubCatalogManager.readLedger(),
+          writeLedger: (ledger) => experthubCatalogManager.writeLedger(ledger),
+        },
+        skillhub: {
+          install: async (input) => {
+            return skillhubService.installWorkspaceSkill(
+              input.slug,
+              input.agentId,
+            );
+          },
+          uninstall: async (input) => {
+            const result = await skillhubService.uninstallSkill({
+              slug: input.slug,
+              agentId: input.agentId,
+              source: "workspace",
+            });
+            return result;
+          },
+        },
+        sync: openclawSyncService,
+      },
+    });
+
+  // Wire cloud state change callback to sync refreshed cloud inventory without
+  // auto-switching the default model during startup or first-channel connect.
   configStore.onCloudStateChanged = async (_change) => {
     // Auto-select a valid default model: on login, pick a managed model;
     // on logout, fall back to any remaining BYOK/OAuth model (or leave
@@ -211,7 +473,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     gatewayClient,
     controlPlaneHealth,
     openclawProcess,
-    agentService: new AgentService(configStore, openclawSyncService),
+    agentService,
     channelService: new ChannelService(
       env,
       configStore,
@@ -242,17 +504,24 @@ export async function createContainer(): Promise<ControllerContainer> {
     attachmentStore,
     templateService: new TemplateService(configStore, openclawSyncService),
     skillhubService,
+    experthubCatalogManager,
+    installExpertFn,
+    installDefaultExpertsFn,
+    createCustomExpertFn,
+    updateExpertSkillsFn,
     openclawSyncService,
     openclawAuthService,
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
     deviceMirrorProxy,
+    devicePollingService,
     deviceTaskHistoryStore,
     deviceNameStore: new Map(),
     wsClient,
     gatewayService,
     configStore,
+    scheduleService,
     runtimeState,
     startBackgroundLoops: () => {
       let isRefreshingNexuOfficialModels = false;
@@ -289,12 +558,15 @@ export async function createContainer(): Promise<ControllerContainer> {
       }, NEXU_OFFICIAL_MODEL_REFRESH_INTERVAL_MS);
       nexuOfficialModelRefreshInterval.unref?.();
       skillhubService.start();
+      devicePollingService.start();
 
       return () => {
         stopHealthLoop();
         stopAnalyticsLoop();
         clearInterval(nexuOfficialModelRefreshInterval);
         skillhubService.dispose();
+        devicePollingService.dispose();
+        deviceMirrorProxy.close();
         openclawAuthService.dispose();
         channelFallbackService.stop();
         wsClient.stop();

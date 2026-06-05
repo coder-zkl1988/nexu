@@ -7,7 +7,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Download, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -24,6 +24,19 @@ export function DevicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mirrorDevice, setMirrorDevice] = useState<DeviceInfo | null>(null);
+
+  const handleViewScreen = useCallback(
+    (device: DeviceInfo) => {
+      if (mirrorDevice?.deviceId === device.deviceId) {
+        // Same device already shown — force remount to reconnect
+        setMirrorDevice(null);
+        requestAnimationFrame(() => setMirrorDevice(device));
+      } else {
+        setMirrorDevice(device);
+      }
+    },
+    [mirrorDevice],
+  );
   const [showQrDialog, setShowQrDialog] = useState(false);
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
 
@@ -36,9 +49,14 @@ export function DevicesPage() {
   });
 
   const deviceControl = runtimeConfig?.deviceControl;
+  const wsPort: number =
+    typeof (deviceControl as Record<string, unknown> | undefined)?.wsPort ===
+    "number"
+      ? ((deviceControl as Record<string, unknown>).wsPort as number)
+      : 18790;
   const qrUrl =
     deviceControl?.enabled && deviceControl?.localIp
-      ? `ws://${deviceControl.localIp}:${deviceControl.wsPort}/phone`
+      ? `ws://${deviceControl.localIp}:${wsPort}/phone`
       : null;
 
   const fetchDevices = useCallback(async () => {
@@ -63,36 +81,45 @@ export function DevicesPage() {
     }
   }, [t]);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   useEffect(() => {
-    const startPolling = () => {
-      if (intervalRef.current === null) {
-        intervalRef.current = setInterval(() => void fetchDevices(), 5000);
-      }
-    };
-    const stopPolling = () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        void fetchDevices();
-        startPolling();
-      }
-    };
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+    const es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
+    let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
-    void fetchDevices();
-    startPolling();
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    es.addEventListener("device_list", (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.devices) {
+          setDevices(data.devices);
+          setLoading(false);
+          setError(null);
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+
+    es.addEventListener("device_connected", () => {
+      void fetchDevices();
+    });
+
+    es.addEventListener("device_disconnected", () => {
+      void fetchDevices();
+    });
+
+    es.onerror = () => {
+      // SSE failed — fall back to polling
+      es.close();
+      if (fallbackInterval === null) {
+        fallbackInterval = setInterval(() => void fetchDevices(), 3000);
+      }
+    };
 
     return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      es.close();
+      if (fallbackInterval !== null) {
+        clearInterval(fallbackInterval);
+      }
     };
   }, [fetchDevices]);
 
@@ -137,7 +164,7 @@ export function DevicesPage() {
                 >
                   <div className="bg-white p-2 rounded-lg border border-border">
                     <QRCodeSVG
-                      value="https://nexu.io/tabby"
+                      value="https://github.com/coder-zkl1988/tabby-app/releases/download/v1.0.1/app-release.apk"
                       size={160}
                       level="M"
                     />
@@ -233,7 +260,7 @@ export function DevicesPage() {
                   key={device.deviceId}
                   device={device}
                   onTaskSuccess={fetchDevices}
-                  onViewScreen={setMirrorDevice}
+                  onViewScreen={handleViewScreen}
                 />
               ))}
             </div>

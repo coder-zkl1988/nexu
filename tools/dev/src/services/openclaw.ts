@@ -352,6 +352,11 @@ export async function startOpenclawDevProcess(options: {
   await ensureDirectory(runtimeConfig.openclawStateDir);
   await ensureParentDirectory(runtimeConfig.openclawConfigPath);
   await ensureDirectory(runtimeConfig.openclawLogDir);
+  // Ensure tabby-control screenshot dir exists under the state-managed media
+  // root so the image tool can access screenshots written by tabby-control.
+  await ensureDirectory(
+    join(runtimeConfig.openclawStateDir, "media", "tabby-screenshots"),
+  );
   const openclawEntryPath = await prepareOpenclawEntryPath();
 
   logOpenclawTiming("filesystem-ready", startedAt);

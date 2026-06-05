@@ -80,6 +80,8 @@ export interface LaunchdBootstrapEnv {
   openclawSkillsDir: string;
   /** Bundled static skills directory */
   skillhubStaticSkillsDir: string;
+  /** Bundled static experts directory */
+  experthubStaticExpertsDir: string;
   /** Platform templates directory */
   platformTemplatesDir: string;
   /** OpenClaw binary path */
@@ -675,6 +677,7 @@ export async function bootstrapWithLaunchd(
     webUrl: env.webUrl,
     openclawSkillsDir: env.openclawSkillsDir,
     skillhubStaticSkillsDir: env.skillhubStaticSkillsDir,
+    experthubStaticExpertsDir: env.experthubStaticExpertsDir,
     platformTemplatesDir: env.platformTemplatesDir,
     openclawBinPath: env.openclawBinPath,
     openclawExtensionsDir: env.openclawExtensionsDir,
@@ -1845,10 +1848,10 @@ function assertSafeRmTarget(targetPath: string): void {
 
 /**
  * Read CFBundleExecutable from Info.plist to get the actual binary name.
- * Falls back to "Nexu" if the plist cannot be parsed.
+ * Falls back to "Tabby" if the plist cannot be parsed.
  */
 function readBundleExecutableName(appContentsPath: string): string {
-  const fallback = "Nexu";
+  const fallback = "Tabby";
   try {
     const plistPath = path.join(appContentsPath, "Info.plist");
     const raw = readFileSync(plistPath, "utf8");

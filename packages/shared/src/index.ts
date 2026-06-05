@@ -1,4 +1,5 @@
 export * from "./schemas/bot.js";
+export * from "./schemas/expert.js";
 export * from "./schemas/channel.js";
 export * from "./schemas/gateway.js";
 export * from "./schemas/invite.js";
@@ -23,7 +24,9 @@ export * from "./schemas/rewards.js";
 export * from "./schemas/credit.js";
 export * from "./schemas/device-control.js";
 export * from "./schemas/device-mirror.js";
+export * from "./schemas/mirror-control-codec.js";
 export * from "./schemas/device-task-history.js";
+export * from "./schemas/schedule.js";
 export * from "./lifecycle/index.js";
 export * from "./platform/index.js";
 export { ensure } from "./ensure/index.js";

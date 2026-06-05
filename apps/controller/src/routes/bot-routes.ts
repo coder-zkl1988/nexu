@@ -11,6 +11,17 @@ import type { ControllerBindings } from "../types.js";
 const botIdParamSchema = z.object({ botId: z.string() });
 const errorSchema = z.object({ message: z.string() });
 
+function resolveLang(c: { req: { header(name: string): string | undefined } }):
+  | string
+  | undefined {
+  const acceptLang = c.req.header("Accept-Language");
+  if (acceptLang) {
+    const lower = acceptLang.toLowerCase();
+    if (lower.includes("zh")) return "zh-CN";
+  }
+  return undefined;
+}
+
 export function registerBotRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
@@ -49,7 +60,7 @@ export function registerBotRoutes(
     async (c) => {
       try {
         return c.json(
-          await container.agentService.getOrCreateDefaultBot(),
+          await container.agentService.getOrCreateDefaultBot(resolveLang(c)),
           200,
         );
       } catch (err) {
@@ -110,7 +121,13 @@ export function registerBotRoutes(
       },
     }),
     async (c) =>
-      c.json(await container.agentService.createBot(c.req.valid("json")), 200),
+      c.json(
+        await container.agentService.createBot(
+          c.req.valid("json"),
+          resolveLang(c),
+        ),
+        200,
+      ),
   );
 
   app.openapi(

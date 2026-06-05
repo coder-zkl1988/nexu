@@ -8,6 +8,7 @@ export function createMacBuildCapabilities({
     APPLE_ID: appleId,
     APPLE_APP_SPECIFIC_PASSWORD: appleAppSpecificPassword,
     APPLE_TEAM_ID: appleTeamId,
+    APPLE_NOTARY_PROFILE: appleNotaryProfile,
     ...notarizeEnv
   } = env;
 
@@ -21,6 +22,14 @@ export function createMacBuildCapabilities({
 
   if (appleTeamId) {
     notarizeEnv.NEXU_APPLE_TEAM_ID = appleTeamId;
+  }
+
+  if (appleNotaryProfile) {
+    notarizeEnv.NEXU_APPLE_NOTARY_PROFILE = appleNotaryProfile;
+  }
+
+  if (appleTeamId && !notarizeEnv.CSC_NAME) {
+    notarizeEnv.CSC_NAME = appleTeamId;
   }
 
   return {

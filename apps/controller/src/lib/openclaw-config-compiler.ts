@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { OpenClawConfig } from "@nexu/shared";
 import { openclawConfigSchema } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
@@ -16,6 +17,68 @@ import {
   resolveModelProviderApiKey,
 } from "./model-provider-runtime.js";
 import { normalizeProviderBaseUrl } from "./provider-base-url.js";
+
+/**
+ * Known model capabilities for popular providers.
+ * Keys are matched case-insensitively against the model ID (without provider prefix).
+ * When a match is found, the contextWindow and maxTokens values override the defaults.
+ */
+const MODEL_CAPABILITIES: Record<
+  string,
+  { contextWindow: number; maxTokens?: number; reasoning?: boolean }
+> = {
+  // DeepSeek V4
+  "deepseek-v4-pro": { contextWindow: 1048576, maxTokens: 384000 },
+  "deepseek-v4-flash": { contextWindow: 1048576, maxTokens: 384000 },
+  "deepseek-chat": { contextWindow: 1048576, maxTokens: 384000 },
+  "deepseek-reasoner": { contextWindow: 1048576, maxTokens: 384000 },
+
+  // OpenAI GPT
+  "gpt-5.4": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-5.4-mini": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-4.1": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-4.1-mini": { contextWindow: 1048576, maxTokens: 32768 },
+  "gpt-4.1-nano": { contextWindow: 1048576, maxTokens: 32768 },
+  "o4-mini": { contextWindow: 200000, maxTokens: 100000, reasoning: true },
+  o3: { contextWindow: 200000, maxTokens: 100000, reasoning: true },
+  "o3-mini": { contextWindow: 200000, maxTokens: 100000, reasoning: true },
+
+  // Anthropic Claude
+  "claude-sonnet-4-20250514": { contextWindow: 200000, maxTokens: 64000 },
+  "claude-opus-8-20250514": { contextWindow: 200000, maxTokens: 32000 },
+
+  // Google Gemini
+  "gemini-3-flash-preview": { contextWindow: 1048576, maxTokens: 65536 },
+  "gemini-3-pro-preview": { contextWindow: 1048576, maxTokens: 65536 },
+
+  // Groq
+  "llama-4-scout-17b-16e-instruct": { contextWindow: 1048576, maxTokens: 8192 },
+  "llama-4-maverick-17b-128e-instruct": {
+    contextWindow: 1048576,
+    maxTokens: 8192,
+  },
+};
+
+/** Look up known model capabilities by ID (case-insensitive, stripped of provider prefix). */
+function lookupModelCapabilities(modelId: string): {
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+} {
+  // Try exact match first
+  const lower = modelId.toLowerCase();
+  const exact = MODEL_CAPABILITIES[lower];
+  if (exact) return exact;
+
+  // Try matching the tail after the last slash (e.g. "deepseek/deepseek-v4-pro" → "deepseek-v4-pro")
+  const tail = lower.split("/").pop() ?? lower;
+  if (tail !== lower) {
+    const match = MODEL_CAPABILITIES[tail];
+    if (match) return match;
+  }
+
+  return {};
+}
 
 export type { OAuthConnectionState };
 
@@ -55,11 +118,19 @@ function getDesktopSelectedModel(config: NexuConfig): string | null {
     : null;
 }
 
-function buildModelEntry(id: string, name?: string) {
+const DEFAULT_CONTEXT_WINDOW = 200000;
+const DEFAULT_MAX_TOKENS = 8192;
+
+function buildModelEntry(
+  id: string,
+  name?: string,
+  overrides?: { contextWindow?: number; maxTokens?: number },
+) {
+  const known = lookupModelCapabilities(id);
   return {
     id,
     name: name ?? id,
-    reasoning: false,
+    reasoning: known.reasoning ?? false,
     input: ["text", "image"],
     cost: {
       input: 0,
@@ -67,8 +138,14 @@ function buildModelEntry(id: string, name?: string) {
       cacheRead: 0,
       cacheWrite: 0,
     },
-    contextWindow: 200000,
-    maxTokens: 8192,
+    contextWindow:
+      (overrides?.contextWindow && overrides.contextWindow > 0
+        ? overrides.contextWindow
+        : known.contextWindow) ?? DEFAULT_CONTEXT_WINDOW,
+    maxTokens:
+      (overrides?.maxTokens && overrides.maxTokens > 0
+        ? overrides.maxTokens
+        : known.maxTokens) ?? DEFAULT_MAX_TOKENS,
     compat: {
       supportsStore: false,
     },
@@ -138,6 +215,7 @@ function compileModelsConfig(
         buildModelEntry(
           buildProviderRuntimeModelId(descriptor, model.id),
           model.name,
+          { contextWindow: model.contextWindow, maxTokens: model.maxTokens },
         ),
       ),
     };
@@ -289,7 +367,7 @@ function compilePlugins(
   // writes it back to plugins.allow on disk; if controller's compiled
   // config omits it, the next write creates a diff that triggers a
   // gateway restart, and the cycle repeats.
-  const prewarmedChannelPluginIds = ["feishu", "openclaw-weixin"];
+  const prewarmedChannelPluginIds = ["openclaw-lark", "openclaw-weixin"];
   const analyticsEnabled = config.desktop.analyticsEnabled !== false;
   const platformPluginIds = [
     "nexu-runtime-model",
@@ -299,6 +377,7 @@ function compilePlugins(
     // toggle its `enabled` flag (hot-reload) instead of mutating
     // plugins.allow which triggers a full gateway restart (~11s).
     "langfuse-tracer",
+    "nexu-a2ui",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -313,7 +392,7 @@ function compilePlugins(
       ...connectedPluginIds,
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
-      ...(deviceControlEnabled ? ["lobster-device-control"] : []),
+      ...(deviceControlEnabled ? ["tabby-control"] : []),
     ]),
   ).sort();
 
@@ -323,7 +402,7 @@ function compilePlugins(
     },
     allow,
     entries: {
-      feishu: {
+      "openclaw-lark": {
         enabled: true,
       },
       "openclaw-weixin": {
@@ -352,15 +431,27 @@ function compilePlugins(
         : {}),
       "nexu-runtime-model": {
         enabled: true,
+        hooks: {
+          allowConversationAccess: true,
+        },
+      },
+      "nexu-platform-bootstrap": {
+        enabled: true,
       },
       "langfuse-tracer": {
         enabled: analyticsEnabled,
       },
       "nexu-credit-guard": {
         enabled: true,
+        hooks: {
+          allowConversationAccess: true,
+        },
         config: {
           contactUrl: "https://nexu.app/contact",
         },
+      },
+      "nexu-a2ui": {
+        enabled: true,
       },
       ...(resolvedMiniMaxOauth
         ? {
@@ -371,11 +462,12 @@ function compilePlugins(
         : {}),
       ...(deviceControlEnabled
         ? {
-            "lobster-device-control": {
+            "tabby-control": {
               enabled: true,
               config: {
                 wsPort: config.deviceControl.wsPort,
                 rpcPort: config.deviceControl.rpcPort,
+                mqttPort: 0, // explicitly disable MQTT broker — device mirror now uses WebSocket directly
               },
             },
           }
@@ -427,6 +519,15 @@ export function compileOpenClawConfig(
         mode: "hybrid",
       },
       controlUi: {
+        ...(env.openclawBuiltinExtensionsDir
+          ? {
+              root: path.join(
+                path.dirname(env.openclawBuiltinExtensionsDir),
+                "dist",
+                "control-ui",
+              ),
+            }
+          : {}),
         allowedOrigins: [env.webUrl],
         dangerouslyAllowHostHeaderOriginFallback: true,
       },
@@ -436,10 +537,11 @@ export function compileOpenClawConfig(
             enabled: true,
           },
         },
+        // tools.allow intentionally omitted — when absent, OpenClaw allows
+        // all plugin-registered tools. An explicit allowlist here would be
+        // validated as gateway.http.tools and reject unrecognised names.
       },
-      tools: {
-        allow: ["cron"],
-      },
+      // TEMP: removed to debug device_list visibility
     },
     agents: {
       defaults: {
@@ -460,12 +562,12 @@ export function compileOpenClawConfig(
             enabled: true,
           },
         },
-        // LLM call timeout. Default is 600s (10min) which causes the bot to
-        // appear unresponsive when the provider is down. 300s (5min) leaves
-        // room for reasoning models (o1/o3 long thinking chains) while
-        // cutting max wait time in half. Aligns with compaction's own 300s
-        // safety timeout (EMBEDDED_COMPACTION_TIMEOUT_MS).
-        timeoutSeconds: 300,
+        // LLM call timeout. OpenClaw default is 600s (10min).
+        // 900s (15min) accommodates multi-step device-control workflows
+        // (screenshot → describe → tap loops) that routinely exceed 5min
+        // on slow Android devices.  Still well under compaction's 900s
+        // safety timeout (EMBEDDED_COMPACTION_TIMEOUT_MS defaults to 900).
+        timeoutSeconds: 900,
         humanDelay: {
           mode: "off",
         },

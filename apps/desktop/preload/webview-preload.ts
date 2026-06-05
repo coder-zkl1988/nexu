@@ -39,6 +39,7 @@ const hostBridge: HostBridge = {
     posthogHost: runtimeConfig.posthogHost,
     isPackaged: !process.defaultApp,
     needsSetupAnimation: false,
+    devImmersive: false,
     webviewPreloadUrl: resolveWebviewPreloadUrl(import.meta.dirname),
   },
 

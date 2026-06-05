@@ -205,6 +205,7 @@ export async function coldStartMacLaunchdResidency(
     diagnosticsReporter,
     electronRoot,
     logColdStart,
+    onProgress,
     runtimeConfig,
     orchestrator,
     rotateDesktopLogSession,
@@ -214,6 +215,7 @@ export async function coldStartMacLaunchdResidency(
 }> {
   diagnosticsReporter?.markColdStartRunning("launchd bootstrap");
   logColdStart("starting launchd bootstrap");
+  onProgress?.("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
   const paths = await resolveLaunchdPaths(app.isPackaged, electronRoot);
@@ -267,11 +269,13 @@ export async function coldStartMacLaunchdResidency(
     logColdStart(
       `attached to running services (controller=${controllerPort} openclaw=${openclawPort} web=${webPort})`,
     );
+    onProgress?.("attached");
   } else {
     logColdStart("launchd services started, waiting for controller readiness");
     diagnosticsReporter?.markColdStartRunning(
       "waiting for controller readiness",
     );
+    onProgress?.("waiting_controller");
     await residencyContext.controllerReady;
     logColdStart("controller ready");
   }
@@ -279,6 +283,7 @@ export async function coldStartMacLaunchdResidency(
   const sessionId = rotateDesktopLogSession();
   logColdStart(`launchd cold start complete sessionId=${sessionId}`);
   diagnosticsReporter?.markColdStartSucceeded();
+  onProgress?.("complete");
 
   runtimeStateRef.launchd = launchdBootstrapResult.launchd;
   runtimeStateRef.labels = launchdBootstrapResult.labels;

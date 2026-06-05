@@ -20,6 +20,7 @@ export type GetApiV1BotsResponses = {
             status: 'active' | 'paused' | 'deleted';
             modelId: string;
             systemPrompt: string;
+            expertSlug?: string;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -35,6 +36,7 @@ export type PostApiV1BotsData = {
         systemPrompt?: string;
         modelId?: string;
         poolId?: string;
+        expertSlug?: string;
     };
     path?: never;
     query?: never;
@@ -53,6 +55,7 @@ export type PostApiV1BotsResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -90,6 +93,7 @@ export type GetApiV1BotsDefaultResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -149,6 +153,7 @@ export type GetApiV1BotsByBotIdResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -192,6 +197,7 @@ export type PatchApiV1BotsByBotIdResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -231,6 +237,7 @@ export type PostApiV1BotsByBotIdPauseResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -270,6 +277,7 @@ export type PostApiV1BotsByBotIdResumeResponses = {
         status: 'active' | 'paused' | 'deleted';
         modelId: string;
         systemPrompt: string;
+        expertSlug?: string;
         createdAt: string;
         updatedAt: string;
     };
@@ -1361,6 +1369,12 @@ export type GetApiV1ChannelsResponses = {
             botUserId?: string;
             createdAt: string;
             updatedAt: string;
+            feishuPermissions?: {
+                requireMention?: boolean;
+                dmPolicy?: 'open' | 'allowlist' | 'disabled';
+                groupPolicy?: 'open' | 'allowlist' | 'disabled';
+                allowFrom?: Array<string>;
+            };
         }>;
     };
 };
@@ -1413,6 +1427,7 @@ export type PostApiV1ChannelsSlackConnectData = {
         teamId?: string;
         teamName?: string;
         appId?: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1445,6 +1460,12 @@ export type PostApiV1ChannelsSlackConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1456,6 +1477,7 @@ export type PostApiV1ChannelsDiscordConnectData = {
         appId: string;
         guildId?: string;
         guildName?: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1522,6 +1544,12 @@ export type PostApiV1ChannelsDiscordConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1533,6 +1561,7 @@ export type PostApiV1ChannelsFeishuConnectData = {
         appSecret: string;
         connectionMode?: 'websocket' | 'webhook';
         verificationToken?: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1565,6 +1594,12 @@ export type PostApiV1ChannelsFeishuConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1573,6 +1608,7 @@ export type PostApiV1ChannelsFeishuConnectResponse = PostApiV1ChannelsFeishuConn
 export type PostApiV1ChannelsTelegramConnectData = {
     body: {
         botToken: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1639,6 +1675,12 @@ export type PostApiV1ChannelsTelegramConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1648,6 +1690,7 @@ export type PostApiV1ChannelsDingtalkConnectData = {
     body?: {
         clientId: string;
         clientSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1714,6 +1757,12 @@ export type PostApiV1ChannelsDingtalkConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1723,6 +1772,7 @@ export type PostApiV1ChannelsDingtalkTestData = {
     body?: {
         clientId: string;
         clientSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1756,6 +1806,7 @@ export type PostApiV1ChannelsQqbotConnectData = {
     body?: {
         appId: string;
         appSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1788,6 +1839,12 @@ export type PostApiV1ChannelsQqbotConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1797,6 +1854,7 @@ export type PostApiV1ChannelsQqbotTestData = {
     body?: {
         appId: string;
         appSecret: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -1830,6 +1888,7 @@ export type PostApiV1ChannelsWecomConnectData = {
     body?: {
         botId: string;
         secret: string;
+        nexuBotId: string;
     };
     path?: never;
     query?: never;
@@ -1862,6 +1921,12 @@ export type PostApiV1ChannelsWecomConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1871,6 +1936,7 @@ export type PostApiV1ChannelsWecomTestData = {
     body?: {
         botId: string;
         secret: string;
+        nexuBotId: string;
     };
     path?: never;
     query?: never;
@@ -1935,6 +2001,12 @@ export type GetApiV1ChannelsByChannelIdStatusResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -1981,6 +2053,123 @@ export type DeleteApiV1ChannelsByChannelIdResponses = {
 };
 
 export type DeleteApiV1ChannelsByChannelIdResponse = DeleteApiV1ChannelsByChannelIdResponses[keyof DeleteApiV1ChannelsByChannelIdResponses];
+
+export type PatchApiV1ChannelsByChannelIdData = {
+    body?: {
+        botId: string;
+    };
+    path: {
+        channelId: string;
+    };
+    query?: never;
+    url: '/api/v1/channels/{channelId}';
+};
+
+export type PatchApiV1ChannelsByChannelIdErrors = {
+    /**
+     * Invalid botId
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Channel not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Bot already bound to another channel of same type
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdError = PatchApiV1ChannelsByChannelIdErrors[keyof PatchApiV1ChannelsByChannelIdErrors];
+
+export type PatchApiV1ChannelsByChannelIdResponses = {
+    /**
+     * Updated channel
+     */
+    200: {
+        id: string;
+        botId: string;
+        channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
+        accountId: string;
+        status: 'pending' | 'connected' | 'disconnected' | 'error';
+        teamName: string;
+        appId?: string;
+        botUserId?: string;
+        createdAt: string;
+        updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdResponse = PatchApiV1ChannelsByChannelIdResponses[keyof PatchApiV1ChannelsByChannelIdResponses];
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsData = {
+    body?: {
+        requireMention?: boolean;
+        dmPolicy?: 'open' | 'allowlist' | 'disabled';
+        groupPolicy?: 'open' | 'allowlist' | 'disabled';
+        allowFrom?: Array<string>;
+    };
+    path: {
+        channelId: string;
+    };
+    query?: never;
+    url: '/api/v1/channels/{channelId}/feishu-permissions';
+};
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsErrors = {
+    /**
+     * Not a Feishu channel
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Channel not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsError = PatchApiV1ChannelsByChannelIdFeishuPermissionsErrors[keyof PatchApiV1ChannelsByChannelIdFeishuPermissionsErrors];
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
+    /**
+     * Updated channel with new feishu permissions
+     */
+    200: {
+        id: string;
+        botId: string;
+        channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
+        accountId: string;
+        status: 'pending' | 'connected' | 'disconnected' | 'error';
+        teamName: string;
+        appId?: string;
+        botUserId?: string;
+        createdAt: string;
+        updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponse = PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses[keyof PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses];
 
 export type PostApiV1ChannelsWhatsappQrStartData = {
     body?: never;
@@ -2050,6 +2239,7 @@ export type PostApiV1ChannelsWhatsappQrWaitResponse = PostApiV1ChannelsWhatsappQ
 export type PostApiV1ChannelsWhatsappConnectData = {
     body: {
         accountId: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -2082,6 +2272,12 @@ export type PostApiV1ChannelsWhatsappConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -2154,6 +2350,7 @@ export type PostApiV1ChannelsWechatQrWaitResponse = PostApiV1ChannelsWechatQrWai
 export type PostApiV1ChannelsWechatConnectData = {
     body: {
         accountId: string;
+        botId: string;
     };
     path?: never;
     query?: never;
@@ -2186,6 +2383,12 @@ export type PostApiV1ChannelsWechatConnectResponses = {
         botUserId?: string;
         createdAt: string;
         updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
     };
 };
 
@@ -2297,6 +2500,73 @@ export type GetApiV1ChatSessionResponses = {
 
 export type GetApiV1ChatSessionResponse = GetApiV1ChatSessionResponses[keyof GetApiV1ChatSessionResponses];
 
+export type PostApiV1ChatLocalStartData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        message: {
+            type: 'text' | 'image' | 'video' | 'audio' | 'file';
+            content: string;
+            metadata?: {
+                width?: number;
+                height?: number;
+                duration?: number;
+                mimeType?: string;
+                filename?: string;
+                size?: number;
+            };
+            attachments?: Array<{
+                type: 'image' | 'file';
+                content: string;
+                metadata?: {
+                    mimeType?: string;
+                    filename?: string;
+                    size?: number;
+                };
+            }>;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/local/start';
+};
+
+export type PostApiV1ChatLocalStartResponses = {
+    /**
+     * Local chat run started
+     */
+    200: {
+        sessionKey: string;
+        session: {
+            id: string;
+            botId: string;
+            sessionKey: string;
+            channelType: string;
+            channelId: string;
+            title: string;
+            status: string;
+            messageCount: number;
+            lastMessageAt: string;
+            metadata: {
+                [key: string]: unknown;
+            };
+            createdAt: string;
+            updatedAt: string;
+        };
+        message: {
+            id: string;
+            runId?: string;
+            role: string;
+            type: string;
+            content?: unknown;
+            timestamp: number;
+            createdAt: string;
+        };
+    };
+};
+
+export type PostApiV1ChatLocalStartResponse = PostApiV1ChatLocalStartResponses[keyof PostApiV1ChatLocalStartResponses];
+
 export type PostApiV1ChatLocalData = {
     body?: {
         botId: string;
@@ -2351,6 +2621,7 @@ export type PostApiV1ChatLocalResponses = {
         };
         message: {
             id: string;
+            runId?: string;
             role: string;
             type: string;
             content?: unknown;
@@ -2361,6 +2632,29 @@ export type PostApiV1ChatLocalResponses = {
 };
 
 export type PostApiV1ChatLocalResponse = PostApiV1ChatLocalResponses[keyof PostApiV1ChatLocalResponses];
+
+export type PostApiV1ChatCancelData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/cancel';
+};
+
+export type PostApiV1ChatCancelResponses = {
+    /**
+     * Chat session aborted
+     */
+    200: {
+        ok: boolean;
+        aborted: boolean;
+        runIds: Array<string>;
+    };
+};
+
+export type PostApiV1ChatCancelResponse = PostApiV1ChatCancelResponses[keyof PostApiV1ChatCancelResponses];
 
 export type GetApiV1ChatHistoryData = {
     body?: never;
@@ -3917,6 +4211,270 @@ export type PostApiV1SkillhubImportResponses = {
 
 export type PostApiV1SkillhubImportResponse = PostApiV1SkillhubImportResponses[keyof PostApiV1SkillhubImportResponses];
 
+export type GetApiV1ExperthubCatalogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/experthub/catalog';
+};
+
+export type GetApiV1ExperthubCatalogResponses = {
+    /**
+     * Catalog of experts (bundled + managed) with ledger
+     */
+    200: {
+        experts: Array<{
+            slug: string;
+            name: string;
+            emoji: string;
+            category: string;
+            description: string;
+            tags?: Array<string>;
+            version: string;
+            author?: string;
+            avatarDataUrl?: string;
+        }>;
+        installedSlugs: Array<string>;
+        installedExperts: Array<{
+            slug: string;
+            version: string;
+            botId: string;
+            installedAt: string;
+            name?: string;
+            avatarDataUrl?: string;
+            description?: string;
+            configuredSkills?: Array<string>;
+        }>;
+        meta: {
+            version: string;
+            updatedAt: string;
+            count: number;
+        };
+    };
+};
+
+export type GetApiV1ExperthubCatalogResponse = GetApiV1ExperthubCatalogResponses[keyof GetApiV1ExperthubCatalogResponses];
+
+export type PostApiV1ExperthubInstallData = {
+    body?: {
+        slug: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/experthub/install';
+};
+
+export type PostApiV1ExperthubInstallErrors = {
+    /**
+     * Expert not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1ExperthubInstallError = PostApiV1ExperthubInstallErrors[keyof PostApiV1ExperthubInstallErrors];
+
+export type PostApiV1ExperthubInstallResponses = {
+    /**
+     * Expert installed
+     */
+    200: {
+        ok: true;
+        botId: string;
+        slug: string;
+    };
+};
+
+export type PostApiV1ExperthubInstallResponse = PostApiV1ExperthubInstallResponses[keyof PostApiV1ExperthubInstallResponses];
+
+export type PostApiV1ExperthubUninstallData = {
+    body?: {
+        slug: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/experthub/uninstall';
+};
+
+export type PostApiV1ExperthubUninstallResponses = {
+    /**
+     * Expert uninstalled (ledger entry removed)
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type PostApiV1ExperthubUninstallResponse = PostApiV1ExperthubUninstallResponses[keyof PostApiV1ExperthubUninstallResponses];
+
+export type PutApiV1ExperthubExpertsBySlugSkillsData = {
+    body?: {
+        skills: Array<string>;
+    };
+    path: {
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/experthub/experts/{slug}/skills';
+};
+
+export type PutApiV1ExperthubExpertsBySlugSkillsErrors = {
+    /**
+     * Expert not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PutApiV1ExperthubExpertsBySlugSkillsError = PutApiV1ExperthubExpertsBySlugSkillsErrors[keyof PutApiV1ExperthubExpertsBySlugSkillsErrors];
+
+export type PutApiV1ExperthubExpertsBySlugSkillsResponses = {
+    /**
+     * Expert skills updated
+     */
+    200: {
+        ok: true;
+        configuredSkills: Array<string>;
+    };
+};
+
+export type PutApiV1ExperthubExpertsBySlugSkillsResponse = PutApiV1ExperthubExpertsBySlugSkillsResponses[keyof PutApiV1ExperthubExpertsBySlugSkillsResponses];
+
+export type PostApiV1ExperthubRefreshData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/experthub/refresh';
+};
+
+export type PostApiV1ExperthubRefreshResponses = {
+    /**
+     * Remote catalog refreshed
+     */
+    200: {
+        meta: {
+            version: string;
+            updatedAt: string;
+            count: number;
+        };
+    };
+};
+
+export type PostApiV1ExperthubRefreshResponse = PostApiV1ExperthubRefreshResponses[keyof PostApiV1ExperthubRefreshResponses];
+
+export type GetApiV1ExperthubExpertsBySlugData = {
+    body?: never;
+    path: {
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/experthub/experts/{slug}';
+};
+
+export type GetApiV1ExperthubExpertsBySlugErrors = {
+    /**
+     * Expert not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1ExperthubExpertsBySlugError = GetApiV1ExperthubExpertsBySlugErrors[keyof GetApiV1ExperthubExpertsBySlugErrors];
+
+export type GetApiV1ExperthubExpertsBySlugResponses = {
+    /**
+     * Full expert manifest
+     */
+    200: {
+        schemaVersion: 1;
+        slug: string;
+        name: string;
+        emoji: string;
+        category: string;
+        description: string;
+        tags?: Array<string>;
+        version: string;
+        author?: string;
+        systemPrompt: string;
+        modelId?: string;
+        requiredSkills?: Array<string>;
+        workspaceFiles?: {
+            [key: string]: string;
+        };
+        avatarDataUrl?: string;
+    };
+};
+
+export type GetApiV1ExperthubExpertsBySlugResponse = GetApiV1ExperthubExpertsBySlugResponses[keyof GetApiV1ExperthubExpertsBySlugResponses];
+
+export type PostApiV1ExperthubCustomData = {
+    body?: {
+        name: string;
+        avatarDataUrl?: string;
+        modelId: string;
+        description?: string;
+        skills?: Array<string>;
+        existingSlug?: string;
+        workspaceFiles?: {
+            'AGENTS.md'?: string;
+            'IDENTITY.md'?: string;
+            'MEMORY.md'?: string;
+            'SOUL.md'?: string;
+            'USER.md'?: string;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/experthub/custom';
+};
+
+export type PostApiV1ExperthubCustomResponses = {
+    /**
+     * Custom expert created
+     */
+    200: {
+        ok: true;
+        botId: string;
+        slug: string;
+    };
+};
+
+export type PostApiV1ExperthubCustomResponse = PostApiV1ExperthubCustomResponses[keyof PostApiV1ExperthubCustomResponses];
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameData = {
+    body?: never;
+    path: {
+        filename: 'AGENTS.md' | 'IDENTITY.md' | 'SOUL.md' | 'USER.md';
+    };
+    query?: {
+        lang?: string;
+    };
+    url: '/api/v1/experthub/platform-templates/{filename}';
+};
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameErrors = {
+    /**
+     * Template file not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameError = GetApiV1ExperthubPlatformTemplatesByFilenameErrors[keyof GetApiV1ExperthubPlatformTemplatesByFilenameErrors];
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameResponses = {
+    /**
+     * Platform template file content
+     */
+    200: string;
+};
+
+export type GetApiV1ExperthubPlatformTemplatesByFilenameResponse = GetApiV1ExperthubPlatformTemplatesByFilenameResponses[keyof GetApiV1ExperthubPlatformTemplatesByFilenameResponses];
+
 export type GetApiV1MeData = {
     body?: never;
     path?: never;
@@ -4529,6 +5087,206 @@ export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses = {
 };
 
 export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponse = DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses];
+
+export type GetApiV1SchedulesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/schedules';
+};
+
+export type GetApiV1SchedulesResponses = {
+    /**
+     * Schedule list
+     */
+    200: {
+        schedules: Array<{
+            botId: string;
+            name: string;
+            cron: string;
+            timezone?: string;
+            prompt: string;
+            enabled?: boolean;
+            source?: 'ui' | 'agent';
+            sessionKey?: string;
+            channelType?: string;
+            channelId?: string;
+            description?: string;
+            id: string;
+            createdAt: string;
+            updatedAt: string;
+            externalId?: string;
+        }>;
+    };
+};
+
+export type GetApiV1SchedulesResponse = GetApiV1SchedulesResponses[keyof GetApiV1SchedulesResponses];
+
+export type PostApiV1SchedulesData = {
+    body?: {
+        botId: string;
+        name: string;
+        cron: string;
+        timezone?: string;
+        prompt: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/schedules';
+};
+
+export type PostApiV1SchedulesResponses = {
+    /**
+     * Created
+     */
+    200: {
+        botId: string;
+        name: string;
+        cron: string;
+        timezone?: string;
+        prompt: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+        id: string;
+        createdAt: string;
+        updatedAt: string;
+        externalId?: string;
+    };
+};
+
+export type PostApiV1SchedulesResponse = PostApiV1SchedulesResponses[keyof PostApiV1SchedulesResponses];
+
+export type DeleteApiV1SchedulesByScheduleIdData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/api/v1/schedules/{scheduleId}';
+};
+
+export type DeleteApiV1SchedulesByScheduleIdResponses = {
+    /**
+     * Deleted
+     */
+    200: {
+        success: boolean;
+    };
+};
+
+export type DeleteApiV1SchedulesByScheduleIdResponse = DeleteApiV1SchedulesByScheduleIdResponses[keyof DeleteApiV1SchedulesByScheduleIdResponses];
+
+export type PatchApiV1SchedulesByScheduleIdData = {
+    body?: {
+        name?: string;
+        cron?: string;
+        timezone?: string;
+        prompt?: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+    };
+    path: {
+        scheduleId: string;
+    };
+    query?: never;
+    url: '/api/v1/schedules/{scheduleId}';
+};
+
+export type PatchApiV1SchedulesByScheduleIdErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1SchedulesByScheduleIdError = PatchApiV1SchedulesByScheduleIdErrors[keyof PatchApiV1SchedulesByScheduleIdErrors];
+
+export type PatchApiV1SchedulesByScheduleIdResponses = {
+    /**
+     * Updated
+     */
+    200: {
+        botId: string;
+        name: string;
+        cron: string;
+        timezone?: string;
+        prompt: string;
+        enabled?: boolean;
+        source?: 'ui' | 'agent';
+        sessionKey?: string;
+        channelType?: string;
+        channelId?: string;
+        description?: string;
+        id: string;
+        createdAt: string;
+        updatedAt: string;
+        externalId?: string;
+    };
+};
+
+export type PatchApiV1SchedulesByScheduleIdResponse = PatchApiV1SchedulesByScheduleIdResponses[keyof PatchApiV1SchedulesByScheduleIdResponses];
+
+export type GetApiV1SchedulesByScheduleIdRunsData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+    };
+    query?: {
+        limit?: number;
+        offset?: number;
+    };
+    url: '/api/v1/schedules/{scheduleId}/runs';
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsErrors = {
+    /**
+     * Schedule not found or no cron job registered
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsError = GetApiV1SchedulesByScheduleIdRunsErrors[keyof GetApiV1SchedulesByScheduleIdRunsErrors];
+
+export type GetApiV1SchedulesByScheduleIdRunsResponses = {
+    /**
+     * Schedule run history
+     */
+    200: {
+        entries: Array<{
+            ts: number;
+            jobId: string;
+            action: 'finished';
+            status?: 'ok' | 'error' | 'skipped';
+            error?: string;
+            summary?: string;
+            runAtMs?: number;
+            durationMs?: number;
+            nextRunAtMs?: number;
+        }>;
+        total: number;
+        hasMore: boolean;
+    };
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesByScheduleIdRunsResponses[keyof GetApiV1SchedulesByScheduleIdRunsResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

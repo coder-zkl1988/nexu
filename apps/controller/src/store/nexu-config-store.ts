@@ -9,13 +9,17 @@ import type {
   ConnectQqbotInput,
   ConnectSlackInput,
   ConnectWecomInput,
+  CreateScheduleInput,
   CreditRechargeRecord,
   DesktopRewardClaimProof,
   DesktopRewardsStatus,
+  FeishuPermissions,
   ModelProviderConfig,
   PersistedModelsConfig,
   RewardTask,
   RewardTaskId,
+  ScheduleResponse,
+  UpdateScheduleInput,
 } from "@nexu/shared";
 import {
   type claimDesktopRewardResponseSchema,
@@ -608,6 +612,23 @@ function deriveDesktopBalanceBreakdown(input: {
   };
 }
 
+/**
+ * Remove secrets whose keys start with any of the given channel ID prefixes.
+ * Used to clean up orphaned secrets when a channel is replaced or deleted.
+ */
+function removeOrphanedSecrets(
+  secrets: Record<string, string>,
+  channelIds: string[],
+): Record<string, string> {
+  if (channelIds.length === 0) return secrets;
+  const prefixes = channelIds.map((id) => `channel:${id}:`);
+  return Object.fromEntries(
+    Object.entries(secrets).filter(
+      ([key]) => !prefixes.some((p) => key.startsWith(p)),
+    ),
+  );
+}
+
 export class NexuConfigStore {
   private readonly store: LowDbStore<NexuConfig>;
   private readonly cloudProfilesStore: LowDbStore<CloudProfilesFile>;
@@ -644,10 +665,11 @@ export class NexuConfigStore {
           analyticsEnabled: true,
         },
         deviceControl: {
-          enabled: false,
+          enabled: true,
           wsPort: 18790,
           rpcPort: 18801,
         },
+        schedules: [],
         secrets: {},
       }),
     );
@@ -981,7 +1003,28 @@ export class NexuConfigStore {
     systemPrompt?: string;
     modelId?: string;
     poolId?: string;
+    expertSlug?: string | null;
   }): Promise<BotResponse> {
+    // Dedup: if expertSlug is set and an active bot with the same expertSlug
+    // already exists, return the existing bot instead of creating a duplicate.
+    if (input.expertSlug) {
+      const config = await this.getConfig();
+      const existing = config.bots.find(
+        (b) => b.expertSlug === input.expertSlug && b.status === "active",
+      );
+      if (existing) {
+        logger.info(
+          {
+            expertSlug: input.expertSlug,
+            existingBotId: existing.id,
+            requestedName: input.name,
+          },
+          "bot_creation_skipped_expert_already_exists",
+        );
+        return existing;
+      }
+    }
+
     const createdAt = now();
     const bot: BotResponse = {
       id: crypto.randomUUID(),
@@ -991,6 +1034,7 @@ export class NexuConfigStore {
       status: "active",
       modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
       systemPrompt: input.systemPrompt ?? null,
+      expertSlug: input.expertSlug ?? null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1086,10 +1130,110 @@ export class NexuConfigStore {
         ...config,
         bots,
         channels: config.channels.filter((channel) => channel.botId !== botId),
+        schedules: (config.schedules ?? []).filter((s) => s.botId !== botId),
       };
     });
 
     return deleted;
+  }
+
+  async listSchedules(): Promise<ScheduleResponse[]> {
+    const config = await this.getConfig();
+    return config.schedules ?? [];
+  }
+
+  async getSchedule(id: string): Promise<ScheduleResponse | null> {
+    const config = await this.getConfig();
+    return config.schedules?.find((s) => s.id === id) ?? null;
+  }
+
+  async createSchedule(input: CreateScheduleInput): Promise<ScheduleResponse> {
+    const createdAt = now();
+    const schedule: ScheduleResponse = {
+      id: crypto.randomUUID(),
+      botId: input.botId,
+      name: input.name,
+      cron: input.cron,
+      timezone: input.timezone ?? "UTC",
+      prompt: input.prompt,
+      enabled: input.enabled ?? true,
+      source: input.source ?? "ui",
+      sessionKey: input.sessionKey,
+      channelType: input.channelType,
+      channelId: input.channelId,
+      description: input.description,
+      createdAt,
+      updatedAt: createdAt,
+    };
+
+    await this.store.update((config) => ({
+      ...config,
+      schedules: [...(config.schedules ?? []), schedule],
+    }));
+
+    return schedule;
+  }
+
+  async updateSchedule(
+    id: string,
+    input: UpdateScheduleInput,
+  ): Promise<ScheduleResponse | null> {
+    let updated: ScheduleResponse | null = null;
+
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((s) => {
+        if (s.id !== id) return s;
+        updated = {
+          ...s,
+          name: input.name ?? s.name,
+          cron: input.cron ?? s.cron,
+          timezone: input.timezone ?? s.timezone,
+          prompt: input.prompt ?? s.prompt,
+          enabled: input.enabled ?? s.enabled,
+          source: input.source ?? s.source,
+          sessionKey:
+            input.sessionKey !== undefined ? input.sessionKey : s.sessionKey,
+          channelType:
+            input.channelType !== undefined ? input.channelType : s.channelType,
+          channelId:
+            input.channelId !== undefined ? input.channelId : s.channelId,
+          description:
+            input.description !== undefined ? input.description : s.description,
+          updatedAt: now(),
+        };
+        return updated;
+      }),
+    }));
+
+    return updated;
+  }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    let deleted = false;
+
+    await this.store.update((config) => {
+      const schedules = (config.schedules ?? []).filter((s) => {
+        if (s.id === id) {
+          deleted = true;
+          return false;
+        }
+        return true;
+      });
+
+      return { ...config, schedules };
+    });
+
+    return deleted;
+  }
+
+  async setScheduleExternalId(id: string, externalId: string): Promise<void> {
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((s) =>
+        s.id === id ? { ...s, externalId } : s,
+      ),
+    }));
   }
 
   async listChannels(): Promise<ChannelResponse[]> {
@@ -1128,10 +1272,87 @@ export class NexuConfigStore {
     return config.channels.find((channel) => channel.id === channelId) ?? null;
   }
 
+  async assertBotNotBoundToSameChannelType(
+    botId: string,
+    channelType: string,
+    excludeChannelId?: string,
+  ): Promise<void> {
+    const config = await this.getConfig();
+    const conflict = config.channels.find(
+      (ch) =>
+        ch.botId === botId &&
+        ch.channelType === channelType &&
+        ch.id !== excludeChannelId,
+    );
+    if (conflict) {
+      throw new Error(
+        `Bot ${botId} is already bound to another ${channelType} channel (${conflict.id})`,
+      );
+    }
+  }
+
+  async updateChannel(
+    channelId: string,
+    patch: Partial<Pick<ChannelResponse, "botId" | "feishuPermissions">>,
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+
+    if (patch.botId !== undefined) {
+      const bot = await this.getBot(patch.botId);
+      if (!bot) {
+        throw new Error(`Bot not found: ${patch.botId}`);
+      }
+      await this.assertBotNotBoundToSameChannelType(
+        patch.botId,
+        existing.channelType,
+        channelId,
+      );
+    }
+
+    const updated: ChannelResponse = {
+      ...existing,
+      ...(patch.botId !== undefined ? { botId: patch.botId } : {}),
+      ...(patch.feishuPermissions !== undefined
+        ? { feishuPermissions: patch.feishuPermissions }
+        : {}),
+      updatedAt: now(),
+    };
+
+    await this.store.update((config) => ({
+      ...config,
+      channels: config.channels.map((channel) =>
+        channel.id === channelId ? updated : channel,
+      ),
+    }));
+
+    return updated;
+  }
+
+  async updateChannelFeishuPermissions(
+    channelId: string,
+    perms: FeishuPermissions | null,
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+    if (existing.channelType !== "feishu") {
+      throw new Error(`Not a Feishu channel: ${channelId}`);
+    }
+    return this.updateChannel(channelId, { feishuPermissions: perms });
+  }
+
   async connectSlack(
     input: ConnectSlackInput & { botUserId?: string | null },
   ): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "slack");
     const connectedAt = now();
     const teamId = input.teamId ?? crypto.randomUUID();
     const appId = input.appId ?? crypto.randomUUID();
@@ -1149,24 +1370,33 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter(
           (existing) =>
-            !(
-              existing.channelType === channel.channelType &&
-              existing.accountId === channel.accountId
-            ),
-        ),
-        channel,
-      ],
-      secrets: {
-        ...config.secrets,
-        [`channel:${channel.id}:botToken`]: input.botToken,
-        [`channel:${channel.id}:signingSecret`]: input.signingSecret,
-      },
-    }));
+            existing.channelType === channel.channelType &&
+            existing.accountId === channel.accountId,
+        )
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) =>
+              !(
+                existing.channelType === channel.channelType &&
+                existing.accountId === channel.accountId
+              ),
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:botToken`]: input.botToken,
+          [`channel:${channel.id}:signingSecret`]: input.signingSecret,
+        },
+      };
+    });
 
     return channel;
   }
@@ -1174,7 +1404,11 @@ export class NexuConfigStore {
   async connectDiscord(
     input: ConnectDiscordInput & { botUserId?: string | null },
   ): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "discord");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1189,29 +1423,45 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter(
           (existing) =>
-            !(
-              existing.channelType === channel.channelType &&
-              existing.accountId === channel.accountId
-            ),
-        ),
-        channel,
-      ],
-      secrets: {
-        ...config.secrets,
-        [`channel:${channel.id}:botToken`]: input.botToken,
-      },
-    }));
+            existing.channelType === channel.channelType &&
+            existing.accountId === channel.accountId,
+        )
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) =>
+              !(
+                existing.channelType === channel.channelType &&
+                existing.accountId === channel.accountId
+              ),
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:botToken`]: input.botToken,
+        },
+      };
+    });
 
     return channel;
   }
 
-  async connectWechat(input: { accountId: string }): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+  async connectWechat(input: {
+    accountId: string;
+    botId: string;
+  }): Promise<ChannelResponse> {
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "wechat");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1226,19 +1476,29 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter(
           (existing) =>
-            !(
-              existing.channelType === channel.channelType &&
-              existing.accountId === channel.accountId
-            ),
-        ),
-        channel,
-      ],
-    }));
+            existing.channelType === channel.channelType &&
+            existing.accountId === channel.accountId,
+        )
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) =>
+              !(
+                existing.channelType === channel.channelType &&
+                existing.accountId === channel.accountId
+              ),
+          ),
+          channel,
+        ],
+        secrets: removeOrphanedSecrets(config.secrets, replacedIds),
+      };
+    });
 
     return channel;
   }
@@ -1248,8 +1508,13 @@ export class NexuConfigStore {
     telegramBotId: string;
     botUsername: string | null;
     displayName: string | null;
+    botId: string;
   }): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "telegram");
     const connectedAt = now();
     const accountId = `telegram-${input.telegramBotId}`;
     const channel: ChannelResponse = {
@@ -1265,33 +1530,32 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      ...(() => {
-        const previous = config.channels.find(
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter(
           (existing) =>
             existing.channelType === channel.channelType &&
             existing.accountId === channel.accountId,
-        );
-        const secrets = { ...config.secrets };
-        if (previous) {
-          delete secrets[`channel:${previous.id}:botToken`];
-          delete secrets[`channel:${previous.id}:authDir`];
-        }
-        secrets[`channel:${channel.id}:botToken`] = input.botToken;
-        return { secrets };
-      })(),
-      channels: [
-        ...config.channels.filter(
-          (existing) =>
-            !(
-              existing.channelType === channel.channelType &&
-              existing.accountId === channel.accountId
-            ),
-        ),
-        channel,
-      ],
-    }));
+        )
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) =>
+              !(
+                existing.channelType === channel.channelType &&
+                existing.accountId === channel.accountId
+              ),
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:botToken`]: input.botToken,
+        },
+      };
+    });
 
     return channel;
   }
@@ -1299,8 +1563,13 @@ export class NexuConfigStore {
   async connectWhatsapp(input: {
     accountId: string;
     authDir?: string | null;
+    botId: string;
   }): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "whatsapp");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1315,41 +1584,45 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      ...(() => {
-        const previous = config.channels.find(
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter(
           (existing) =>
             existing.channelType === channel.channelType &&
             existing.accountId === channel.accountId,
-        );
-        const secrets = { ...config.secrets };
-        if (previous) {
-          delete secrets[`channel:${previous.id}:botToken`];
-          delete secrets[`channel:${previous.id}:authDir`];
-        }
-        if (input.authDir) {
-          secrets[`channel:${channel.id}:authDir`] = input.authDir;
-        }
-        return { secrets };
-      })(),
-      channels: [
-        ...config.channels.filter(
-          (existing) =>
-            !(
-              existing.channelType === channel.channelType &&
-              existing.accountId === channel.accountId
-            ),
-        ),
-        channel,
-      ],
-    }));
+        )
+        .map((ch) => ch.id);
+      const secrets: Record<string, string> = {
+        ...removeOrphanedSecrets(config.secrets, replacedIds),
+      };
+      if (input.authDir) {
+        secrets[`channel:${channel.id}:authDir`] = input.authDir;
+      }
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) =>
+              !(
+                existing.channelType === channel.channelType &&
+                existing.accountId === channel.accountId
+              ),
+          ),
+          channel,
+        ],
+        secrets,
+      };
+    });
 
     return channel;
   }
 
   async connectFeishu(input: ConnectFeishuInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "feishu");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1362,40 +1635,55 @@ export class NexuConfigStore {
       botUserId: null,
       createdAt: connectedAt,
       updatedAt: connectedAt,
+      feishuPermissions: null,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter(
           (existing) =>
-            !(
-              existing.channelType === channel.channelType &&
-              existing.accountId === channel.accountId
-            ),
-        ),
-        channel,
-      ],
-      secrets: {
-        ...config.secrets,
-        [`channel:${channel.id}:appSecret`]: input.appSecret,
-        [`channel:${channel.id}:appId`]: input.appId,
-        [`channel:${channel.id}:connectionMode`]:
-          input.connectionMode ?? "websocket",
-        ...(input.verificationToken
-          ? {
-              [`channel:${channel.id}:verificationToken`]:
-                input.verificationToken,
-            }
-          : {}),
-      },
-    }));
+            existing.channelType === channel.channelType &&
+            existing.accountId === channel.accountId,
+        )
+        .map((ch) => ch.id);
+
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) =>
+              !(
+                existing.channelType === channel.channelType &&
+                existing.accountId === channel.accountId
+              ),
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:appSecret`]: input.appSecret,
+          [`channel:${channel.id}:appId`]: input.appId,
+          [`channel:${channel.id}:connectionMode`]:
+            input.connectionMode ?? "websocket",
+          ...(input.verificationToken
+            ? {
+                [`channel:${channel.id}:verificationToken`]:
+                  input.verificationToken,
+              }
+            : {}),
+        },
+      };
+    });
 
     return channel;
   }
 
   async connectQqbot(input: ConnectQqbotInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "qqbot");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1410,26 +1698,35 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
-          (existing) => existing.channelType !== channel.channelType,
-        ),
-        channel,
-      ],
-      secrets: {
-        ...config.secrets,
-        [`channel:${channel.id}:appId`]: input.appId,
-        [`channel:${channel.id}:clientSecret`]: input.appSecret,
-      },
-    }));
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter((existing) => existing.channelType === channel.channelType)
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) => existing.channelType !== channel.channelType,
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:appId`]: input.appId,
+          [`channel:${channel.id}:clientSecret`]: input.appSecret,
+        },
+      };
+    });
 
     return channel;
   }
 
   async connectDingtalk(input: ConnectDingtalkInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.botId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.botId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "dingtalk");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1444,26 +1741,35 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
-          (existing) => existing.channelType !== channel.channelType,
-        ),
-        channel,
-      ],
-      secrets: {
-        ...config.secrets,
-        [`channel:${channel.id}:clientId`]: input.clientId,
-        [`channel:${channel.id}:clientSecret`]: input.clientSecret,
-      },
-    }));
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter((existing) => existing.channelType === channel.channelType)
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) => existing.channelType !== channel.channelType,
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:clientId`]: input.clientId,
+          [`channel:${channel.id}:clientSecret`]: input.clientSecret,
+        },
+      };
+    });
 
     return channel;
   }
 
   async connectWecom(input: ConnectWecomInput): Promise<ChannelResponse> {
-    const bot = await this.getOrCreateDefaultBot();
+    const bot = await this.getBot(input.nexuBotId);
+    if (!bot) {
+      throw new Error(`Bot not found: ${input.nexuBotId}`);
+    }
+    await this.assertBotNotBoundToSameChannelType(bot.id, "wecom");
     const connectedAt = now();
     const channel: ChannelResponse = {
       id: crypto.randomUUID(),
@@ -1478,20 +1784,25 @@ export class NexuConfigStore {
       updatedAt: connectedAt,
     };
 
-    await this.store.update((config) => ({
-      ...config,
-      channels: [
-        ...config.channels.filter(
-          (existing) => existing.channelType !== channel.channelType,
-        ),
-        channel,
-      ],
-      secrets: {
-        ...config.secrets,
-        [`channel:${channel.id}:botId`]: input.botId,
-        [`channel:${channel.id}:secret`]: input.secret,
-      },
-    }));
+    await this.store.update((config) => {
+      const replacedIds = config.channels
+        .filter((existing) => existing.channelType === channel.channelType)
+        .map((ch) => ch.id);
+      return {
+        ...config,
+        channels: [
+          ...config.channels.filter(
+            (existing) => existing.channelType !== channel.channelType,
+          ),
+          channel,
+        ],
+        secrets: {
+          ...removeOrphanedSecrets(config.secrets, replacedIds),
+          [`channel:${channel.id}:botId`]: input.botId,
+          [`channel:${channel.id}:secret`]: input.secret,
+        },
+      };
+    });
 
     return channel;
   }
@@ -1504,24 +1815,13 @@ export class NexuConfigStore {
       channels: config.channels.flatMap((channel) => {
         if (channel.id === channelId) {
           disconnectedChannel = channel;
-          if (channel.channelType === "feishu") {
-            return [
-              {
-                ...channel,
-                status: "disconnected",
-                updatedAt: new Date().toISOString(),
-              },
-            ];
-          }
-
           return [];
         }
 
         return [channel];
       }),
       secrets:
-        disconnectedChannel === null ||
-        disconnectedChannel.channelType === "feishu"
+        disconnectedChannel === null
           ? config.secrets
           : Object.fromEntries(
               Object.entries(config.secrets).filter(
@@ -1531,11 +1831,6 @@ export class NexuConfigStore {
     }));
 
     return disconnectedChannel !== null;
-  }
-
-  async listProviders(): Promise<StoredProviderResponse[]> {
-    const config = await this.getConfig();
-    return listCanonicalProviders(config);
   }
 
   async getProvider(
@@ -1558,7 +1853,9 @@ export class NexuConfigStore {
     let created = false;
 
     await this.store.update((config) => {
-      const existing = config.models.providers[providerId];
+      const existing = config.models.providers[providerId] as
+        | ModelProviderConfig
+        | undefined;
       const nextProvider = buildProviderConfig(
         providerId,
         input,
@@ -1595,14 +1892,18 @@ export class NexuConfigStore {
     };
   }
 
+  async listProviders(): Promise<StoredProviderResponse[]> {
+    return listCanonicalProviders(await this.getConfig());
+  }
+
   async setProviderOauthCredentials(
     providerId: string,
     input: {
-      displayName?: string;
-      enabled?: boolean;
-      baseUrl?: string | null;
       models: string[];
       oauthRegion: "global" | "cn";
+      enabled?: boolean;
+      displayName?: string;
+      baseUrl?: string;
       oauthCredential: {
         provider: string;
         access: string;
@@ -1616,7 +1917,9 @@ export class NexuConfigStore {
     let result: ModelProviderConfig | null = null;
 
     await this.store.update((config) => {
-      const existing = config.models.providers[providerId];
+      const existing = config.models.providers[providerId] as
+        | ModelProviderConfig
+        | undefined;
       const existingMetadata = getProviderMetadata(existing) ?? {};
       const nextProvider: ModelProviderConfig = {
         ...(existing?.providerTemplateId

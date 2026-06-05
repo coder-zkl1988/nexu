@@ -67,6 +67,19 @@ async function installWeixinRuntimePlugin() {
     repoRoot,
     "apps/controller/static/runtime-plugins/openclaw-weixin",
   );
+  const pluginPackageJsonPath = resolve(pluginRoot, "package.json");
+
+  // Skip if package.json is missing — openclaw-weixin is now bundled at
+  // runtime by slimclaw's bundle-runtime-plugins.mjs (from the
+  // @tencent-weixin/openclaw-weixin npm package), so the static seed
+  // directory no longer needs an npm install step.
+  if (!(await pathExists(pluginPackageJsonPath))) {
+    console.log(
+      "Skipping openclaw-weixin postinstall (no package.json — handled by slimclaw bundle).",
+    );
+    return;
+  }
+
   const pluginLockfilePath = resolve(pluginRoot, "package-lock.json");
 
   if (await pathExists(pluginLockfilePath)) {

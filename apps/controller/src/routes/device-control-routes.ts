@@ -7,8 +7,13 @@ import {
   deviceListResponseSchema,
   deviceRenameBodySchema,
 } from "@nexu/shared";
+import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
 import { DeviceControlRpcError } from "../services/device-control-service.js";
+import {
+  type DeviceChangeEvent,
+  deviceEventEmitter,
+} from "../services/device-event-emitter.js";
 import type { ControllerBindings } from "../types.js";
 
 const deviceIdParamSchema = z.object({ deviceId: z.string() });
@@ -48,6 +53,74 @@ export function registerDeviceControlRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
+  // ── Non-OpenAPI endpoints (SSE + internal webhook) ──────────────────────────
+
+  // GET /api/v1/devices/stream — SSE for real-time device list updates
+  app.get("/api/v1/devices/stream", async (c) => {
+    return streamSSE(c, async (stream) => {
+      let aborted = false;
+      stream.onAbort(() => {
+        aborted = true;
+      });
+
+      await stream.writeSSE({ data: "connected", event: "connected" });
+
+      // Send initial device list
+      if (await container.deviceControlService.isAvailable()) {
+        try {
+          const list = await container.deviceControlService.listDevices();
+          const devices = list.devices.map((d) => ({
+            ...d,
+            name: container.deviceNameStore.get(d.deviceId) ?? d.name,
+          }));
+          await stream.writeSSE({
+            data: JSON.stringify({ type: "device_list", devices }),
+            event: "device_list",
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // Listen for changes — broadcast immediately without re-checking
+      // isAvailable(). The polling service already gates events on availability.
+      const unsub = deviceEventEmitter.onChange(async (event) => {
+        if (aborted) return;
+        try {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              type: event.type,
+              deviceId: event.deviceId,
+            }),
+            event: event.type,
+          });
+        } catch {
+          /* ignore — likely client disconnected */
+        }
+      });
+
+      // Keep-alive ping every 15s
+      while (!aborted) {
+        await stream.writeSSE({ data: "ping", event: "ping" });
+        await stream.sleep(15_000);
+      }
+
+      unsub();
+    });
+  });
+
+  // POST /api/v1/devices/_internal/webhook — internal webhook for tabby-control
+  app.post("/api/v1/devices/_internal/webhook", async (c) => {
+    const body = await c.req.json<{ type: string; deviceId: string }>();
+    if (body.type && body.deviceId) {
+      deviceEventEmitter.emitChange({
+        type: body.type as DeviceChangeEvent["type"],
+        deviceId: body.deviceId,
+      });
+    }
+    return c.json({ ok: true });
+  });
+
   // GET /api/v1/devices — list devices
   app.openapi(
     createRoute({

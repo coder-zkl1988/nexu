@@ -4,17 +4,22 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthLayout } from "./layouts/auth-layout";
 import { InviteGuardLayout } from "./layouts/invite-guard-layout";
 import { WorkspaceLayout } from "./layouts/workspace-layout";
+import { AutomationsPage } from "./pages/automations";
 import { ChannelsPage } from "./pages/channels";
 import { CommunitySkillDetailPage } from "./pages/community-skill-detail";
 import { DevicesPage } from "./pages/devices/index";
 import { DeviceTaskDetailPage } from "./pages/devices/task-detail-page";
 import { DeviceTaskHistoryPage } from "./pages/devices/task-history-page";
+import { ExpertCustomPage } from "./pages/expert-custom";
+import ExpertDetailPage from "./pages/expert-detail";
+import ExpertsPage from "./pages/experts";
 import { FeishuBindPage } from "./pages/feishu-bind";
 import { HomePage } from "./pages/home";
 import { IntegrationsPage } from "./pages/integrations";
 import { LocalChatPage } from "./pages/local-chat";
 import { ModelsPage } from "./pages/models";
 import { OAuthCallbackPage } from "./pages/oauth-callback";
+import { PendingSessionPage } from "./pages/pending-session";
 import { RewardsPage } from "./pages/rewards";
 import { SessionsPage } from "./pages/sessions";
 import { SkillsPage } from "./pages/skills";
@@ -35,9 +40,12 @@ function DocumentTitleSync() {
       "/workspace/devices": t("title.devices"),
       "/workspace/rewards": t("title.rewards"),
       "/workspace/skills": t("title.skills"),
+      "/workspace/experts": t("title.experts"),
       "/workspace/chat": t("localChat.title"),
       "/workspace/settings": t("title.settings"),
       "/workspace/models": t("title.settings"),
+      "/workspace/automations": t("layout.nav.automations"),
+      "/workspace/sessions/pending": t("sessions.pending.title"),
       "/feishu/bind": t("title.linkFeishu"),
     };
 
@@ -72,6 +80,10 @@ export function App() {
               <Route path="/workspace/home" element={<HomePage />} />
               <Route path="/workspace/sessions" element={<SessionsPage />} />
               <Route
+                path="/workspace/sessions/pending"
+                element={<PendingSessionPage />}
+              />
+              <Route
                 path="/workspace/sessions/:id"
                 element={<SessionsPage />}
               />
@@ -97,6 +109,19 @@ export function App() {
               <Route
                 path="/workspace/skills/:slug"
                 element={<CommunitySkillDetailPage />}
+              />
+              <Route
+                path="/workspace/automations"
+                element={<AutomationsPage />}
+              />
+              <Route path="/workspace/experts" element={<ExpertsPage />} />
+              <Route
+                path="/workspace/experts/custom"
+                element={<ExpertCustomPage />}
+              />
+              <Route
+                path="/workspace/experts/:slug"
+                element={<ExpertDetailPage />}
               />
               <Route
                 path="/workspace/channels/slack/callback"

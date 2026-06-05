@@ -7,6 +7,7 @@ const plugin = {
   description:
     "Injects platform-level prompt context including tool progress feedback instructions.",
   register(api) {
+    try { api.logger.info("[nexu-platform-bootstrap] loaded — injecting platform prompt context"); } catch {}
     api.on("before_prompt_build", async () => {
       return {
         prependSystemContext: TOOL_PROGRESS_PROMPT,
