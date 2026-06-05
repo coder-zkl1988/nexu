@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { ensureDesktopControllerReady } from "../../apps/desktop/src/lib/controller-ready";
+import {
+  ensureDesktopControllerReady,
+  getDesktopControllerReadyTiming,
+} from "../../apps/desktop/src/lib/controller-ready";
 
 function createReadyResponse(ready: boolean) {
   return {
@@ -139,5 +142,27 @@ describe("ensureDesktopControllerReady", () => {
 
     expect(ready).toBe(false);
     expect(startController).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("getDesktopControllerReadyTiming", () => {
+  it("keeps local development builds on the default short polling windows", () => {
+    expect(getDesktopControllerReadyTiming("local-dev")).toEqual({});
+    expect(getDesktopControllerReadyTiming("local-dist")).toEqual({});
+  });
+
+  it("extends packaged build polling windows for slow first launches", () => {
+    expect(getDesktopControllerReadyTiming("stable")).toEqual({
+      attemptTimeoutMs: 60_000,
+      finalAttemptTimeoutMs: 240_000,
+      pollIntervalMs: 1_000,
+      requestTimeoutMs: 5_000,
+    });
+    expect(getDesktopControllerReadyTiming("unknown")).toEqual({
+      attemptTimeoutMs: 60_000,
+      finalAttemptTimeoutMs: 240_000,
+      pollIntervalMs: 1_000,
+      requestTimeoutMs: 5_000,
+    });
   });
 });

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DesktopRuntimeConfig } from "../../shared/host";
-import { ensureDesktopControllerReady } from "../lib/controller-ready";
+import {
+  ensureDesktopControllerReady,
+  getDesktopControllerReadyTiming,
+} from "../lib/controller-ready";
 import { getRuntimeConfig, startUnit } from "../lib/host-api";
 
 export function useDesktopRuntimeConfig() {
@@ -26,6 +29,7 @@ export function useDesktopRuntimeConfig() {
 
     void ensureDesktopControllerReady({
       readyUrl,
+      ...getDesktopControllerReadyTiming(runtimeConfig.buildInfo.source),
       startController: async () => {
         await startUnit("controller");
       },

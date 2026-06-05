@@ -31,7 +31,10 @@ import { DevelopSetBalanceDialog } from "./components/develop-set-balance-dialog
 import { SurfaceFrame } from "./components/surface-frame";
 import { UpdateBadge, UpdateBanner } from "./components/update-banner";
 import { useAutoUpdate } from "./hooks/use-auto-update";
-import { ensureDesktopControllerReady } from "./lib/controller-ready";
+import {
+  ensureDesktopControllerReady,
+  getDesktopControllerReadyTiming,
+} from "./lib/controller-ready";
 import {
   checkComponentUpdates,
   getAppInfo,
@@ -1218,6 +1221,7 @@ function DesktopShell() {
 
     void ensureDesktopControllerReady({
       readyUrl,
+      ...getDesktopControllerReadyTiming(runtimeConfig.buildInfo.source),
       startController: async () => {
         await startUnit("controller");
       },

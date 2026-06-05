@@ -1,3 +1,5 @@
+import type { DesktopBuildSource } from "../../shared/runtime-config";
+
 type ControllerReadyFetchResponse = {
   ok: boolean;
   json(): Promise<unknown>;
@@ -20,6 +22,29 @@ export interface EnsureDesktopControllerReadyOptions {
   requestTimeoutMs?: number;
   recoveryAttempts?: number;
   onStatusChange?: (status: ControllerReadyStatus) => void;
+}
+
+export type ControllerReadyTimingOptions = Pick<
+  EnsureDesktopControllerReadyOptions,
+  | "attemptTimeoutMs"
+  | "finalAttemptTimeoutMs"
+  | "pollIntervalMs"
+  | "requestTimeoutMs"
+>;
+
+export function getDesktopControllerReadyTiming(
+  buildSource: DesktopBuildSource,
+): ControllerReadyTimingOptions {
+  if (buildSource === "local-dev" || buildSource === "local-dist") {
+    return {};
+  }
+
+  return {
+    attemptTimeoutMs: 60_000,
+    finalAttemptTimeoutMs: 240_000,
+    pollIntervalMs: 1_000,
+    requestTimeoutMs: 5_000,
+  };
 }
 
 function sleep(ms: number): Promise<void> {
