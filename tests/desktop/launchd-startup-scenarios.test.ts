@@ -1701,9 +1701,83 @@ describe("Launchd Startup Scenarios", () => {
   }, 15000);
 
   // -----------------------------------------------------------------------
-  // Scenario 35: retry port clamps at 65535 instead of probing 65536
+  // Scenario 35: HTTP 200 with ready=false is still not controller-ready
   // -----------------------------------------------------------------------
-  it("Scenario 35: controller retry port is clamped at 65535", async () => {
+  it("Scenario 35: ready endpoint payload gates controller readiness", async () => {
+    const netMock = await import("node:net");
+    let controllerStatusCalls = 0;
+    let openclawStatusCalls = 0;
+    let readyAttempts = 0;
+    mockLaunchdManager.getServiceStatus.mockImplementation((label: string) => {
+      if (label.includes("controller")) {
+        controllerStatusCalls++;
+        return Promise.resolve(
+          controllerStatusCalls <= 2
+            ? mockStoppedService()
+            : mockRunningService({ PORT: "50800" }),
+        );
+      }
+      openclawStatusCalls++;
+      return Promise.resolve(
+        openclawStatusCalls <= 2 ? mockStoppedService() : mockRunningService(),
+      );
+    });
+    (netMock.createConnection as ReturnType<typeof vi.fn>).mockImplementation(
+      () => {
+        const socket = {
+          once(event: string, cb: () => void) {
+            if (event === "connect") {
+              setTimeout(() => cb(), 0);
+            }
+          },
+          destroy: vi.fn(),
+          setTimeout: vi.fn(),
+        };
+        return socket;
+      },
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string | URL) => {
+        const url = String(input);
+        if (url.includes("/api/internal/desktop/ready")) {
+          readyAttempts++;
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () =>
+              readyAttempts < 3
+                ? { ready: false, coreReady: false }
+                : { ready: true, coreReady: true },
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ ready: true }),
+        });
+      }),
+    );
+
+    const { bootstrapWithLaunchd } = await import(
+      "../../apps/desktop/main/services/launchd-bootstrap"
+    );
+
+    const result = await bootstrapWithLaunchd(makeBootstrapEnv() as never);
+
+    expect(readyAttempts).toBeGreaterThanOrEqual(3);
+    expect(result.effectivePorts.controllerPort).toBe(50800);
+    expect(
+      mockLaunchdManager.bootoutAndWaitForExit.mock.calls.some(
+        (call) => call[0] === "io.nexu.controller.dev",
+      ),
+    ).toBe(false);
+  }, 15000);
+
+  // -----------------------------------------------------------------------
+  // Scenario 36: retry port clamps at 65535 instead of probing 65536
+  // -----------------------------------------------------------------------
+  it("Scenario 36: controller retry port is clamped at 65535", async () => {
     const netMock = await import("node:net");
     const cpMock = await import("node:child_process");
     const execFileMock = cpMock.execFile as unknown as ReturnType<typeof vi.fn>;

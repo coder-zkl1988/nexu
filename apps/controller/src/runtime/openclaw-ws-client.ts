@@ -869,7 +869,6 @@ export class OpenClawWsClient {
       p.reject(new Error("openclaw gateway disconnected"));
     }
     this.pending.clear();
-    this.eventListeners.clear();
   }
 
   /**

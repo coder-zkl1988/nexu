@@ -12,6 +12,18 @@ import { getWorkspaceRoot } from "../../../shared/workspace-paths";
 import { ensurePackagedOpenclawSidecar } from "../../runtime/manifests";
 
 const execFileAsync = promisify(execFile);
+type LaunchdPathLog = (message: string) => void;
+
+function logDuration(
+  log: LaunchdPathLog | undefined,
+  stage: string,
+  startedAt: number,
+  detail?: string,
+): void {
+  log?.(
+    `[launchd-paths] ${stage} completed after ${Date.now() - startedAt}ms${detail ? ` ${detail}` : ""}`,
+  );
+}
 
 function assertSafeRmTarget(targetPath: string): void {
   const segments = targetPath.split(path.sep).filter(Boolean);
@@ -71,7 +83,9 @@ export async function ensureExternalNodeRunner(
   appContentsPath: string,
   nexuHome: string,
   appVersion: string,
+  log?: LaunchdPathLog,
 ): Promise<string> {
+  const startedAt = Date.now();
   const binaryName = readBundleExecutableName(appContentsPath);
   const extractionStamp = buildRuntimeExtractionStamp(
     appContentsPath,
@@ -96,6 +110,7 @@ export async function ensureExternalNodeRunner(
       existsSync(binaryPath) &&
       readFileSync(stampPath, "utf8").trim() === extractionStamp
     ) {
+      logDuration(log, "external runner cache hit", startedAt);
       return binaryPath;
     }
   } catch {
@@ -136,6 +151,7 @@ export async function ensureExternalNodeRunner(
   writeFileSync(stampPath, extractionStamp, "utf8");
 
   console.log(`External node runner ready at ${binaryPath}`);
+  logDuration(log, "external runner extraction", startedAt);
   return binaryPath;
 }
 
@@ -143,7 +159,9 @@ async function ensureExternalControllerSidecar(
   appContentsPath: string,
   nexuHome: string,
   appVersion: string,
+  log?: LaunchdPathLog,
 ): Promise<{ controllerRoot: string; entryPath: string }> {
+  const startedAt = Date.now();
   const extractionStamp = buildRuntimeExtractionStamp(
     appContentsPath,
     appVersion,
@@ -164,6 +182,7 @@ async function ensureExternalControllerSidecar(
       existsSync(entryPath) &&
       readFileSync(stampPath, "utf8").trim() === extractionStamp
     ) {
+      logDuration(log, "controller sidecar cache hit", startedAt);
       return { controllerRoot, entryPath };
     }
   } catch {
@@ -208,6 +227,7 @@ async function ensureExternalControllerSidecar(
   await execFileAsync("rm", ["-rf", controllerRoot]).catch(() => {});
   await fs.rename(stagingRoot, controllerRoot);
 
+  logDuration(log, "controller sidecar extraction", startedAt);
   return { controllerRoot, entryPath };
 }
 
@@ -215,6 +235,8 @@ export async function resolveLaunchdPaths(
   isPackaged: boolean,
   resourcesPath: string,
   appVersion?: string,
+  log?: LaunchdPathLog,
+  extractedOpenclawRuntimeRoot?: string,
 ): Promise<{
   nodePath: string;
   controllerEntryPath: string;
@@ -224,6 +246,7 @@ export async function resolveLaunchdPaths(
   openclawBinPath: string;
   openclawExtensionsDir: string;
 }> {
+  const startedAt = Date.now();
   if (isPackaged) {
     const runtimeDir = path.join(resourcesPath, "runtime");
     const nexuHome = path.join(os.homedir(), ".nexu");
@@ -243,11 +266,13 @@ export async function resolveLaunchdPaths(
         appContentsPath,
         nexuHome,
         version,
+        log,
       );
       const result = await ensureExternalControllerSidecar(
         appContentsPath,
         nexuHome,
         version,
+        log,
       );
       controllerEntryPath = result.entryPath;
       controllerRoot = result.controllerRoot;
@@ -258,14 +283,16 @@ export async function resolveLaunchdPaths(
       );
     }
 
+    const openclawSidecarRuntimeRoot = extractedOpenclawRuntimeRoot ?? nexuHome;
     const openclawSidecarRoot = ensurePackagedOpenclawSidecar(
       runtimeDir,
-      nexuHome,
+      openclawSidecarRuntimeRoot,
     );
     const openclawArtifacts = resolveSlimclawRuntimeArtifacts(
       openclawSidecarRoot,
       { requirePrepared: false },
     );
+    logDuration(log, "packaged path resolution", startedAt);
 
     return {
       nodePath,
@@ -283,6 +310,7 @@ export async function resolveLaunchdPaths(
     workspaceRoot: repoRoot,
     requirePrepared: false,
   });
+  logDuration(log, "dev path resolution", startedAt);
   return {
     nodePath: process.execPath,
     controllerEntryPath: path.join(

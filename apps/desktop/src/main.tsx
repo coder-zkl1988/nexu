@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { Toaster, toast } from "sonner";
+import setupTransparentVideoUrl from "../assets/init-vedio-transparent.webm";
 import setupVideoUrl from "../assets/init-vedio.mp4";
 import type {
   AppInfo,
@@ -71,6 +72,8 @@ const posthogHost =
     : window.nexuHost.bootstrap.posthogHost);
 const rendererSentryDsn =
   typeof window === "undefined" ? null : window.nexuHost.bootstrap.sentryDsn;
+const holdSetupAnimation =
+  import.meta.env.VITE_NEXU_SETUP_ANIMATION_HOLD === "1";
 const posthogSuperProperties = {
   environment: import.meta.env.MODE,
   appName: "nexu-desktop",
@@ -84,6 +87,18 @@ type ControllerSurfaceState = "polling" | "recovering" | "failed";
 
 let rendererSentryInitialized = false;
 let posthogTelemetryInitialized = false;
+
+const SETUP_STAGE_LABELS: Record<string, string> = {
+  extracting: "解压本地组件",
+  launchd_bootstrap: "启动后台服务",
+  starting_controller: "启动控制服务",
+  waiting_controller: "等待控制服务就绪",
+  attaching_external: "连接本地运行时",
+  starting_web: "启动工作区界面",
+  complete: "准备就绪",
+};
+
+const SETUP_STAGE_ORDER = Object.keys(SETUP_STAGE_LABELS);
 let rendererCommitReported = false;
 let currentPosthogUserId: string | null = null;
 let currentPosthogIdentifyKey: string | null = null;
@@ -1111,16 +1126,6 @@ function DesktopShell() {
     null,
   );
 
-  const STAGE_LABELS: Record<string, string> = {
-    extracting: "正在解压组件...",
-    launchd_bootstrap: "正在启动后台服务...",
-    starting_controller: "正在启动控制服务...",
-    waiting_controller: "等待控制服务就绪...",
-    attaching_external: "正在连接运行时...",
-    starting_web: "正在启动网页服务...",
-    complete: "准备就绪...",
-  };
-
   // When animation finishes, notify main process to restore vibrancy
   useEffect(() => {
     if (
@@ -1136,7 +1141,9 @@ function DesktopShell() {
       .then((config) => {
         setRuntimeConfig(config);
         // Cold-start is done — if we're still in active phase, start fading.
-        setSetupPhase((prev) => (prev === "active" ? "fading" : prev));
+        if (!holdSetupAnimation) {
+          setSetupPhase((prev) => (prev === "active" ? "fading" : prev));
+        }
       })
       .catch(() => null);
 
@@ -1380,7 +1387,7 @@ function DesktopShell() {
             <SurfaceFrame
               description="Authenticated workspace surface served by the repo-local web sidecar."
               src={desktopWebUrl}
-              title="nexu Web"
+              title="Tabby Web"
               version={webSurfaceVersion}
               preload={getWebviewPreloadUrl()}
             />
@@ -1419,16 +1426,16 @@ function DesktopShell() {
               </div>
             </section>
           ) : (
-            // Normal polling state: show the brand NexuLoader instead of a
+            // Normal polling state: show the brand loader instead of a
             // text card with a "Retry controller" button. SurfaceFrame with
-            // src={null} renders its built-in NexuLoader overlay, which is
+            // src={null} renders its built-in Tabby loader overlay, which is
             // the same loader used once the webview mounts — producing a
             // seamless visual transition once the controller is ready.
             // See issue #876.
             <SurfaceFrame
               description="Authenticated workspace surface served by the repo-local web sidecar."
               src={null}
-              title="nexu Web"
+              title="Tabby Web"
               version={webSurfaceVersion}
               preload={getWebviewPreloadUrl()}
             />
@@ -1477,20 +1484,14 @@ function DesktopShell() {
 
       {/* Setup animation overlay — shown during first install / post-update extraction.
           Single video loops until cold-start is ready, then fades out.
-          Progress panel shows current cold-start stage at bottom. */}
+          Progress panel shows current cold-start stage. */}
       {setupPhase !== "done" && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 99999,
-            background: "#ffffff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: setupPhase === "fading" ? 0 : 1,
-            transition: "opacity 0.6s ease-out",
-          }}
+          className={
+            setupPhase === "fading"
+              ? "setup-overlay is-fading"
+              : "setup-overlay"
+          }
           onTransitionEnd={() => {
             if (setupPhase === "fading") setSetupPhase("done");
           }}
@@ -1509,107 +1510,89 @@ function DesktopShell() {
             }}
           />
 
-          <video
-            autoPlay
-            muted
-            playsInline
-            loop
-            src={setupVideoUrl}
-            onError={() => setSetupPhase("fading")}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-            }}
-          />
-
-          {/* Progress panel */}
-          <div
-            style={{
-              position: "absolute",
-              bottom: 48,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "rgba(0, 0, 0, 0.75)",
-              backdropFilter: "blur(12px)",
-              borderRadius: 12,
-              padding: "16px 24px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              minWidth: 220,
-            }}
-          >
-            {Object.entries(STAGE_LABELS).map(([stage, label]) => {
-              const stageOrder = Object.keys(STAGE_LABELS);
-              const currentIdx = stageOrder.indexOf(setupCurrentStage ?? "");
-              const thisIdx = stageOrder.indexOf(stage);
-              const isComplete = currentIdx >= 0 && thisIdx <= currentIdx;
-              const isCurrent = stage === setupCurrentStage;
-
-              return (
-                <div
-                  key={stage}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    opacity: isComplete ? 1 : 0.35,
-                    transition: "opacity 0.3s ease",
-                  }}
+          <output className="setup-shell" aria-live="polite">
+            <section className="setup-visual" aria-label="Tabby setup preview">
+              <div className="setup-video-frame">
+                <video
+                  autoPlay
+                  muted
+                  playsInline
+                  loop
+                  onError={() => setSetupPhase("fading")}
                 >
-                  <div
-                    style={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      background: isComplete
-                        ? "rgba(255, 255, 255, 0.2)"
-                        : "rgba(255, 255, 255, 0.08)",
-                      border: isCurrent
-                        ? "2px solid rgba(255, 255, 255, 0.9)"
-                        : isComplete
-                          ? "2px solid rgba(255, 255, 255, 0.3)"
-                          : "2px solid rgba(255, 255, 255, 0.1)",
-                    }}
-                  >
-                    {isComplete && (
-                      <svg
-                        aria-hidden="true"
-                        width={10}
-                        height={10}
-                        viewBox="0 0 10 10"
-                        fill="none"
-                      >
-                        <path
-                          d="M2 5L4 7L8 3"
-                          stroke="white"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                  </div>
-                  <span
-                    style={{
-                      color: isComplete ? "#fff" : "rgba(255,255,255,0.45)",
-                      fontSize: 13,
-                      fontWeight: isCurrent ? 600 : 400,
-                      lineHeight: "18px",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                  <source src={setupTransparentVideoUrl} type="video/webm" />
+                  <source src={setupVideoUrl} type="video/mp4" />
+                </video>
+              </div>
+            </section>
+
+            <section className="setup-progress-panel">
+              <div className="setup-progress-head">
+                <span className="setup-eyebrow">Tabby Desktop</span>
+                <h2>正在准备你的工作区</h2>
+                <p>
+                  首次安装会初始化本地运行时和工作区组件，完成后会自动进入
+                  Tabby。
+                </p>
+              </div>
+
+              <div className="setup-progress-bar" aria-hidden="true">
+                <span
+                  style={{
+                    width: `${
+                      Math.max(
+                        1,
+                        SETUP_STAGE_ORDER.indexOf(setupCurrentStage ?? "") + 1,
+                      ) *
+                      (100 / SETUP_STAGE_ORDER.length)
+                    }%`,
+                  }}
+                />
+              </div>
+
+              <ol className="setup-stage-list">
+                {SETUP_STAGE_ORDER.map((stage, index) => {
+                  const currentIdx = SETUP_STAGE_ORDER.indexOf(
+                    setupCurrentStage ?? "",
+                  );
+                  const isComplete = currentIdx >= 0 && index < currentIdx;
+                  const isCurrent =
+                    stage === setupCurrentStage ||
+                    (setupCurrentStage === null && index === 0);
+                  const itemClassName = isCurrent
+                    ? "setup-stage-item is-current"
+                    : isComplete
+                      ? "setup-stage-item is-complete"
+                      : "setup-stage-item";
+
+                  return (
+                    <li className={itemClassName} key={stage}>
+                      <span className="setup-stage-marker">
+                        {isComplete ? (
+                          <svg
+                            aria-hidden="true"
+                            width={12}
+                            height={12}
+                            viewBox="0 0 12 12"
+                            fill="none"
+                          >
+                            <path
+                              d="M2.5 6.1L4.8 8.3L9.5 3.7"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span>{SETUP_STAGE_LABELS[stage]}</span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          </output>
         </div>
       )}
     </div>

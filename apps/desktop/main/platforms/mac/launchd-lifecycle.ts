@@ -218,12 +218,18 @@ export async function coldStartMacLaunchdResidency(
   onProgress?.("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
-  const paths = await resolveLaunchdPaths(app.isPackaged, electronRoot);
   const runtimeRoots = capabilities.resolveRuntimeRoots({
     app,
     electronRoot,
     runtimeConfig,
   });
+  const paths = await resolveLaunchdPaths(
+    app.isPackaged,
+    electronRoot,
+    app.getVersion(),
+    logColdStart,
+    app.isPackaged ? runtimeRoots.runtimeRoot : undefined,
+  );
 
   capabilities.stateMigrationPolicy.run({
     runtimeConfig,
@@ -243,6 +249,7 @@ export async function coldStartMacLaunchdResidency(
       paths,
     }),
     plistDir: getDefaultPlistDir(isDev),
+    controllerStartupValidationTimeoutMs: app.isPackaged ? 120_000 : undefined,
   });
 
   orchestrator.enableLaunchdMode(

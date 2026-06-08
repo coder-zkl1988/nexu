@@ -891,17 +891,12 @@ async function runDesktopColdStart(): Promise<void> {
 }
 
 async function runLaunchdColdStart(): Promise<void> {
+  const launchdColdStartStartedAt = Date.now();
   diagnosticsReporter?.markColdStartRunning("launchd bootstrap");
   logColdStart("starting launchd bootstrap");
   sendSetupProgress("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
-  const paths = await resolveLaunchdPaths(
-    app.isPackaged,
-    electronRoot,
-    app.getVersion(),
-  );
-
   const nexuHome = runtimeConfig.paths.nexuHome.replace(
     /^~/,
     process.env.HOME ?? "",
@@ -914,6 +909,18 @@ async function runLaunchdColdStart(): Promise<void> {
 
   const { openclawRuntimeRoot, openclawStateDir, openclawConfigPath } =
     runtimeRoots;
+
+  const resolvePathsStartedAt = Date.now();
+  const paths = await resolveLaunchdPaths(
+    app.isPackaged,
+    electronRoot,
+    app.getVersion(),
+    logColdStart,
+    app.isPackaged ? runtimeRoots.runtimeRoot : undefined,
+  );
+  logColdStart(
+    `launchd path resolution complete after ${Date.now() - resolvePathsStartedAt}ms`,
+  );
 
   runtimePlatformAdapter.capabilities.stateMigrationPolicy.run({
     runtimeConfig,
@@ -948,6 +955,7 @@ async function runLaunchdColdStart(): Promise<void> {
   const skillNodePath = buildSkillNodePath(electronRoot, app.isPackaged);
   const proxyEnv = buildChildProcessProxyEnv(runtimeConfig.proxy);
 
+  const bootstrapStartedAt = Date.now();
   launchdResult = await bootstrapWithLaunchd({
     isDev,
     controllerPort: runtimeConfig.ports.controller,
@@ -993,12 +1001,16 @@ async function runLaunchdColdStart(): Promise<void> {
     nodeV8Coverage: process.env.NODE_V8_COVERAGE,
     desktopE2ECoverage: process.env.NEXU_DESKTOP_E2E_COVERAGE,
     desktopE2ECoverageRunId: process.env.NEXU_DESKTOP_E2E_COVERAGE_RUN_ID,
+    controllerStartupValidationTimeoutMs: app.isPackaged ? 120_000 : undefined,
     appVersion: app.getVersion(),
     userDataPath: app.getPath("userData"),
     buildSource:
       process.env.NEXU_DESKTOP_BUILD_SOURCE ??
       (app.isPackaged ? "packaged" : "local-dev"),
   });
+  logColdStart(
+    `bootstrapWithLaunchd returned after ${Date.now() - bootstrapStartedAt}ms isAttach=${launchdResult.isAttach}`,
+  );
 
   // Wire launchd-managed units into the orchestrator so the control plane
   // shows correct status, and Start/Stop buttons work via launchd.
@@ -1036,7 +1048,11 @@ async function runLaunchdColdStart(): Promise<void> {
     sendSetupProgress("waiting_controller");
   }
 
+  const controllerReadyStartedAt = Date.now();
   const controllerReady = await launchdResult.controllerReady;
+  logColdStart(
+    `controller readiness promise settled after ${Date.now() - controllerReadyStartedAt}ms ok=${controllerReady.ok}`,
+  );
   if (!controllerReady.ok) {
     throw controllerReady.error;
   }
@@ -1045,7 +1061,9 @@ async function runLaunchdColdStart(): Promise<void> {
   }
 
   const sessionId = rotateDesktopLogSession();
-  logColdStart(`launchd cold start complete sessionId=${sessionId}`);
+  logColdStart(
+    `launchd cold start complete sessionId=${sessionId} totalMs=${Date.now() - launchdColdStartStartedAt}`,
+  );
   sendSetupProgress("complete");
   diagnosticsReporter?.markColdStartSucceeded();
 }

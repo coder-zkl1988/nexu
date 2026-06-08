@@ -222,7 +222,8 @@ type ControllerProbeFailureReason =
   | "port_unreachable"
   | "probe_timeout"
   | "probe_error"
-  | "probe_status";
+  | "probe_status"
+  | "probe_not_ready";
 
 type ControllerStartupFailureReason =
   | "launchd_stopped"
@@ -254,6 +255,16 @@ type ControllerStartupValidationResult =
       probeStatus?: number;
     };
 
+function isControllerReadyPayload(
+  value: unknown,
+): value is { ready?: boolean; coreReady?: boolean } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    ("ready" in value || "coreReady" in value)
+  );
+}
+
 async function probeControllerReady(
   port: number,
   timeoutMs = 2000,
@@ -276,7 +287,19 @@ async function probeControllerReady(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (response.ok) {
-      return { ok: true, probeUrl: readyUrl, status: response.status };
+      const payload = (await response.json().catch(() => null)) as unknown;
+      if (
+        isControllerReadyPayload(payload) &&
+        (payload.ready === true || payload.coreReady === true)
+      ) {
+        return { ok: true, probeUrl: readyUrl, status: response.status };
+      }
+      return {
+        ok: false,
+        probeUrl: readyUrl,
+        reason: "probe_not_ready",
+        status: response.status,
+      };
     }
     if (response.status !== 404) {
       return {
@@ -372,6 +395,10 @@ async function waitForControllerStartupValidation(opts: {
       probeTimeoutMs: opts.probeTimeoutMs,
     });
     if (lastResult.ok) {
+      return lastResult;
+    }
+
+    if (lastResult.reason === "probe_not_ready") {
       return lastResult;
     }
 
@@ -1065,6 +1092,10 @@ export async function bootstrapWithLaunchd(
       return;
     }
 
+    if (validation.reason === "probe_not_ready") {
+      return;
+    }
+
     console.warn(
       `[bootstrap] controller post-start validation failed originalPort=${originalPort} reason=${validation.reason} launchdStatus=${validation.launchdStatus.status} launchdPid=${validation.launchdStatus.pid ?? "none"} probeUrl=${validation.probeUrl}${validation.probeStatus != null ? ` probeStatus=${validation.probeStatus}` : ""}`,
     );
@@ -1240,8 +1271,13 @@ export async function bootstrapWithLaunchd(
   );
 
   // Controller readiness
+  const controllerReadinessTimeoutMs =
+    env.controllerStartupValidationTimeoutMs ?? 30_000;
   const controllerReady: Promise<ControllerReadyResult> = needsControllerReady
-    ? waitForControllerReadiness(effectivePorts.controllerPort)
+    ? waitForControllerReadiness(
+        effectivePorts.controllerPort,
+        controllerReadinessTimeoutMs,
+      )
         .then(() => {
           console.log("Controller is ready");
           return { ok: true } as const;

@@ -2,10 +2,21 @@ import { logger } from "../lib/logger.js";
 import type { ControllerContainer } from "./container.js";
 
 const INITIAL_CONTROL_PLANE_READY_TIMEOUT_MS = 30_000;
-const STABLE_CONTROL_PLANE_TIMEOUT_MS = 45_000;
+const EXTERNAL_CONFIG_CHANGED_STABLE_CONTROL_PLANE_TIMEOUT_MS = 120_000;
 const MANAGED_STABLE_CONTROL_PLANE_TIMEOUT_MS = 90_000;
 const STABLE_CONTROL_PLANE_WINDOW_MS = 4_000;
 const CONTROL_PLANE_POLL_INTERVAL_MS = 500;
+
+function logBootstrapStage(stage: string, startedAt: number, extra = {}): void {
+  logger.info(
+    {
+      stage,
+      durationMs: Date.now() - startedAt,
+      ...extra,
+    },
+    "controller_bootstrap_stage",
+  );
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,6 +72,7 @@ async function waitForStableControlPlane(
 export async function bootstrapController(
   container: ControllerContainer,
 ): Promise<() => void> {
+  const bootstrapStartedAt = Date.now();
   container.runtimeState.bootPhase = "preparing";
 
   logger.info(
@@ -81,6 +93,7 @@ export async function bootstrapController(
 
   // Run independent prep tasks in parallel to shave off startup time.
   // All three are independent: process cleanup, plugin files, cloud model fetch.
+  const prepareStartedAt = Date.now();
   await Promise.all([
     container.openclawProcess.prepare(),
     container.openclawSyncService.ensureRuntimeModelPlugin(),
@@ -88,15 +101,20 @@ export async function bootstrapController(
       .prepareDesktopCloudModelsForBootstrap()
       .catch(() => {}),
   ]);
+  logBootstrapStage("parallel_prepare", prepareStartedAt);
 
   // Validate default model against available models before first sync
+  const modelValidationStartedAt = Date.now();
   await container.modelProviderService.ensureValidDefaultModel();
+  logBootstrapStage("model_validation", modelValidationStartedAt);
 
   // Ensure bundled skills are on disk and the skill ledger is up to date
   // BEFORE the first config push.  Without this, the compiled agent
   // allowlist may be missing newly-bundled skills, causing them to be
   // invisible to the running agent until a restart.
+  const skillhubStartedAt = Date.now();
   container.skillhubService.bootstrap();
+  logBootstrapStage("skillhub_bootstrap", skillhubStartedAt);
 
   // Auto-install default experts on startup (fire-and-forget so startup
   // isn't blocked; failures are logged inside installDefaultExperts).
@@ -118,44 +136,57 @@ export async function bootstrapController(
   if (container.openclawProcess.managesProcess()) {
     // Managed bootstrap: seed config before runtime start so the first attach
     // happens against the desired config instead of triggering a restart.
+    const syncStartedAt = Date.now();
     await container.openclawSyncService.syncAllImmediate();
     container.openclawSyncService.beginSettling();
+    logBootstrapStage("managed_sync", syncStartedAt);
 
     container.runtimeState.bootPhase = "starting-managed-runtime";
     container.openclawProcess.enableAutoRestart();
+    const openclawStartStartedAt = Date.now();
     container.openclawProcess.start();
     container.wsClient.connect();
+    logBootstrapStage("managed_openclaw_start", openclawStartStartedAt);
 
     container.runtimeState.bootPhase = "stabilizing-runtime";
+    const stableStartedAt = Date.now();
     await waitForStableControlPlane(
       container,
       MANAGED_STABLE_CONTROL_PLANE_TIMEOUT_MS,
       STABLE_CONTROL_PLANE_WINDOW_MS,
     );
+    logBootstrapStage("managed_stable_control_plane", stableStartedAt);
   } else {
     // External bootstrap is attach + reconcile, not pre-start seeding.
     logger.info({}, "controller_bootstrap_attaching_external_openclaw");
 
     container.runtimeState.bootPhase = "attaching-external-runtime";
+    const gatewayStartedAt = Date.now();
     container.wsClient.connect();
     await waitForGatewayConnection(
       container,
       INITIAL_CONTROL_PLANE_READY_TIMEOUT_MS,
     );
+    logBootstrapStage("external_gateway_connection", gatewayStartedAt);
 
     container.runtimeState.bootPhase = "reconciling-runtime";
+    const syncStartedAt = Date.now();
     const { configChanged } =
       await container.openclawSyncService.syncAllImmediate();
     container.openclawSyncService.beginSettling();
+    logBootstrapStage("external_sync", syncStartedAt, { configChanged });
 
     container.runtimeState.bootPhase = "stabilizing-runtime";
-    await waitForStableControlPlane(
-      container,
-      configChanged
-        ? STABLE_CONTROL_PLANE_TIMEOUT_MS
-        : INITIAL_CONTROL_PLANE_READY_TIMEOUT_MS,
-      configChanged ? STABLE_CONTROL_PLANE_WINDOW_MS : 1_000,
-    );
+    const stableStartedAt = Date.now();
+    const stableTimeoutMs =
+      EXTERNAL_CONFIG_CHANGED_STABLE_CONTROL_PLANE_TIMEOUT_MS;
+    const stableWindowMs = STABLE_CONTROL_PLANE_WINDOW_MS;
+    await waitForStableControlPlane(container, stableTimeoutMs, stableWindowMs);
+    logBootstrapStage("external_stable_control_plane", stableStartedAt, {
+      configChanged,
+      stableTimeoutMs,
+      stableWindowMs,
+    });
   }
 
   // Register existing schedules with OpenClaw now that the WS connection
@@ -168,6 +199,7 @@ export async function bootstrapController(
   });
 
   container.runtimeState.bootPhase = "ready";
+  logBootstrapStage("ready", bootstrapStartedAt);
 
   return container.startBackgroundLoops();
 }
