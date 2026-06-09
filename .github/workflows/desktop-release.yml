@@ -210,6 +210,9 @@ jobs:
           set -euo pipefail
           dmg="apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg"
           app="apps/desktop/release/mac-${ARCH}/Tabby.app"
+          if [ ! -d "$app" ]; then
+            app="apps/desktop/release/mac/Tabby.app"
+          fi
 
           test -f "$dmg"
           test -d "$app"
