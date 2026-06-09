@@ -140,15 +140,15 @@ jobs:
         with:
           repository: coder-zkl1988/tabby-control
           ref: nexu-desktop
-          path: ../tabby-control
+          path: .release-worktrees/tabby-control
 
       - name: Build tabby-control plugin
         shell: bash
         run: |
           set -euo pipefail
-          pnpm --dir ../tabby-control install --frozen-lockfile
-          pnpm --dir ../tabby-control build:nexu
-          test -d ../tabby-control/dist-nexu/tabby-control
+          pnpm --dir .release-worktrees/tabby-control install --frozen-lockfile
+          pnpm --dir .release-worktrees/tabby-control build:nexu
+          test -d .release-worktrees/tabby-control/dist-nexu/tabby-control
 
       - name: Import Apple Developer ID certificate
         shell: bash
@@ -195,6 +195,7 @@ jobs:
           NEXU_DESKTOP_UPDATE_CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
           NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
           NEXU_DESKTOP_BUILD_SOURCE: "release"
+          TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
@@ -276,14 +277,14 @@ jobs:
         with:
           repository: coder-zkl1988/tabby-control
           ref: nexu-desktop
-          path: ../tabby-control
+          path: .release-worktrees/tabby-control
 
       - name: Build tabby-control plugin
         shell: pwsh
         run: |
-          pnpm --dir ../tabby-control install --frozen-lockfile
-          pnpm --dir ../tabby-control build:nexu
-          if (-not (Test-Path ../tabby-control/dist-nexu/tabby-control)) {
+          pnpm --dir .release-worktrees/tabby-control install --frozen-lockfile
+          pnpm --dir .release-worktrees/tabby-control build:nexu
+          if (-not (Test-Path .release-worktrees/tabby-control/dist-nexu/tabby-control)) {
             throw "Missing tabby-control dist-nexu output"
           }
 
@@ -303,6 +304,7 @@ jobs:
           NEXU_DESKTOP_BUILD_BRANCH: ${{ needs.prepare-release.outputs.tag_name }}
           NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
           NEXU_DESKTOP_AUTO_UPDATE_ENABLED: "false"
+          TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |
