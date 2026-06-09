@@ -146,8 +146,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm --dir .release-worktrees/tabby-control install --frozen-lockfile
-          pnpm --dir .release-worktrees/tabby-control build:nexu
+          npm --prefix .release-worktrees/tabby-control install --no-package-lock
+          npm --prefix .release-worktrees/tabby-control run build:nexu
           test -d .release-worktrees/tabby-control/dist-nexu/tabby-control
 
       - name: Import Apple Developer ID certificate
@@ -282,8 +282,8 @@ jobs:
       - name: Build tabby-control plugin
         shell: pwsh
         run: |
-          pnpm --dir .release-worktrees/tabby-control install --frozen-lockfile
-          pnpm --dir .release-worktrees/tabby-control build:nexu
+          npm --prefix .release-worktrees/tabby-control install --no-package-lock
+          npm --prefix .release-worktrees/tabby-control run build:nexu
           if (-not (Test-Path .release-worktrees/tabby-control/dist-nexu/tabby-control)) {
             throw "Missing tabby-control dist-nexu output"
           }
