@@ -116,6 +116,21 @@ async function readDesktopPackageVersion() {
   return desktopPackage.version;
 }
 
+async function assertWindowsIcon(iconPath) {
+  const icon = await readFile(iconPath);
+  const hasIcoHeader =
+    icon.length >= 6 &&
+    icon[0] === 0x00 &&
+    icon[1] === 0x00 &&
+    icon[2] === 0x01 &&
+    icon[3] === 0x00 &&
+    (icon[4] !== 0x00 || icon[5] !== 0x00);
+
+  if (!hasIcoHeader) {
+    throw new Error(`[dist:win] invalid Windows ICO asset: ${iconPath}`);
+  }
+}
+
 function parsePhaseArg(argv) {
   const supportedPhases = new Set(["all", "stage", "payload", "installer"]);
   const phaseArg = argv.find((arg) => arg.startsWith("--phase="));
@@ -156,6 +171,7 @@ async function main() {
   );
   const iconPath = resolve(electronRoot, "build", "icon.ico");
   const timingLogPath = resolve(installerRoot, "timing.json");
+  await assertWindowsIcon(iconPath);
   if (!(await pathExists(vendored7zExePath))) {
     throw new Error(
       `[dist:win] missing vendored 7-Zip executable: ${vendored7zExePath}`,
