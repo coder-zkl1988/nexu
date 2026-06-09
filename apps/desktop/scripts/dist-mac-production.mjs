@@ -223,6 +223,27 @@ function findMachOFiles(rootPath) {
   return out.trim().split("\n").filter(Boolean);
 }
 
+function findCodeSignBundles(rootPath) {
+  const out = capture("bash", [
+    "-c",
+    [
+      `find ${shellQuote(rootPath)} -type d \\( -name '*.app' -o -name '*.framework' -o -name '*.xpc' -o -name '*.appex' \\) -print 2>/dev/null`,
+    ].join("\n"),
+  ]);
+  return out
+    .trim()
+    .split("\n")
+    .filter((targetPath) => targetPath && targetPath !== rootPath);
+}
+
+function sortCodeSignTargets(filePaths) {
+  return [...filePaths].sort((a, b) => {
+    const depthDiff = b.split("/").length - a.split("/").length;
+    if (depthDiff !== 0) return depthDiff;
+    return a.localeCompare(b);
+  });
+}
+
 async function step(label, fn) {
   console.log(`\n>>> [dist:mac:production] ${label}...`);
   try {
@@ -408,7 +429,11 @@ async function main() {
   });
 
   await step("3/7 签名 .app 内全部 Mach-O 文件和应用包", async () => {
-    const allMachO = findMachOFiles(appPath);
+    const rootExecutable = resolve(appPath, "Contents", "MacOS", productName);
+    const allMachO = sortCodeSignTargets(
+      findMachOFiles(appPath).filter((filePath) => filePath !== rootExecutable),
+    );
+    const codeBundles = sortCodeSignTargets(findCodeSignBundles(appPath));
     console.log(`    found ${allMachO.length} Mach-O files in .app`);
 
     for (const [i, filePath] of allMachO.entries()) {
@@ -424,6 +449,23 @@ async function main() {
         "--entitlements",
         inheritEntitlements,
         filePath,
+      ]);
+    }
+
+    console.log(`    found ${codeBundles.length} code bundle(s) in .app`);
+    for (const [i, bundlePath] of codeBundles.entries()) {
+      const rel = bundlePath.replace(appPath, "").replace(/^\//u, "");
+      console.log(`    bundle [${i + 1}/${codeBundles.length}] ${rel}`);
+      await run("codesign", [
+        "--force",
+        "--sign",
+        resolvedSigningIdentity,
+        "--timestamp",
+        "--options",
+        "runtime",
+        "--entitlements",
+        inheritEntitlements,
+        bundlePath,
       ]);
     }
 
