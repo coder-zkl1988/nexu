@@ -110,8 +110,8 @@ type DesktopBalanceBreakdown = {
 
 const defaultCloudProfile: CloudProfileEntry = {
   name: "Default",
-  cloudUrl: "https://nexu.io",
-  linkUrl: "https://link.nexu.io",
+  cloudUrl: "https://tabby.picaso.studio",
+  linkUrl: "https://tabbyapi.picaso.studio",
 };
 
 const rewardTaskTemplateById = new Map<RewardTaskId, RewardTask>(
@@ -2584,8 +2584,9 @@ export class NexuConfigStore {
       .update(deviceSecret)
       .digest("hex");
 
+    const cloudApiUrl = activeProfile.linkUrl || activeProfile.cloudUrl;
     let res: Response;
-    const registerUrl = `${activeProfile.cloudUrl}/api/auth/device-register`;
+    const registerUrl = `${cloudApiUrl}/api/auth/device-register`;
     try {
       res = await proxyFetch(registerUrl, {
         method: "POST",
@@ -2625,7 +2626,7 @@ export class NexuConfigStore {
     const abortController = new AbortController();
     this.pollingState = { deviceId, deviceSecret, abortController };
     void this.pollDesktopCloudAuthorization(
-      activeProfile.cloudUrl,
+      cloudApiUrl,
       deviceId,
       deviceSecret,
       abortController.signal,
