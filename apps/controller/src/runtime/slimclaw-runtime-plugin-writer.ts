@@ -276,7 +276,9 @@ export class OpenClawRuntimePluginWriter {
         const prereqIdx = content.indexOf("## 通用执行前提");
         if (prereqIdx !== -1) {
           content =
-            content.slice(0, prereqIdx) + xhsInjection + content.slice(prereqIdx);
+            content.slice(0, prereqIdx) +
+            xhsInjection +
+            content.slice(prereqIdx);
           await writeFile(skillMd, content, "utf8");
         }
       }

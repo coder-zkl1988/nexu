@@ -5,6 +5,7 @@ import {
   getSidecarRoot,
   linkOrCopyDirectory,
   pathExists,
+  pruneRuntimeDependenciesForTarget,
   repoRoot,
   resetDir,
   shouldCopyRuntimeDependencies,
@@ -133,6 +134,7 @@ async function prepareControllerSidecar() {
       sidecarPluginsRoot,
       "controller sidecar plugins",
     );
+    await pruneRuntimeDependenciesForTarget(sidecarPluginsRoot);
   }
 
   const controllerPackageJson = JSON.parse(

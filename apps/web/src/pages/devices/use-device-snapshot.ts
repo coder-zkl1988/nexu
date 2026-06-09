@@ -84,7 +84,6 @@ export function useDeviceSnapshot(
       wsRef.current = null;
       decoderRef.current = null;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: wsPort intentionally triggers reconnection when changed
   }, [deviceId, wsPort]);
 
   return snapshot;

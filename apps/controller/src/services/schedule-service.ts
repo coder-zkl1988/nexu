@@ -72,7 +72,8 @@ export class ScheduleService {
         // Primary dedup: nexuScheduleId in description
         if (item.description) {
           const match = item.description.match(/nexuScheduleId:(\S+)/);
-          if (match && uiIds.has(match[1]!)) continue;
+          const scheduleId = match?.[1];
+          if (scheduleId && uiIds.has(scheduleId)) continue;
         }
 
         // Fallback dedup: same botId + name + cron

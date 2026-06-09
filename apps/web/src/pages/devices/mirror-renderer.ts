@@ -573,7 +573,13 @@ void main() {
       // 2D fallback path
       if (this.fallbackTo2D) {
         if (this.ctx2D && this.canvas) {
-          this.ctx2D.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
+          this.ctx2D.drawImage(
+            img,
+            0,
+            0,
+            this.canvas.width,
+            this.canvas.height,
+          );
         }
         return;
       }

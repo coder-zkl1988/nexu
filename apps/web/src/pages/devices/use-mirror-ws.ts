@@ -12,7 +12,12 @@ const rendererRegistry = new Map<
   {
     renderer: MirrorGLRenderer;
     videoCallback: (frame: VideoFrame) => void;
-    jpegCallback: (screenshot: string, width: number, height: number, format: "jpeg" | "png") => void;
+    jpegCallback: (
+      screenshot: string,
+      width: number,
+      height: number,
+      format: "jpeg" | "png",
+    ) => void;
   }
 >();
 
@@ -22,8 +27,12 @@ export function registerMirrorRenderer(
   renderer: MirrorGLRenderer,
 ): () => void {
   const videoCallback = (frame: VideoFrame) => renderer.render(frame);
-  const jpegCallback = (screenshot: string, width: number, height: number, format: "jpeg" | "png") =>
-    renderer.renderJPEG(screenshot, width, height, format);
+  const jpegCallback = (
+    screenshot: string,
+    width: number,
+    height: number,
+    format: "jpeg" | "png",
+  ) => renderer.renderJPEG(screenshot, width, height, format);
   rendererRegistry.set(deviceId, { renderer, videoCallback, jpegCallback });
   return () => {
     const entry = rendererRegistry.get(deviceId);
@@ -43,7 +52,14 @@ export function getMirrorRenderCallback(
 /** Get the JPEG render callback for a device (used by STABLE mode JSON path) */
 export function getMirrorJPEGCallback(
   deviceId: string,
-): ((screenshot: string, width: number, height: number, format: "jpeg" | "png") => void) | null {
+):
+  | ((
+      screenshot: string,
+      width: number,
+      height: number,
+      format: "jpeg" | "png",
+    ) => void)
+  | null {
   return rendererRegistry.get(deviceId)?.jpegCallback ?? null;
 }
 
@@ -787,10 +803,21 @@ export function useMirrorSocket(
           // Render JPEG directly to the WebGL canvas (STABLE mode path)
           const jpegCallback = getMirrorJPEGCallback(deviceId);
           if (jpegCallback && data.width && data.height) {
-            console.log("[mirror-ws] STABLE JPEG render:", data.width, "x", data.height, "format:", fmt);
+            console.log(
+              "[mirror-ws] STABLE JPEG render:",
+              data.width,
+              "x",
+              data.height,
+              "format:",
+              fmt,
+            );
             jpegCallback(data.screenshot, data.width, data.height, fmt);
           } else {
-            console.log("[mirror-ws] JPEG callback missing?", { hasCallback: !!jpegCallback, w: data.width, h: data.height });
+            console.log("[mirror-ws] JPEG callback missing?", {
+              hasCallback: !!jpegCallback,
+              w: data.width,
+              h: data.height,
+            });
           }
           pendingFrame = frame;
           if (rafId === null) rafId = requestAnimationFrame(flushFrame);

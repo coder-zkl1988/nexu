@@ -12,7 +12,6 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const crypto = require("node:crypto");
 
 // Resolve from monorepo node_modules
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -116,70 +115,13 @@ const SOUL_KEYWORDS = [
   "说话方式",
 ];
 
-const AGENTS_KEYWORDS = [
-  "使命",
-  "规则",
-  "流程",
-  "工作",
-  "能力",
-  "红线",
-  "权限",
-  "技术交付物",
-  "交付物",
-  "专业能力",
-  "核心使命",
-  "核心使命与能力",
-  "核心能力",
-  "进阶能力",
-  "高级能力",
-  "专项技能",
-  "领域专业",
-  "适用场景",
-  "质量门禁",
-  "检查清单",
-  "门禁决策",
-  "风险评估",
-  "风险",
-  "预警信号",
-  "预算",
-  "关键规则",
-  "必须遵守",
-  "摘要",
-  "执行摘要",
-  "高管摘要",
-  "场景",
-  "目标",
-  "前提条件",
-  "任务",
-  "行动项",
-  "交付物模板",
-  "你的交付物模板",
-  "你的技术交付物",
-  "你的核心使命",
-  "你的工作流程",
-  "你必须遵守",
-  "你的成功指标", // "成功指标" matches IDENTITY first
-  "智能体激活顺序",
-  "智能体阵容",
-  "建议",
-  "参考文档",
-  "持续学习",
-  "学习与积累",
-  "能力边界",
-  "The Workflow",
-  "The Scenario",
-];
-
 /**
  * Strip emoji and clean a heading for keyword matching.
  */
 function cleanHeading(heading) {
   return heading
-    .replace(
-      /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{200D}\u{FE0F}]/gu,
-      "",
-    )
-    .replace(/[🎯🧠🔧📋📝🔍🚫📊💬🔄🚀🚨💭🔴🟡⚙️✅❌⚠️📌🔗📎📖🏆💡🎨🛠️📦]/gu, "")
+    .replace(/\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u200D\uFE0F]/gu, "")
     .trim();
 }
 
@@ -212,14 +154,14 @@ function splitContent(body) {
         sections.push({ heading: currentHeading, content: currentContent });
       }
       currentHeading = line.replace(/^##\s*/, "").trim();
-      currentContent = line + "\n";
+      currentContent = `${line}\n`;
     } else if (currentHeading !== null) {
-      currentContent += line + "\n";
+      currentContent += `${line}\n`;
     } else {
       // Content before any ## heading — preamble, typically the H1 title line
       if (currentHeading === null) {
         currentHeading = "__preamble__";
-        currentContent = line + "\n";
+        currentContent = `${line}\n`;
       }
     }
   }
@@ -277,7 +219,7 @@ ${injected}
 我是 AI 智能体，由 agency-agents-zh 社区创建。我的建议和分析仅供参考，关键决策（安全、法律、财务、医疗等）请以人类专家判断为准。我可能出错，请在使用我的输出前进行验证。`;
 }
 
-function buildAgentsMd(name, agentsContent) {
+function buildAgentsMd(agentsContent) {
   return `# AGENTS.md — 工作空间规范
 
 这是你的工作空间，**必须严格按照以下规范工作**。
@@ -488,7 +430,7 @@ async function main() {
 
     // Build workspace files with templates
     const identityMd = buildIdentityMd(name, description, identity);
-    const agentsMd = buildAgentsMd(name, agents);
+    const agentsMd = buildAgentsMd(agents);
     const soulMd = buildSoulMd(name, description, soul);
     // Compress avatar
     const avatarDataUrl = await compressAvatar(slug);

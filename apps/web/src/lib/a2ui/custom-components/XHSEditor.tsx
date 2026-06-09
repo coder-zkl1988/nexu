@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import type { CustomComponentProps } from "./registry";
 
 interface XHSEditorProps extends CustomComponentProps {}
@@ -83,8 +83,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
         maxWidth: 640,
         borderRadius: 12,
         overflow: "hidden",
-        boxShadow:
-          "0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)",
         background: "#ffffff",
       }}
     >
@@ -128,7 +127,13 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
             color: "#999",
           }}
         >
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <svg
+            aria-hidden="true"
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+          >
             <path
               d="M4 4L12 12M12 4L4 12"
               stroke="currentColor"
@@ -240,9 +245,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
           <input
             type="text"
             value={title}
-            onChange={(e) =>
-              setTitle(e.target.value.slice(0, maxTitleLength))
-            }
+            onChange={(e) => setTitle(e.target.value.slice(0, maxTitleLength))}
             placeholder="填写标题，更有吸引力"
             maxLength={maxTitleLength}
             style={{

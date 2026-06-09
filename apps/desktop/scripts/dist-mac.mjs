@@ -874,6 +874,8 @@ async function main() {
           cwd: electronRoot,
           env: {
             ...env,
+            NEXU_TARGET_PLATFORM: "mac",
+            NEXU_DESKTOP_TARGET_ARCH: targetMacArch,
             ...(isUnsigned ? { NEXU_DESKTOP_MAC_UNSIGNED: "true" } : {}),
           },
         },

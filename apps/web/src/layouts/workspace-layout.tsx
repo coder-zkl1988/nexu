@@ -9,6 +9,11 @@ import {
 } from "@/hooks/use-desktop-budget-guard";
 import { useDesktopCloudStatus } from "@/hooks/use-desktop-cloud-status";
 import { useDesktopRewardsStatus } from "@/hooks/use-desktop-rewards";
+import { A2UIRenderer } from "@/lib/a2ui";
+import {
+  A2UISidebarProvider,
+  useA2UISidebar,
+} from "@/lib/a2ui/a2ui-sidebar-context";
 import { authClient } from "@/lib/auth-client";
 import { openExternalUrl } from "@/lib/desktop-links";
 import {
@@ -52,8 +57,6 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { A2UIRenderer } from "@/lib/a2ui";
-import { A2UISidebarProvider, useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
 import "@/lib/api";
 import {
   deleteApiV1SessionsById,
@@ -432,10 +435,17 @@ function WorkspaceLayoutContent() {
       : SIDEBAR_DEFAULT;
   });
   const isResizing = useRef(false);
-  const { isOpen: rightSidebarOpen, messages: rightSidebarMessages, onAction: rightSidebarOnAction, close: closeRightSidebar } = useA2UISidebar();
+  const {
+    isOpen: rightSidebarOpen,
+    messages: rightSidebarMessages,
+    onAction: rightSidebarOnAction,
+    close: closeRightSidebar,
+  } = useA2UISidebar();
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
-    return saved ? Math.max(RIGHT_SIDEBAR_MIN, Math.min(RIGHT_SIDEBAR_MAX, Number(saved))) : RIGHT_SIDEBAR_DEFAULT;
+    return saved
+      ? Math.max(RIGHT_SIDEBAR_MIN, Math.min(RIGHT_SIDEBAR_MAX, Number(saved)))
+      : RIGHT_SIDEBAR_DEFAULT;
   });
   const isRightResizing = useRef(false);
 
@@ -977,7 +987,9 @@ function WorkspaceLayoutContent() {
                   regularSessions.reduce(
                     (acc, s) => {
                       const key = s.channelType ?? "web";
-                      (acc[key] ??= []).push(s);
+                      const group = acc[key] ?? [];
+                      group.push(s);
+                      acc[key] = group;
                       return acc;
                     },
                     {} as Record<string, SidebarSession[]>,
@@ -1598,17 +1610,33 @@ function WorkspaceLayoutContent() {
       {rightSidebarOpen && (
         <div
           className="hidden md:flex shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
-          style={{ width: rightSidebarWidth, background: "var(--color-tabby-bg)" }}
+          style={{
+            width: rightSidebarWidth,
+            background: "var(--color-tabby-bg)",
+          }}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
-            <span className="text-sm font-medium text-[var(--color-text-heading)]">内容预览</span>
+            <span className="text-sm font-medium text-[var(--color-text-heading)]">
+              内容预览
+            </span>
             <button
               type="button"
               onClick={closeRightSidebar}
               className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <svg
+                aria-hidden="true"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+              >
+                <path
+                  d="M4 4L12 12M12 4L4 12"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
           </div>

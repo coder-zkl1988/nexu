@@ -49,8 +49,8 @@ export function SkillList({
   }, [displaySkills.length]);
 
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-  }, [displaySkills]);
+    setVisibleCount(Math.min(PAGE_SIZE, displaySkills.length));
+  }, [displaySkills.length]);
 
   const visibleSkills = displaySkills.slice(0, visibleCount);
 

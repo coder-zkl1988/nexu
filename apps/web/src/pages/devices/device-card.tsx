@@ -108,9 +108,11 @@ export function DeviceCard({
                 suppressContentEditableWarning
                 onFocus={() => {
                   if (!editingName) return;
+                  const nameInput = nameInputRef.current;
+                  if (!nameInput) return;
                   // Select all text on focus
                   const range = document.createRange();
-                  range.selectNodeContents(nameInputRef.current!);
+                  range.selectNodeContents(nameInput);
                   const sel = window.getSelection();
                   sel?.removeAllRanges();
                   sel?.addRange(range);

@@ -54,6 +54,7 @@ export default function ExpertsPage() {
     [searchParams],
   );
   const { tab, tag, q } = viewState;
+  const hasExplicitTab = searchParams.has("tab");
 
   const [inputValue, setInputValue] = useState(q);
   const debouncedInput = useDebounce(inputValue, 150);
@@ -73,17 +74,17 @@ export default function ExpertsPage() {
   // URL has no explicit tab) and then an effect switches to "yours" — causing a
   // visible flash even with useLayoutEffect.
   const effectiveTab: ExpertsTab = useMemo(() => {
-    if (searchParams.has("tab")) return tab;
+    if (hasExplicitTab) return tab;
     if (data && (data.installedSlugs?.length ?? 0) > 0) return "yours";
     return tab;
-  }, [tab, data, searchParams.has("tab")]);
+  }, [tab, data, hasExplicitTab]);
 
   // Sync the URL when auto-defaulting to "yours" (one-shot, render-time decision
   // already applied via effectiveTab — this just makes the URL bookmarkable).
   const prevDataRef = useRef(false);
   useEffect(() => {
     if (
-      !searchParams.has("tab") &&
+      !hasExplicitTab &&
       data &&
       (data.installedSlugs?.length ?? 0) > 0 &&
       !prevDataRef.current
@@ -92,7 +93,7 @@ export default function ExpertsPage() {
       updateViewState({ tab: "yours" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, searchParams.has("tab")]);
+  }, [data, hasExplicitTab]);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);

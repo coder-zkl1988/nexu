@@ -37,10 +37,10 @@ try {
   await access(sourceDir);
 } catch {
   console.error(
-    `[device-control] Plugin build not found at: ${sourceDir}\n` +
-      `Run first in the plugin repo (nexu-desktop branch):\n` +
-      `  node scripts/build-nexu.mjs\n` +
-      `Or set DEVICE_CONTROL_PLUGIN_PATH to the repo path.`,
+    `[device-control] Plugin build not found at: ${sourceDir}
+Run first in the plugin repo (nexu-desktop branch):
+  node scripts/build-nexu.mjs
+Or set DEVICE_CONTROL_PLUGIN_PATH to the repo path.`,
   );
   process.exit(1);
 }

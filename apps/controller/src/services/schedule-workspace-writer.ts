@@ -36,7 +36,7 @@ function buildScheduleMarkdown(schedules: NexuConfig["schedules"]): string {
     lines.push(`- **Schedule**: \`${s.cron}\` (${s.timezone})`);
     lines.push(`- **Task**: ${s.prompt}`);
     lines.push(`- **nexuScheduleId**: \`${s.id}\``);
-    lines.push(`- **sessionTarget**: \`isolated\``);
+    lines.push("- **sessionTarget**: `isolated`");
     if (s.channelType) {
       lines.push(
         `- **delivery**: \`{ mode: "announce", channel: "${s.channelType}" }\``,
@@ -116,7 +116,7 @@ async function injectSchedulesIntoAgentsMd(
       block +
       content.slice(endIdx + SCHEDULE_END_MARKER.length);
   } else {
-    updated = content.trimEnd() + "\n\n" + block + "\n";
+    updated = `${content.trimEnd()}\n\n${block}\n`;
   }
 
   if (updated !== content) {

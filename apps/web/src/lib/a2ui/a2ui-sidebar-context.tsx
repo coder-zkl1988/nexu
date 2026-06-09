@@ -1,4 +1,10 @@
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+} from "react";
 import type { A2UIMessage } from "./a2ui-types";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -7,7 +13,9 @@ export interface A2UISidebarState {
   isOpen: boolean;
   surfaceId: string | null;
   messages: A2UIMessage[];
-  onAction: ((actionName: string, context: Record<string, unknown>) => void) | null;
+  onAction:
+    | ((actionName: string, context: Record<string, unknown>) => void)
+    | null;
 }
 
 export interface A2UISidebarActions {
@@ -21,7 +29,9 @@ export interface A2UISidebarActions {
   close: () => void;
 }
 
-interface A2UISidebarContextValue extends A2UISidebarState, A2UISidebarActions {}
+interface A2UISidebarContextValue
+  extends A2UISidebarState,
+    A2UISidebarActions {}
 
 // ── Context ────────────────────────────────────────────────────
 
@@ -29,7 +39,9 @@ const A2UISidebarContext = createContext<A2UISidebarContextValue | null>(null);
 
 // ── Provider ───────────────────────────────────────────────────
 
-export function A2UISidebarProvider({ children }: { children: React.ReactNode }) {
+export function A2UISidebarProvider({
+  children,
+}: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [surfaceId, setSurfaceId] = useState<string | null>(null);
   const [messages, setMessages] = useState<A2UIMessage[]>([]);

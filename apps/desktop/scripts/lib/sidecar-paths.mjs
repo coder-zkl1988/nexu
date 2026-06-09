@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as platformFilesystem from "../platforms/filesystem-compat.mjs";
+import { resolveBuildTargetPlatform } from "../platforms/platform-resolver.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const electronRoot = resolve(scriptDir, "../..");
@@ -43,6 +44,216 @@ export async function resetDir(path) {
 export function shouldCopyRuntimeDependencies() {
   const value = process.env.NEXU_DESKTOP_COPY_RUNTIME_DEPS;
   return value === "1" || value?.toLowerCase() === "true";
+}
+
+function resolveRuntimeDependencyTarget() {
+  const platform = resolveBuildTargetPlatform({
+    env: process.env,
+    platform: process.platform,
+  });
+  const rawArch = process.env.NEXU_DESKTOP_TARGET_ARCH ?? process.arch;
+  const arch =
+    rawArch === "x64" || rawArch === "arm64" ? rawArch : process.arch;
+
+  return { platform, arch };
+}
+
+function isTargetPlatformPackage(packageName, target) {
+  const darwinArch = target.arch === "x64" ? "x64" : "arm64";
+  const winArch = target.arch === "arm64" ? "arm64" : "x64";
+
+  if (packageName.startsWith("@napi-rs/canvas-")) {
+    return target.platform === "mac"
+      ? packageName === `@napi-rs/canvas-darwin-${darwinArch}`
+      : packageName === `@napi-rs/canvas-win32-${winArch}-msvc`;
+  }
+
+  if (packageName.startsWith("@lydell/node-pty-")) {
+    return target.platform === "mac"
+      ? packageName === `@lydell/node-pty-darwin-${darwinArch}`
+      : packageName === `@lydell/node-pty-win32-${winArch}`;
+  }
+
+  if (packageName.startsWith("@mariozechner/clipboard-")) {
+    if (target.platform !== "mac") {
+      return packageName === `@mariozechner/clipboard-win32-${winArch}-msvc`;
+    }
+
+    return (
+      packageName === `@mariozechner/clipboard-darwin-${darwinArch}` ||
+      packageName === "@mariozechner/clipboard-darwin-universal"
+    );
+  }
+
+  if (packageName.startsWith("sqlite-vec-")) {
+    return target.platform === "mac"
+      ? packageName === `sqlite-vec-darwin-${darwinArch}`
+      : packageName === "sqlite-vec-windows-x64";
+  }
+
+  return true;
+}
+
+function shouldCopyRuntimeDependencyPackage(packageName, target) {
+  return isTargetPlatformPackage(packageName, target);
+}
+
+function getTargetPrebuildNames(target) {
+  const darwinArch = target.arch === "x64" ? "x64" : "arm64";
+  const winArch = target.arch === "arm64" ? "arm64" : "x64";
+
+  return target.platform === "mac"
+    ? new Set([`darwin-${darwinArch}`, "darwin-universal"])
+    : new Set([`win32-${winArch}`, `win32-${winArch}-msvc`]);
+}
+
+async function pruneRuntimeDependencyTree(rootPath, target) {
+  let prunedPackageCount = 0;
+  let prunedPrebuildCount = 0;
+  let prunedPdfAssetCount = 0;
+  const targetPrebuildNames = getTargetPrebuildNames(target);
+
+  async function pruneNodeModules(nodeModulesPath) {
+    const entries = await readdir(nodeModulesPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const entryPath = resolve(nodeModulesPath, entry.name);
+
+      if (entry.name.startsWith("@")) {
+        const scopedEntries = await readdir(entryPath, { withFileTypes: true });
+        for (const scopedEntry of scopedEntries) {
+          if (!scopedEntry.isDirectory()) {
+            continue;
+          }
+
+          const packageName = `${entry.name}/${scopedEntry.name}`;
+          const packagePath = resolve(entryPath, scopedEntry.name);
+          if (!shouldCopyRuntimeDependencyPackage(packageName, target)) {
+            await rm(packagePath, { recursive: true, force: true });
+            prunedPackageCount += 1;
+            continue;
+          }
+
+          await pruneNestedDependencyRoots(packagePath);
+        }
+        continue;
+      }
+
+      if (!shouldCopyRuntimeDependencyPackage(entry.name, target)) {
+        await rm(entryPath, { recursive: true, force: true });
+        prunedPackageCount += 1;
+        continue;
+      }
+
+      await pruneNestedDependencyRoots(entryPath);
+    }
+  }
+
+  async function prunePrebuilds(packagePath) {
+    const prebuildsPath = resolve(packagePath, "prebuilds");
+    if (!(await pathExists(prebuildsPath))) {
+      return;
+    }
+
+    const entries = await readdir(prebuildsPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || targetPrebuildNames.has(entry.name)) {
+        continue;
+      }
+
+      await rm(resolve(prebuildsPath, entry.name), {
+        recursive: true,
+        force: true,
+      });
+      prunedPrebuildCount += 1;
+    }
+  }
+
+  async function prunePdfParserAssets(packagePath) {
+    const packageJsonPath = resolve(packagePath, "package.json");
+    if (!(await pathExists(packageJsonPath))) {
+      return 0;
+    }
+
+    const packageJson = await readJson(packageJsonPath);
+    if (packageJson.name !== "pdf-parse") {
+      return 0;
+    }
+
+    let prunedCount = 0;
+    const pruneTargets = [
+      resolve(packagePath, "bin"),
+      resolve(packagePath, "dist", "pdf-parse", "web"),
+      resolve(packagePath, "node_modules", "pdfjs-dist", "web"),
+      resolve(packagePath, "lib", "pdf.js", "v1.9.426", "web"),
+      resolve(packagePath, "lib", "pdf.js", "v1.10.88", "web"),
+      resolve(packagePath, "lib", "pdf.js", "v1.10.100", "web"),
+      resolve(packagePath, "lib", "pdf.js", "v2.0.550", "web"),
+    ];
+
+    for (const pruneTarget of pruneTargets) {
+      if (await pathExists(pruneTarget)) {
+        await rm(pruneTarget, { recursive: true, force: true });
+        prunedCount += 1;
+      }
+    }
+
+    async function pruneSourceMaps(root) {
+      if (!(await pathExists(root))) {
+        return;
+      }
+
+      const entries = await readdir(root, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = resolve(root, entry.name);
+        if (entry.isDirectory()) {
+          await pruneSourceMaps(entryPath);
+          continue;
+        }
+
+        if (entry.isFile() && entry.name.endsWith(".map")) {
+          await rm(entryPath, { force: true });
+          prunedCount += 1;
+        }
+      }
+    }
+
+    await pruneSourceMaps(resolve(packagePath, "dist"));
+    await pruneSourceMaps(resolve(packagePath, "node_modules", "pdfjs-dist"));
+    await pruneSourceMaps(resolve(packagePath, "lib", "pdf.js"));
+
+    return prunedCount;
+  }
+
+  async function pruneNestedDependencyRoots(packagePath) {
+    await prunePrebuilds(packagePath);
+    prunedPdfAssetCount += await prunePdfParserAssets(packagePath);
+
+    const nestedNodeModulesPath = resolve(packagePath, "node_modules");
+    if (await pathExists(nestedNodeModulesPath)) {
+      await pruneNodeModules(nestedNodeModulesPath);
+    }
+  }
+
+  if (await pathExists(rootPath)) {
+    await pruneNodeModules(rootPath);
+  }
+
+  return { prunedPackageCount, prunedPrebuildCount, prunedPdfAssetCount };
+}
+
+export async function pruneRuntimeDependenciesForTarget(rootPath) {
+  const target = resolveRuntimeDependencyTarget();
+  const { prunedPackageCount, prunedPrebuildCount, prunedPdfAssetCount } =
+    await pruneRuntimeDependencyTree(rootPath, target);
+
+  console.log(
+    `[sidecar-paths] pruned runtime dependencies root=${rootPath} target=${target.platform}/${target.arch} packages=${prunedPackageCount} prebuilds=${prunedPrebuildCount} pdfAssets=${prunedPdfAssetCount}`,
+  );
 }
 
 function formatDurationMs(durationMs) {
@@ -241,12 +452,19 @@ export async function copyRuntimeDependencyClosure({
 
   const rootPackageJson = await readJson(resolve(packageRoot, "package.json"));
   const seen = new Set();
+  const dependencyTarget = resolveRuntimeDependencyTarget();
+  let skippedPackageCount = 0;
 
   async function copyDependencyTree({
     dependencyName,
     resolutionBaseRoot,
     destinationNodeModules,
   }) {
+    if (!shouldCopyRuntimeDependencyPackage(dependencyName, dependencyTarget)) {
+      skippedPackageCount += 1;
+      return;
+    }
+
     const packagePathParts = getPackagePathParts(dependencyName);
     let sourcePackageRoot;
     try {
@@ -322,8 +540,10 @@ export async function copyRuntimeDependencyClosure({
     });
   }
 
+  await pruneRuntimeDependenciesForTarget(targetNodeModules);
+
   console.log(
-    `[sidecar-paths][timing] copyRuntimeDependencyClosure packageRoot=${packageRoot} packages=${copiedPackageCount} duration=${formatDurationMs(
+    `[sidecar-paths][timing] copyRuntimeDependencyClosure packageRoot=${packageRoot} target=${dependencyTarget.platform}/${dependencyTarget.arch} packages=${copiedPackageCount} skipped=${skippedPackageCount} duration=${formatDurationMs(
       performance.now() - closureStartedAt,
     )}`,
   );

@@ -25,6 +25,7 @@ import {
   getSidecarRoot,
   linkOrCopyDirectory,
   pathExists,
+  pruneRuntimeDependenciesForTarget,
   removePathIfExists,
   repoRoot,
   resetDir,
@@ -657,6 +658,7 @@ async function prepareOpenclawSidecar() {
         },
       );
       await rename(stagedOpenclawRoot, resolve(sidecarNodeModules, "openclaw"));
+      await pruneRuntimeDependenciesForTarget(sidecarNodeModules);
       if (shouldLogOpenclawSidecarProbes) {
         const copyStats = await collectDirectoryStats(sidecarNodeModules);
         console.log(
