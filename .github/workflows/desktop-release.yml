@@ -135,6 +135,21 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Checkout tabby-control plugin
+        uses: actions/checkout@v4
+        with:
+          repository: coder-zkl1988/tabby-control
+          ref: nexu-desktop
+          path: ../tabby-control
+
+      - name: Build tabby-control plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm --dir ../tabby-control install --frozen-lockfile
+          pnpm --dir ../tabby-control build:nexu
+          test -d ../tabby-control/dist-nexu/tabby-control
+
       - name: Import Apple Developer ID certificate
         shell: bash
         env:
@@ -255,6 +270,22 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+
+      - name: Checkout tabby-control plugin
+        uses: actions/checkout@v4
+        with:
+          repository: coder-zkl1988/tabby-control
+          ref: nexu-desktop
+          path: ../tabby-control
+
+      - name: Build tabby-control plugin
+        shell: pwsh
+        run: |
+          pnpm --dir ../tabby-control install --frozen-lockfile
+          pnpm --dir ../tabby-control build:nexu
+          if (-not (Test-Path ../tabby-control/dist-nexu/tabby-control)) {
+            throw "Missing tabby-control dist-nexu output"
+          }
 
       - name: Install packaging tools
         shell: pwsh
