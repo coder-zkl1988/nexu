@@ -5,6 +5,12 @@ export function createWindowsBuildCapabilities({
   releaseRoot,
   processPlatform,
 }) {
+  const windowsTargetEnv = {
+    ...env,
+    NEXU_TARGET_PLATFORM: "win",
+    NEXU_DESKTOP_TARGET_ARCH: "x64",
+  };
+
   return {
     platformId: "win",
     artifactLayout: {
@@ -12,7 +18,7 @@ export function createWindowsBuildCapabilities({
       unpackedDirName: "win-unpacked",
     },
     webBuildEnv: createDesktopWebBuildEnv(env, processPlatform),
-    sidecarReleaseEnv: env,
+    sidecarReleaseEnv: windowsTargetEnv,
     createElectronBuilderArgs({
       electronVersion,
       buildVersion,
@@ -38,7 +44,7 @@ export function createWindowsBuildCapabilities({
     },
     createElectronBuilderEnv() {
       return {
-        ...env,
+        ...windowsTargetEnv,
         CSC_IDENTITY_AUTO_DISCOVERY: "false",
       };
     },
