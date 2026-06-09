@@ -33,15 +33,15 @@ RequestExecutionLevel user
 !include "win-installer-lang.nsh"
 
 !define PRODUCT_PUBLISHER "Powerformer, Inc."
-!define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\Nexu.exe"
+!define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\Tabby.exe"
 !define UNINSTALL_REGKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
-!define INSTALLER_LOG "$TEMP\nexu-custom-installer.log"
-!define NEXU_CONFIG_REGKEY "Software\Nexu\Desktop"
-!define NEXU_USER_DATA_VALUE "UserDataRoot"
-!define DEFAULT_USER_DATA_DIR_NAME "nexu-desktop"
-!define INSTALL_TOMBSTONE_PREFIX "nexu-desktop.old."
-!define USERDATA_TOMBSTONE_PREFIX "nexu-userdata.old."
-!define INSTALL_TOMBSTONE_MARKER ".nexu-installer-tombstone"
+!define INSTALLER_LOG "$TEMP\tabby-custom-installer.log"
+!define TABBY_CONFIG_REGKEY "Software\Tabby\Desktop"
+!define TABBY_USER_DATA_VALUE "UserDataRoot"
+!define DEFAULT_USER_DATA_DIR_NAME "tabby-desktop"
+!define INSTALL_TOMBSTONE_PREFIX "tabby-desktop.old."
+!define USERDATA_TOMBSTONE_PREFIX "tabby-userdata.old."
+!define INSTALL_TOMBSTONE_MARKER ".tabby-installer-tombstone"
 
 Var UserDataDir
 Var OldUserDataDir
@@ -59,7 +59,7 @@ Var UninstallResolvedUserDataDirHandle
 
 Name "${PRODUCT_NAME}"
 OutFile "${OUTPUT_EXE}"
-InstallDir "$LOCALAPPDATA\Programs\nexu-desktop"
+InstallDir "$LOCALAPPDATA\Programs\tabby-desktop"
 InstallDirRegKey HKCU "${UNINSTALL_REGKEY}" "InstallLocation"
 Icon "${APP_ICON}"
 UninstallIcon "${APP_ICON}"
@@ -69,8 +69,8 @@ ShowUninstDetails show
 !define MUI_ABORTWARNING
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\Nexu.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "$(Lang_FinishRunNexu)"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\Tabby.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "$(Lang_FinishRunTabby)"
 !define MUI_FINISHPAGE_SHOWREADME
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(Lang_FinishCreateDesktopShortcut)"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
@@ -199,9 +199,9 @@ normalization_done:
   Pop $1
 FunctionEnd
 
-Function CleanupNexuConfigRegistryIfEmpty
-  DeleteRegKey /ifempty HKCU "${NEXU_CONFIG_REGKEY}"
-  DeleteRegKey /ifempty HKCU "Software\Nexu"
+Function CleanupTabbyConfigRegistryIfEmpty
+  DeleteRegKey /ifempty HKCU "${TABBY_CONFIG_REGKEY}"
+  DeleteRegKey /ifempty HKCU "Software\Tabby"
 FunctionEnd
 
 Function UserDataPageCreate
@@ -405,7 +405,7 @@ FunctionEnd
 
 Function un.ResolveUserDataDir
   StrCpy $UninstallResolvedUserDataDir "$APPDATA\${DEFAULT_USER_DATA_DIR_NAME}"
-  ReadRegStr $0 HKCU "${NEXU_CONFIG_REGKEY}" "${NEXU_USER_DATA_VALUE}"
+  ReadRegStr $0 HKCU "${TABBY_CONFIG_REGKEY}" "${TABBY_USER_DATA_VALUE}"
   ${If} $0 != ""
     StrCpy $UninstallResolvedUserDataDir "$0"
   ${EndIf}
@@ -504,7 +504,7 @@ FunctionEnd
 
 Function CreateDesktopShortcut
   Call CreateStartMenuShortcutVbs
-  nsExec::ExecToLog '"$SYSDIR\cscript.exe" //NoLogo "$PLUGINSDIR\create-shortcut.vbs" "$DESKTOP\Nexu.lnk" "$INSTDIR\Nexu.exe" "" "$INSTDIR" "$INSTDIR\Nexu.exe,0"'
+  nsExec::ExecToLog '"$SYSDIR\cscript.exe" //NoLogo "$PLUGINSDIR\create-shortcut.vbs" "$DESKTOP\Tabby.lnk" "$INSTDIR\Tabby.exe" "" "$INSTDIR" "$INSTDIR\Tabby.exe,0"'
   Pop $0
   ${If} $0 != "0"
     Push "failed to create desktop shortcut"
@@ -559,7 +559,7 @@ Function WriteTombstoneMarker
 
   FileOpen $1 "$0\${INSTALL_TOMBSTONE_MARKER}" w
   IfErrors done
-  FileWrite $1 "nexu-custom-installer tombstone$\r$\n"
+  FileWrite $1 "tabby-custom-installer tombstone$\r$\n"
   FileClose $1
 
 done:
@@ -821,7 +821,7 @@ Function .onInit
   Delete "${INSTALLER_LOG}"
   Push "installer init"
   Call LogInstallerEvent
-  ReadRegStr $OldUserDataDir HKCU "${NEXU_CONFIG_REGKEY}" "${NEXU_USER_DATA_VALUE}"
+  ReadRegStr $OldUserDataDir HKCU "${TABBY_CONFIG_REGKEY}" "${TABBY_USER_DATA_VALUE}"
   Push "installer init raw-reg-user-data=$OldUserDataDir"
   Call LogInstallerEvent
   ${If} $OldUserDataDir == ""
@@ -838,7 +838,7 @@ Function .onInit
   StrCpy $UserDataDir "$OldUserDataDir"
   StrCpy $MigrationStrategy "move"
 check_app_running:
-  nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /FI "IMAGENAME eq Nexu.exe" /FO CSV /NH'
+  nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /FI "IMAGENAME eq Tabby.exe" /FO CSV /NH'
   Pop $0
   Pop $1
   ${If} $0 != "0"
@@ -850,11 +850,11 @@ check_app_running:
     Abort
   ${EndIf}
   StrCpy $2 $1 10
-  ${If} $2 == '"Nexu.exe"'
-    Push "installer init detected running Nexu instance"
+  ${If} $2 == '"Tabby.exe"'
+    Push "installer init detected running Tabby instance"
     Call LogInstallerEvent
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(Lang_ErrorAppRunningRetry)" IDRETRY app_running_retry
-    Push "installer init cancelled because Nexu is still running"
+    Push "installer init cancelled because Tabby is still running"
     Call LogInstallerEvent
     Abort
   ${EndIf}
@@ -909,11 +909,11 @@ Section "Install"
   Push "payload extraction done"
   Call LogInstallerEvent
 
-  WriteUninstaller "$INSTDIR\Uninstall Nexu.exe"
-  CreateDirectory "$SMPROGRAMS\Nexu"
+  WriteUninstaller "$INSTDIR\Uninstall Tabby.exe"
+  CreateDirectory "$SMPROGRAMS\Tabby"
   DetailPrint "$(Lang_StatusFinalizeInstall)"
   Call CreateStartMenuShortcutVbs
-  nsExec::ExecToLog '"$SYSDIR\cscript.exe" //NoLogo "$PLUGINSDIR\create-shortcut.vbs" "$SMPROGRAMS\Nexu\Nexu.lnk" "$INSTDIR\Nexu.exe" "" "$INSTDIR" "$INSTDIR\Nexu.exe,0"'
+  nsExec::ExecToLog '"$SYSDIR\cscript.exe" //NoLogo "$PLUGINSDIR\create-shortcut.vbs" "$SMPROGRAMS\Tabby\Tabby.lnk" "$INSTDIR\Tabby.exe" "" "$INSTDIR" "$INSTDIR\Tabby.exe,0"'
   Pop $0
   ${If} $0 != "0"
     Push "failed to create app Start Menu shortcut"
@@ -921,7 +921,7 @@ Section "Install"
     MessageBox MB_OK|MB_ICONSTOP "$(Lang_ErrorCreateShortcutFailed)"
     Abort
   ${EndIf}
-  nsExec::ExecToLog '"$SYSDIR\cscript.exe" //NoLogo "$PLUGINSDIR\create-shortcut.vbs" "$SMPROGRAMS\Nexu\Uninstall Nexu.lnk" "$INSTDIR\Uninstall Nexu.exe" "" "$INSTDIR" "$INSTDIR\Uninstall Nexu.exe,0"'
+  nsExec::ExecToLog '"$SYSDIR\cscript.exe" //NoLogo "$PLUGINSDIR\create-shortcut.vbs" "$SMPROGRAMS\Tabby\Uninstall Tabby.lnk" "$INSTDIR\Uninstall Tabby.exe" "" "$INSTDIR" "$INSTDIR\Uninstall Tabby.exe,0"'
   Pop $0
   ${If} $0 != "0"
     Push "failed to create uninstall Start Menu shortcut"
@@ -934,17 +934,17 @@ Section "Install"
   WriteRegStr HKCU "${UNINSTALL_REGKEY}" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKCU "${UNINSTALL_REGKEY}" "Publisher" "${PRODUCT_PUBLISHER}"
   WriteRegStr HKCU "${UNINSTALL_REGKEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "${UNINSTALL_REGKEY}" "UninstallString" '"$INSTDIR\Uninstall Nexu.exe"'
-  WriteRegStr HKCU "${UNINSTALL_REGKEY}" "DisplayIcon" "$INSTDIR\Nexu.exe"
-  WriteRegStr HKCU "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\Nexu.exe"
+  WriteRegStr HKCU "${UNINSTALL_REGKEY}" "UninstallString" '"$INSTDIR\Uninstall Tabby.exe"'
+  WriteRegStr HKCU "${UNINSTALL_REGKEY}" "DisplayIcon" "$INSTDIR\Tabby.exe"
+  WriteRegStr HKCU "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\Tabby.exe"
   StrCpy $0 "$UserDataDir"
   StrCpy $1 "$APPDATA\${DEFAULT_USER_DATA_DIR_NAME}"
   Call PathsEqualIgnoreCase
   ${If} $PathCompareResult == "1"
-    DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "${NEXU_USER_DATA_VALUE}"
-    Call CleanupNexuConfigRegistryIfEmpty
+    DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "${TABBY_USER_DATA_VALUE}"
+    Call CleanupTabbyConfigRegistryIfEmpty
   ${Else}
-    WriteRegStr HKCU "${NEXU_CONFIG_REGKEY}" "${NEXU_USER_DATA_VALUE}" "$UserDataDir"
+    WriteRegStr HKCU "${TABBY_CONFIG_REGKEY}" "${TABBY_USER_DATA_VALUE}" "$UserDataDir"
   ${EndIf}
   StrCpy $0 "$OldUserDataDir"
   StrCpy $1 "$UserDataDir"
@@ -959,15 +959,15 @@ Section "Install"
   ${AndIf} $OldUserDataDirIsNonEmpty == "1"
     Push "install-section write-pending source=$OldUserDataDir target=$UserDataDir strategy=$MigrationStrategy"
     Call LogInstallerEvent
-    WriteRegStr HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationSource" "$OldUserDataDir"
-    WriteRegStr HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationTarget" "$UserDataDir"
-    WriteRegStr HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationStrategy" "$MigrationStrategy"
+    WriteRegStr HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationSource" "$OldUserDataDir"
+    WriteRegStr HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationTarget" "$UserDataDir"
+    WriteRegStr HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationStrategy" "$MigrationStrategy"
   ${Else}
     Push "install-section clear-pending target=$UserDataDir old=$OldUserDataDir"
     Call LogInstallerEvent
-    DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationSource"
-    DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationTarget"
-    DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationStrategy"
+    DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationSource"
+    DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationTarget"
+    DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationStrategy"
   ${EndIf}
   DetailPrint "$(Lang_StatusInstallDone)"
   Push "install section done"
@@ -981,17 +981,17 @@ Section "Uninstall"
   Call un.ResolveUserDataDir
   Push "uninstall section resolved-user-data=$UninstallResolvedUserDataDir delete-local-data=$UninstallDeleteLocalDataSelected"
   Call un.LogInstallerEvent
-  DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationSource"
-  DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationTarget"
-  DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "PendingUserDataMigrationStrategy"
-  Call un.CleanupNexuConfigRegistryIfEmpty
-  Delete "$DESKTOP\Nexu.lnk"
-  Delete "$SMPROGRAMS\Nexu\Nexu.lnk"
-  Delete "$SMPROGRAMS\Nexu\Uninstall Nexu.lnk"
-  RMDir "$SMPROGRAMS\Nexu"
+  DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationSource"
+  DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationTarget"
+  DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "PendingUserDataMigrationStrategy"
+  Call un.CleanupTabbyConfigRegistryIfEmpty
+  Delete "$DESKTOP\Tabby.lnk"
+  Delete "$SMPROGRAMS\Tabby\Tabby.lnk"
+  Delete "$SMPROGRAMS\Tabby\Uninstall Tabby.lnk"
+  RMDir "$SMPROGRAMS\Tabby"
   DeleteRegKey HKCU "${UNINSTALL_REGKEY}"
   DeleteRegKey HKCU "${PRODUCT_DIR_REGKEY}"
-  Delete "$INSTDIR\Uninstall Nexu.exe"
+  Delete "$INSTDIR\Uninstall Tabby.exe"
   Call un.BuildInstallTombstonePath
   StrCpy $0 "$0"
   Rename "$INSTDIR" "$0"
@@ -1018,8 +1018,8 @@ uninstall_done:
     StrCpy $0 "$UninstallResolvedUserDataDir"
     Rename "$0" "$1"
     IfErrors userdata_rename_failed
-    DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "${NEXU_USER_DATA_VALUE}"
-    Call un.CleanupNexuConfigRegistryIfEmpty
+    DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "${TABBY_USER_DATA_VALUE}"
+    Call un.CleanupTabbyConfigRegistryIfEmpty
     DetailPrint "$(Lang_StatusQueueDeleteData)"
     Push "$1"
     Call un.WriteTombstoneMarker
@@ -1030,8 +1030,8 @@ uninstall_done:
     Goto uninstall_done_after_userdata
 
 userdata_rename_failed:
-    DeleteRegValue HKCU "${NEXU_CONFIG_REGKEY}" "${NEXU_USER_DATA_VALUE}"
-    Call un.CleanupNexuConfigRegistryIfEmpty
+    DeleteRegValue HKCU "${TABBY_CONFIG_REGKEY}" "${TABBY_USER_DATA_VALUE}"
+    Call un.CleanupTabbyConfigRegistryIfEmpty
     DetailPrint "$(Lang_StatusQueueDeleteData)"
     Push "$0"
     Call un.QueueAsyncDelete
@@ -1042,9 +1042,9 @@ userdata_rename_failed:
 uninstall_done_after_userdata:
 SectionEnd
 
-Function un.CleanupNexuConfigRegistryIfEmpty
-  DeleteRegKey /ifempty HKCU "${NEXU_CONFIG_REGKEY}"
-  DeleteRegKey /ifempty HKCU "Software\Nexu"
+Function un.CleanupTabbyConfigRegistryIfEmpty
+  DeleteRegKey /ifempty HKCU "${TABBY_CONFIG_REGKEY}"
+  DeleteRegKey /ifempty HKCU "Software\Tabby"
 FunctionEnd
 
 Function un.WriteTombstoneMarker
@@ -1053,7 +1053,7 @@ Function un.WriteTombstoneMarker
 
   FileOpen $1 "$0\${INSTALL_TOMBSTONE_MARKER}" w
   IfErrors done
-  FileWrite $1 "nexu-custom-installer tombstone$\r$\n"
+  FileWrite $1 "tabby-custom-installer tombstone$\r$\n"
   FileClose $1
 
 done:

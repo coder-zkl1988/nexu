@@ -1,11 +1,11 @@
 LangString Lang_AdvancedTitle 1033 "Advanced options"
 LangString Lang_AdvancedTitle 2052 "高级选项"
 
-LangString Lang_AdvancedSubtitle 1033 "Choose where Nexu stores local data"
-LangString Lang_AdvancedSubtitle 2052 "选择 Nexu 本地数据的存储位置"
+LangString Lang_AdvancedSubtitle 1033 "Choose where Tabby stores local data"
+LangString Lang_AdvancedSubtitle 2052 "选择 Tabby 本地数据的存储位置"
 
-LangString Lang_UserDataHelp 1033 "Nexu stores local config, logs, and runtime state in this directory. Leave the default unless you intentionally want a custom data location."
-LangString Lang_UserDataHelp 2052 "Nexu 会在此目录保存本地配置、日志和运行时状态。除非你明确需要自定义数据位置，否则建议保持默认值。"
+LangString Lang_UserDataHelp 1033 "Tabby stores local config, logs, and runtime state in this directory. Leave the default unless you intentionally want a custom data location."
+LangString Lang_UserDataHelp 2052 "Tabby 会在此目录保存本地配置、日志和运行时状态。除非你明确需要自定义数据位置，否则建议保持默认值。"
 
 LangString Lang_UserDataLabel 1033 "User data directory"
 LangString Lang_UserDataLabel 2052 "本地数据目录"
@@ -13,23 +13,23 @@ LangString Lang_UserDataLabel 2052 "本地数据目录"
 LangString Lang_BrowseButton 1033 "Browse..."
 LangString Lang_BrowseButton 2052 "浏览..."
 
-LangString Lang_SelectUserDataDir 1033 "Choose Nexu user data directory"
-LangString Lang_SelectUserDataDir 2052 "选择 Nexu 本地数据目录"
+LangString Lang_SelectUserDataDir 1033 "Choose Tabby user data directory"
+LangString Lang_SelectUserDataDir 2052 "选择 Tabby 本地数据目录"
 
 LangString Lang_ErrorUserDataEmpty 1033 "User data directory cannot be empty."
 LangString Lang_ErrorUserDataEmpty 2052 "本地数据目录不能为空。"
 
-LangString Lang_ErrorUserDataTargetNonEmpty 1033 "The selected data directory already contains files. Choose an empty folder, or choose a parent folder and let Nexu create a ${DEFAULT_USER_DATA_DIR_NAME} folder inside it."
-LangString Lang_ErrorUserDataTargetNonEmpty 2052 "所选数据目录中已包含文件。请选择空目录，或选择一个父目录，让 Nexu 在其中创建 ${DEFAULT_USER_DATA_DIR_NAME} 目录。"
+LangString Lang_ErrorUserDataTargetNonEmpty 1033 "The selected data directory already contains files. Choose an empty folder, or choose a parent folder and let Tabby create a ${DEFAULT_USER_DATA_DIR_NAME} folder inside it."
+LangString Lang_ErrorUserDataTargetNonEmpty 2052 "所选数据目录中已包含文件。请选择空目录，或选择一个父目录，让 Tabby 在其中创建 ${DEFAULT_USER_DATA_DIR_NAME} 目录。"
 
 LangString Lang_MigrationTitle 1033 "Existing data migration"
 LangString Lang_MigrationTitle 2052 "现有数据迁移"
 
-LangString Lang_MigrationSubtitle 1033 "Choose how Nexu should handle data from the previous location"
-LangString Lang_MigrationSubtitle 2052 "选择 Nexu 如何处理旧位置中的数据"
+LangString Lang_MigrationSubtitle 1033 "Choose how Tabby should handle data from the previous location"
+LangString Lang_MigrationSubtitle 2052 "选择 Tabby 如何处理旧位置中的数据"
 
-LangString Lang_MigrationHelp 1033 "Nexu found existing local data in the previous directory. Choose how to use the new directory on first launch."
-LangString Lang_MigrationHelp 2052 "Nexu 在旧目录中发现了现有本地数据。请选择首次启动时如何使用新的数据目录。"
+LangString Lang_MigrationHelp 1033 "Tabby found existing local data in the previous directory. Choose how to use the new directory on first launch."
+LangString Lang_MigrationHelp 2052 "Tabby 在旧目录中发现了现有本地数据。请选择首次启动时如何使用新的数据目录。"
 
 LangString Lang_MigrationOldDirLabel 1033 "Previous data directory"
 LangString Lang_MigrationOldDirLabel 2052 "旧数据目录"
@@ -46,17 +46,17 @@ LangString Lang_MigrationCopyOption 2052 "将缺失文件复制到新目录并�
 LangString Lang_MigrationNoopOption 1033 "Do not migrate old data"
 LangString Lang_MigrationNoopOption 2052 "不迁移旧数据"
 
-LangString Lang_ErrorAppRunning 1033 "Nexu is currently running. Please quit the app before continuing the installation."
-LangString Lang_ErrorAppRunning 2052 "Nexu 当前正在运行。请先退出应用后再继续安装。"
+LangString Lang_ErrorAppRunning 1033 "Tabby is currently running. Please quit the app before continuing the installation."
+LangString Lang_ErrorAppRunning 2052 "Tabby 当前正在运行。请先退出应用后再继续安装。"
 
-LangString Lang_ErrorAppRunningRetry 1033 "Nexu is currently running.$\r$\n$\r$\nPlease quit Nexu manually before continuing the installation.$\r$\n$\r$\nAfter Nexu has fully exited, click Retry to continue, or Cancel to exit the installer."
-LangString Lang_ErrorAppRunningRetry 2052 "Nexu 当前正在运行。$\r$\n$\r$\n请先手动退出 Nexu，然后再继续安装。$\r$\n$\r$\n确认 Nexu 已完全退出后，点击“重试”继续安装，或点击“取消”退出安装程序。"
+LangString Lang_ErrorAppRunningRetry 1033 "Tabby is currently running.$\r$\n$\r$\nPlease quit Tabby manually before continuing the installation.$\r$\n$\r$\nAfter Tabby has fully exited, click Retry to continue, or Cancel to exit the installer."
+LangString Lang_ErrorAppRunningRetry 2052 "Tabby 当前正在运行。$\r$\n$\r$\n请先手动退出 Tabby，然后再继续安装。$\r$\n$\r$\n确认 Tabby 已完全退出后，点击“重试”继续安装，或点击“取消”退出安装程序。"
 
-LangString Lang_ErrorAppRunningCheckFailedRetry 1033 "Nexu installer could not verify whether Nexu is still running.$\r$\n$\r$\nPlease make sure Nexu is fully closed, then click Retry to check again, or Cancel to exit the installer."
-LangString Lang_ErrorAppRunningCheckFailedRetry 2052 "安装程序暂时无法确认 Nexu 是否仍在运行。$\r$\n$\r$\n请先确认 Nexu 已完全退出，然后点击“重试”再次检查，或点击“取消”退出安装程序。"
+LangString Lang_ErrorAppRunningCheckFailedRetry 1033 "Tabby installer could not verify whether Tabby is still running.$\r$\n$\r$\nPlease make sure Tabby is fully closed, then click Retry to check again, or Cancel to exit the installer."
+LangString Lang_ErrorAppRunningCheckFailedRetry 2052 "安装程序暂时无法确认 Tabby 是否仍在运行。$\r$\n$\r$\n请先确认 Tabby 已完全退出，然后点击“重试”再次检查，或点击“取消”退出安装程序。"
 
-LangString Lang_ErrorExtractFailed 1033 "Failed to extract Nexu payload (7za exit code $0)."
-LangString Lang_ErrorExtractFailed 2052 "解压 Nexu 安装内容失败（7za 退出码 $0）。"
+LangString Lang_ErrorExtractFailed 1033 "Failed to extract Tabby payload (7za exit code $0)."
+LangString Lang_ErrorExtractFailed 2052 "解压 Tabby 安装内容失败（7za 退出码 $0）。"
 
 LangString Lang_ErrorExtractFailedWithLog 1033 "$\r$\n$\r$\nSee installer log: ${INSTALLER_LOG}"
 LangString Lang_ErrorExtractFailedWithLog 2052 "$\r$\n$\r$\n请查看安装日志：${INSTALLER_LOG}"
@@ -64,14 +64,14 @@ LangString Lang_ErrorExtractFailedWithLog 2052 "$\r$\n$\r$\n请查看安装日�
 LangString Lang_ErrorCreateShortcutFailed 1033 "Failed to create Start Menu shortcuts."
 LangString Lang_ErrorCreateShortcutFailed 2052 "创建开始菜单快捷方式失败。"
 
-LangString Lang_ConfirmOverwriteInstall 1033 "A previous version of Nexu was found in the install directory. The old program files will be removed and replaced with the new version.$\r$\n$\r$\nYour personal data and settings will NOT be affected.$\r$\n$\r$\nContinue?"
-LangString Lang_ConfirmOverwriteInstall 2052 "安装目录中已存在旧版 Nexu，安装程序将移除旧版程序文件并替换为新版本。$\r$\n$\r$\n您的个人数据和设置不会受到影响。$\r$\n$\r$\n是否继续？"
+LangString Lang_ConfirmOverwriteInstall 1033 "A previous version of Tabby was found in the install directory. The old program files will be removed and replaced with the new version.$\r$\n$\r$\nYour personal data and settings will NOT be affected.$\r$\n$\r$\nContinue?"
+LangString Lang_ConfirmOverwriteInstall 2052 "安装目录中已存在旧版 Tabby，安装程序将移除旧版程序文件并替换为新版本。$\r$\n$\r$\n您的个人数据和设置不会受到影响。$\r$\n$\r$\n是否继续？"
 
 LangString Lang_ErrorMoveOldInstallFailed 1033 "Failed to move the previous installation out of the target directory."
 LangString Lang_ErrorMoveOldInstallFailed 2052 "无法将旧安装从目标目录移走。"
 
-LangString Lang_FinishRunNexu 1033 "Launch Nexu"
-LangString Lang_FinishRunNexu 2052 "立即启动 Nexu"
+LangString Lang_FinishRunTabby 1033 "Launch Tabby"
+LangString Lang_FinishRunTabby 2052 "立即启动 Tabby"
 
 LangString Lang_FinishCreateDesktopShortcut 1033 "Create desktop shortcut"
 LangString Lang_FinishCreateDesktopShortcut 2052 "创建桌面快捷方式"
@@ -82,14 +82,14 @@ LangString Lang_UninstallDeleteLocalData 2052 "删除本地数据"
 LangString Lang_UninstallOptionsTitle 1033 "Uninstall options"
 LangString Lang_UninstallOptionsTitle 2052 "卸载选项"
 
-LangString Lang_UninstallOptionsSubtitle 1033 "Choose whether to remove Nexu local data"
-LangString Lang_UninstallOptionsSubtitle 2052 "选择是否一并删除 Nexu 本地数据"
+LangString Lang_UninstallOptionsSubtitle 1033 "Choose whether to remove Tabby local data"
+LangString Lang_UninstallOptionsSubtitle 2052 "选择是否一并删除 Tabby 本地数据"
 
-LangString Lang_UninstallOptionsHelp 1033 "Uninstall removes the app by default. You can also choose to delete Nexu local config, logs, and runtime state stored on this device."
-LangString Lang_UninstallOptionsHelp 2052 "默认卸载只会移除应用。你也可以选择一并删除此设备上的 Nexu 本地配置、日志和运行时状态。"
+LangString Lang_UninstallOptionsHelp 1033 "Uninstall removes the app by default. You can also choose to delete Tabby local config, logs, and runtime state stored on this device."
+LangString Lang_UninstallOptionsHelp 2052 "默认卸载只会移除应用。你也可以选择一并删除此设备上的 Tabby 本地配置、日志和运行时状态。"
 
-LangString Lang_UninstallDeleteLocalDataCheckbox 1033 "Also delete Nexu local data from this device"
-LangString Lang_UninstallDeleteLocalDataCheckbox 2052 "同时删除此设备上的 Nexu 本地数据"
+LangString Lang_UninstallDeleteLocalDataCheckbox 1033 "Also delete Tabby local data from this device"
+LangString Lang_UninstallDeleteLocalDataCheckbox 2052 "同时删除此设备上的 Tabby 本地数据"
 
 LangString Lang_UninstallDeleteLocalDataPathLabel 1033 "Local data directory to delete:"
 LangString Lang_UninstallDeleteLocalDataPathLabel 2052 "将删除的本地数据目录："

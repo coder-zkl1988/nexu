@@ -4,25 +4,106 @@ on:
   push:
     tags:
       - "v*"
-      - "desktop-v*"
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag (for example: v0.2.0)"
+        description: "Release tag, for example v0.3.2"
         required: true
         type: string
 
 permissions:
   contents: write
-  actions: write
 
 concurrency:
   group: desktop-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  prepare-release:
+    name: Prepare GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      desktop_version: ${{ steps.meta.outputs.desktop_version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      update_channel: ${{ steps.meta.outputs.update_channel }}
+      commit_sha: ${{ steps.meta.outputs.commit_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          desktop_version=$(node -e 'const fs = require("node:fs"); const pkg = JSON.parse(fs.readFileSync("apps/desktop/package.json", "utf8")); process.stdout.write(pkg.version);')
+          expected_tag="v${desktop_version}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag_name="${{ inputs.tag_name }}"
+          else
+            tag_name="${GITHUB_REF#refs/tags/}"
+          fi
+
+          if [ "$tag_name" != "$expected_tag" ]; then
+            echo "Expected desktop release tag $expected_tag but received $tag_name" >&2
+            exit 1
+          fi
+
+          prerelease=false
+          update_channel=stable
+          if [[ "$desktop_version" == *-* ]]; then
+            prerelease=true
+            update_channel=beta
+          fi
+
+          {
+            echo "desktop_version=$desktop_version"
+            echo "tag_name=$tag_name"
+            echo "prerelease=$prerelease"
+            echo "update_channel=$update_channel"
+            echo "commit_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          VERSION: ${{ steps.meta.outputs.desktop_version }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+          COMMIT_SHA: ${{ steps.meta.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG_NAME already exists; keeping existing release notes."
+            exit 0
+          fi
+
+          release_args=(
+            "$TAG_NAME"
+            --target "$COMMIT_SHA"
+            --title "Tabby ${VERSION}"
+            --notes "Tabby ${VERSION} desktop release."
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "${release_args[@]}"
+
+  mac:
+    name: macOS ${{ matrix.arch }}
+    needs: prepare-release
     strategy:
+      fail-fast: false
       matrix:
         include:
           - runner: macos-14
@@ -40,7 +121,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -54,76 +135,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Restore npm cache for runtime installs
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: desktop-npm-cache-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('packages/slimclaw/runtime-seed/package-lock.json', 'apps/controller/static/runtime-plugins/openclaw-weixin/package-lock.json') }}
-          restore-keys: |
-            desktop-npm-cache-${{ runner.os }}-${{ matrix.arch }}-
-            desktop-npm-cache-${{ runner.os }}-
-
-      - name: Restore Electron build caches
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/electron
-            ~/Library/Caches/electron-builder
-            apps/desktop/.cache
-          key: desktop-electron-cache-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/desktop/package.json') }}
-          restore-keys: |
-            desktop-electron-cache-${{ runner.os }}-${{ matrix.arch }}-
-            desktop-electron-cache-${{ runner.os }}-
-
-      - name: Resolve release metadata
-        id: meta
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          desktop_version=$(node -e 'const fs = require("node:fs"); const pkg = JSON.parse(fs.readFileSync("apps/desktop/package.json", "utf8")); process.stdout.write(pkg.version);')
-          expected_tag="v${desktop_version}"
-          legacy_expected_tag="desktop-v${desktop_version}"
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag_name="${{ inputs.tag_name }}"
-          else
-            tag_name="${GITHUB_REF#refs/tags/}"
-          fi
-
-          if [ "$tag_name" != "$expected_tag" ] && [ "$tag_name" != "$legacy_expected_tag" ]; then
-            echo "Expected desktop release tag $expected_tag (legacy: $legacy_expected_tag) but received $tag_name" >&2
-            exit 1
-          fi
-
-          if [[ "$desktop_version" == *-* ]]; then
-            prerelease=true
-          else
-            prerelease=false
-          fi
-
-          if [ "$prerelease" = "true" ]; then
-            channel="beta"
-          else
-            channel="stable"
-          fi
-
-          commit_sha=$(git rev-parse HEAD)
-
-          {
-            echo "desktop_version=$desktop_version"
-            echo "tag_name=$tag_name"
-            echo "release_name=v$desktop_version"
-            echo "prerelease=$prerelease"
-            echo "channel=$channel"
-            echo "commit_sha=$commit_sha"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Prepare Apple signing certificate
+      - name: Import Apple Developer ID certificate
         shell: bash
         env:
           APPLE_SIGNING_CERTIFICATE_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_BASE64 }}
           APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
 
@@ -132,438 +149,100 @@ jobs:
             exit 1
           fi
 
-          cert_path="$RUNNER_TEMP/nexu-desktop-signing.p12"
+          cert_path="$RUNNER_TEMP/tabby-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/tabby-signing.keychain-db"
+          keychain_password="${APPLE_KEYCHAIN_PASSWORD:-$(uuidgen)}"
+
           if ! printf '%s' "$APPLE_SIGNING_CERTIFICATE_BASE64" | base64 --decode > "$cert_path" 2>/dev/null; then
             printf '%s' "$APPLE_SIGNING_CERTIFICATE_BASE64" | base64 -D > "$cert_path"
           fi
 
-          {
-            echo "CSC_LINK=$cert_path"
-            echo "CSC_KEY_PASSWORD=$APPLE_SIGNING_CERTIFICATE_PASSWORD"
-          } >> "$GITHUB_ENV"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$cert_path" -P "$APPLE_SIGNING_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" $(security list-keychains -d user | sed 's/[ "]//g')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate build config
-        shell: bash
+      - name: Build signed and notarized macOS DMG
         env:
-          CHANNEL: ${{ steps.meta.outputs.channel }}
-          SENTRY_ENV: "prod"
-          BUILD_COMMIT: ${{ steps.meta.outputs.commit_sha }}
-          BUILD_ARCH: ${{ matrix.arch }}
-          SENTRY_DSN_TEST: ${{ secrets.SENTRY_DSN_NEXU_DESKTOP_TEST }}
-          SENTRY_DSN_PROD: ${{ secrets.SENTRY_DSN_NEXU_DESKTOP_PROD }}
-        run: |
-          export BUILT_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          node -e '
-            const { version } = require("./apps/desktop/package.json");
-            const sentryDsnByEnvironment = {
-              test: process.env.SENTRY_DSN_TEST,
-              prod: process.env.SENTRY_DSN_PROD,
-            };
-            const sentryDsn = sentryDsnByEnvironment[process.env.SENTRY_ENV] ?? "";
-            const config = {
-              NEXU_CLOUD_URL: "https://nexu.io",
-              NEXU_LINK_URL: "https://link.nexu.io",
-              NEXU_SENTRY_ENV: process.env.SENTRY_ENV,
-              NEXU_UPDATE_FEED_URL: `https://desktop-releases.nexu.io/${process.env.CHANNEL}/${process.env.BUILD_ARCH}`,
-              NEXU_DESKTOP_APP_VERSION: version,
-              NEXU_DESKTOP_UPDATE_CHANNEL: process.env.CHANNEL,
-              NEXU_DESKTOP_BUILD_SOURCE: "release",
-              NEXU_DESKTOP_BUILD_BRANCH: "",
-              NEXU_DESKTOP_BUILD_COMMIT: process.env.BUILD_COMMIT,
-              NEXU_DESKTOP_BUILD_TIME: process.env.BUILT_AT,
-            };
-            if (sentryDsn) {
-              config.NEXU_DESKTOP_SENTRY_DSN = sentryDsn;
-            }
-            require("fs").writeFileSync(
-              "apps/desktop/build-config.json",
-              JSON.stringify(config, null, 2) + "\n"
-            );
-          '
-
-          echo "[build] Generated build-config.json for release:"
-          cat apps/desktop/build-config.json
-
-      - name: Build signed desktop release
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           NEXU_DESKTOP_TARGET_ARCH: ${{ matrix.arch }}
+          NEXU_DESKTOP_SIGNING_IDENTITY: ${{ secrets.APPLE_TEAM_ID }}
+          NEXU_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NEXU_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          NEXU_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NEXU_NOTARY_NO_S3_ACCELERATION: "1"
+          NEXU_NOTARY_TIMEOUT: "45m"
+          NEXU_DESKTOP_UPDATE_CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
+          NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
+          NEXU_DESKTOP_BUILD_SOURCE: "release"
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        run: pnpm --filter @nexu/desktop dist:mac
+        run: pnpm --filter @nexu/desktop dist:mac:production
 
-      - name: Set packaged app paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          runner_home="$HOME"
-          packaged_home="$RUNNER_TEMP/desktop-home"
-          packaged_user_data_dir="$packaged_home/Library/Application Support/@nexu/desktop"
-          packaged_logs_dir="$packaged_user_data_dir/logs"
-          packaged_runtime_logs_dir="$packaged_logs_dir/runtime-units"
-          default_user_data_dir="$runner_home/Library/Application Support/@nexu/desktop"
-          default_logs_dir="$default_user_data_dir/logs"
-          default_runtime_logs_dir="$default_logs_dir/runtime-units"
-          packaged_apps=(apps/desktop/release/mac*/Nexu.app)
-
-          if [ "${#packaged_apps[@]}" -eq 0 ]; then
-            echo "No packaged app bundle found under apps/desktop/release/mac*" >&2
-            exit 1
-          fi
-
-          packaged_app="${packaged_apps[0]}"
-          packaged_executable="$packaged_app/Contents/MacOS/Nexu"
-
-          mkdir -p "$RUNNER_TEMP/desktop-ci" "$packaged_home" "$RUNNER_TEMP/desktop-tmp"
-
-          {
-            echo "PACKAGED_HOME=$packaged_home"
-            echo "PACKAGED_LOGS_DIR=$packaged_logs_dir"
-            echo "PACKAGED_USER_DATA_DIR=$packaged_user_data_dir"
-            echo "PACKAGED_RUNTIME_LOGS_DIR=$packaged_runtime_logs_dir"
-            echo "DEFAULT_LOGS_DIR=$default_logs_dir"
-            echo "DEFAULT_USER_DATA_DIR=$default_user_data_dir"
-            echo "DEFAULT_RUNTIME_LOGS_DIR=$default_runtime_logs_dir"
-            echo "PACKAGED_APP=$packaged_app"
-            echo "PACKAGED_EXECUTABLE=$packaged_executable"
-          } >> "$GITHUB_ENV"
-
-      - name: Verify packaged runtime unit health
-        env:
-          NEXU_DESKTOP_CHECK_CAPTURE_DIR: ${{ runner.temp }}/desktop-ci
-          NEXU_DESKTOP_CHECK_TMPDIR: ${{ runner.temp }}/desktop-tmp
-        run: pnpm check:dist
-
-      - name: Verify extracted runner bundle integrity
-        env:
-          NEXU_DESKTOP_CHECK_TMPDIR: ${{ runner.temp }}/desktop-tmp
-          NEXU_DESKTOP_REQUIRE_SPCTL: "1"
-        run: bash scripts/desktop-verify-extracted-runner.sh
-
-      - name: Prepare release artifacts
-        id: artifacts
+      - name: Verify macOS artifact
         shell: bash
         env:
-          VERSION: ${{ steps.meta.outputs.desktop_version }}
-          CHANNEL: ${{ steps.meta.outputs.channel }}
           ARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
+          dmg="apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg"
+          app="apps/desktop/release/mac-${ARCH}/Tabby.app"
 
-          channel="$CHANNEL"
+          test -f "$dmg"
+          test -d "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          xcrun stapler validate "$dmg"
+          spctl -a -vv --type exec "$app"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
+          shasum -a 256 "$dmg" > "apps/desktop/release/tabby-${VERSION}-mac-${ARCH}-sha256.txt"
 
-          mkdir -p apps/desktop/release-artifacts
-          rm -f apps/desktop/release-artifacts/*
-
-          dmg_files=(apps/desktop/release/*.dmg)
-          zip_files=(apps/desktop/release/*.zip)
-
-          if [ "${#dmg_files[@]}" -eq 0 ] || [ "${#zip_files[@]}" -eq 0 ]; then
-            echo "No desktop release artifacts were produced" >&2
-            exit 1
-          fi
-
-          latest_name_prefix="nexu-latest-mac-${ARCH}"
-          if [ "$channel" != "stable" ]; then
-            latest_name_prefix="nexu-latest-${channel}-mac-${ARCH}"
-          fi
-
-          versioned_dmg="nexu-${VERSION}-mac-${ARCH}.dmg"
-          versioned_zip="nexu-${VERSION}-mac-${ARCH}.zip"
-          latest_dmg="${latest_name_prefix}.dmg"
-          latest_zip="${latest_name_prefix}.zip"
-          checksum_file="desktop-${ARCH}-sha256.txt"
-
-          cp "${dmg_files[0]}" "apps/desktop/release-artifacts/${versioned_dmg}"
-          cp "${zip_files[0]}" "apps/desktop/release-artifacts/${versioned_zip}"
-          cp "${dmg_files[0]}" "apps/desktop/release-artifacts/${latest_dmg}"
-          cp "${zip_files[0]}" "apps/desktop/release-artifacts/${latest_zip}"
-
-          shasum -a 256 \
-            "apps/desktop/release-artifacts/${versioned_dmg}" \
-            "apps/desktop/release-artifacts/${versioned_zip}" \
-            > "apps/desktop/release-artifacts/${checksum_file}"
-
-          {
-            echo "channel=$channel"
-            echo "versioned_dmg=$versioned_dmg"
-            echo "versioned_zip=$versioned_zip"
-            echo "latest_dmg=$latest_dmg"
-            echo "latest_zip=$latest_zip"
-            echo "checksum_file=$checksum_file"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload workflow artifacts
+      - name: Upload macOS workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-release-${{ steps.meta.outputs.tag_name }}-${{ matrix.arch }}
+          name: tabby-${{ needs.prepare-release.outputs.desktop_version }}-mac-${{ matrix.arch }}
           path: |
-            apps/desktop/release-artifacts/*.dmg
-            apps/desktop/release-artifacts/*.zip
-            apps/desktop/release-artifacts/${{ steps.artifacts.outputs.checksum_file }}
+            apps/desktop/release/tabby-${{ needs.prepare-release.outputs.desktop_version }}-${{ matrix.arch }}.dmg
+            apps/desktop/release/latest-mac.yml
+            apps/desktop/release/tabby-${{ needs.prepare-release.outputs.desktop_version }}-mac-${{ matrix.arch }}-sha256.txt
           if-no-files-found: error
 
-      - name: Check whether GitHub release already exists
-        id: release_check
+      - name: Upload macOS assets to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create draft GitHub release
-        if: steps.release_check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag_name }}
-          target_commitish: ${{ steps.meta.outputs.commit_sha }}
-          name: ${{ steps.meta.outputs.release_name }}
-          draft: true
-          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
-          overwrite_files: true
-          fail_on_unmatched_files: true
-          body: |
-            Desktop release for `${{ steps.meta.outputs.desktop_version }}`.
-
-            Assets include signed macOS `.dmg` and `.zip` packages plus architecture-specific SHA-256 checksum files.
-
-            The packaged `Nexu.app` bundle is notarized and stapled during the build before the archives are published.
-          files: |
-            apps/desktop/release-artifacts/${{ steps.artifacts.outputs.versioned_dmg }}
-            apps/desktop/release-artifacts/${{ steps.artifacts.outputs.versioned_zip }}
-            apps/desktop/release-artifacts/${{ steps.artifacts.outputs.checksum_file }}
-
-      - name: Upload assets to existing GitHub release
-        if: steps.release_check.outputs.exists == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          ARCH: ${{ matrix.arch }}
         shell: bash
         run: |
           set -euo pipefail
 
           gh release upload "$TAG_NAME" \
-            "apps/desktop/release-artifacts/${{ steps.artifacts.outputs.versioned_dmg }}" \
-            "apps/desktop/release-artifacts/${{ steps.artifacts.outputs.versioned_zip }}" \
-            "apps/desktop/release-artifacts/${{ steps.artifacts.outputs.checksum_file }}" \
+            "apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg" \
+            "apps/desktop/release/tabby-${VERSION}-mac-${ARCH}-sha256.txt" \
             --clobber
 
-      - name: Patch latest-mac.yml for channel naming
-        env:
-          VERSION: ${{ steps.meta.outputs.desktop_version }}
-          CHANNEL: ${{ steps.artifacts.outputs.channel }}
-          ARCH: ${{ matrix.arch }}
-          VERSIONED_DMG: ${{ steps.artifacts.outputs.versioned_dmg }}
-          VERSIONED_ZIP: ${{ steps.artifacts.outputs.versioned_zip }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ ! -f "apps/desktop/release/latest-mac.yml" ]; then
-            echo "latest-mac.yml not found, skipping patch"
-            exit 0
-          fi
-
-          # electron-builder generates filenames without the final public naming format.
-          original_dmg="nexu-${VERSION}-${ARCH}.dmg"
-          original_zip="nexu-${VERSION}-${ARCH}.zip"
-
-          echo "Patching latest-mac.yml:"
-          echo "  ${original_dmg} → ${VERSIONED_DMG}"
-          echo "  ${original_zip} → ${VERSIONED_ZIP}"
-
-          sed -i.bak \
-            -e "s|${original_dmg}|${VERSIONED_DMG}|g" \
-            -e "s|${original_zip}|${VERSIONED_ZIP}|g" \
-            apps/desktop/release/latest-mac.yml
-
-          echo "Patched latest-mac.yml:"
-          cat apps/desktop/release/latest-mac.yml
-
-      - name: Upload to Cloudflare R2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_REGION: auto
-          CHANNEL: ${{ steps.artifacts.outputs.channel }}
-          ARCH: ${{ matrix.arch }}
-          VERSIONED_DMG: ${{ steps.artifacts.outputs.versioned_dmg }}
-          VERSIONED_ZIP: ${{ steps.artifacts.outputs.versioned_zip }}
-          LATEST_DMG: ${{ steps.artifacts.outputs.latest_dmg }}
-          LATEST_ZIP: ${{ steps.artifacts.outputs.latest_zip }}
-        run: |
-          set -euo pipefail
-
-          R2_BUCKET="s3://nexu-desktop-releases"
-
-          upload_file() {
-            local src="$1" dst="$2"
-            echo "Uploading $(basename "$src") → ${dst}"
-            aws s3 cp "$src" "${R2_BUCKET}/${dst}" --no-progress
-          }
-
-          upload_prefix() {
-            local prefix="$1"
-
-            echo "[r2] uploading to prefix: ${prefix}/"
-
-            if [ -f "apps/desktop/release/latest-mac.yml" ]; then
-              upload_file "apps/desktop/release/latest-mac.yml" "${prefix}/latest-mac.yml"
-            fi
-
-            upload_file "apps/desktop/release-artifacts/${VERSIONED_DMG}" "${prefix}/${VERSIONED_DMG}"
-            upload_file "apps/desktop/release-artifacts/${VERSIONED_ZIP}" "${prefix}/${VERSIONED_ZIP}"
-            upload_file "apps/desktop/release-artifacts/${LATEST_DMG}" "${prefix}/${LATEST_DMG}"
-            upload_file "apps/desktop/release-artifacts/${LATEST_ZIP}" "${prefix}/${LATEST_ZIP}"
-            upload_file "apps/desktop/release-artifacts/${{ steps.artifacts.outputs.checksum_file }}" "${prefix}/${{ steps.artifacts.outputs.checksum_file }}"
-          }
-
-          upload_prefix "${CHANNEL}/${ARCH}"
-
-          if [ "${ARCH}" = "arm64" ]; then
-            echo "[r2] uploading legacy arm64 compatibility feed to prefix: ${CHANNEL}/"
-            upload_prefix "${CHANNEL}"
-          fi
-
-      - name: Purge Cloudflare CDN cache for latest artifacts
-        if: env.CLOUDFLARE_ZONE_ID != ''
-        env:
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          CLOUDFLARE_PURGE_API_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_API_TOKEN }}
-          CHANNEL: ${{ steps.artifacts.outputs.channel }}
-          ARCH: ${{ matrix.arch }}
-          LATEST_DMG: ${{ steps.artifacts.outputs.latest_dmg }}
-          LATEST_ZIP: ${{ steps.artifacts.outputs.latest_zip }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          base_url="https://desktop-releases.nexu.io/${CHANNEL}/${ARCH}"
-          urls=(
-            "${base_url}/${LATEST_DMG}"
-            "${base_url}/${LATEST_ZIP}"
-            "${base_url}/latest-mac.yml"
-          )
-
-          if [ "${ARCH}" = "arm64" ]; then
-            legacy_base_url="https://desktop-releases.nexu.io/${CHANNEL}"
-            urls+=(
-              "${legacy_base_url}/${LATEST_DMG}"
-              "${legacy_base_url}/${LATEST_ZIP}"
-              "${legacy_base_url}/latest-mac.yml"
-            )
-          fi
-
-          files_json=$(printf '%s\n' "${urls[@]}" | jq -R . | jq -sc '.')
-          payload=$(jq -cn --argjson files "$files_json" '{ files: $files }')
-          api_url="https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache"
-          max_attempts=5
-          purge_succeeded=0
-
-          echo "[cf-purge] Purging: ${files_json}"
-
-          for attempt in $(seq 1 "$max_attempts"); do
-            response_file=$(mktemp)
-            http_code="$({
-              curl \
-                --http1.1 \
-                --silent \
-                --show-error \
-                --location \
-                --retry 3 \
-                --retry-delay 2 \
-                --retry-all-errors \
-                --connect-timeout 15 \
-                --max-time 120 \
-                --output "$response_file" \
-                --write-out '%{http_code}' \
-                -X POST \
-                "$api_url" \
-                -H "Authorization: Bearer ${CLOUDFLARE_PURGE_API_TOKEN}" \
-                -H "Content-Type: application/json" \
-                --data "$payload"
-            } || true)"
-
-            echo "[cf-purge] attempt ${attempt}/${max_attempts} http=${http_code:-curl-failed}"
-
-            if [ -s "$response_file" ]; then
-              jq . "$response_file" || true
-            else
-              echo "[cf-purge] empty response body"
-            fi
-
-            if [ "$http_code" = "200" ] && jq -e '.success == true' "$response_file" >/dev/null 2>&1; then
-              purge_succeeded=1
-              rm -f "$response_file"
-              break
-            fi
-
-            rm -f "$response_file"
-
-            if [ "$attempt" -lt "$max_attempts" ]; then
-              sleep $((attempt * 2))
-            fi
-          done
-
-          if [ "$purge_succeeded" -ne 1 ]; then
-            echo "[cf-purge] failed after ${max_attempts} attempts" >&2
-            exit 1
-          fi
-
-  trigger-e2e:
-    needs: [release, package-windows]
-    runs-on: ubuntu-latest
-    if: always() && needs.release.result == 'success' && needs.package-windows.result == 'success'
-    steps:
-      - name: Resolve channel
-        id: channel
-        run: |
-          echo "channel=${{ needs.package-windows.outputs.channel }}" >> "$GITHUB_OUTPUT"
-
-      - name: Trigger Desktop E2E (async)
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'desktop-e2e.yml',
-              ref: context.ref || 'main',
-              inputs: { mode: 'model', channel: '${{ steps.channel.outputs.channel }}' },
-            });
-
-  package-windows:
-    needs: release
+  windows:
+    name: Windows x64
+    needs: prepare-release
     runs-on: windows-latest
     env:
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
-    outputs:
-      channel: ${{ steps.meta.outputs.channel }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+          ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -579,51 +258,20 @@ jobs:
 
       - name: Install packaging tools
         shell: pwsh
-        run: |
-          choco install nsis awscli -y --no-progress
+        run: choco install nsis -y --no-progress
 
       - name: Install dependencies
         shell: pwsh
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve release metadata
-        id: meta
-        shell: pwsh
-        run: |
-          $desktopVersion = node -e "const fs=require('node:fs'); const pkg=JSON.parse(fs.readFileSync('apps/desktop/package.json','utf8')); process.stdout.write(pkg.version);"
-          $expectedTag = "v$desktopVersion"
-          $legacyExpectedTag = "desktop-v$desktopVersion"
-
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $tagName = "${{ inputs.tag_name }}"
-          } else {
-            $tagName = "${env:GITHUB_REF}" -replace '^refs/tags/', ''
-          }
-
-          if ($tagName -ne $expectedTag -and $tagName -ne $legacyExpectedTag) {
-            throw "Expected desktop release tag $expectedTag (legacy: $legacyExpectedTag) but received $tagName"
-          }
-
-          $prerelease = $desktopVersion.Contains('-')
-          $channel = if ($prerelease) { 'beta' } else { 'stable' }
-          $commitSha = (git rev-parse HEAD).Trim()
-
-          "desktop_version=$desktopVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "tag_name=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "prerelease=$($prerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "channel=$channel" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "commit_sha=$commitSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
       - name: Build Windows installer
         shell: pwsh
         env:
-          NEXU_CLOUD_URL: https://nexu.io
-          NEXU_LINK_URL: https://link.nexu.io
-          NEXU_DESKTOP_UPDATE_CHANNEL: ${{ steps.meta.outputs.channel }}
+          NEXU_DESKTOP_UPDATE_CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
           NEXU_DESKTOP_BUILD_SOURCE: release
-          NEXU_DESKTOP_BUILD_BRANCH: ${{ github.ref_name }}
-          NEXU_DESKTOP_BUILD_COMMIT: ${{ steps.meta.outputs.commit_sha }}
-          NEXU_UPDATE_FEED_URL: https://desktop-releases.nexu.io/${{ steps.meta.outputs.channel }}/win32/x64/latest-win.json
+          NEXU_DESKTOP_BUILD_BRANCH: ${{ needs.prepare-release.outputs.tag_name }}
+          NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
+          NEXU_DESKTOP_AUTO_UPDATE_ENABLED: "false"
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |
@@ -634,107 +282,64 @@ jobs:
         id: artifacts
         shell: pwsh
         env:
-          VERSION: ${{ steps.meta.outputs.desktop_version }}
-          CHANNEL: ${{ steps.meta.outputs.channel }}
-          BASE_URL: https://desktop-releases.nexu.io/${{ steps.meta.outputs.channel }}/win32/x64
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
         run: |
           $releaseDir = "apps/desktop/release"
-          $channelArtifacts = "apps/desktop/release-artifacts-win"
-          New-Item -ItemType Directory -Force -Path $channelArtifacts | Out-Null
-          Get-ChildItem -Path $channelArtifacts -File -ErrorAction SilentlyContinue | Remove-Item -Force
+          $artifactDir = "apps/desktop/release-artifacts-win"
+          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+          Get-ChildItem -Path $artifactDir -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
-          $sourceInstaller = Join-Path $releaseDir "nexu-setup-$env:VERSION-x64.exe"
+          $sourceInstaller = Join-Path $releaseDir "tabby-setup-$env:VERSION-x64.exe"
           if (-not (Test-Path $sourceInstaller)) {
             throw "Missing Windows installer: $sourceInstaller"
           }
 
-          $versionedInstaller = "nexu-setup-$env:VERSION-win-x64.exe"
-          if ($env:CHANNEL -eq "stable") {
-            $latestInstaller = "nexu-latest-win-x64.exe"
-          } else {
-            $latestInstaller = "nexu-latest-$env:CHANNEL-win-x64.exe"
-          }
-          $checksumFile = "desktop-win-x64-sha256.txt"
-          $manifestFile = "latest-win.json"
-
-          Copy-Item $sourceInstaller (Join-Path $channelArtifacts $versionedInstaller)
-          Copy-Item $sourceInstaller (Join-Path $channelArtifacts $latestInstaller)
-
-          $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $channelArtifacts $versionedInstaller)).Hash.ToLowerInvariant()
-          "$hash  $versionedInstaller" | Out-File -FilePath (Join-Path $channelArtifacts $checksumFile) -Encoding ascii
-
-          $env:INSTALLER_FILE = (Join-Path $channelArtifacts $latestInstaller)
-          $env:MANIFEST_OUTPUT = (Join-Path $channelArtifacts $manifestFile)
-          node apps/desktop/scripts/generate-win-update-manifest.mjs
+          $versionedInstaller = "tabby-setup-$env:VERSION-win-x64.exe"
+          $checksumFile = "tabby-$env:VERSION-win-x64-sha256.txt"
+          Copy-Item $sourceInstaller (Join-Path $artifactDir $versionedInstaller)
+          $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $artifactDir $versionedInstaller)).Hash.ToLowerInvariant()
+          "$hash  $versionedInstaller" | Out-File -FilePath (Join-Path $artifactDir $checksumFile) -Encoding ascii
 
           "versioned_installer=$versionedInstaller" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "latest_installer=$latestInstaller" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "checksum_file=$checksumFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "manifest_file=$manifestFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Upload Windows workflow artifacts
+      - name: Upload Windows workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-release-${{ steps.meta.outputs.tag_name }}-win-x64
+          name: tabby-${{ needs.prepare-release.outputs.desktop_version }}-win-x64
           path: |
             apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}
-            apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.latest_installer }}
             apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.checksum_file }}
-            apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.manifest_file }}
           if-no-files-found: error
 
-      - name: Upload Windows assets to existing GitHub release
+      - name: Upload Windows assets to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
         shell: pwsh
         run: |
           gh release upload $env:TAG_NAME `
             "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}" `
-            "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.latest_installer }}" `
             "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.checksum_file }}" `
-            "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.manifest_file }}" `
             --clobber
 
-      - name: Upload Windows artifacts to Cloudflare R2
+  summary:
+    name: Release summary
+    needs: [prepare-release, mac, windows]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check release result
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_ENDPOINT_URL: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          AWS_REGION: auto
-          CHANNEL: ${{ steps.meta.outputs.channel }}
-        shell: pwsh
+          MAC_RESULT: ${{ needs.mac.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          PREPARE_RELEASE_RESULT: ${{ needs.prepare-release.result }}
         run: |
-          $prefix = "$env:CHANNEL/win32/x64"
-          aws s3 cp "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}" "s3://nexu-desktop-releases/$prefix/${{ steps.artifacts.outputs.versioned_installer }}" --no-progress
-          aws s3 cp "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.latest_installer }}" "s3://nexu-desktop-releases/$prefix/${{ steps.artifacts.outputs.latest_installer }}" --no-progress
-          aws s3 cp "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.checksum_file }}" "s3://nexu-desktop-releases/$prefix/${{ steps.artifacts.outputs.checksum_file }}" --no-progress
-          aws s3 cp "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.manifest_file }}" "s3://nexu-desktop-releases/$prefix/${{ steps.artifacts.outputs.manifest_file }}" --no-progress
-
-      - name: Purge Windows latest CDN artifacts
-        env:
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          CLOUDFLARE_PURGE_API_TOKEN: ${{ secrets.CLOUDFLARE_PURGE_API_TOKEN }}
-          CHANNEL: ${{ steps.meta.outputs.channel }}
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_ZONE_ID) -or [string]::IsNullOrWhiteSpace($env:CLOUDFLARE_PURGE_API_TOKEN)) {
-            Write-Host "Skipping Cloudflare purge because required secrets are missing"
-            exit 0
-          }
-
-          $baseUrl = "https://desktop-releases.nexu.io/$env:CHANNEL/win32/x64"
-          $files = @(
-            "$baseUrl/${{ steps.artifacts.outputs.latest_installer }}",
-            "$baseUrl/${{ steps.artifacts.outputs.manifest_file }}"
-          ) | ConvertTo-Json
-          $payload = @{ files = ($files | ConvertFrom-Json) } | ConvertTo-Json -Depth 5
-          Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$env:CLOUDFLARE_ZONE_ID/purge_cache" -Headers @{ Authorization = "Bearer $env:CLOUDFLARE_PURGE_API_TOKEN" } -ContentType "application/json" -Body $payload | Out-Null
-
-      - name: Publish Windows download links
-        shell: pwsh
-        run: |
-          $baseUrl = "https://desktop-releases.nexu.io/${{ steps.meta.outputs.channel }}/win32/x64"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows Release Downloads"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Installer: $baseUrl/${{ steps.artifacts.outputs.latest_installer }}"
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "- Manifest: $baseUrl/${{ steps.artifacts.outputs.manifest_file }}"
+          set -euo pipefail
+          echo "prepare release result: $PREPARE_RELEASE_RESULT"
+          echo "macOS result: $MAC_RESULT"
+          echo "Windows result: $WINDOWS_RESULT"
+          test "$PREPARE_RELEASE_RESULT" = "success"
+          test "$MAC_RESULT" = "success"
+          test "$WINDOWS_RESULT" = "success"

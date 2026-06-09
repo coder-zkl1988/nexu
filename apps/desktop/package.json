@@ -1,6 +1,6 @@
 {
   "name": "@nexu/desktop",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -167,7 +167,7 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "nexu-${version}-${arch}.${ext}"
+      "artifactName": "tabby-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -176,7 +176,7 @@
       "allowToChangeInstallationDirectory": false,
       "include": "build/installer.nsh",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "nexu-setup-${version}-${arch}.${ext}"
+      "artifactName": "tabby-setup-${version}-${arch}.${ext}"
     },
     "dmg": {
       "size": "2g"
@@ -185,7 +185,7 @@
       {
         "provider": "github",
         "owner": "coder-zkl1988",
-        "repo": "nexu"
+        "repo": "tabby"
       }
     ]
   }
