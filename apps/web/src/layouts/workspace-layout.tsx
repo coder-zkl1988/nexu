@@ -1004,59 +1004,65 @@ function WorkspaceLayoutContent() {
                           {groupSessions.map((s) => {
                             const isActive = selectedSessionId === s.id;
                             return (
-                              <button
-                                type="button"
+                              <div
                                 key={s.id}
                                 data-sidebar-session-row={s.id}
                                 data-session-channel-type={
                                   s.channelType ?? "web"
                                 }
                                 data-session-state={s.status || "idle"}
-                                onClick={() => {
-                                  const channel = normalizeChannel(
-                                    s.channelType,
-                                  );
-                                  track("workspace_channel_click", {
-                                    channel_type: s.channelType,
-                                  });
-                                  track("workspace_sidebar_click", {
-                                    target: "conversations",
-                                    ...(channel ? { channel } : {}),
-                                  });
-                                  navigate(`/workspace/sessions/${s.id}`);
-                                }}
                                 className={cn(
                                   "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
                                   isActive && "nav-item-active",
                                 )}
                               >
-                                <SidebarPlatformIcon
-                                  platform={s.channelType ?? "web"}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div
-                                      className={cn(
-                                        "text-[12px] truncate whitespace-nowrap font-medium",
-                                        !isActive && "text-text-primary",
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const channel = normalizeChannel(
+                                      s.channelType,
+                                    );
+                                    track("workspace_channel_click", {
+                                      channel_type: s.channelType,
+                                    });
+                                    track("workspace_sidebar_click", {
+                                      target: "conversations",
+                                      ...(channel ? { channel } : {}),
+                                    });
+                                    navigate(`/workspace/sessions/${s.id}`);
+                                  }}
+                                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                                >
+                                  <SidebarPlatformIcon
+                                    platform={s.channelType ?? "web"}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div
+                                        className={cn(
+                                          "text-[12px] truncate whitespace-nowrap font-medium",
+                                          !isActive && "text-text-primary",
+                                        )}
+                                      >
+                                        {s.title}
+                                      </div>
+                                      {s.status === "active" && (
+                                        <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
+                                          Live
+                                        </span>
                                       )}
-                                    >
-                                      {s.title}
                                     </div>
-                                    {s.status === "active" && (
-                                      <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                        Live
+                                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                      <span>
+                                        {getPlatformLabel(
+                                          s.channelType ?? "web",
+                                        )}
                                       </span>
-                                    )}
+                                      <span className="text-border">·</span>
+                                      <span>{formatTime(s.lastTime)}</span>
+                                    </div>
                                   </div>
-                                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
-                                    <span>
-                                      {getPlatformLabel(s.channelType ?? "web")}
-                                    </span>
-                                    <span className="text-border">·</span>
-                                    <span>{formatTime(s.lastTime)}</span>
-                                  </div>
-                                </div>
+                                </button>
                                 <div className="flex items-center gap-1 shrink-0">
                                   {s.status === "active" && (
                                     <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
@@ -1073,7 +1079,7 @@ function WorkspaceLayoutContent() {
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -1108,49 +1114,53 @@ function WorkspaceLayoutContent() {
                             {scheduledSessions.map((s) => {
                               const isActive = selectedSessionId === s.id;
                               return (
-                                <button
-                                  type="button"
+                                <div
                                   key={s.id}
                                   data-sidebar-session-row={s.id}
                                   data-session-channel-type={
                                     s.channelType ?? "web"
                                   }
                                   data-session-state={s.status || "idle"}
-                                  onClick={() => {
-                                    track("workspace_sidebar_click", {
-                                      target: "conversations",
-                                    });
-                                    navigate(`/workspace/sessions/${s.id}`);
-                                  }}
                                   className={cn(
                                     "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
                                     isActive && "nav-item-active",
                                   )}
                                 >
-                                  <Clock
-                                    size={16}
-                                    className="shrink-0 text-text-muted"
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <div
-                                        className={cn(
-                                          "text-[12px] truncate whitespace-nowrap font-medium",
-                                          !isActive && "text-text-primary",
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      track("workspace_sidebar_click", {
+                                        target: "conversations",
+                                      });
+                                      navigate(`/workspace/sessions/${s.id}`);
+                                    }}
+                                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                                  >
+                                    <Clock
+                                      size={16}
+                                      className="shrink-0 text-text-muted"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <div
+                                          className={cn(
+                                            "text-[12px] truncate whitespace-nowrap font-medium",
+                                            !isActive && "text-text-primary",
+                                          )}
+                                        >
+                                          {s.title}
+                                        </div>
+                                        {s.status === "active" && (
+                                          <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
+                                            Live
+                                          </span>
                                         )}
-                                      >
-                                        {s.title}
                                       </div>
-                                      {s.status === "active" && (
-                                        <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                          Live
-                                        </span>
-                                      )}
+                                      <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                        <span>{formatTime(s.lastTime)}</span>
+                                      </div>
                                     </div>
-                                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
-                                      <span>{formatTime(s.lastTime)}</span>
-                                    </div>
-                                  </div>
+                                  </button>
                                   <div className="flex items-center gap-1 shrink-0">
                                     <button
                                       type="button"
@@ -1164,7 +1174,7 @@ function WorkspaceLayoutContent() {
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
-                                </button>
+                                </div>
                               );
                             })}
                           </div>
