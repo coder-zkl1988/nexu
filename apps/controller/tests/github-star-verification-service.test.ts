@@ -23,6 +23,18 @@ describe("GithubStarVerificationService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-08T00:00:00.000Z"));
 
+    // Stub fetch so prepareSession records baselineStars=0 deterministically.
+    // (proxyFetch delegates to the global fetch; without a stub, the real
+    //  GitHub API call succeeds and baselineStars reflects live star count.)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ stargazers_count: 0 }), {
+          status: 200,
+        }),
+      ),
+    );
+
     const service = new GithubStarVerificationService();
     const session = await service.prepareSession();
 
@@ -32,5 +44,7 @@ describe("GithubStarVerificationService", () => {
       ok: true,
       currentStars: 0,
     });
+
+    vi.unstubAllGlobals();
   });
 });

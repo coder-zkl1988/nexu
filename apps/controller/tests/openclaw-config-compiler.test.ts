@@ -3,6 +3,7 @@ import type { ControllerEnv } from "../src/app/env.js";
 import {
   type OAuthConnectionState,
   compileOpenClawConfig,
+  resolveControlUiRoot,
 } from "../src/lib/openclaw-config-compiler.js";
 import type { NexuConfig } from "../src/store/schemas.js";
 
@@ -138,6 +139,11 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
         ],
       },
     },
+    deviceControl: {
+      enabled: true,
+      wsPort: 18790,
+      rpcPort: 18801,
+    },
     secrets: {
       "channel:slack-channel-1:botToken": "xoxb-test",
       "channel:slack-channel-1:signingSecret": "signing-secret",
@@ -152,21 +158,76 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 
 describe("compileOpenClawConfig", () => {
   it("builds OpenClaw config with provider and channel parity defaults", () => {
-    const result = compileOpenClawConfig(createConfig(), createEnv());
+    // Provide canonical models.providers so the compiler can resolve provider
+    // descriptors (legacy config.providers is not read by the compiler).
+    const now = new Date().toISOString();
+    const result = compileOpenClawConfig(
+      createConfig({
+        models: {
+          mode: "merge",
+          providers: {
+            openai: {
+              enabled: true,
+              auth: "api-key",
+              api: "openai-completions",
+              apiKey: "sk-test",
+              baseUrl: "https://api.openai.com/v1",
+              models: [
+                {
+                  id: "gpt-4o",
+                  name: "gpt-4o",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+            // Proxy baseUrl → runtime key becomes byok_anthropic
+            anthropic: {
+              enabled: true,
+              auth: "api-key",
+              api: "anthropic-messages",
+              apiKey: "proxy-key",
+              baseUrl: "https://proxy.example.com/v1",
+              models: [
+                {
+                  id: "claude-sonnet-4",
+                  name: "claude-sonnet-4",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
+        providers: [],
+        createdAt: now,
+        updatedAt: now,
+      } as unknown as Partial<NexuConfig>),
+      createEnv(),
+    );
 
     expect(result.gateway.auth.mode).toBe("token");
     expect(result.gateway.auth.token).toBe("token-123");
+    // bot modelId "anthropic/claude-sonnet-4" matches the proxied anthropic
+    // descriptor (byok_anthropic); namespace prefix is stripped from model id.
     expect(result.agents.defaults?.model).toEqual({
-      primary: "byok_anthropic/anthropic/claude-sonnet-4",
+      primary: "byok_anthropic/claude-sonnet-4",
     });
     expect(result.agents.list[0]).toMatchObject({
       id: "bot-1",
       workspace: "/tmp/openclaw/agents/bot-1",
-      model: { primary: "byok_anthropic/anthropic/claude-sonnet-4" },
+      model: { primary: "byok_anthropic/claude-sonnet-4" },
     });
     expect(result.models?.providers.openai?.models[0]?.id).toBe("gpt-4o");
+    // BYOK anthropic proxy: model id stored bare (canonical prefix stripped)
     expect(result.models?.providers.byok_anthropic?.models[0]?.id).toBe(
-      "anthropic/claude-sonnet-4",
+      "claude-sonnet-4",
     );
     expect(result.models?.providers.link?.baseUrl).toBe(
       "https://link.example.com/v1",
@@ -181,13 +242,14 @@ describe("compileOpenClawConfig", () => {
       webhookPath: "/feishu/events/cli_a1b2c3",
       verificationToken: "verify-token",
     });
-    expect(result.channels.feishu).not.toMatchObject({
-      streaming: expect.anything(),
-      renderMode: expect.anything(),
-      requireMention: expect.anything(),
-      tools: expect.anything(),
+    // Feishu Card Kit streaming was added intentionally (commit 626adb7b9)
+    expect(result.channels.feishu).toMatchObject({
+      streaming: true,
+      renderMode: "card",
+      requireMention: true,
     });
-    expect(result.plugins?.entries?.feishu?.enabled).toBe(true);
+    // Plugin key is "openclaw-lark" since commit 66ac77e7a
+    expect(result.plugins?.entries?.["openclaw-lark"]?.enabled).toBe(true);
     expect(result.skills?.load?.extraDirs).toEqual([
       "/tmp/openclaw/skills",
       "/tmp/.agents/skills",
@@ -382,11 +444,13 @@ describe("compileOpenClawConfig", () => {
         }
       ).http?.endpoints?.chatCompletions?.enabled,
     ).toBe(true);
+    // dingtalk accountId "default" is mapped to "__default__" at runtime
+    // (resolveOpenClawRuntimeAccountId, added in commit e825ac79e)
     expect(result.bindings).toContainEqual({
       agentId: "bot-1",
       match: {
         channel: "dingtalk-connector",
-        accountId: "default",
+        accountId: "__default__",
       },
     });
     expect(result.plugins?.allow).toContain("dingtalk-connector");
@@ -437,6 +501,8 @@ describe("compileOpenClawConfig", () => {
   });
 
   it("uses SiliconFlow's cn API base URL by default", () => {
+    // Use canonical models.providers so the compiler can resolve the descriptor.
+    // Legacy config.providers is not read by the compiler.
     const result = compileOpenClawConfig(
       createConfig({
         bots: [
@@ -453,22 +519,31 @@ describe("compileOpenClawConfig", () => {
           },
           defaultModelId: "siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
         },
-        providers: [
-          {
-            id: "provider-siliconflow",
-            providerId: "siliconflow",
-            displayName: "SiliconFlow",
-            enabled: true,
-            authMode: "apiKey",
-            baseUrl: null,
-            apiKey: "sk-test",
-            oauthRegion: null,
-            oauthCredential: null,
-            models: ["Pro/MiniMaxAI/MiniMax-M2.5"],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
+        providers: [],
+        models: {
+          mode: "merge",
+          providers: {
+            siliconflow: {
+              enabled: true,
+              auth: "api-key",
+              api: "openai-completions",
+              apiKey: "sk-test",
+              // null baseUrl → compiler picks default: https://api.siliconflow.cn/v1
+              baseUrl: "https://api.siliconflow.cn/v1",
+              models: [
+                {
+                  id: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  name: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
         desktop: {},
       }),
       createEnv(),
@@ -502,27 +577,36 @@ describe("compileOpenClawConfig", () => {
           },
           defaultModelId: "siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
         },
-        providers: [
-          {
-            id: "provider-siliconflow-cn",
-            providerId: "siliconflow",
-            displayName: "SiliconFlow",
-            enabled: true,
-            authMode: "apiKey",
-            baseUrl: "https://api.siliconflow.cn/v1",
-            apiKey: "sk-test",
-            oauthRegion: null,
-            oauthCredential: null,
-            models: ["Pro/MiniMaxAI/MiniMax-M2.5"],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
+        providers: [],
+        models: {
+          mode: "merge",
+          providers: {
+            siliconflow: {
+              enabled: true,
+              auth: "api-key",
+              api: "openai-completions",
+              apiKey: "sk-test",
+              baseUrl: "https://api.siliconflow.cn/v1",
+              models: [
+                {
+                  id: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  name: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
         desktop: {},
       }),
       createEnv(),
     );
 
+    // .cn is a default URL → direct (non-proxy) mode, runtimeKey = "siliconflow"
     expect(result.models?.providers.siliconflow?.baseUrl).toBe(
       "https://api.siliconflow.cn/v1",
     );
@@ -552,27 +636,37 @@ describe("compileOpenClawConfig", () => {
           },
           defaultModelId: "siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
         },
-        providers: [
-          {
-            id: "provider-siliconflow-legacy",
-            providerId: "siliconflow",
-            displayName: "SiliconFlow",
-            enabled: true,
-            authMode: "apiKey",
-            baseUrl: "https://api.siliconflow.com/v1",
-            apiKey: "sk-test",
-            oauthRegion: null,
-            oauthCredential: null,
-            models: ["Pro/MiniMaxAI/MiniMax-M2.5"],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
+        providers: [],
+        models: {
+          mode: "merge",
+          providers: {
+            siliconflow: {
+              enabled: true,
+              auth: "api-key",
+              api: "openai-completions",
+              apiKey: "sk-test",
+              // .com is also in defaultBaseUrls → direct (non-proxy) mode
+              baseUrl: "https://api.siliconflow.com/v1",
+              models: [
+                {
+                  id: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  name: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
         desktop: {},
       }),
       createEnv(),
     );
 
+    // .com is a legacy default URL (in defaultBaseUrls) → direct mode, not proxied
     expect(result.models?.providers.siliconflow?.baseUrl).toBe(
       "https://api.siliconflow.com/v1",
     );
@@ -586,12 +680,14 @@ describe("compileOpenClawConfig", () => {
   });
 
   it("treats custom SiliconFlow gateway URLs as proxied endpoints", () => {
+    // Use the canonical persisted modelId form: "siliconflow/Pro/..." (not
+    // "byok_siliconflow/siliconflow/..." which was the pre-normalisation legacy form).
     const result = compileOpenClawConfig(
       createConfig({
         bots: [
           {
             ...createConfig().bots[0],
-            modelId: "byok_siliconflow/siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
+            modelId: "siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
           },
         ],
         runtime: {
@@ -600,25 +696,33 @@ describe("compileOpenClawConfig", () => {
             bind: "loopback",
             authMode: "token",
           },
-          defaultModelId:
-            "byok_siliconflow/siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
+          defaultModelId: "siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
         },
-        providers: [
-          {
-            id: "provider-siliconflow-proxy",
-            providerId: "siliconflow",
-            displayName: "SiliconFlow Proxy",
-            enabled: true,
-            authMode: "apiKey",
-            baseUrl: "https://models.example.com/v1",
-            apiKey: "sk-test",
-            oauthRegion: null,
-            oauthCredential: null,
-            models: ["Pro/MiniMaxAI/MiniMax-M2.5"],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
+        providers: [],
+        models: {
+          mode: "merge",
+          providers: {
+            siliconflow: {
+              enabled: true,
+              auth: "api-key",
+              api: "openai-completions",
+              apiKey: "sk-test",
+              // Custom (non-default) baseUrl → proxy mode, runtimeKey = byok_siliconflow
+              baseUrl: "https://models.example.com/v1",
+              models: [
+                {
+                  id: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  name: "Pro/MiniMaxAI/MiniMax-M2.5",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
         desktop: {},
       }),
       createEnv(),
@@ -628,11 +732,14 @@ describe("compileOpenClawConfig", () => {
       "https://models.example.com/v1",
     );
     expect(result.models?.providers.siliconflow).toBeUndefined();
+    // BYOK proxy: canonical namespace prefix ("siliconflow/") is stripped from model id
     expect(result.models?.providers.byok_siliconflow?.models[0]?.id).toBe(
-      "siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
+      "Pro/MiniMaxAI/MiniMax-M2.5",
     );
+    // resolveModelId: "siliconflow/Pro/..." matched by "siliconflow" prefix on
+    // byok descriptor → produces "byok_siliconflow/Pro/MiniMaxAI/MiniMax-M2.5"
     expect(result.agents.defaults?.model).toEqual({
-      primary: "byok_siliconflow/siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
+      primary: "byok_siliconflow/Pro/MiniMaxAI/MiniMax-M2.5",
     });
   });
 
@@ -672,30 +779,37 @@ describe("compileOpenClawConfig", () => {
   });
 
   it("uses the CN MiniMax endpoint for CN OAuth providers", () => {
-    const now = new Date().toISOString();
+    // Use canonical models.providers format; legacy config.providers is not
+    // read by the compiler. CN region → resolveDefaultBaseUrls returns the
+    // CN endpoint first: https://api.minimaxi.com/anthropic
     const result = compileOpenClawConfig(
       createConfig({
-        providers: [
-          {
-            id: "provider-minimax-cn",
-            providerId: "minimax",
-            displayName: "MiniMax",
-            enabled: true,
-            baseUrl: null,
-            authMode: "oauth",
-            apiKey: null,
-            oauthRegion: "cn",
-            oauthCredential: {
-              provider: "minimax-portal",
-              access: "access-token",
-              refresh: "refresh-token",
-              expires: Date.now() + 60_000,
+        providers: [],
+        models: {
+          mode: "merge",
+          providers: {
+            minimax: {
+              enabled: true,
+              auth: "oauth",
+              api: "anthropic-messages",
+              oauthRegion: "cn",
+              oauthProfileRef: "minimax-portal",
+              // null baseUrl → resolveDefaultBaseUrls("minimax","cn") picks CN first
+              baseUrl: "https://api.minimaxi.com/anthropic",
+              models: [
+                {
+                  id: "MiniMax-M2.7",
+                  name: "MiniMax-M2.7",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
             },
-            models: ["MiniMax-M2.7"],
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
         desktop: {},
       }),
       createEnv(),
@@ -1088,13 +1202,15 @@ describe("compileOpenClawConfig", () => {
   it("remaps openai models to OAuth provider ids when persisted OAuth state is connected", () => {
     const baseConfig = createConfig();
     const baseBot = baseConfig.bots[0];
-    const baseProvider = baseConfig.providers?.[0];
-    if (!baseBot || !baseProvider) {
+    if (!baseBot) {
       throw new Error("expected base config fixtures");
     }
     const oauthState: OAuthConnectionState = {
       connectedProviderIds: ["openai"],
     };
+    // Use canonical models.providers so resolveModelId can find the "openai"
+    // descriptor and apply the OAUTH_PROVIDER_MAP remap (openai → openai-codex).
+    // Legacy config.providers is not read by the compiler.
     const result = compileOpenClawConfig(
       createConfig({
         bots: [
@@ -1111,13 +1227,29 @@ describe("compileOpenClawConfig", () => {
           },
           defaultModelId: "openai/gpt-5.4",
         },
-        providers: [
-          {
-            ...baseProvider,
-            apiKey: null,
-            models: ["gpt-5.4"],
-          },
-        ],
+        providers: [],
+        models: {
+          mode: "merge",
+          providers: {
+            openai: {
+              enabled: true,
+              // No apiKey (OAuth flow) — auth left unset so schema doesn't
+              // require apiKey; provider still appears in descriptor list.
+              baseUrl: "https://api.openai.com/v1",
+              models: [
+                {
+                  id: "gpt-5.4",
+                  name: "gpt-5.4",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 0,
+                  maxTokens: 0,
+                },
+              ],
+            },
+          } as unknown as Record<string, unknown>,
+        } as unknown as NexuConfig["models"],
         desktop: {},
       }),
       createEnv(),
@@ -1175,5 +1307,38 @@ describe("compileOpenClawConfig", () => {
     expect(result.models?.providers.openai).toBeDefined();
     expect(result.models?.providers.openai).not.toHaveProperty("apiKey");
     expect(result.models?.providers.openai?.models[0]?.id).toBe("gpt-5.4");
+  });
+});
+
+/**
+ * Regression guard for the packaged-app control UI 503: the launchd path
+ * passes the real `<pkg>/dist/extensions` layout, and the old derivation
+ * appended another "dist", producing `<pkg>/dist/dist/control-ui`.
+ */
+describe("resolveControlUiRoot", () => {
+  it("maps the packaged dist/extensions layout to dist/control-ui", () => {
+    expect(
+      resolveControlUiRoot("/app/node_modules/openclaw/dist/extensions"),
+    ).toBe("/app/node_modules/openclaw/dist/control-ui");
+  });
+
+  it("maps the legacy package-root extensions layout to dist/control-ui", () => {
+    expect(resolveControlUiRoot("/app/node_modules/openclaw/extensions")).toBe(
+      "/app/node_modules/openclaw/dist/control-ui",
+    );
+  });
+
+  it("is wired into the compiled gateway config", () => {
+    const result = compileOpenClawConfig(
+      createConfig(),
+      createEnv({
+        openclawBuiltinExtensionsDir:
+          "/app/node_modules/openclaw/dist/extensions",
+      }),
+    );
+
+    expect(result.gateway.controlUi?.root).toBe(
+      "/app/node_modules/openclaw/dist/control-ui",
+    );
   });
 });

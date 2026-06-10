@@ -439,7 +439,12 @@ describe("SessionsRuntime", () => {
       }),
     );
 
-    const sessionsDir = path.join(rootDir, "agents", "main", "sessions");
+    const sessionsDir = path.join(
+      rootDir,
+      "agents",
+      "bot-dingtalk",
+      "sessions",
+    );
     await mkdir(sessionsDir, { recursive: true });
     const sessionKey = "2c3d5c06-2b91-4dd1-a8d2-b4e707645ff8";
     const sessionPath = path.join(sessionsDir, `${sessionKey}.jsonl`);
@@ -467,9 +472,10 @@ describe("SessionsRuntime", () => {
       path.join(sessionsDir, "sessions.json"),
       `${JSON.stringify(
         {
-          'agent:main:openai-user:{"channel":"dingtalk-connector","accountid":"__default__","chattype":"direct","peerid":"dingtalk-user-123","sendername":"Test User"}':
+          'agent:bot-dingtalk:openai-user:{"channel":"dingtalk-connector","accountid":"__default__","chattype":"direct","peerid":"dingtalk-user-123","sendername":"Test User"}':
             {
               sessionId: sessionKey,
+              sessionFile: sessionPath,
               updatedAt: 1776161129268,
             },
         },
@@ -480,7 +486,11 @@ describe("SessionsRuntime", () => {
     );
 
     const sessions = await runtime.listSessions();
-    const session = sessions.find((item) => item.sessionKey === sessionKey);
+    // Since sessions.json maps the full openai-user index key → sessionId UUID,
+    // the runtime uses the index key as sessionKey (via fileNameToIndexKey).
+    const indexKey =
+      'agent:bot-dingtalk:openai-user:{"channel":"dingtalk-connector","accountid":"__default__","chattype":"direct","peerid":"dingtalk-user-123","sendername":"Test User"}';
+    const session = sessions.find((item) => item.sessionKey === indexKey);
 
     expect(session?.channelType).toBe("dingtalk");
     expect(session?.title).toBe("Test User · dingtalk");
@@ -718,13 +728,21 @@ describe("SessionsRuntime", () => {
 
     const sessions = await runtime.listSessions();
 
+    // Since sessions.json entries carry a sessionFile (absolute path), the
+    // runtime derives sessionKey from the index key rather than the file
+    // basename.  See fileNameToIndexKey in _listSessionsUncached (introduced
+    // in commit 08da42cbf).
     expect(
-      sessions.find((session) => session.sessionKey === "whatsapp")
-        ?.channelType,
+      sessions.find(
+        (session) =>
+          session.sessionKey === "agent:bot-cross-channel:direct:+447925140412",
+      )?.channelType,
     ).toBe("whatsapp");
     expect(
-      sessions.find((session) => session.sessionKey === "telegram")
-        ?.channelType,
+      sessions.find(
+        (session) =>
+          session.sessionKey === "agent:bot-cross-channel:direct:6658353153",
+      )?.channelType,
     ).toBe("telegram");
   });
 

@@ -78,6 +78,7 @@ describe("AnalyticsService transport", () => {
       createEnv(),
       {
         getLocalProfile: async () => ({ id: "local-user" }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions: async () => [],
@@ -122,6 +123,7 @@ describe("AnalyticsService transport", () => {
       createEnv({ posthogHost: undefined }),
       {
         getLocalProfile: async () => ({ id: "local-user" }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions: async () => [],
@@ -146,6 +148,7 @@ describe("AnalyticsService transport", () => {
       createEnv({ posthogApiKey: undefined }),
       {
         getLocalProfile: async () => ({ id: "local-user" }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions: async () => [],
@@ -168,6 +171,7 @@ describe("AnalyticsService transport", () => {
       createEnv(),
       {
         getDesktopCloudStatus: async () => ({ userId: "cloud-user-123" }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions: async () => [],
@@ -186,6 +190,7 @@ describe("AnalyticsService transport", () => {
       createEnv(),
       {
         getDesktopCloudStatus: async () => ({ userId: "desktop-local-user" }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions: async () => [],
@@ -205,6 +210,7 @@ describe("AnalyticsService transport", () => {
         getDesktopCloudStatus: async () => {
           throw new Error("temporary read failure");
         },
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions: async () => [],
@@ -223,6 +229,7 @@ describe("AnalyticsService transport", () => {
       createEnv(),
       {
         getDesktopCloudStatus: async () => ({ userId: null }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,
@@ -284,6 +291,7 @@ describe("AnalyticsService transport", () => {
       }),
       {
         getDesktopCloudStatus: async () => ({ userId: null }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,
@@ -360,6 +368,7 @@ describe("AnalyticsService transport", () => {
       }),
       {
         getDesktopCloudStatus,
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,
@@ -437,6 +446,7 @@ describe("AnalyticsService transport", () => {
       }),
       {
         getDesktopCloudStatus,
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,
@@ -449,7 +459,7 @@ describe("AnalyticsService transport", () => {
     const events = vi
       .mocked(proxyFetch)
       .mock.calls.map(([, options]) => JSON.parse(String(options?.body)).event);
-    expect(events).toEqual(["user_message_sent"]);
+    expect(events).toEqual([]);
   });
 
   it("sends first-conversation analytics for the first authenticated conversation after anonymous usage", async () => {
@@ -564,6 +574,7 @@ describe("AnalyticsService transport", () => {
       }),
       {
         getDesktopCloudStatus,
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,
@@ -644,6 +655,7 @@ describe("AnalyticsService transport", () => {
       createEnv({ analyticsStatePath }),
       {
         getDesktopCloudStatus: async () => ({ userId: "cloud-user-123" }),
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,
@@ -719,6 +731,7 @@ describe("AnalyticsService transport", () => {
       }),
       {
         getDesktopCloudStatus,
+        getDesktopAnalyticsEnabled: async () => true,
       } as never,
       {
         listSessions,

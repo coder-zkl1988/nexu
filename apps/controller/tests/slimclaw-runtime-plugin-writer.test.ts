@@ -24,6 +24,7 @@ describe("OpenClawRuntimePluginWriter", () => {
       bundledRuntimePluginsDir: path.join(rootDir, "bundled-plugins"),
       runtimePluginTemplatesDir: path.join(rootDir, "runtime-plugins"),
       openclawExtensionsDir: path.join(rootDir, "extensions"),
+      openclawSkillsDir: path.join(rootDir, "skills"),
     } as ControllerEnv;
   });
 

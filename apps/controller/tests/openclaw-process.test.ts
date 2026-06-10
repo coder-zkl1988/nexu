@@ -1,72 +1,78 @@
 import { describe, expect, it } from "vitest";
 import {
+  OpenClawProcessManager,
   type OpenClawRuntimeEvent,
-  createOpenClawLogEventProcessor,
 } from "../src/runtime/openclaw-process.js";
 
-function createEventSink() {
+/**
+ * Drive the private `emitRuntimeEventFromLine` path via the public
+ * `onRuntimeEvent` listener, without spawning a real child process.
+ */
+function createTestHarness() {
   const events: OpenClawRuntimeEvent[] = [];
-  return {
-    emitRuntimeEvent(event: OpenClawRuntimeEvent) {
-      events.push(event);
-    },
-    events,
+  const manager = new OpenClawProcessManager({
+    manageOpenclawProcess: false,
+  } as unknown as Parameters<typeof OpenClawProcessManager>[0] extends never
+    ? never
+    : Parameters<typeof OpenClawProcessManager>[0]);
+
+  manager.onRuntimeEvent((event) => {
+    events.push(event);
+  });
+
+  // Reach into the private method via casting so we can unit-test the parser
+  // without launching an actual process.
+  const emitLine = (line: string) => {
+    (
+      manager as unknown as {
+        emitRuntimeEventFromLine(line: string): void;
+      }
+    ).emitRuntimeEventFromLine(line);
   };
+
+  return { events, emitLine };
 }
 
-describe("createOpenClawLogEventProcessor", () => {
-  it("synthesizes feishu reply outcome failures from provider/model log lines", () => {
-    const sink = createEventSink();
-    const processLine = createOpenClawLogEventProcessor(sink);
+describe("OpenClawProcessManager log event parsing", () => {
+  it("emits an event when a log line contains the NEXU_EVENT marker", () => {
+    const { events, emitLine } = createTestHarness();
 
-    processLine(
-      "2026-04-03T16:48:52.190+08:00 [feishu] feishu[acc-1]: received message from ou_user in oc_123 (p2p)",
-    );
-    processLine(
-      "2026-04-03T16:48:52.206+08:00 [feishu] feishu[acc-1]: dispatching to agent (session=sess-1)",
-    );
-    processLine(
-      "2026-04-03T16:48:52.563+08:00 [agent/embedded] embedded run agent end: runId=run-1 isError=true error=429 [code=insufficient_credits] insufficient credits",
+    emitLine(
+      '2026-04-03T16:48:52.190+08:00 [feishu] NEXU_EVENT channel.reply_outcome {"channel":"feishu","status":"ok"}',
     );
 
-    expect(sink.events).toHaveLength(1);
-    expect(sink.events[0]).toMatchObject({
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
       event: "channel.reply_outcome",
-      payload: {
-        channel: "feishu",
-        status: "failed",
-        accountId: "acc-1",
-        chatId: "oc_123",
-        sessionKey: "sess-1",
-        messageId: "feishu:run-1",
-        actionId: "feishu:run-1",
-        reasonCode: "synthetic_pre_llm_failure",
-        error:
-          "2026-04-03T16:48:52.563+08:00 [agent/embedded] embedded run agent end: runId=run-1 isError=true error=429 [code=insufficient_credits] insufficient credits",
-      },
+      payload: { channel: "feishu", status: "ok" },
     });
   });
 
-  it("ignores unknown or non-provider log lines", () => {
-    const sink = createEventSink();
-    const processLine = createOpenClawLogEventProcessor(sink);
+  it("does not emit events for provider or unrelated log lines", () => {
+    const { events, emitLine } = createTestHarness();
 
-    processLine(
+    // These are the kinds of log lines that the removed
+    // createOpenClawLogEventProcessor used to synthesise feishu failure events
+    // from. Since that function was removed (commit 642610980), the
+    // OpenClawProcessManager no longer synthesises events from arbitrary log
+    // lines — only lines that carry an explicit NEXU_EVENT marker are
+    // forwarded.
+    emitLine(
       "2026-04-03T16:48:52.190+08:00 [feishu] feishu[acc-1]: received message from ou_user in oc_123 (p2p)",
     );
-    processLine(
+    emitLine(
       "2026-04-03T16:48:52.206+08:00 [feishu] feishu[acc-1]: dispatching to agent (session=sess-1)",
     );
-    processLine(
-      "2026-04-03T16:48:52.563+08:00 [agent/embedded] embedded run agent end: runId=run-1 isError=true error=Context overflow: prompt too large for the model.",
+    emitLine(
+      "2026-04-03T16:48:52.563+08:00 [agent/embedded] embedded run agent end: runId=run-1 isError=true error=429 [code=insufficient_credits] insufficient credits",
     );
-    processLine(
-      "2026-04-03T16:48:53.563+08:00 [agent/embedded] embedded run agent end: runId=run-1 isError=true error=429 [code=unknown_provider_error] not supported",
+    emitLine(
+      "2026-04-03T16:48:53.563+08:00 [agent/embedded] embedded run agent end: runId=run-1 isError=true error=Context overflow: prompt too large for the model.",
     );
-    processLine(
+    emitLine(
       "2026-04-03T16:48:54.563+08:00 [openclaw] some unrelated error happened",
     );
 
-    expect(sink.events).toHaveLength(0);
+    expect(events).toHaveLength(0);
   });
 });

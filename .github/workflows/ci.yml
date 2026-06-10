@@ -106,8 +106,14 @@ jobs:
           NEXU_SKIP_RUNTIME_POSTINSTALL: "1"
         run: pnpm install --frozen-lockfile
 
+      - name: Build @nexu/shared (controller test prerequisite)
+        run: pnpm --filter @nexu/shared build
+
       - name: Test with coverage
         run: pnpm test:coverage
+
+      - name: Controller package tests
+        run: pnpm --filter @nexu/controller test
 
       - name: Upload unit coverage to Codecov
         if: ${{ !cancelled() && hashFiles('coverage/lcov.info') != '' }}

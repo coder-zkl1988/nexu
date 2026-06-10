@@ -113,6 +113,11 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
       },
       items: {},
     },
+    deviceControl: {
+      enabled: true,
+      wsPort: 18790,
+      rpcPort: 18801,
+    },
     desktop: {
       selectedModelId: "gpt-4o",
       cloud: {

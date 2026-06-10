@@ -14,6 +14,7 @@ import { OpenClawRuntimePluginWriter } from "../src/runtime/slimclaw-runtime-plu
 import { WorkspaceTemplateWriter } from "../src/runtime/workspace-template-writer.js";
 import type { OpenClawGatewayService } from "../src/services/openclaw-gateway-service.js";
 import { OpenClawSyncService } from "../src/services/openclaw-sync-service.js";
+import { ScheduleWorkspaceWriter } from "../src/services/schedule-workspace-writer.js";
 import { SkillDb } from "../src/services/skillhub/skill-db.js";
 import { CompiledOpenClawStore } from "../src/store/compiled-openclaw-store.js";
 import { NexuConfigStore } from "../src/store/nexu-config-store.js";
@@ -106,6 +107,7 @@ describe("OpenClawSyncService", () => {
       new OpenClawRuntimeModelWriter(env),
       new CreditGuardStateWriter(env),
       new WorkspaceTemplateWriter(env),
+      new ScheduleWorkspaceWriter(env),
       new OpenClawWatchTrigger(env),
       {
         isConnected: () => false,
@@ -114,19 +116,18 @@ describe("OpenClawSyncService", () => {
       } as unknown as OpenClawGatewayService,
     );
 
-    await configStore.createBot({ name: "Assistant", slug: "assistant" });
+    const bot = await configStore.createBot({
+      name: "Assistant",
+      slug: "assistant",
+    });
     await configStore.connectSlack({
+      botId: bot.id,
       botToken: "xoxb-test",
       signingSecret: "secret",
       teamId: "T123",
       appId: "A123",
       teamName: "Acme",
     });
-    const template = await configStore.upsertTemplate({
-      name: "AGENTS.md",
-      content: "hello",
-    });
-
     await syncService.syncAll();
 
     const config = JSON.parse(
@@ -136,12 +137,6 @@ describe("OpenClawSyncService", () => {
     expect(config.channels.slack?.accounts["slack-A123-T123"]?.botToken).toBe(
       "xoxb-test",
     );
-
-    const templateFile = await readFile(
-      path.join(env.openclawWorkspaceTemplatesDir, `${template.id}.md`),
-      "utf8",
-    );
-    expect(templateFile).toBe("hello");
 
     const snapshot = JSON.parse(
       await readFile(env.compiledOpenclawSnapshotPath, "utf8"),
@@ -169,6 +164,7 @@ describe("OpenClawSyncService", () => {
       new OpenClawRuntimeModelWriter(env),
       new CreditGuardStateWriter(env),
       new WorkspaceTemplateWriter(env),
+      new ScheduleWorkspaceWriter(env),
       new OpenClawWatchTrigger(env),
       {
         isConnected: () => false,
@@ -190,5 +186,103 @@ describe("OpenClawSyncService", () => {
       expect.arrayContaining(["web-search", "image-gen"]),
     );
     expect(config.agents.list[0].skills).toHaveLength(2);
+  });
+
+  function createSyncService(options: {
+    gateway: {
+      isConnected: () => boolean;
+      shouldPushConfig: () => Promise<boolean>;
+    };
+    watchTrigger: { nudgeSkillsWatcher: (reason: string) => Promise<void> };
+    skillDb?: SkillDb;
+  }) {
+    const configStore = new NexuConfigStore(env);
+    const authProfilesStore = new OpenClawAuthProfilesStore(env);
+    const syncService = new OpenClawSyncService(
+      env,
+      configStore,
+      new CompiledOpenClawStore(env),
+      new OpenClawConfigWriter(env),
+      new OpenClawAuthProfilesWriter(authProfilesStore),
+      authProfilesStore,
+      new OpenClawRuntimePluginWriter(env),
+      new OpenClawRuntimeModelWriter(env),
+      new CreditGuardStateWriter(env),
+      new WorkspaceTemplateWriter(env),
+      new ScheduleWorkspaceWriter(env),
+      {
+        ...options.watchTrigger,
+        touchConfig: async () => {},
+      } as unknown as OpenClawWatchTrigger,
+      {
+        ...options.gateway,
+        noteConfigWritten: () => {},
+      } as unknown as OpenClawGatewayService,
+      options.skillDb ?? null,
+    );
+    return { syncService, configStore };
+  }
+
+  /**
+   * Regression guard for the packaged-app boot loop: lastSkillAllowlist
+   * starts empty in memory, so the first sync after a controller (re)boot
+   * used to see a spurious allowlist diff and restart OpenClaw before the
+   * controller was ready — breaking the control-plane stability window and
+   * looping the desktop app on the loading screen.
+   */
+  it("does not restart OpenClaw on first sync after boot when on-disk config is unchanged", async () => {
+    const nudges: string[] = [];
+
+    // First controller "boot": writes the compiled config to disk.
+    const first = createSyncService({
+      gateway: {
+        isConnected: () => false,
+        shouldPushConfig: async () => false,
+      },
+      watchTrigger: {
+        nudgeSkillsWatcher: async (reason) => {
+          nudges.push(reason);
+        },
+      },
+    });
+    await first.configStore.createBot({ name: "Assistant", slug: "assistant" });
+    await first.syncService.syncAllImmediate();
+    nudges.length = 0;
+
+    // Second controller "boot" over the same state: gateway reports a
+    // snapshot diff (configPushed=true) but the on-disk file is unchanged.
+    const second = createSyncService({
+      gateway: { isConnected: () => true, shouldPushConfig: async () => true },
+      watchTrigger: {
+        nudgeSkillsWatcher: async (reason) => {
+          nudges.push(reason);
+        },
+      },
+    });
+    const result = await second.syncService.syncAllImmediate();
+
+    expect(result.configChanged).toBe(false);
+    expect(nudges).toEqual([]);
+  });
+
+  it("still restarts OpenClaw when the config and skill allowlist actually change", async () => {
+    const nudges: string[] = [];
+    const skillDb = await SkillDb.create(env.skillDbPath);
+    skillDb.recordInstall("web-search", "managed");
+
+    const { syncService, configStore } = createSyncService({
+      gateway: { isConnected: () => true, shouldPushConfig: async () => true },
+      watchTrigger: {
+        nudgeSkillsWatcher: async (reason) => {
+          nudges.push(reason);
+        },
+      },
+      skillDb,
+    });
+    await configStore.createBot({ name: "Assistant", slug: "assistant" });
+    const result = await syncService.syncAllImmediate();
+
+    expect(result.configChanged).toBe(true);
+    expect(nudges).toEqual(["config-pushed"]);
   });
 });

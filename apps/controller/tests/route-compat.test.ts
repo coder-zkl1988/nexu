@@ -30,6 +30,7 @@ import { OpenClawGatewayService } from "../src/services/openclaw-gateway-service
 import { OpenClawSyncService } from "../src/services/openclaw-sync-service.js";
 import { RuntimeConfigService } from "../src/services/runtime-config-service.js";
 import { RuntimeModelStateService } from "../src/services/runtime-model-state-service.js";
+import { ScheduleWorkspaceWriter } from "../src/services/schedule-workspace-writer.js";
 import { SessionService } from "../src/services/session-service.js";
 import type { SkillhubService } from "../src/services/skillhub-service.js";
 import { TemplateService } from "../src/services/template-service.js";
@@ -105,6 +106,7 @@ async function createTestContainer(
   const runtimeModelWriter = new OpenClawRuntimeModelWriter(env);
   const creditGuardStateWriter = new CreditGuardStateWriter(env);
   const templateWriter = new WorkspaceTemplateWriter(env);
+  const scheduleWorkspaceWriter = new ScheduleWorkspaceWriter(env);
   const watchTrigger = new OpenClawWatchTrigger(env);
   const sessionsRuntime = new SessionsRuntime(env);
   const openclawProcess = new OpenClawProcessManager(env);
@@ -134,6 +136,7 @@ async function createTestContainer(
     runtimeModelWriter,
     creditGuardStateWriter,
     templateWriter,
+    scheduleWorkspaceWriter,
     watchTrigger,
     gatewayService,
   );
@@ -266,6 +269,12 @@ describe("controller route compatibility", () => {
       }),
     );
 
+    const bot = await container.configStore.createBot({
+      name: "Test Bot",
+      slug: "test-bot",
+      modelId: "anthropic/claude-sonnet-4",
+    });
+
     const app = createApp(container);
 
     const channelConnect = await app.request("/api/v1/channels/slack/connect", {
@@ -276,6 +285,7 @@ describe("controller route compatibility", () => {
         signingSecret: "secret",
         teamId: "T123",
         appId: "A123",
+        botId: bot.id,
       }),
     });
     expect(channelConnect.status).toBe(200);
@@ -434,6 +444,12 @@ describe("controller route compatibility", () => {
       }),
     );
 
+    const bot = await container.configStore.createBot({
+      name: "QQ Bot",
+      slug: "qq-bot",
+      modelId: "anthropic/claude-sonnet-4",
+    });
+
     const app = createApp(container);
     const response = await app.request("/api/v1/channels/qqbot/connect", {
       method: "POST",
@@ -441,6 +457,7 @@ describe("controller route compatibility", () => {
       body: JSON.stringify({
         appId: "123456",
         appSecret: "qq-secret",
+        botId: bot.id,
       }),
     });
 
@@ -467,6 +484,12 @@ describe("controller route compatibility", () => {
       "utf8",
     );
 
+    const bot = await container.configStore.createBot({
+      name: "WeCom Bot",
+      slug: "wecom-bot",
+      modelId: "anthropic/claude-sonnet-4",
+    });
+
     const app = createApp(container);
     const response = await app.request("/api/v1/channels/wecom/connect", {
       method: "POST",
@@ -474,6 +497,7 @@ describe("controller route compatibility", () => {
       body: JSON.stringify({
         botId: "wecom-bot-123",
         secret: "wecom-secret",
+        nexuBotId: bot.id,
       }),
     });
 
@@ -500,6 +524,12 @@ describe("controller route compatibility", () => {
       "utf8",
     );
 
+    const bot = await container.configStore.createBot({
+      name: "WeCom Bot",
+      slug: "wecom-bot",
+      modelId: "anthropic/claude-sonnet-4",
+    });
+
     const app = createApp(container);
     const response = await app.request("/api/v1/channels/wecom/test", {
       method: "POST",
@@ -507,6 +537,7 @@ describe("controller route compatibility", () => {
       body: JSON.stringify({
         botId: "wecom-bot-123",
         secret: "wecom-secret",
+        nexuBotId: bot.id,
       }),
     });
 
@@ -550,6 +581,12 @@ describe("controller route compatibility", () => {
       }),
     );
 
+    const bot = await container.configStore.createBot({
+      name: "QQ Bot",
+      slug: "qq-bot",
+      modelId: "anthropic/claude-sonnet-4",
+    });
+
     const app = createApp(container);
     const response = await app.request("/api/v1/channels/qqbot/test", {
       method: "POST",
@@ -557,6 +594,7 @@ describe("controller route compatibility", () => {
       body: JSON.stringify({
         appId: "123456",
         appSecret: "qq-secret",
+        botId: bot.id,
       }),
     });
 
@@ -569,35 +607,36 @@ describe("controller route compatibility", () => {
     expect(payload.message).toContain("123456");
   });
 
-  it("maps legacy qqbot account ids to the runtime default account for live status", async () => {
-    const gatewayService = new OpenClawGatewayService(
-      {
-        isConnected: () => true,
-        request: vi.fn(async () => ({
-          channelOrder: ["qqbot"],
-          channels: {},
-          channelAccounts: {
-            qqbot: [
-              {
-                accountId: "default",
-                enabled: true,
-                configured: true,
-                running: true,
-                connected: true,
-                lastError: null,
-              },
-            ],
-          },
-        })),
-      } as never,
-      createRuntimeState(),
-    );
+  it("resolves qqbot live status via the default account id", async () => {
+    // New qqbot channels always use accountId "default" (stored by
+    // NexuConfigStore.connectQqbot via DEFAULT_MANAGED_CHANNEL_ACCOUNT_ID).
+    // The legacy all-qqbot→"default" mapping in resolveOpenClawAccountId was
+    // removed in 6ff1507b2; tests now use the current "default" accountId.
+    const gatewayService = new OpenClawGatewayService({
+      isConnected: () => true,
+      request: vi.fn(async () => ({
+        channelOrder: ["qqbot"],
+        channels: {},
+        channelAccounts: {
+          qqbot: [
+            {
+              accountId: "default",
+              enabled: true,
+              configured: true,
+              running: true,
+              connected: true,
+              lastError: null,
+            },
+          ],
+        },
+      })),
+    } as never);
 
     const result = await gatewayService.getAllChannelsLiveStatus([
       {
         id: "qq-channel-1",
         channelType: "qqbot",
-        accountId: "qqbot-123456",
+        accountId: "default",
       },
     ]);
 
@@ -606,7 +645,7 @@ describe("controller route compatibility", () => {
       {
         channelType: "qqbot",
         channelId: "qq-channel-1",
-        accountId: "qqbot-123456",
+        accountId: "default",
         status: "connected",
         ready: true,
         connected: true,

@@ -87,6 +87,7 @@ describe("NexuConfigStore", () => {
       teamId: "T123",
       teamName: "Acme",
       appId: "A123",
+      botId: bot.id,
     });
     const provider = await store.upsertProvider("openai", {
       apiKey: "sk-test",
@@ -106,9 +107,11 @@ describe("NexuConfigStore", () => {
   it("persists qqbot channels with app secrets in the secret store", async () => {
     const store = new NexuConfigStore(env);
 
+    const bot = await store.createBot({ name: "Assistant", slug: "assistant" });
     const channel = await store.connectQqbot({
       appId: "123456",
       appSecret: "qq-secret",
+      botId: bot.id,
     });
 
     expect(channel.channelType).toBe("qqbot");
@@ -123,9 +126,11 @@ describe("NexuConfigStore", () => {
   it("persists wecom channels with bot secrets in the secret store", async () => {
     const store = new NexuConfigStore(env);
 
+    const bot = await store.createBot({ name: "Assistant", slug: "assistant" });
     const channel = await store.connectWecom({
       botId: "wecom-bot-123",
       secret: "wecom-secret",
+      nexuBotId: bot.id,
     });
 
     expect(channel.channelType).toBe("wecom");
@@ -1263,7 +1268,7 @@ describe("NexuConfigStore", () => {
     );
 
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      expect(String(input)).toBe("https://nexu.io/api/v1/me");
+      expect(String(input)).toBe("https://tabby.picaso.studio/api/v1/me");
       expect(init?.headers).toEqual({ Authorization: "Bearer secret-api-key" });
       return new Response(JSON.stringify({ id: "user-backfilled" }), {
         status: 200,
