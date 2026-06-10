@@ -208,6 +208,23 @@ async function waitForOpenclawReady(
   );
 }
 
+async function ensureOpenclawDevPortAvailable(): Promise<void> {
+  const runtimeConfig = getToolsDevRuntimeConfig();
+
+  try {
+    const pid = await getOpenclawPortPid();
+    throw new Error(
+      `openclaw dev port ${runtimeConfig.openclawPort} is already occupied by pid ${pid}. Stop the existing OpenClaw/Tabby runtime first, or set NEXU_DEV_OPENCLAW_PORT in tools/dev/.env to use a different local-dev port.`,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("did not open port")) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -348,6 +365,7 @@ export async function startOpenclawDevProcess(options: {
 
   logOpenclawTiming("start:entered", startedAt);
 
+  await ensureOpenclawDevPortAvailable();
   await ensureParentDirectory(logFilePath);
   await ensureDirectory(runtimeConfig.openclawStateDir);
   await ensureParentDirectory(runtimeConfig.openclawConfigPath);
