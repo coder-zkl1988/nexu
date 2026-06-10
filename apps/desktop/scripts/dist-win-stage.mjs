@@ -1210,6 +1210,10 @@ async function main() {
       if (shouldReuseExistingBuildArtifacts) {
         return;
       }
+      // Stale hashed chunks from earlier dev/build runs would otherwise be
+      // packed into app.asar alongside the fresh output.
+      await rm(resolve(electronRoot, "dist"), rmWithRetriesOptions);
+      await rm(resolve(electronRoot, "dist-electron"), rmWithRetriesOptions);
       await run(pnpmCommand, ["run", "build"], {
         cwd: electronRoot,
         env,

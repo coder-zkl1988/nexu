@@ -1,7 +1,8 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { pruneRuntimeDependenciesForTarget } from "../../apps/desktop/scripts/lib/sidecar-paths.mjs";
 
 /**
  * Tests the resolveInstalledPackageRoot fallback behavior for bin-only packages
@@ -73,5 +74,109 @@ describe("sidecar-paths bin-only package resolution", () => {
     );
     const binPath = resolve(pkgDir, pkgJson.bin["bin-only-tool"]);
     expect(binPath).toBe(resolve(binOnlyPkg, "bin/cli.js"));
+  });
+});
+
+/**
+ * Regression guard for the release payload prune rules in sidecar-paths.mjs:
+ * confirmed-droppable ffmpeg/ffprobe media packages, development artifacts
+ * (sourcemaps, .d.ts, coverage), and pdf-parse's duplicated nested
+ * @napi-rs/canvas copy must be removed, while runtime files (including
+ * typescript's standard-library .d.ts assets and the @napi-rs/canvas copy
+ * pdfjs-dist loads at module init) must survive.
+ */
+describe("pruneRuntimeDependenciesForTarget release payload rules", () => {
+  const tmpDir = resolve(import.meta.dirname, ".tmp-prune-test");
+  const nodeModulesDir = resolve(tmpDir, "node_modules");
+
+  function writePackage(packageName: string, files: Record<string, string>) {
+    const packageDir = resolve(nodeModulesDir, packageName);
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      resolve(packageDir, "package.json"),
+      JSON.stringify({ name: packageName, version: "1.0.0" }),
+    );
+    for (const [relativePath, content] of Object.entries(files)) {
+      const filePath = resolve(packageDir, relativePath);
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(filePath, content);
+    }
+  }
+
+  beforeAll(async () => {
+    // Pin the prune target so the test is host-platform independent.
+    vi.stubEnv("NEXU_TARGET_PLATFORM", "mac");
+    rmSync(tmpDir, { recursive: true, force: true });
+
+    writePackage("fluent-ffmpeg", { "index.js": "" });
+    writePackage("@ffmpeg-installer/ffmpeg", { "index.js": "" });
+    writePackage("@ffprobe-installer/ffprobe", { "index.js": "" });
+    writePackage("some-lib", {
+      "index.js": "",
+      "index.js.map": "{}",
+      "index.d.ts": "",
+      "coverage/lcov.info": "",
+    });
+    writePackage("typescript", {
+      "lib/lib.dom.d.ts": "",
+    });
+    writePackage("pdf-parse", {
+      "dist/pdf-parse/esm/index.js": "",
+      "node_modules/@napi-rs/canvas/package.json": "{}",
+      "node_modules/pdfjs-dist/package.json": JSON.stringify({
+        name: "pdfjs-dist",
+        version: "5.0.0",
+      }),
+      "node_modules/pdfjs-dist/legacy/build/pdf.mjs": "",
+      "node_modules/pdfjs-dist/node_modules/@napi-rs/canvas/package.json": "{}",
+    });
+
+    await pruneRuntimeDependenciesForTarget(nodeModulesDir);
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("removes confirmed-droppable ffmpeg/ffprobe media packages", () => {
+    expect(existsSync(resolve(nodeModulesDir, "fluent-ffmpeg"))).toBe(false);
+    expect(
+      existsSync(resolve(nodeModulesDir, "@ffmpeg-installer/ffmpeg")),
+    ).toBe(false);
+    expect(
+      existsSync(resolve(nodeModulesDir, "@ffprobe-installer/ffprobe")),
+    ).toBe(false);
+  });
+
+  it("removes development artifacts but keeps runtime files", () => {
+    const someLib = resolve(nodeModulesDir, "some-lib");
+    expect(existsSync(resolve(someLib, "index.js"))).toBe(true);
+    expect(existsSync(resolve(someLib, "index.js.map"))).toBe(false);
+    expect(existsSync(resolve(someLib, "index.d.ts"))).toBe(false);
+    expect(existsSync(resolve(someLib, "coverage"))).toBe(false);
+  });
+
+  it("keeps typescript standard-library .d.ts assets", () => {
+    expect(
+      existsSync(resolve(nodeModulesDir, "typescript/lib/lib.dom.d.ts")),
+    ).toBe(true);
+  });
+
+  it("dedupes pdf-parse @napi-rs/canvas but keeps the shared copy pdfjs loads at module init", () => {
+    const pdfParse = resolve(nodeModulesDir, "pdf-parse");
+    // pdfjs-dist's DOMMatrix polyfill require()s @napi-rs/canvas at module
+    // load; Node resolution falls back to pdf-parse's copy, which must stay.
+    expect(existsSync(resolve(pdfParse, "node_modules/@napi-rs"))).toBe(true);
+    expect(
+      existsSync(
+        resolve(pdfParse, "node_modules/pdfjs-dist/node_modules/@napi-rs"),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        resolve(pdfParse, "node_modules/pdfjs-dist/legacy/build/pdf.mjs"),
+      ),
+    ).toBe(true);
   });
 });

@@ -94,8 +94,97 @@ function isTargetPlatformPackage(packageName, target) {
   return true;
 }
 
+// Heavy media packages confirmed droppable for packaged builds: the
+// dingtalk-connector plugin require()s them lazily inside its video pipeline
+// and degrades with a user-facing "请检查 ffmpeg" message when they are
+// absent, so packaged apps skip the ~50MB ffmpeg/ffprobe payload.
+const EXCLUDED_MEDIA_PACKAGE_SCOPES = new Set([
+  "@ffmpeg-installer",
+  "@ffprobe-installer",
+]);
+const EXCLUDED_MEDIA_PACKAGE_NAMES = new Set(["fluent-ffmpeg"]);
+
+function isExcludedMediaPackage(packageName) {
+  if (packageName.startsWith("@")) {
+    const scope = packageName.split("/")[0];
+    if (EXCLUDED_MEDIA_PACKAGE_SCOPES.has(scope)) {
+      return true;
+    }
+  }
+
+  return EXCLUDED_MEDIA_PACKAGE_NAMES.has(packageName);
+}
+
 function shouldCopyRuntimeDependencyPackage(packageName, target) {
+  if (isExcludedMediaPackage(packageName)) {
+    return false;
+  }
+
   return isTargetPlatformPackage(packageName, target);
+}
+
+// Development-only artifacts that upstream packages publish but the packaged
+// runtime never reads. Source maps for shipped bundles are uploaded to Sentry
+// at build time instead of being distributed.
+const PRUNED_DEVELOPMENT_DIRECTORY_NAMES = new Set(["coverage"]);
+const PRUNED_DEVELOPMENT_FILE_SUFFIXES = [
+  ".d.ts",
+  ".d.mts",
+  ".d.cts",
+  ".d.ts.map",
+  ".d.mts.map",
+  ".d.cts.map",
+  ".js.map",
+  ".cjs.map",
+  ".mjs.map",
+];
+// typescript ships its standard-library .d.ts files as runtime assets.
+const DEVELOPMENT_ARTIFACT_PRUNE_SKIPPED_PACKAGES = new Set(["typescript"]);
+
+async function pruneDevelopmentArtifacts(packagePath) {
+  if (DEVELOPMENT_ARTIFACT_PRUNE_SKIPPED_PACKAGES.has(basename(packagePath))) {
+    return 0;
+  }
+
+  let prunedCount = 0;
+
+  async function walk(dirPath) {
+    const entries = await readdir(dirPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const entryPath = resolve(dirPath, entry.name);
+
+      // Symlinked entries report neither isDirectory nor isFile here, so the
+      // walk never reaches through links into shared pnpm store contents.
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules") {
+          continue;
+        }
+
+        if (PRUNED_DEVELOPMENT_DIRECTORY_NAMES.has(entry.name)) {
+          await rm(entryPath, { recursive: true, force: true });
+          prunedCount += 1;
+          continue;
+        }
+
+        await walk(entryPath);
+        continue;
+      }
+
+      if (
+        entry.isFile() &&
+        PRUNED_DEVELOPMENT_FILE_SUFFIXES.some((suffix) =>
+          entry.name.endsWith(suffix),
+        )
+      ) {
+        await rm(entryPath, { force: true });
+        prunedCount += 1;
+      }
+    }
+  }
+
+  await walk(packagePath);
+  return prunedCount;
 }
 
 function getTargetPrebuildNames(target) {
@@ -111,6 +200,7 @@ async function pruneRuntimeDependencyTree(rootPath, target) {
   let prunedPackageCount = 0;
   let prunedPrebuildCount = 0;
   let prunedPdfAssetCount = 0;
+  let prunedDevArtifactCount = 0;
   const targetPrebuildNames = getTargetPrebuildNames(target);
 
   async function pruneNodeModules(nodeModulesPath) {
@@ -188,6 +278,18 @@ async function pruneRuntimeDependencyTree(rootPath, target) {
     const pruneTargets = [
       resolve(packagePath, "bin"),
       resolve(packagePath, "dist", "pdf-parse", "web"),
+      // pdfjs-dist needs @napi-rs/canvas at module load (its DOMMatrix
+      // polyfill runs top-level), but Node resolution walks up from
+      // pdfjs-dist into pdf-parse's own node_modules, so the nested
+      // duplicate skia copy (~26MB) can be dropped while pdf-parse's copy
+      // stays as the single shared instance.
+      resolve(
+        packagePath,
+        "node_modules",
+        "pdfjs-dist",
+        "node_modules",
+        "@napi-rs",
+      ),
       resolve(packagePath, "node_modules", "pdfjs-dist", "web"),
       resolve(packagePath, "lib", "pdf.js", "v1.9.426", "web"),
       resolve(packagePath, "lib", "pdf.js", "v1.10.88", "web"),
@@ -232,6 +334,7 @@ async function pruneRuntimeDependencyTree(rootPath, target) {
   async function pruneNestedDependencyRoots(packagePath) {
     await prunePrebuilds(packagePath);
     prunedPdfAssetCount += await prunePdfParserAssets(packagePath);
+    prunedDevArtifactCount += await pruneDevelopmentArtifacts(packagePath);
 
     const nestedNodeModulesPath = resolve(packagePath, "node_modules");
     if (await pathExists(nestedNodeModulesPath)) {
@@ -243,16 +346,25 @@ async function pruneRuntimeDependencyTree(rootPath, target) {
     await pruneNodeModules(rootPath);
   }
 
-  return { prunedPackageCount, prunedPrebuildCount, prunedPdfAssetCount };
+  return {
+    prunedPackageCount,
+    prunedPrebuildCount,
+    prunedPdfAssetCount,
+    prunedDevArtifactCount,
+  };
 }
 
 export async function pruneRuntimeDependenciesForTarget(rootPath) {
   const target = resolveRuntimeDependencyTarget();
-  const { prunedPackageCount, prunedPrebuildCount, prunedPdfAssetCount } =
-    await pruneRuntimeDependencyTree(rootPath, target);
+  const {
+    prunedPackageCount,
+    prunedPrebuildCount,
+    prunedPdfAssetCount,
+    prunedDevArtifactCount,
+  } = await pruneRuntimeDependencyTree(rootPath, target);
 
   console.log(
-    `[sidecar-paths] pruned runtime dependencies root=${rootPath} target=${target.platform}/${target.arch} packages=${prunedPackageCount} prebuilds=${prunedPrebuildCount} pdfAssets=${prunedPdfAssetCount}`,
+    `[sidecar-paths] pruned runtime dependencies root=${rootPath} target=${target.platform}/${target.arch} packages=${prunedPackageCount} prebuilds=${prunedPrebuildCount} pdfAssets=${prunedPdfAssetCount} devArtifacts=${prunedDevArtifactCount}`,
   );
 }
 
