@@ -22,6 +22,7 @@ type AnalyticsState = {
   firstConversationDistinctId: string | null;
   sentUserMessageIds: string[];
   sentSkillUseIds: string[];
+  anonymousSessionIds: string[];
 };
 
 type TranscriptEntry = {
@@ -78,6 +79,7 @@ const EMPTY_ANALYTICS_STATE: AnalyticsState = {
   firstConversationDistinctId: null,
   sentUserMessageIds: [],
   sentSkillUseIds: [],
+  anonymousSessionIds: [],
 };
 
 function toAnalyticsChannel(
@@ -163,6 +165,7 @@ export class AnalyticsService {
   private state: AnalyticsState = EMPTY_ANALYTICS_STATE;
   private readonly sentUserMessageIds = new Set<string>();
   private readonly sentSkillUseIds = new Set<string>();
+  private readonly anonymousSessionIds = new Set<string>();
   private stateLoaded = false;
 
   constructor(
@@ -238,12 +241,22 @@ export class AnalyticsService {
 
       if (!this.state.sessionStartSent) {
         const sessionFirstMessage = userMessages[0];
-        if (
-          sessionFirstMessage &&
-          (!firstSessionCandidate ||
-            sessionFirstMessage.timestampMs < firstSessionCandidate.timestampMs)
-        ) {
-          firstSessionCandidate = sessionFirstMessage;
+        if (sessionFirstMessage) {
+          if (!shouldSendAnalytics) {
+            // Sessions whose conversation started before authentication must
+            // never backfill nexu_first_conversation_start once a user logs in.
+            if (!this.anonymousSessionIds.has(session.id)) {
+              this.anonymousSessionIds.add(session.id);
+              stateChanged = true;
+            }
+          } else if (
+            !this.anonymousSessionIds.has(session.id) &&
+            (!firstSessionCandidate ||
+              sessionFirstMessage.timestampMs <
+                firstSessionCandidate.timestampMs)
+          ) {
+            firstSessionCandidate = sessionFirstMessage;
+          }
         }
       }
 
@@ -343,6 +356,11 @@ export class AnalyticsService {
               (value): value is string => typeof value === "string",
             )
           : [],
+        anonymousSessionIds: Array.isArray(parsed.anonymousSessionIds)
+          ? parsed.anonymousSessionIds.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [],
       };
     } catch {
       this.state = {
@@ -356,12 +374,16 @@ export class AnalyticsService {
     for (const id of this.state.sentSkillUseIds) {
       this.sentSkillUseIds.add(id);
     }
+    for (const id of this.state.anonymousSessionIds) {
+      this.anonymousSessionIds.add(id);
+    }
     this.stateLoaded = true;
   }
 
   private async persistState(): Promise<void> {
     this.state.sentUserMessageIds = Array.from(this.sentUserMessageIds);
     this.state.sentSkillUseIds = Array.from(this.sentSkillUseIds);
+    this.state.anonymousSessionIds = Array.from(this.anonymousSessionIds);
     await mkdir(path.dirname(this.env.analyticsStatePath), { recursive: true });
     await writeFile(
       this.env.analyticsStatePath,

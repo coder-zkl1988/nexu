@@ -108,6 +108,9 @@ const UUID_LIKE_TITLE_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const QQBOT_OPEN_ID_PATTERN = /^[0-9a-f]{32}$/i;
 const QQBOT_TARGET_PATTERN = /^qqbot:(c2c|group):([0-9a-f-]+)$/i;
+// Persisted titles that are just the raw qqbot open id, optionally with the
+// " · qqbot" channel suffix older builds appended.
+const QQBOT_OPAQUE_TITLE_PATTERN = /^[0-9a-f]{32}(?: · qqbot)?$/i;
 const FEISHU_MENTION_TAGS_SYSTEM_LINE =
   /\n*\[System: The content may include mention tags in the form <at user_id="[^"]+">[^<]+<\/at>\. Treat these as real mentions of Feishu entities \(users or bots\)\.\]\s*$/u;
 const FEISHU_SELF_MENTION_SYSTEM_LINE =
@@ -1716,7 +1719,9 @@ export class SessionsRuntime {
       normalized === sessionKey ||
       UUID_LIKE_TITLE_PATTERN.test(normalized) ||
       // Heal sessions whose persisted title is the raw opaque wechat id.
-      normalized.endsWith("@im.wechat")
+      normalized.endsWith("@im.wechat") ||
+      // Heal sessions whose persisted title is the raw opaque qqbot open id.
+      QQBOT_OPAQUE_TITLE_PATTERN.test(normalized)
     );
   }
 

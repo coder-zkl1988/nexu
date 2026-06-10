@@ -5,6 +5,12 @@ const execFileAsync = promisify(execFile);
 
 const isWindows = process.platform === "win32";
 
+// Hard ceilings so a hung npm child process cannot wedge the skill install
+// pipeline (the InstallQueue only fires onIdle once every install settles).
+// SIGKILL because a stuck network read may ignore SIGTERM.
+const NPM_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
+const NPM_PROBE_TIMEOUT_MS = 15 * 1000;
+
 /**
  * On Windows `npm` is a `.cmd` shim that cannot be launched directly with
  * `execFile` since Node 18.20.2 / 20.12.2 (CVE-2024-27980). Using `shell: true`
@@ -34,6 +40,8 @@ export async function ensureNpmAvailable(): Promise<void> {
         await execFileAsync("npm", ["--version"], {
           shell: isWindows,
           windowsHide: true,
+          timeout: NPM_PROBE_TIMEOUT_MS,
+          killSignal: "SIGKILL",
         });
         return true;
       } catch {
@@ -52,5 +60,9 @@ export async function ensureNpmAvailable(): Promise<void> {
 
 export async function runNpmInstall(skillDir: string): Promise<void> {
   const args = ["install", "--production", "--no-audit", "--no-fund"];
-  await execFileAsync("npm", args, npmSpawnOptions(skillDir));
+  await execFileAsync("npm", args, {
+    ...npmSpawnOptions(skillDir),
+    timeout: NPM_INSTALL_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+  });
 }

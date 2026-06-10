@@ -30,7 +30,8 @@ export const CURATED_SKILL_SLUGS: readonly string[] = [
   "calendar",
   // Notes & content
   "apple-notes",
-  "humanize-ai-text",
+  // NOTE: "humanize-ai-text" was removed — ClawHub flagged it as malware and
+  // blocks installation, which made every packaged-app boot retry the install.
   // File & system
   "file-organizer-skill",
   "video-frames",

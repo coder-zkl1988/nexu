@@ -457,7 +457,15 @@ export class OpenClawSyncService {
     // an unchanged allowlist do NOT trigger a gateway restart — and that
     // is correct. OpenClaw's chokidar watcher handles file-level changes
     // natively via snapshotVersion bump. Do NOT add restart to that path.
-    if (configPushed) {
+    //
+    // Also gate on configChanged (the on-disk file actually changed):
+    // lastSkillAllowlist starts empty in memory, so the first sync after
+    // controller boot always sees an allowlist "diff" even when nothing
+    // changed on disk. Without this gate a fresh boot restarted OpenClaw
+    // mid-bootstrap, broke the control plane stability window, and looped
+    // the packaged app on the loading screen. Genuine skill changes always
+    // rewrite the config file, so they still pass this gate.
+    if (configPushed && configChanged) {
       const prevSkills = this.lastSkillAllowlist;
       const nextSkills = this.extractSkillAllowlist(compiled);
       if (!this.skillAllowlistEqual(prevSkills, nextSkills)) {

@@ -181,12 +181,34 @@ export async function bootstrapController(
     const stableTimeoutMs =
       EXTERNAL_CONFIG_CHANGED_STABLE_CONTROL_PLANE_TIMEOUT_MS;
     const stableWindowMs = STABLE_CONTROL_PLANE_WINDOW_MS;
-    await waitForStableControlPlane(container, stableTimeoutMs, stableWindowMs);
-    logBootstrapStage("external_stable_control_plane", stableStartedAt, {
-      configChanged,
-      stableTimeoutMs,
-      stableWindowMs,
-    });
+    // In external (launchd-supervised) mode a stability timeout must not
+    // kill the controller: launchd would relaunch it, repeat the same
+    // bootstrap, and the packaged app would loop on the loading screen.
+    // Degrade to a warning and let the control-plane health loop and the
+    // gateway WS reconnect logic converge after bootstrap instead.
+    try {
+      await waitForStableControlPlane(
+        container,
+        stableTimeoutMs,
+        stableWindowMs,
+      );
+      logBootstrapStage("external_stable_control_plane", stableStartedAt, {
+        configChanged,
+        stableTimeoutMs,
+        stableWindowMs,
+      });
+    } catch (err) {
+      logger.warn(
+        {
+          configChanged,
+          stableTimeoutMs,
+          stableWindowMs,
+          elapsedMs: Date.now() - stableStartedAt,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        "external_stable_control_plane_timeout_ignored",
+      );
+    }
   }
 
   // Register existing schedules with OpenClaw now that the WS connection

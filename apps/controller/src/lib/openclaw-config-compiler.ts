@@ -94,6 +94,23 @@ const OAUTH_PROVIDER_MAP: Record<string, string> = {
   openai: "openai-codex",
 };
 
+/**
+ * Derive the OpenClaw control-UI asset root from OPENCLAW_EXTENSIONS_DIR.
+ *
+ * The real OpenClaw package layout keeps both directories under dist/
+ * (`<pkg>/dist/extensions`, `<pkg>/dist/control-ui`), which is what the
+ * packaged launchd path passes. Some launchers still pass the legacy
+ * `<pkg>/extensions` form, so handle both instead of blindly appending
+ * "dist" (which produced a broken `<pkg>/dist/dist/control-ui` and a 503
+ * from the control UI in packaged builds).
+ */
+export function resolveControlUiRoot(builtinExtensionsDir: string): string {
+  const parentDir = path.dirname(builtinExtensionsDir);
+  return path.basename(parentDir) === "dist"
+    ? path.join(parentDir, "control-ui")
+    : path.join(parentDir, "dist", "control-ui");
+}
+
 function isDesktopCloudConfig(value: unknown): value is {
   linkUrl: string;
   apiKey: string;
@@ -521,11 +538,7 @@ export function compileOpenClawConfig(
       controlUi: {
         ...(env.openclawBuiltinExtensionsDir
           ? {
-              root: path.join(
-                path.dirname(env.openclawBuiltinExtensionsDir),
-                "dist",
-                "control-ui",
-              ),
+              root: resolveControlUiRoot(env.openclawBuiltinExtensionsDir),
             }
           : {}),
         allowedOrigins: [env.webUrl],

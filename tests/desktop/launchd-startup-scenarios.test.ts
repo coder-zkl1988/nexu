@@ -758,7 +758,7 @@ describe("Launchd Startup Scenarios", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Scenario 16: OpenClaw port occupied → findFreePort picks next port
+  // Scenario 16: OpenClaw port occupied → findFreePort skips Tabby reserved ports
   // -----------------------------------------------------------------------
   it("Scenario 16: openclaw port conflict resolved via findFreePort", async () => {
     const netMock = await import("node:net");
@@ -793,7 +793,7 @@ describe("Launchd Startup Scenarios", () => {
 
     const result = await bootstrapWithLaunchd(makeBootstrapEnv() as never);
 
-    expect(result.effectivePorts.openclawPort).toBe(18790);
+    expect(result.effectivePorts.openclawPort).toBe(18791);
   });
 
   // -----------------------------------------------------------------------
@@ -1336,7 +1336,7 @@ describe("Launchd Startup Scenarios", () => {
 
     const result = await bootstrapWithLaunchd(makeBootstrapEnv() as never);
 
-    expect(result.effectivePorts.openclawPort).toBe(18790);
+    expect(result.effectivePorts.openclawPort).toBe(18791);
   });
 
   // -----------------------------------------------------------------------

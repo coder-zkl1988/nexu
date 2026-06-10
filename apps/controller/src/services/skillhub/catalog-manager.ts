@@ -33,6 +33,16 @@ import { importSkillZip as extractZip } from "./zip-importer.js";
 
 const execFileAsync = promisify(execFile);
 
+// Hard ceiling for a single `clawhub install` child process. Without this a
+// hung download keeps the InstallQueue's active set non-empty forever, which
+// blocks onIdle and with it every subsequent skill->config sync (P1 from
+// PR #1074). SIGKILL because a stuck network read may ignore SIGTERM.
+const CLAWHUB_EXEC_TIMEOUT_MS = 10 * 60 * 1000;
+const CLAWHUB_EXEC_OPTIONS = {
+  timeout: CLAWHUB_EXEC_TIMEOUT_MS,
+  killSignal: "SIGKILL",
+} as const;
+
 const nodeRequire = createRequire(import.meta.url);
 
 function resolveClawHubBin(): string {
@@ -303,7 +313,10 @@ export class CatalogManager {
           slug,
           "--force",
         ],
-        { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } },
+        {
+          ...CLAWHUB_EXEC_OPTIONS,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        },
       );
       if (stdout)
         this.log("info", `install stdout slug=${slug}: ${stdout.trim()}`);
@@ -346,7 +359,10 @@ export class CatalogManager {
         slug,
         "--force",
       ],
-      { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } },
+      {
+        ...CLAWHUB_EXEC_OPTIONS,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      },
     );
     if (stdout) this.log("info", `install stdout ${slug}: ${stdout.trim()}`);
     if (stderr) this.log("warn", `install stderr ${slug}: ${stderr.trim()}`);
@@ -519,7 +535,10 @@ export class CatalogManager {
             slug,
             "--force",
           ],
-          { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } },
+          {
+            ...CLAWHUB_EXEC_OPTIONS,
+            env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+          },
         );
         if (stdout) this.log("info", `curated stdout: ${stdout.trim()}`);
         if (stderr) this.log("warn", `curated stderr: ${stderr.trim()}`);

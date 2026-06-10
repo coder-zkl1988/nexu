@@ -531,13 +531,24 @@ async function detectPortOccupier(
   });
 }
 
+const TABBY_RESERVED_RUNTIME_PORTS = new Set([
+  18_790, // tabby-control WebSocket / mirror
+  18_801, // tabby-control HTTP RPC
+]);
+
 /**
  * Find a free port starting from the preferred port.
  * Tries preferred, then preferred+1, +2, ... up to 10 attempts, then port 0 (OS-assigned).
  */
-async function findFreePort(preferred: number): Promise<number> {
+async function findFreePort(
+  preferred: number,
+  options?: { excludedPorts?: ReadonlySet<number> },
+): Promise<number> {
   for (let offset = 0; offset < 10; offset++) {
     const port = preferred + offset;
+    if (options?.excludedPorts?.has(port)) {
+      continue;
+    }
     const occupier = await detectPortOccupier(port);
     if (!occupier) return port;
   }
@@ -1001,7 +1012,9 @@ export async function bootstrapWithLaunchd(
     log(
       `[bootstrap] pre-findFreePort: openclawPort=${effectivePorts.openclawPort} occupier=${preOccupier ? `PID ${preOccupier.pid}` : "none"}`,
     );
-    const freePort = await findFreePort(effectivePorts.openclawPort);
+    const freePort = await findFreePort(effectivePorts.openclawPort, {
+      excludedPorts: TABBY_RESERVED_RUNTIME_PORTS,
+    });
     if (freePort !== effectivePorts.openclawPort) {
       console.log(
         `OpenClaw port ${effectivePorts.openclawPort} occupied, using ${freePort}`,
@@ -1184,7 +1197,9 @@ export async function bootstrapWithLaunchd(
         .bootoutAndWaitForExit(labels.openclaw, 5000)
         .catch(() => {});
 
-      const newPort = await findFreePort(effectivePorts.openclawPort + 1);
+      const newPort = await findFreePort(effectivePorts.openclawPort + 1, {
+        excludedPorts: TABBY_RESERVED_RUNTIME_PORTS,
+      });
       effectivePorts.openclawPort = newPort;
 
       // Regenerate plists with new port for both openclaw and controller
