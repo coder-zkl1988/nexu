@@ -47,6 +47,12 @@ const localChatMessageInputSchema = z.object({
     .optional(),
   /** Optional additional attachments for multipart (text + images/files) messages */
   attachments: z.array(chatAttachmentSchema).optional(),
+  /**
+   * Optional skill the user picked in the composer.  Single-shot: the
+   * controller folds it into the message text as a directive (OpenClaw's
+   * chat.send has no skill param), then it is forgotten.
+   */
+  skillSlug: z.string().optional(),
 });
 
 const localChatSendBodySchema = z.object({
@@ -320,10 +326,12 @@ export function registerChatRoutes(
                 messages: z.array(
                   z.object({
                     id: z.string(),
-                    role: z.enum(["user", "assistant"]),
+                    role: z.enum(["user", "assistant", "toolResult"]),
                     content: z.unknown(),
                     timestamp: z.number().nullable(),
                     createdAt: z.string().nullable(),
+                    toolName: z.string().optional(),
+                    toolCallId: z.string().optional(),
                   }),
                 ),
                 sessionCount: z.number(),

@@ -533,6 +533,15 @@ function WorkspaceLayoutContent() {
   const balanceRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // The A2UI side panel belongs to the session conversation — close it when
+  // navigating to any other tab so it never lingers over unrelated pages.
+  const isSessionRoute = location.pathname.startsWith("/workspace/sessions");
+  useEffect(() => {
+    if (!isSessionRoute && rightSidebarOpen) {
+      closeRightSidebar();
+    }
+  }, [isSessionRoute, rightSidebarOpen, closeRightSidebar]);
   const { data: session } = authClient.useSession();
   const { data: skillsData } = useCommunitySkills();
   const {
@@ -1601,7 +1610,7 @@ function WorkspaceLayoutContent() {
       </div>
 
       {/* Right sidebar resize handle */}
-      {rightSidebarOpen && (
+      {rightSidebarOpen && isSessionRoute && (
         <div
           onMouseDown={handleRightResizeStart}
           className="hidden md:block w-px shrink-0 cursor-col-resize group relative z-10"
@@ -1617,14 +1626,22 @@ function WorkspaceLayoutContent() {
       )}
 
       {/* Right A2UI sidebar */}
-      {rightSidebarOpen && (
+      {rightSidebarOpen && isSessionRoute && (
         <div
           className="hidden md:flex shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
-          style={{
-            width: rightSidebarWidth,
-            background: "var(--color-tabby-bg)",
-          }}
+          style={
+            {
+              width: rightSidebarWidth,
+              background: "var(--color-tabby-bg)",
+              // Desktop title bar (hiddenInset) makes the top strip a system
+              // drag region; opt the whole panel out so its header buttons
+              // remain clickable on desktop.
+              WebkitAppRegion: "no-drag",
+            } as React.CSSProperties
+          }
         >
+          {/* Title-bar clearance so the header isn't under the inset traffic-bar */}
+          {isDesktopClient && <div className="shrink-0 h-8" />}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
             <span className="text-sm font-medium text-[var(--color-text-heading)]">
               内容预览
@@ -1632,6 +1649,7 @@ function WorkspaceLayoutContent() {
             <button
               type="button"
               onClick={closeRightSidebar}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
               className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
             >
               <svg

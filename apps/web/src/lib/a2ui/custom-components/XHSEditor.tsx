@@ -26,7 +26,6 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const [hashtags, setHashtags] = useState<string[]>(initialHashtags);
   const [newTag, setNewTag] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const contentFileInputRef = useRef<HTMLInputElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
 
   // Image upload handler (local FileReader, no server upload)
@@ -293,49 +292,6 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
             boxSizing: "border-box",
             fontFamily: "inherit",
           }}
-        />
-      </div>
-
-      {/* Content-area image upload */}
-      <div style={{ padding: "4px 16px 0" }}>
-        <button
-          type="button"
-          onClick={() => contentFileInputRef.current?.click()}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "4px 8px",
-            border: "1px solid #e5e5e5",
-            borderRadius: 6,
-            background: "#fafafa",
-            cursor: "pointer",
-            fontSize: 12,
-            color: "#666",
-          }}
-        >
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
-          插入图片
-        </button>
-        <input
-          ref={contentFileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => handleImageUpload(e.target.files)}
-          style={{ display: "none" }}
         />
       </div>
 

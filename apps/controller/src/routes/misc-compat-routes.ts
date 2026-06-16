@@ -304,6 +304,11 @@ export function registerMiscCompatRoutes(
             12,
           );
         for (const message of history.messages) {
+          // Tool-result records (A2UI payloads) are frontend-only; the
+          // OpenAI-compat surface only understands user/assistant turns.
+          if (message.role !== "user" && message.role !== "assistant") {
+            continue;
+          }
           const content = extractCompatMessageText(message.content);
           if (!content) {
             continue;

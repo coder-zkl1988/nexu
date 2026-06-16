@@ -2524,6 +2524,7 @@ export type PostApiV1ChatLocalStartData = {
                     size?: number;
                 };
             }>;
+            skillSlug?: string;
         };
     };
     path?: never;
@@ -2591,6 +2592,7 @@ export type PostApiV1ChatLocalData = {
                     size?: number;
                 };
             }>;
+            skillSlug?: string;
         };
     };
     path?: never;
@@ -2673,10 +2675,12 @@ export type GetApiV1ChatHistoryResponses = {
     200: {
         messages: Array<{
             id: string;
-            role: 'user' | 'assistant';
+            role: 'user' | 'assistant' | 'toolResult';
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            toolName?: string;
+            toolCallId?: string;
         }>;
         sessionCount: number;
     };
@@ -2958,10 +2962,12 @@ export type GetApiV1SessionsByIdMessagesResponses = {
     200: {
         messages: Array<{
             id: string;
-            role: 'user' | 'assistant';
+            role: 'user' | 'assistant' | 'toolResult';
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            toolName?: string;
+            toolCallId?: string;
         }>;
         sessionKey: string;
     };

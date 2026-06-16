@@ -300,7 +300,7 @@ const COMPONENT_SCHEMAS = [
     properties: {
       id: { type: "string" },
       type: { const: "Icon" },
-      name: { type: "string", description: "Icon name" },
+      name: { type: "string", description: "Icon name (lucide icon set, kebab-case, e.g. star, check, arrow-right, alert-circle)" },
       color: { type: "string" },
       size: { type: "number" },
     },
@@ -376,45 +376,39 @@ const COMPONENT_SCHEMAS = [
   },
   {
     type: "XHSEditor",
-    label: "Xiaohongshu Content Editor",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "Unique component ID" },
-        type: { const: "XHSEditor" },
-        title: {
-          type: "string",
-          description: "Initial title text for the post"
-        },
-        content: {
-          type: "string",
-          description: "Initial content/body text for the post"
-        },
-        images: {
-          type: "array",
-          items: { type: "string" },
-          description: "Array of image URLs or base64 data URIs to display as preview"
-        },
-        hashtags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Array of hashtag strings (without # prefix)"
-        },
-        maxTitleLength: {
-          type: "number",
-          description: "Maximum title character count (default 20)",
-          default: 20
-        },
-        visibility: {
-          type: "string",
-          enum: ["visible", "hidden"],
-          description: "Component visibility",
-          default: "visible"
-        }
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XHSEditor" },
+      title: {
+        type: "string",
+        description: "Initial title text for the post",
       },
-      required: ["id", "type"],
-      additionalProperties: false
-    }
+      content: {
+        type: "string",
+        description: "Initial content/body text for the post",
+      },
+      images: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Array of image URLs, data URIs, or local media file paths to display as preview",
+      },
+      hashtags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Array of hashtag strings (without # prefix)",
+      },
+      maxTitleLength: {
+        type: "number",
+        description: "Maximum title character count (default 20)",
+      },
+      visibility: {
+        type: "string",
+        enum: ["visible", "hidden"],
+        description: "Component visibility",
+      },
+    },
   },
 ];
 
@@ -477,6 +471,7 @@ const plugin = {
 WHEN TO USE:
 - Displaying connected phone/device status — use PhonePreview component
 - Showing copywriting, markdown, or generated text content — use MarkdownEditor component
+- Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
 - Offering selectable actions (confirm/cancel, option selection)
 - Any situation where plain text alone is insufficient
@@ -485,6 +480,14 @@ HOW TO USE:
 1. Call this tool with a unique surfaceId and an array of component definitions.
 2. The tool result is automatically rendered as interactive UI. Do NOT copy, repeat, or echo the JSONL in your text response. Just reply naturally — the UI appears alongside your message.
 3. CRITICAL: NEVER include raw JSONL or \`\`\`a2ui code blocks in your text output. The system renders UI automatically. Your text and A2UI are separate.
+
+SURFACE PLACEMENT (automatic — you normally don't control it):
+- Complex editor surfaces (MarkdownEditor, XHSEditor) automatically open in the right side panel, with an "open panel" button shown in the chat thread.
+- Everything else (forms, images, video/audio, confirmations, pickers, status cards) renders inline in the chat thread.
+- Only when the user explicitly asks for the side panel (侧边栏), prefix the surfaceId with "sidebar:" to force panel placement.
+
+IMAGE / MEDIA SOURCES:
+- Image.source, PhonePreview screenshot, and XHSEditor images accept http(s) URLs, data URIs, or absolute local file paths under the OpenClaw media directory (e.g. files produced by image_generate). Local media paths are automatically converted to servable URLs in webchat.
 
 BUTTON ACTIONS:
 - Use \`"action": {"event": {"name": "actionName", "context": {}}}\` for buttons.
