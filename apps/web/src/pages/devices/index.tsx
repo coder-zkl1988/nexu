@@ -61,7 +61,7 @@ export function DevicesPage() {
 
   const fetchDevices = useCallback(async () => {
     try {
-      const { data, error: apiError } = await getApiV1Devices();
+      const { data, error: apiError, response } = await getApiV1Devices();
       if (apiError) {
         const msg =
           typeof apiError === "object" &&
@@ -70,6 +70,12 @@ export function DevicesPage() {
             ? String((apiError as { message: unknown }).message)
             : t("devices.errorTitle");
         setError(msg);
+        // 503 = device control plugin is not running → no devices are
+        // reachable. Clear stale cards instead of leaving them looking
+        // connected. Other errors (transient network) keep the last list.
+        if (response?.status === 503) {
+          setDevices([]);
+        }
       } else {
         setError(null);
         setDevices(data?.devices ?? []);
@@ -103,7 +109,19 @@ export function DevicesPage() {
       void fetchDevices();
     });
 
-    es.addEventListener("device_disconnected", () => {
+    es.addEventListener("device_disconnected", (e) => {
+      // Drop the card immediately using the deviceId in the event, so it
+      // disappears even if the reconciling refetch transiently fails.
+      try {
+        const data = JSON.parse(e.data);
+        if (data?.deviceId) {
+          setDevices((prev) =>
+            prev.filter((d) => d.deviceId !== data.deviceId),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
       void fetchDevices();
     });
 
