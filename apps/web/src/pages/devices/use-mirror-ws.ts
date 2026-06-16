@@ -11,7 +11,11 @@ const rendererRegistry = new Map<
   string,
   {
     renderer: MirrorGLRenderer;
-    videoCallback: (frame: VideoFrame) => void;
+    videoCallback: (
+      frame: VideoFrame,
+      streamWidth: number,
+      streamHeight: number,
+    ) => void;
     jpegCallback: (
       screenshot: string,
       width: number,
@@ -26,7 +30,11 @@ export function registerMirrorRenderer(
   deviceId: string,
   renderer: MirrorGLRenderer,
 ): () => void {
-  const videoCallback = (frame: VideoFrame) => renderer.render(frame);
+  const videoCallback = (
+    frame: VideoFrame,
+    streamWidth: number,
+    streamHeight: number,
+  ) => renderer.render(frame, streamWidth, streamHeight);
   const jpegCallback = (
     screenshot: string,
     width: number,
@@ -45,7 +53,9 @@ export function registerMirrorRenderer(
 /** Get the render callback for a device (used by H264Decoder) */
 export function getMirrorRenderCallback(
   deviceId: string,
-): ((frame: VideoFrame) => void) | null {
+):
+  | ((frame: VideoFrame, streamWidth: number, streamHeight: number) => void)
+  | null {
   return rendererRegistry.get(deviceId)?.videoCallback ?? null;
 }
 
@@ -412,8 +422,6 @@ const WEB_CODECS_AVAILABLE =
 
 class H264Decoder {
   private decoder: VideoDecoder | null = null;
-  private canvas: HTMLCanvasElement | null = null;
-  private ctx: CanvasRenderingContext2D | null = null;
   private configured = false;
   private closed = false;
   private static readonly MAX_INIT_RETRIES = 3;
@@ -445,13 +453,6 @@ class H264Decoder {
     const codedWidth = codedDims?.width ?? width;
     const codedHeight = codedDims?.height ?? height;
 
-    this.canvas = document.createElement("canvas");
-    this.canvas.width = codedWidth;
-    this.canvas.height = codedHeight;
-    const ctx = this.canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas 2D context not available");
-    this.ctx = ctx;
-
     this.decoder = new VideoDecoder({
       output: (frame: VideoFrame) => this.handleDecodedFrame(frame),
       error: (e: Error) => {
@@ -477,118 +478,46 @@ class H264Decoder {
       return;
     }
 
-    // If a WebGL renderer is registered for this device, use it for direct rendering
+    // Read videoFrame dimensions BEFORE rendering, because renderer.render()
+    // calls frame.close() which zeros displayWidth/displayHeight.
+    const vfDisplayW = videoFrame.displayWidth;
+    const vfDisplayH = videoFrame.displayHeight;
+
+    // Render directly via the WebGL renderer when one is registered for this
+    // device (the common case — both mirror viewers register on canvas mount).
+    // Before the canvas mounts (first frame or two), no renderer exists yet; we
+    // still emit a metadata frame so the viewer flips to its canvas state and
+    // registers a renderer for subsequent frames. The pixels of those pre-mount
+    // frames are intentionally dropped — viewers paint exclusively via WebGL and
+    // never consume `screenshot`, so re-encoding them to JPEG here would be waste.
     const renderCallback = getMirrorRenderCallback(this.deviceId);
     if (renderCallback !== null) {
-      // Read videoFrame dimensions BEFORE renderCallback, because
-      // renderer.render() calls frame.close() which zeros displayWidth/displayHeight.
-      const vfDisplayW = videoFrame.displayWidth;
-      const vfDisplayH = videoFrame.displayHeight;
-
-      renderCallback(videoFrame);
-
-      // Still emit metadata for coordinate mapping and state updates
-      const frameMeta: MirrorSnapshotFrame = {
-        channel: "mirror",
-        type: "realtime",
-        deviceId: this.deviceId,
-        screenshot: "", // No JPEG needed with WebGL renderer
-        format: "jpeg",
-        width: this.originalWidth || vfDisplayW,
-        height: this.originalHeight || vfDisplayH,
-        screenWidth: this.originalWidth || vfDisplayW,
-        screenHeight: this.originalHeight || vfDisplayH,
-        streamWidth: vfDisplayW || this.streamWidth,
-        streamHeight: vfDisplayH || this.streamHeight,
-        timestamp: Date.now(),
-        deviceStatus: "busy",
-      };
-
-      this.pendingFrame = frameMeta;
-      if (this.rafId === null) {
-        this.rafId = requestAnimationFrame(() => {
-          this.rafId = null;
-          if (this.pendingFrame !== null) {
-            this.onFrame(this.pendingFrame);
-            this.pendingFrame = null;
-          }
-        });
-      }
-      return;
-    }
-
-    // Legacy JPEG path (when no WebGL renderer)
-    if (!this.ctx || !this.canvas) {
-      videoFrame.close();
-      return;
-    }
-
-    // Resize canvas if video frame dimensions differ from canvas dimensions.
-    // This handles macroblock-aligned coded dimensions (e.g., 1088 vs 1080).
-    if (
-      videoFrame.codedWidth !== this.canvas.width ||
-      videoFrame.codedHeight !== this.canvas.height
-    ) {
-      this.canvas.width = videoFrame.codedWidth;
-      this.canvas.height = videoFrame.codedHeight;
-    }
-
-    // Draw the full coded frame (includes macroblock padding).
-    this.ctx.drawImage(videoFrame, 0, 0);
-    videoFrame.close();
-
-    // Crop to stream dimensions to remove macroblock padding (e.g., 544→540).
-    // This eliminates black bars on the right/bottom edges.
-    const cropW = this.streamWidth || this.canvas.width;
-    const cropH = this.streamHeight || this.canvas.height;
-
-    // Only crop if the stream dimensions are smaller than coded dimensions.
-    let dataUrl: string;
-    if (cropW < this.canvas.width || cropH < this.canvas.height) {
-      // Create a cropped canvas at stream dimensions.
-      const cropCanvas = document.createElement("canvas");
-      cropCanvas.width = cropW;
-      cropCanvas.height = cropH;
-      const cropCtx = cropCanvas.getContext("2d");
-      if (cropCtx) {
-        cropCtx.drawImage(
-          this.canvas,
-          0,
-          0,
-          cropW,
-          cropH, // source rect (crop from coded canvas)
-          0,
-          0,
-          cropW,
-          cropH, // dest rect
-        );
-        dataUrl = cropCanvas.toDataURL("image/jpeg", 0.8);
-      } else {
-        dataUrl = this.canvas.toDataURL("image/jpeg", 0.8);
-      }
+      // Pass the stream (content) dimensions so the renderer crops the
+      // encoder's macroblock padding — the ImageReader path pads the YUV to a
+      // 16-aligned coded size, and the decoded frame carries that padding when
+      // the encoder doesn't emit SPS cropping.
+      renderCallback(videoFrame, this.streamWidth, this.streamHeight); // takes ownership and closes the frame
     } else {
-      dataUrl = this.canvas.toDataURL("image/jpeg", 0.8);
+      videoFrame.close();
     }
 
-    const screenshot = dataUrl.replace(/^data:image\/jpeg;base64,/, "");
-
-    const frame: MirrorSnapshotFrame = {
+    const frameMeta: MirrorSnapshotFrame = {
       channel: "mirror",
       type: "realtime",
       deviceId: this.deviceId,
-      screenshot,
+      screenshot: "", // WebGL renders pixels; no JPEG payload needed
       format: "jpeg",
-      width: this.originalWidth || this.canvas.width,
-      height: this.originalHeight || this.canvas.height,
-      screenWidth: this.originalWidth || this.canvas.width,
-      screenHeight: this.originalHeight || this.canvas.height,
-      streamWidth: this.streamWidth || this.canvas.width,
-      streamHeight: this.streamHeight || this.canvas.height,
+      width: this.originalWidth || vfDisplayW,
+      height: this.originalHeight || vfDisplayH,
+      screenWidth: this.originalWidth || vfDisplayW,
+      screenHeight: this.originalHeight || vfDisplayH,
+      streamWidth: vfDisplayW || this.streamWidth,
+      streamHeight: vfDisplayH || this.streamHeight,
       timestamp: Date.now(),
       deviceStatus: "busy",
     };
 
-    this.pendingFrame = frame;
+    this.pendingFrame = frameMeta;
     if (this.rafId === null) {
       this.rafId = requestAnimationFrame(() => {
         this.rafId = null;
@@ -665,8 +594,6 @@ class H264Decoder {
       this.decoder.close();
       this.decoder = null;
     }
-    this.canvas = null;
-    this.ctx = null;
   }
 }
 
@@ -750,12 +677,6 @@ export function useMirrorSocket(
     ws.onmessage = (event: MessageEvent) => {
       // ── Binary (H.264) path ─────────────────────────────
       if (event.data instanceof ArrayBuffer) {
-        console.log(
-          "[mirror-ws] binary frame received, size:",
-          event.data.byteLength,
-          "firstByte:",
-          new Uint8Array(event.data)[0],
-        );
         if (!decoder) return;
 
         const header = parseBinaryFrameHeader(event.data);
@@ -803,21 +724,7 @@ export function useMirrorSocket(
           // Render JPEG directly to the WebGL canvas (STABLE mode path)
           const jpegCallback = getMirrorJPEGCallback(deviceId);
           if (jpegCallback && data.width && data.height) {
-            console.log(
-              "[mirror-ws] STABLE JPEG render:",
-              data.width,
-              "x",
-              data.height,
-              "format:",
-              fmt,
-            );
             jpegCallback(data.screenshot, data.width, data.height, fmt);
-          } else {
-            console.log("[mirror-ws] JPEG callback missing?", {
-              hasCallback: !!jpegCallback,
-              w: data.width,
-              h: data.height,
-            });
           }
           pendingFrame = frame;
           if (rafId === null) rafId = requestAnimationFrame(flushFrame);

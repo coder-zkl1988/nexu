@@ -12,6 +12,15 @@ interface MirrorFrame {
   timestamp: number;
 }
 
+/** Decode a base64 string to an ArrayBuffer (for building a Blob to decode off-thread). */
+function base64ToArrayBuffer(b64: string): ArrayBuffer {
+  const bin = atob(b64);
+  const buffer = new ArrayBuffer(bin.length);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return buffer;
+}
+
 interface RendererCapabilities {
   directVideoFrameUpload: boolean;
   imageBitmap: boolean;
@@ -27,11 +36,17 @@ export class MirrorGLRenderer {
   private texScaleLoc: WebGLUniformLocation | null = null;
   private rgbaTexScaleLoc: WebGLUniformLocation | null = null;
   private vao: WebGLVertexArrayObject | null = null;
+  // Single reusable RGBA texture for all upload paths (VideoFrame / offscreen /
+  // JPEG). Reused across frames to avoid per-frame createTexture/deleteTexture
+  // driver churn at 30fps. texImage2D re-specifies its storage each frame.
+  private rgbaTexture: WebGLTexture | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private offscreenCanvas: OffscreenCanvas | null = null;
   private offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
 
   private jpegImg: HTMLImageElement | null = null;
+  // Monotonic counter so async ImageBitmap decodes can drop stale frames.
+  private jpegSeq = 0;
 
   private displayWidth = 0;
   private displayHeight = 0;
@@ -241,6 +256,24 @@ void main() {
     );
   }
 
+  /**
+   * Get the shared RGBA texture, creating and configuring it on first use.
+   * Bound to TEXTURE_2D on return so callers can upload via texImage2D.
+   */
+  private acquireRgbaTexture(): WebGLTexture | null {
+    if (!this.gl) return null;
+    if (this.rgbaTexture === null) {
+      const tex = this.gl.createTexture();
+      if (!tex) return null;
+      this.rgbaTexture = tex;
+      this.gl.bindTexture(this.gl.TEXTURE_2D, tex);
+      this.setTextureParams();
+      return tex;
+    }
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.rgbaTexture);
+    return this.rgbaTexture;
+  }
+
   private initBuffers(): void {
     if (!this.gl) return;
 
@@ -271,7 +304,11 @@ void main() {
     this.gl.viewport(0, 0, this.displayWidth, this.displayHeight);
   }
 
-  private renderWithVideoFrameDirect(frame: VideoFrame): boolean {
+  private renderWithVideoFrameDirect(
+    frame: VideoFrame,
+    contentW: number,
+    contentH: number,
+  ): boolean {
     if (!this.gl || !this.program) return false;
 
     try {
@@ -279,12 +316,9 @@ void main() {
       // This works because Chrome can upload VideoFrame directly to RGBA texture
       // and we bypass the YUV conversion (let browser handle it)
 
-      // Create a temporary RGBA texture for the frame
-      const tempTexture = this.gl.createTexture();
-      if (!tempTexture) return false;
-
-      this.gl.bindTexture(this.gl.TEXTURE_2D, tempTexture);
-      this.setTextureParams();
+      // Reuse the shared RGBA texture (bound on return)
+      const texture = this.acquireRgbaTexture();
+      if (!texture) return false;
 
       // Try to upload VideoFrame directly via TexImageSource overload
       // (Chromium 94+). Must use the 6-arg form: (target, level, internalformat, format, type, source)
@@ -299,26 +333,24 @@ void main() {
           frame as unknown as TexImageSource,
         );
       } catch {
-        this.gl.deleteTexture(tempTexture);
         return false;
       }
 
       // Check for silent WebGL errors (texImage2D doesn't throw on invalid overloads)
       if (this.gl.getError() !== this.gl.NO_ERROR) {
-        this.gl.deleteTexture(tempTexture);
         return false;
       }
 
       // If we get here, direct upload worked!
       // Direct upload creates a texture with codedWidth×codedHeight (includes macroblock padding).
-      // Compute texScale to clip padding rows from the rendered output.
+      // Scale to the content size to clip both the macroblock padding and any
+      // right/bottom encoder padding the stream carries.
       const cw = frame.codedWidth || frame.displayWidth;
       const ch = frame.codedHeight || frame.displayHeight;
-      this.texScaleX = frame.displayWidth / cw;
-      this.texScaleY = frame.displayHeight / ch;
+      this.texScaleX = contentW / cw;
+      this.texScaleY = contentH / ch;
 
-      this.renderRGBATexture(tempTexture);
-      this.gl.deleteTexture(tempTexture);
+      this.renderRGBATexture(texture);
 
       this.capabilities.directVideoFrameUpload = true;
       return true;
@@ -327,7 +359,11 @@ void main() {
     }
   }
 
-  private renderWithOffscreenCanvas(frame: VideoFrame): boolean {
+  private renderWithOffscreenCanvas(
+    frame: VideoFrame,
+    contentW: number,
+    contentH: number,
+  ): boolean {
     if (
       !this.gl ||
       !this.program ||
@@ -356,12 +392,10 @@ void main() {
       // Read pixels and upload to WebGL
       const imageData = this.offscreenCtx.getImageData(0, 0, width, height);
 
-      // Create temporary RGBA texture
-      const tempTexture = this.gl.createTexture();
-      if (!tempTexture) return false;
+      // Reuse the shared RGBA texture (bound on return)
+      const texture = this.acquireRgbaTexture();
+      if (!texture) return false;
 
-      this.gl.bindTexture(this.gl.TEXTURE_2D, tempTexture);
-      this.setTextureParams();
       this.gl.texImage2D(
         this.gl.TEXTURE_2D,
         0,
@@ -374,13 +408,12 @@ void main() {
         imageData.data,
       );
 
-      this.renderRGBATexture(tempTexture);
-      this.gl.deleteTexture(tempTexture);
+      // The texture is the frame's display size (width×height); scale to the
+      // content size to clip any right/bottom encoder padding the stream carries.
+      this.texScaleX = contentW / width;
+      this.texScaleY = contentH / height;
 
-      // Offscreen canvas path creates texture from displayWidth×displayHeight pixels
-      // (no macroblock padding), so texScale remains (1.0, 1.0).
-      this.texScaleX = 1.0;
-      this.texScaleY = 1.0;
+      this.renderRGBATexture(texture);
 
       return true;
     } catch {
@@ -486,25 +519,51 @@ void main() {
     );
   }
 
-  private renderWith2DFallback(frame: VideoFrame): void {
+  private renderWith2DFallback(
+    frame: VideoFrame,
+    contentW: number,
+    contentH: number,
+  ): void {
     if (!this.ctx2D || !this.canvas) return;
 
-    // Resize canvas if needed
-    if (
-      this.canvas.width !== frame.displayWidth ||
-      this.canvas.height !== frame.displayHeight
-    ) {
-      this.canvas.width = frame.displayWidth;
-      this.canvas.height = frame.displayHeight;
+    // Size the canvas to the content (cropped) dimensions
+    if (this.canvas.width !== contentW || this.canvas.height !== contentH) {
+      this.canvas.width = contentW;
+      this.canvas.height = contentH;
     }
 
-    this.ctx2D.drawImage(frame, 0, 0);
+    // Draw only the top-left content region, dropping right/bottom padding
+    this.ctx2D.drawImage(
+      frame,
+      0,
+      0,
+      contentW,
+      contentH,
+      0,
+      0,
+      contentW,
+      contentH,
+    );
   }
 
-  /** Render a decoded VideoFrame directly to the WebGL canvas */
-  render(frame: VideoFrame): void {
+  /**
+   * Render a decoded VideoFrame directly to the WebGL canvas.
+   *
+   * `streamWidth`/`streamHeight` are the real content dimensions reported by the
+   * stream. The decoded frame may be larger (the encoder pads to 16-px
+   * macroblocks; when it doesn't emit SPS cropping, that padding shows up as the
+   * frame's coded/display size). Cropping to the stream size removes the
+   * right/bottom padding so no black edge appears. They default to the frame's
+   * own display size when not provided.
+   */
+  render(frame: VideoFrame, streamWidth?: number, streamHeight?: number): void {
+    const contentW =
+      streamWidth && streamWidth > 0 ? streamWidth : frame.displayWidth;
+    const contentH =
+      streamHeight && streamHeight > 0 ? streamHeight : frame.displayHeight;
+
     if (this.fallbackTo2D) {
-      this.renderWith2DFallback(frame);
+      this.renderWith2DFallback(frame, contentW, contentH);
       frame.close();
       return;
     }
@@ -514,36 +573,31 @@ void main() {
       return;
     }
 
-    // Update stream dimensions
-    if (
-      this.streamWidth !== frame.displayWidth ||
-      this.streamHeight !== frame.displayHeight
-    ) {
-      this.streamWidth = frame.displayWidth;
-      this.streamHeight = frame.displayHeight;
-    }
+    // Track the content dimensions (used for coordinate mapping via getFrameInfo)
+    this.streamWidth = contentW;
+    this.streamHeight = contentH;
 
     // Try rendering paths in order of efficiency
     let rendered = false;
 
     // Path 1: Direct VideoFrame upload (fastest, zero-copy in Chromium)
     if (this.capabilities.directVideoFrameUpload) {
-      rendered = this.renderWithVideoFrameDirect(frame);
+      rendered = this.renderWithVideoFrameDirect(frame, contentW, contentH);
     }
 
     // Path 2: Try direct upload once to test capability
     if (!rendered && !this.capabilities.directVideoFrameUpload) {
-      rendered = this.renderWithVideoFrameDirect(frame);
+      rendered = this.renderWithVideoFrameDirect(frame, contentW, contentH);
     }
 
     // Path 3: OffscreenCanvas + RGBA texture
     if (!rendered) {
-      rendered = this.renderWithOffscreenCanvas(frame);
+      rendered = this.renderWithOffscreenCanvas(frame, contentW, contentH);
     }
 
     // Path 4: 2D fallback within WebGL canvas
     if (!rendered) {
-      this.renderWith2DFallback(frame);
+      this.renderWith2DFallback(frame, contentW, contentH);
     }
 
     frame.close();
@@ -563,59 +617,77 @@ void main() {
     this.streamWidth = width;
     this.streamHeight = height;
 
-    // Reuse a single Image object to avoid allocations
+    // Prefer createImageBitmap: decodes off the main thread and avoids the
+    // implicit frame-drop of reusing one <img> (a new src cancels the in-flight
+    // decode). Fall back to <img> + data URL where it's unavailable.
+    if (this.capabilities.imageBitmap) {
+      const seq = ++this.jpegSeq;
+      const blob = new Blob([base64ToArrayBuffer(screenshot)], {
+        type: `image/${format}`,
+      });
+      createImageBitmap(blob)
+        .then((bitmap) => {
+          // A newer frame already arrived — drop this stale one.
+          if (seq !== this.jpegSeq) {
+            bitmap.close();
+            return;
+          }
+          this.uploadJpegSource(bitmap);
+          bitmap.close();
+        })
+        .catch(() => {});
+      return;
+    }
+
+    // Legacy fallback: reuse a single Image object to avoid allocations.
     if (!this.jpegImg) {
       this.jpegImg = new Image();
     }
     const img = this.jpegImg;
-
-    img.onload = () => {
-      // 2D fallback path
-      if (this.fallbackTo2D) {
-        if (this.ctx2D && this.canvas) {
-          this.ctx2D.drawImage(
-            img,
-            0,
-            0,
-            this.canvas.width,
-            this.canvas.height,
-          );
-        }
-        return;
-      }
-
-      // WebGL path: upload the Image as an RGBA texture
-      if (!this.gl) return;
-
-      const texture = this.gl.createTexture();
-      if (!texture) return;
-
-      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-      this.setTextureParams();
-
-      try {
-        this.gl.texImage2D(
-          this.gl.TEXTURE_2D,
-          0,
-          this.gl.RGBA,
-          this.gl.RGBA,
-          this.gl.UNSIGNED_BYTE,
-          img,
-        );
-      } catch {
-        this.gl.deleteTexture(texture);
-        return;
-      }
-
-      // JPEG/PNG images have no macroblock padding
-      this.texScaleX = 1.0;
-      this.texScaleY = 1.0;
-
-      this.renderRGBATexture(texture);
-      this.gl.deleteTexture(texture);
-    };
-
+    img.onload = () => this.uploadJpegSource(img);
     img.src = `data:image/${format};base64,${screenshot}`;
+  }
+
+  /** Upload a decoded JPEG/PNG source (ImageBitmap or HTMLImageElement) and render it. */
+  private uploadJpegSource(source: TexImageSource): void {
+    // 2D fallback path
+    if (this.fallbackTo2D) {
+      if (this.ctx2D && this.canvas) {
+        this.ctx2D.drawImage(
+          source as CanvasImageSource,
+          0,
+          0,
+          this.canvas.width,
+          this.canvas.height,
+        );
+      }
+      return;
+    }
+
+    // WebGL path: upload to the shared RGBA texture
+    if (!this.gl) return;
+
+    const texture = this.acquireRgbaTexture();
+    if (!texture) return;
+
+    try {
+      this.gl.texImage2D(
+        this.gl.TEXTURE_2D,
+        0,
+        this.gl.RGBA,
+        this.gl.RGBA,
+        this.gl.UNSIGNED_BYTE,
+        source,
+      );
+    } catch {
+      return;
+    }
+
+    // JPEG/PNG images have no macroblock padding
+    this.texScaleX = 1.0;
+    this.texScaleY = 1.0;
+
+    this.renderRGBATexture(texture);
   }
 
   /** Update the display dimensions (called on resize) */
@@ -672,6 +744,10 @@ void main() {
   private cleanupWebGL(): void {
     if (!this.gl) return;
 
+    if (this.rgbaTexture) {
+      this.gl.deleteTexture(this.rgbaTexture);
+      this.rgbaTexture = null;
+    }
     if (this.rgbaProgram) {
       this.gl.deleteProgram(this.rgbaProgram);
       this.rgbaProgram = null;
