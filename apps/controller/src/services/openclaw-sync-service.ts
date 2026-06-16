@@ -73,7 +73,7 @@ function collectRuntimeModelRefs(
   );
 }
 
-// OAuth providers whose models are managed via auth-profiles.json,
+// OAuth providers whose models are managed via the auth profile store,
 // not compiled into models.providers (no apiKey in config).
 const OAUTH_PROVIDER_PREFIXES = ["openai-codex/"];
 
@@ -87,7 +87,7 @@ function resolveAvailableRuntimeModel(
   }
 
   // Trust OAuth provider model refs — they're managed by OpenClaw's
-  // auth-profiles.json and won't appear in compiled models.providers.
+  // auth profile store and won't appear in compiled models.providers.
   if (OAUTH_PROVIDER_PREFIXES.some((prefix) => desiredRef.startsWith(prefix))) {
     return desiredRef;
   }

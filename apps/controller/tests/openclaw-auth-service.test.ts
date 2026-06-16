@@ -1,15 +1,17 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
+import {
+  readAgentAuthStore,
+  writeAgentAuthStore,
+} from "../src/runtime/openclaw-agent-auth-db.js";
 import { OpenClawAuthService } from "../src/services/openclaw-auth-service.js";
 
 type AuthProfilesData = {
   version: number;
   profiles: Record<string, unknown>;
-  lastGood?: Record<string, unknown>;
-  usageStats?: Record<string, unknown>;
 };
 
 type TestOAuthProfile = {
@@ -75,25 +77,34 @@ function createEnv(rootDir: string): ControllerEnv {
   };
 }
 
-async function writeAgentAuthProfiles(
+// Seeds the per-agent OpenClaw SQLite store (OpenClaw >= 2026.6.5 reads auth
+// profiles only from `<agent>/agent/openclaw-agent.sqlite`, not the legacy
+// JSON file). Only the secrets store (version + profiles) is controller-owned;
+// auth_profile_state (usage stats / lastGood) is owned by OpenClaw.
+function writeAgentAuthProfiles(
   env: ControllerEnv,
   agentId: string,
   data: AuthProfilesData,
-): Promise<string> {
+): string {
   const filePath = path.join(
     env.openclawStateDir,
     "agents",
     agentId,
     "agent",
-    "auth-profiles.json",
+    "openclaw-agent.sqlite",
   );
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  writeAgentAuthStore(filePath, {
+    version: data.version,
+    profiles: data.profiles,
+  });
   return filePath;
 }
 
-async function readAuthProfiles(filePath: string): Promise<AuthProfilesData> {
-  return JSON.parse(await readFile(filePath, "utf8")) as AuthProfilesData;
+function readAuthProfiles(filePath: string): AuthProfilesData {
+  const cell = readAgentAuthStore(filePath);
+  return cell
+    ? { version: cell.version, profiles: cell.profiles }
+    : { version: 1, profiles: {} };
 }
 
 describe("OpenClawAuthService", () => {
@@ -121,7 +132,7 @@ describe("OpenClawAuthService", () => {
       accountId: "acct_123",
     };
 
-    const firstPath = await writeAgentAuthProfiles(env, "bot-a", {
+    const firstPath = writeAgentAuthProfiles(env, "bot-a", {
       version: 2,
       profiles: {
         "anthropic:default": {
@@ -138,18 +149,15 @@ describe("OpenClawAuthService", () => {
           accountId: "old-acct",
         },
       },
-      lastGood: { "existing-oauth:default": true },
-      usageStats: { "existing-oauth:default": { used: 1 } },
     });
-    const secondPath = await writeAgentAuthProfiles(env, "bot-b", {
+    const secondPath = writeAgentAuthProfiles(env, "bot-b", {
       version: 3,
       profiles: {},
-      usageStats: { "openai-codex:default": { used: 2 } },
     });
 
     await authService.mergeOAuthProfile("openai-codex:default", profile);
 
-    await expect(readAuthProfiles(firstPath)).resolves.toMatchObject({
+    expect(readAuthProfiles(firstPath)).toMatchObject({
       version: 2,
       profiles: {
         "anthropic:default": {
@@ -163,15 +171,12 @@ describe("OpenClawAuthService", () => {
         },
         "openai-codex:default": profile,
       },
-      lastGood: { "existing-oauth:default": true },
-      usageStats: { "existing-oauth:default": { used: 1 } },
     });
-    await expect(readAuthProfiles(secondPath)).resolves.toMatchObject({
+    expect(readAuthProfiles(secondPath)).toMatchObject({
       version: 3,
       profiles: {
         "openai-codex:default": profile,
       },
-      usageStats: { "openai-codex:default": { used: 2 } },
     });
   });
 
@@ -180,7 +185,7 @@ describe("OpenClawAuthService", () => {
     const expiredAt = Date.now() - 5_000;
     const validExpiresAt = Date.now() + 60_000;
 
-    await writeAgentAuthProfiles(env, "bot-a", {
+    writeAgentAuthProfiles(env, "bot-a", {
       version: 1,
       profiles: {
         "openai-codex:default": {
@@ -193,7 +198,7 @@ describe("OpenClawAuthService", () => {
         },
       },
     });
-    await writeAgentAuthProfiles(env, "bot-b", {
+    writeAgentAuthProfiles(env, "bot-b", {
       version: 1,
       profiles: {
         "openai-codex:default": {
@@ -217,7 +222,7 @@ describe("OpenClawAuthService", () => {
 
   it("disconnects the OAuth profile from every agent workspace", async () => {
     const service = new OpenClawAuthService(env);
-    const firstPath = await writeAgentAuthProfiles(env, "bot-a", {
+    const firstPath = writeAgentAuthProfiles(env, "bot-a", {
       version: 1,
       profiles: {
         "openai-codex:default": {
@@ -235,7 +240,7 @@ describe("OpenClawAuthService", () => {
         },
       },
     });
-    const secondPath = await writeAgentAuthProfiles(env, "bot-b", {
+    const secondPath = writeAgentAuthProfiles(env, "bot-b", {
       version: 1,
       profiles: {
         "openai-codex:default": {
@@ -247,11 +252,10 @@ describe("OpenClawAuthService", () => {
           accountId: "acct-b",
         },
       },
-      lastGood: { checkpoint: true },
     });
 
     await expect(service.disconnectOAuth("openai")).resolves.toBe(true);
-    await expect(readAuthProfiles(firstPath)).resolves.toMatchObject({
+    expect(readAuthProfiles(firstPath)).toMatchObject({
       version: 1,
       profiles: {
         "anthropic:default": {
@@ -261,10 +265,9 @@ describe("OpenClawAuthService", () => {
         },
       },
     });
-    await expect(readAuthProfiles(secondPath)).resolves.toMatchObject({
+    expect(readAuthProfiles(secondPath)).toMatchObject({
       version: 1,
       profiles: {},
-      lastGood: { checkpoint: true },
     });
   });
 });
