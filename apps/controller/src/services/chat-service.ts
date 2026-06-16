@@ -36,6 +36,8 @@ export interface LocalChatMessageInput {
   content: string;
   metadata?: LocalChatMessageMetadata;
   attachments?: LocalChatAttachment[];
+  /** Skill the user picked in the composer; folded into message text as a directive. */
+  skillSlug?: string;
 }
 
 export interface LocalChatMessageOutput {
@@ -190,10 +192,19 @@ export class ChatService {
       );
     }
 
-    const messageContent =
+    const bodyContent =
       appendedBlocks.length === 0
         ? message.content
         : [message.content, ...appendedBlocks].filter(Boolean).join("\n\n");
+
+    // Skill directive injection: OpenClaw's chat.send has no skill param
+    // (additionalProperties:false), so the only per-message activation path
+    // is the message text itself.  Prepend a directive the model reliably
+    // resolves to the matching skills/<slug>/SKILL.md (verified empirically).
+    const skillSlug = message.skillSlug?.trim();
+    const messageContent = skillSlug
+      ? `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`
+      : bodyContent;
 
     logger.info(
       {

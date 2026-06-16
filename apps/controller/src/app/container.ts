@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { logger } from "../lib/logger.js";
+import { startChannelHealthWatchdog } from "../runtime/channel-health-watchdog.js";
 import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
 import { CreditGuardStateWriter } from "../runtime/credit-guard-state-writer.js";
 import { GatewayClient } from "../runtime/gateway-client.js";
@@ -197,6 +198,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     cronGateway,
     openclawSyncService,
+    sessionsRuntime,
   );
   const openclawAuthService = new OpenClawAuthService(env, authProfilesStore);
   const analyticsService = new AnalyticsService(
@@ -468,22 +470,26 @@ export async function createContainer(): Promise<ControllerContainer> {
     await openclawProcess.restart("cloud_state_changed");
   };
 
+  // Hoisted so both the container surface and the channel-health watchdog
+  // (started in startBackgroundLoops) share one instance.
+  const channelService = new ChannelService(
+    env,
+    configStore,
+    openclawSyncService,
+    gatewayService,
+    openclawProcess,
+    controlPlaneHealth,
+    wsClient,
+    quotaFallbackService,
+  );
+
   return {
     env,
     gatewayClient,
     controlPlaneHealth,
     openclawProcess,
     agentService,
-    channelService: new ChannelService(
-      env,
-      configStore,
-      openclawSyncService,
-      gatewayService,
-      openclawProcess,
-      controlPlaneHealth,
-      wsClient,
-      quotaFallbackService,
-    ),
+    channelService,
     channelFallbackService,
     sessionService: new SessionService(sessionsRuntime),
     runtimeConfigService: new RuntimeConfigService(
@@ -536,6 +542,12 @@ export async function createContainer(): Promise<ControllerContainer> {
         env,
         analyticsService,
       });
+      const stopChannelHealthWatchdog = startChannelHealthWatchdog({
+        env,
+        channelService,
+        gatewayService,
+        openclawProcess,
+      });
       const nexuOfficialModelRefreshInterval = setInterval(() => {
         if (isRefreshingNexuOfficialModels) {
           return;
@@ -563,6 +575,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       return () => {
         stopHealthLoop();
         stopAnalyticsLoop();
+        stopChannelHealthWatchdog();
         clearInterval(nexuOfficialModelRefreshInterval);
         skillhubService.dispose();
         devicePollingService.dispose();

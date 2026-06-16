@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Loader2,
   MessageSquare,
+  PanelRight,
   WifiOff,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -34,6 +35,7 @@ import {
   getApiV1Channels,
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
+  postApiV1ChatCancel,
   postApiV1ChatLocal,
   postApiV1SessionsByIdReset,
 } from "../../lib/api/sdk.gen";
@@ -53,7 +55,14 @@ const USER_AVATAR = "/images/tabby-avatar.png";
  * `[message_id: ...]` line and `senderName: actualMessage`. We extract
  * only the real user text after the last metadata marker.
  */
-function stripMetadata(raw: string): string {
+/** Controller-injected skill directive (chat-service.ts).  Hidden from the
+ * user's own bubble — they picked the skill via the composer, so echoing the
+ * directive text back is noise. */
+const SKILL_DIRECTIVE_PATTERN = /^\[请使用「[^」]*」技能完成本次请求\]\s*/u;
+
+function stripMetadata(rawInput: string): string {
+  // Drop the controller-injected skill directive before any other parsing.
+  const raw = rawInput.replace(SKILL_DIRECTIVE_PATTERN, "");
   const withoutConversationMeta = raw.replace(
     /Conversation info \(untrusted metadata\):\s*```json\s*[\s\S]*?```\s*/g,
     "",
@@ -92,6 +101,18 @@ function stripAssistantReplyPrefix(raw: string): string {
     .replace(/^\s*\[\[reply_to_current\]\]\s*/u, "")
     .replace(/<final>\s*/giu, "")
     .replace(/\s*<\/final>/giu, "");
+}
+
+/**
+ * Hide `MEDIA:<path>` delivery directives from streamed assistant text.
+ * The controller strips them from persisted history; this covers the live
+ * SSE delta view so raw markers never flash mid-stream.
+ */
+function stripMediaMarkerLines(raw: string): string {
+  return raw
+    .replace(/^MEDIA:\S[^\n]*$/gmu, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -141,13 +162,21 @@ function stripA2UIBlock(text: string): {
 
 interface ImageBlockInfo {
   mimeType: string;
-  data: string;
+  /** Inline base64 payload (OpenClaw flat blocks / Anthropic source blocks). */
+  data?: string;
+  /** Controller-served media URL (transcript MediaPaths / MEDIA: markers). */
+  url?: string;
 }
 
 interface FileCardInfo {
   name: string;
   mimeType: string;
   size?: number;
+}
+
+interface SidebarA2UIPayload {
+  surfaceId: string;
+  messages: A2UIMessage[];
 }
 
 interface ExtractedMessage {
@@ -158,8 +187,54 @@ interface ExtractedMessage {
   toolCallSummary: string | null;
   hasA2UI: boolean;
   a2uiMessages: A2UIMessage[] | null;
+  /** Sidebar-bound A2UI rendered as a jump button instead of inline. */
+  sidebarA2UI: SidebarA2UIPayload | null;
   images: ImageBlockInfo[];
   fileCards: FileCardInfo[];
+}
+
+/** Tools whose toolResult payloads carry renderable A2UI JSONL. */
+const A2UI_TOOL_NAMES = new Set(["render_a2ui", "render_skill_confirmation"]);
+
+/** Complex editor components — their surfaces always open in the side panel. */
+const SIDEBAR_DOC_COMPONENT_TYPES = new Set(["MarkdownEditor", "XHSEditor"]);
+
+/**
+ * Decide where an A2UI surface renders.
+ *
+ * Side panel: only complex-interaction editor surfaces (MarkdownEditor /
+ * XHSEditor).  Everything else — forms, images, video/audio, status cards —
+ * renders inline in the conversation flow.  A `sidebar:` surfaceId prefix
+ * remains an explicit override for "show this in the side panel".
+ */
+function isSidebarBoundSurface(
+  surfaceId: string,
+  msgs: A2UIMessage[],
+): boolean {
+  if (surfaceId.startsWith("sidebar:")) return true;
+  for (const m of msgs) {
+    if (!("updateComponents" in m)) continue;
+    for (const comp of m.updateComponents?.components ?? []) {
+      const type = (comp as { type?: string }).type ?? "";
+      if (SIDEBAR_DOC_COMPONENT_TYPES.has(type)) return true;
+    }
+  }
+  return false;
+}
+
+/** True when the server history already contains this optimistic message. */
+function isPendingMessageOnServer(
+  pm: { text: string; timestamp: number; attachments: unknown[] },
+  serverUserTexts: Set<string>,
+  serverMediaOnlyTimes: number[],
+): boolean {
+  if (pm.text.trim().length > 0) {
+    return serverUserTexts.has(pm.text);
+  }
+  if (pm.attachments.length === 0) return false;
+  // Media-only: match a captionless server upload that arrived at or after
+  // this send (60s skew tolerance for client/server clocks).
+  return serverMediaOnlyTimes.some((t) => t >= pm.timestamp - 60_000);
 }
 
 function extractReplyContextPrefix(raw: string): {
@@ -277,13 +352,25 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
         if (!a2uiMessages) a2uiMessages = [];
         a2uiMessages.push(b.data as A2UIMessage);
       } else if (b?.type === "image") {
+        // Three shapes: controller-served {url, mimeType}, OpenClaw flat
+        // {data, mimeType}, Anthropic {source: {data, media_type}}.
+        const url = typeof b?.url === "string" ? b.url : "";
         const source = b?.source as Record<string, unknown> | undefined;
         const sourceData = typeof source?.data === "string" ? source.data : "";
-        if (sourceData.length > 0) {
-          const mimeType = String(source?.media_type ?? "image/png");
-          const base64 = sourceData.includes(",")
-            ? sourceData.slice(sourceData.indexOf(",") + 1)
-            : sourceData;
+        const flatData = typeof b?.data === "string" ? b.data : "";
+        const rawData = sourceData || flatData;
+        if (url.length > 0) {
+          images.push({
+            mimeType: String(b?.mimeType ?? "image/png"),
+            url,
+          });
+        } else if (rawData.length > 0) {
+          const mimeType = String(
+            source?.media_type ?? b?.mimeType ?? "image/png",
+          );
+          const base64 = rawData.includes(",")
+            ? rawData.slice(rawData.indexOf(",") + 1)
+            : rawData;
           images.push({ mimeType, data: base64 });
         }
       } else if (b?.type === "file") {
@@ -327,6 +414,7 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     toolCallSummary,
     hasA2UI,
     a2uiMessages,
+    sidebarA2UI: null,
     images,
     fileCards: [...fileCards, ...parsedFiles.fileCards],
   };
@@ -537,10 +625,12 @@ function ChatUnavailable() {
 
 interface ChatMessageData {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "toolResult";
   content: unknown;
   timestamp: number | null;
   createdAt: string | null;
+  toolName?: string;
+  toolCallId?: string;
 }
 
 function ArtifactCard({ summary }: { summary: string | null }) {
@@ -616,9 +706,9 @@ function SessionPlatformBadge({
   );
 }
 
-function InlineImage({ mimeType, data }: ImageBlockInfo) {
+function InlineImage({ mimeType, data, url }: ImageBlockInfo) {
   const [expanded, setExpanded] = useState(false);
-  const src = `data:${mimeType};base64,${data}`;
+  const src = url ?? `data:${mimeType};base64,${data ?? ""}`;
   return (
     <>
       <button
@@ -648,6 +738,44 @@ function InlineImage({ mimeType, data }: ImageBlockInfo) {
         </div>
       )}
     </>
+  );
+}
+
+/** Chip rendered in place of sidebar-bound A2UI — click opens the side panel. */
+function SidebarA2UIButton({
+  payload,
+  onOpen,
+}: {
+  payload: SidebarA2UIPayload;
+  onOpen: (payload: SidebarA2UIPayload) => void;
+}) {
+  const { t } = useTranslation();
+  // "sidebar:xhs-editor" -> "xhs editor"
+  const surfaceLabel = payload.surfaceId
+    .replace(/^sidebar:/, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+  return (
+    <button
+      type="button"
+      data-a2ui-sidebar-trigger={payload.surfaceId}
+      onClick={() => onOpen(payload)}
+      className="mt-0.5 inline-flex max-w-full items-center gap-2 rounded-2xl border border-border bg-surface-1 px-3.5 py-2.5 text-[13px] shadow-[0_6px_18px_rgba(15,23,42,0.05)] transition-colors hover:bg-surface-2"
+    >
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[var(--color-info-subtle)] text-[var(--color-info)]">
+        <PanelRight className="size-[14px]" />
+      </span>
+      <span className="min-w-0 truncate font-medium text-text-primary">
+        {surfaceLabel ||
+          t("sessions.chat.interactivePanel", {
+            defaultValue: "Interactive panel",
+          })}
+      </span>
+      <span className="shrink-0 text-[11px] font-medium text-[var(--color-info)]">
+        {t("sessions.chat.openPanel", { defaultValue: "Open" })}
+      </span>
+      <ArrowUpRight className="size-[14px] shrink-0 text-text-muted" />
+    </button>
   );
 }
 
@@ -686,10 +814,15 @@ function ChatBubble({
   msg,
   extracted,
   onA2UIAction,
+  onOpenSidebar,
+  showAvatar = true,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
   onA2UIAction?: (actionName: string, context: Record<string, unknown>) => void;
+  onOpenSidebar?: (payload: SidebarA2UIPayload) => void;
+  /** False for consecutive same-sender messages — renders an alignment spacer instead. */
+  showAvatar?: boolean;
 }) {
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
@@ -702,6 +835,7 @@ function ChatBubble({
     toolCallSummary,
     hasA2UI,
     a2uiMessages,
+    sidebarA2UI,
     images,
     fileCards,
   } = resolvedExtracted;
@@ -717,18 +851,14 @@ function ChatBubble({
       data-chat-role={msg.role}
       className="flex gap-3 items-start"
     >
-      {isBot ? (
+      {showAvatar ? (
         <img
-          src={BOT_AVATAR}
+          src={isBot ? BOT_AVATAR : USER_AVATAR}
           alt=""
           className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
         />
       ) : (
-        <img
-          src={USER_AVATAR}
-          alt=""
-          className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
-        />
+        <div aria-hidden className="shrink-0 w-9 h-9 -ml-1" />
       )}
       <div className={cn("flex max-w-[44rem] flex-col gap-2", "items-start")}>
         {hasReplyContext && replyContextText && (
@@ -756,11 +886,16 @@ function ChatBubble({
             <ChatMarkdown content={text} />
           </div>
         )}
-        {isBot && hasToolCall && <ArtifactCard summary={toolCallSummary} />}
+        {isBot && hasToolCall && !sidebarA2UI && (
+          <ArtifactCard summary={toolCallSummary} />
+        )}
         {isBot && hasA2UI && a2uiMessages && (
-          <div className="mt-1 inline-block max-w-full">
+          <div className="mt-1 w-full min-w-[20rem] max-w-full rounded-[20px] border border-border bg-surface-1 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
             <A2UIRenderer messages={a2uiMessages} onAction={onA2UIAction} />
           </div>
+        )}
+        {isBot && sidebarA2UI && onOpenSidebar && (
+          <SidebarA2UIButton payload={sidebarA2UI} onOpen={onOpenSidebar} />
         )}
         {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
@@ -831,23 +966,58 @@ export function SessionsPage() {
           delta.replace ? delta.deltaText : prev + delta.deltaText,
         );
       },
-      onFinal: () => {
-        // Full message received — clear streaming state & refresh
-        setStreamingText("");
-        if (sentAtRef.current > 0) {
-          setWaitingForReply(false);
-          sentAtRef.current = 0;
-          setPendingMessages([]);
+      onFinal: (final) => {
+        // OpenClaw emits ONE final per run, at run end (emitChatFinal fires
+        // on jobState "done") — intermediate visible replies arrive only via
+        // history polling.  So final IS the "whole reply finished" signal.
+        if (
+          activeRunIdRef.current &&
+          final.runId &&
+          final.runId !== activeRunIdRef.current
+        ) {
+          // A different run in this session (e.g. cron-triggered) finished —
+          // refresh history but keep waiting for our own run.
+          void queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          return;
         }
+        activeRunIdRef.current = null;
+        setStreamingText("");
+        setWaitingForReply(false);
+        sentAtRef.current = 0;
+        setPendingMessages([]);
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
-      onAborted: () => {
+      onAborted: (aborted) => {
+        if (
+          activeRunIdRef.current &&
+          aborted.runId &&
+          aborted.runId !== activeRunIdRef.current
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          return;
+        }
+        activeRunIdRef.current = null;
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
-      onError: () => {
+      onError: (error) => {
+        if (
+          activeRunIdRef.current &&
+          error.runId &&
+          error.runId !== activeRunIdRef.current
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          return;
+        }
+        activeRunIdRef.current = null;
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
@@ -930,25 +1100,37 @@ export function SessionsPage() {
 
   // Send message handler
   const [pendingMessages, setPendingMessages] = useState<
-    { id: string; text: string; timestamp: number }[]
+    {
+      id: string;
+      text: string;
+      timestamp: number;
+      attachments: PendingAttachment[];
+    }[]
   >([]);
   const [waitingForReply, setWaitingForReply] = useState(false);
   const [newSessionDividerTime, setNewSessionDividerTime] = useState<
     number | null
   >(null);
   const sentAtRef = useRef(0);
+  /** runId of the chat run this composer is waiting on (null = any run). */
+  const activeRunIdRef = useRef<string | null>(null);
 
   // Reset waiting state when switching sessions
   // biome-ignore lint/correctness/useExhaustiveDependencies: id triggers reset on session navigation
   useEffect(() => {
     setWaitingForReply(false);
     sentAtRef.current = 0;
+    activeRunIdRef.current = null;
     setPendingMessages([]);
     setStreamingText("");
   }, [id]);
 
   const handleSend = useCallback(
-    async (text: string, attachments: PendingAttachment[]) => {
+    async (
+      text: string,
+      attachments: PendingAttachment[],
+      skillSlug: string | null,
+    ) => {
       if (!selectedBot || !id || !session?.sessionKey) return;
 
       // Intercept /new command
@@ -986,6 +1168,7 @@ export function SessionsPage() {
         : {
             type: "text" as const,
             content: text,
+            ...(skillSlug ? { skillSlug } : {}),
             attachments:
               attachments.length > 0
                 ? attachments.map((a) => ({
@@ -1007,24 +1190,29 @@ export function SessionsPage() {
         ...prev,
         {
           id: optimisticId,
-          text: text || (isImageOnly ? "[Image]" : "[File]"),
+          text,
           timestamp: now,
+          attachments,
         },
       ]);
       setWaitingForReply(true);
 
       try {
-        await postApiV1ChatLocal({
+        const result = await postApiV1ChatLocal({
           body: {
             botId: selectedBot.id,
             sessionKey: session.sessionKey,
             message: msgContent,
           },
         });
+        // Remember our run id so SSE final/aborted/error events from OTHER
+        // runs in this session don't prematurely re-enable the composer.
+        activeRunIdRef.current = result.data?.message?.runId ?? null;
         await queryClient.invalidateQueries({
           queryKey: ["chat-history", id],
         });
       } catch {
+        activeRunIdRef.current = null;
         setWaitingForReply(false);
         setPendingMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       }
@@ -1035,15 +1223,14 @@ export function SessionsPage() {
   const handleCancel = useCallback(async () => {
     if (!session?.sessionKey || !selectedBot) return;
     try {
-      const res = await fetch("/api/v1/chat/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { data } = await postApiV1ChatCancel({
+        body: {
           botId: selectedBot.id,
           sessionKey: session.sessionKey,
-        }),
+        },
       });
-      if (res.ok) {
+      if (data) {
+        activeRunIdRef.current = null;
         setWaitingForReply(false);
         sentAtRef.current = 0;
       }
@@ -1060,42 +1247,40 @@ export function SessionsPage() {
   const safeMessages = chatLoading && !chatData ? [] : (messages ?? []);
 
   // Build a set of server user message texts to deduplicate against optimistic messages
-  const serverUserTexts = new Set(
-    safeMessages
-      .filter((m) => m.role === "user")
-      .map((m) => extractMessage(m as unknown as Record<string, unknown>).text),
-  );
+  const serverUserTexts = new Set<string>();
+  // Arrival times of media-only (no caption) server user messages — used to
+  // clear media-only optimistic messages, whose empty text would otherwise
+  // match any historical captionless upload.
+  const serverMediaOnlyTimes: number[] = [];
+  for (const m of safeMessages) {
+    if (m.role !== "user") continue;
+    const extracted = extractMessage(m as unknown as Record<string, unknown>);
+    if (extracted.text.trim().length > 0) {
+      serverUserTexts.add(extracted.text);
+    } else if (extracted.images.length > 0 || extracted.fileCards.length > 0) {
+      const arrivedAt =
+        m.timestamp ?? (m.createdAt ? new Date(m.createdAt).getTime() : 0);
+      serverMediaOnlyTimes.push(arrivedAt);
+    }
+  }
 
   // Clear optimistic messages that already appear in server data
   useEffect(() => {
     if (pendingMessages.length === 0) return;
     const remaining = pendingMessages.filter(
-      (pm) => !serverUserTexts.has(pm.text),
+      (pm) =>
+        !isPendingMessageOnServer(pm, serverUserTexts, serverMediaOnlyTimes),
     );
     if (remaining.length < pendingMessages.length) {
       setPendingMessages(remaining);
     }
   }, [serverUserTexts, pendingMessages]);
 
-  // Detect when assistant reply arrives — clear waiting state
-  const assistantMessages = safeMessages.filter((m) => m.role === "assistant");
-  const lastAssistantMsg =
-    assistantMessages.length > 0
-      ? assistantMessages[assistantMessages.length - 1]
-      : undefined;
-  const lastAssistantTimestamp = lastAssistantMsg?.timestamp ?? 0;
-
-  useEffect(() => {
-    if (
-      waitingForReply &&
-      sentAtRef.current > 0 &&
-      lastAssistantTimestamp >= sentAtRef.current
-    ) {
-      setWaitingForReply(false);
-      sentAtRef.current = 0;
-      setPendingMessages([]);
-    }
-  }, [lastAssistantTimestamp, waitingForReply]);
+  // NOTE: waiting state is intentionally NOT cleared when an assistant
+  // message appears in polled history — OpenClaw runs can emit several
+  // intermediate visible replies while the run is still working.  The
+  // composer re-enables only on the run-level SSE final/aborted/error
+  // (or the safety timeout below).
 
   // Safety timeout: clear waitingForReply after 2 minutes regardless of SSE/polling state
   const waitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1118,11 +1303,34 @@ export function SessionsPage() {
   // Optimistic messages: use text-based key so React reuses the DOM node
   // when the server message replaces the optimistic one
   const optimisticMessages: ChatMessageData[] = pendingMessages
-    .filter((pm) => !serverUserTexts.has(pm.text))
+    .filter(
+      (pm) =>
+        !isPendingMessageOnServer(pm, serverUserTexts, serverMediaOnlyTimes),
+    )
     .map((pm) => ({
-      id: `user-${pm.text.slice(0, 40)}`, // stable key based on text content
+      // stable key based on text content + attachment count
+      id: `user-${pm.text.slice(0, 40)}-${pm.attachments.length}`,
       role: "user" as const,
-      content: pm.text,
+      content:
+        pm.attachments.length === 0
+          ? pm.text
+          : [
+              ...(pm.text.trim().length > 0
+                ? [{ type: "text", text: pm.text }]
+                : []),
+              ...pm.attachments.map((a) =>
+                a.type === "image"
+                  ? { type: "image", data: a.content, mimeType: a.mimeType }
+                  : {
+                      type: "file",
+                      metadata: {
+                        filename: a.filename ?? "file",
+                        mimeType: a.mimeType,
+                        size: a.size,
+                      },
+                    },
+              ),
+            ],
       timestamp: pm.timestamp,
       createdAt: new Date(pm.timestamp).toISOString(),
     }));
@@ -1136,7 +1344,7 @@ export function SessionsPage() {
   const a2uiFromToolResults = new Map<string, A2UIMessage[]>();
   for (const m of displayMessages) {
     const rm = m as unknown as Record<string, unknown>;
-    if (rm.role === "toolResult" && rm.toolName === "render_a2ui") {
+    if (rm.role === "toolResult" && A2UI_TOOL_NAMES.has(String(rm.toolName))) {
       const te = extractMessage(rm);
       if (te.a2uiMessages?.length) {
         a2uiFromToolResults.set(String(rm.toolCallId ?? ""), te.a2uiMessages);
@@ -1145,18 +1353,6 @@ export function SessionsPage() {
   }
 
   // Detect sidebar-bound surfaces (surfaceId starts with "sidebar:")
-  const sidebarSurfaceIds = new Set<string>();
-  for (const msgs of a2uiFromToolResults.values()) {
-    for (const m of msgs) {
-      if (
-        "createSurface" in m &&
-        m.createSurface?.surfaceId?.startsWith("sidebar:")
-      ) {
-        sidebarSurfaceIds.add(m.createSurface.surfaceId);
-      }
-    }
-  }
-
   const enrichedMessages = displayMessages
     .map((msg) => {
       const rm = msg as unknown as Record<string, unknown>;
@@ -1167,42 +1363,30 @@ export function SessionsPage() {
         const content = rm.content;
         if (Array.isArray(content)) {
           for (const block of content) {
-            if (block?.type === "toolCall" && block?.name === "render_a2ui") {
+            if (
+              block?.type === "toolCall" &&
+              A2UI_TOOL_NAMES.has(String(block?.name))
+            ) {
               const a2uiFromResult = a2uiFromToolResults.get(
                 String(block.id ?? ""),
               );
               if (a2uiFromResult?.length) {
-                const isSidebarOnly = a2uiFromResult.every((m) => {
-                  if ("createSurface" in m && m.createSurface?.surfaceId) {
-                    return sidebarSurfaceIds.has(m.createSurface.surfaceId);
-                  }
-                  // For update/delete messages, check if they reference a known sidebar surface
-                  const sid =
-                    "updateComponents" in m
-                      ? m.updateComponents?.surfaceId
-                      : "updateDataModel" in m
-                        ? m.updateDataModel?.surfaceId
-                        : "deleteSurface" in m
-                          ? m.deleteSurface?.surfaceId
-                          : undefined;
-                  return sid ? sidebarSurfaceIds.has(sid) : false;
-                });
-                if (isSidebarOnly) {
-                  // Route to sidebar
-                  const createMsg = a2uiFromResult.find(
-                    (m) => "createSurface" in m,
-                  );
-                  const sid = (
-                    createMsg as
-                      | { createSurface: { surfaceId: string } }
-                      | undefined
-                  )?.createSurface?.surfaceId;
-                  if (sid) {
-                    queueMicrotask(() => {
-                      openWith(sid, a2uiFromResult, onA2UIAction);
-                    });
-                  }
-                  // Don't set hasA2UI — skip inline rendering
+                const createMsg = a2uiFromResult.find(
+                  (m) => "createSurface" in m,
+                );
+                const sid = (
+                  createMsg as
+                    | { createSurface: { surfaceId: string } }
+                    | undefined
+                )?.createSurface?.surfaceId;
+                if (sid && isSidebarBoundSurface(sid, a2uiFromResult)) {
+                  // Sidebar-bound surface: render a jump button in the
+                  // thread; opening happens on click (or automatically the
+                  // first time the surface arrives — see effect below).
+                  extracted.sidebarA2UI = {
+                    surfaceId: sid,
+                    messages: a2uiFromResult,
+                  };
                 } else {
                   extracted.hasA2UI = true;
                   extracted.a2uiMessages = a2uiFromResult;
@@ -1218,23 +1402,65 @@ export function SessionsPage() {
     })
     .filter(({ msg, extracted }) => {
       const rm = msg as unknown as Record<string, unknown>;
-      // Hide render_a2ui toolResult — A2UI shown on parent assistant msg
-      if (rm.role === "toolResult" && rm.toolName === "render_a2ui") {
+      // Hide A2UI toolResults — their payload shows on the parent assistant msg
+      if (
+        rm.role === "toolResult" &&
+        A2UI_TOOL_NAMES.has(String(rm.toolName))
+      ) {
         return false;
       }
       if (extracted.text.trim().length > 0) return true;
       if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
       if (extracted.hasToolCall) return true;
+      if (extracted.sidebarA2UI) return true;
       if (extracted.images.length > 0) return true;
       if (extracted.fileCards.length > 0) return true;
       return false;
     });
+
+  // Auto-open the sidebar when a NEW sidebar surface arrives during a live
+  // conversation.  Surfaces already present on initial load stay closed —
+  // the jump button in the thread reopens them on demand.
+  const sidebarPayloads = enrichedMessages
+    .map(({ extracted }) => extracted.sidebarA2UI)
+    .filter((p): p is SidebarA2UIPayload => p !== null);
+  const sidebarSurfaceKey = sidebarPayloads.map((p) => p.surfaceId).join("|");
+  const seenSidebarSurfacesRef = useRef<Set<string> | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sidebarSurfaceKey tracks payload identity
+  useEffect(() => {
+    if (!chatData) return;
+    if (seenSidebarSurfacesRef.current === null) {
+      seenSidebarSurfacesRef.current = new Set(
+        sidebarPayloads.map((p) => p.surfaceId),
+      );
+      return;
+    }
+    const seen = seenSidebarSurfacesRef.current;
+    for (const payload of sidebarPayloads) {
+      if (seen.has(payload.surfaceId)) continue;
+      seen.add(payload.surfaceId);
+      openWith(payload.surfaceId, payload.messages, onA2UIAction);
+    }
+  }, [sidebarSurfaceKey, chatData]);
+
+  // Reset surface tracking when navigating to a different session
+  // biome-ignore lint/correctness/useExhaustiveDependencies: id change resets tracking
+  useEffect(() => {
+    seenSidebarSurfacesRef.current = null;
+  }, [id]);
 
   // Auto-scroll on new messages or state changes
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when messages or waiting state changes
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "instant" });
   }, [chatData, waitingForReply, pendingMessages.length]);
+
+  // Whether the thread currently ends with an assistant message — the
+  // Thinking/streaming bubbles then drop their avatar to read as a
+  // continuation of the same reply run.
+  const lastDisplayedIsAssistant =
+    enrichedMessages.length > 0 &&
+    enrichedMessages[enrichedMessages.length - 1]?.msg.role === "assistant";
 
   if (!id) {
     return <EmptyState />;
@@ -1423,23 +1649,43 @@ export function SessionsPage() {
                         </div>,
                       ]
                     : [];
+                // Collapse avatars for consecutive assistant messages — only
+                // the first message of a run shows the bot avatar.  A "new
+                // conversation" divider restarts the run.
+                const showAvatar =
+                  msg.role !== "assistant" ||
+                  divider.length > 0 ||
+                  idx === 0 ||
+                  arr[idx - 1]?.msg.role !== "assistant";
                 return [
                   ...divider,
                   <ChatBubble
                     key={msg.id}
                     msg={msg}
                     extracted={extracted}
+                    showAvatar={showAvatar}
                     onA2UIAction={onA2UIAction}
+                    onOpenSidebar={(payload) => {
+                      openWith(
+                        payload.surfaceId,
+                        payload.messages,
+                        onA2UIAction,
+                      );
+                    }}
                   />,
                 ];
               })}
               {waitingForReply && !streamingText && (
                 <div className="flex gap-3 items-start">
-                  <img
-                    src={BOT_AVATAR}
-                    alt=""
-                    className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
-                  />
+                  {lastDisplayedIsAssistant ? (
+                    <div aria-hidden className="shrink-0 w-9 h-9 -ml-1" />
+                  ) : (
+                    <img
+                      src={BOT_AVATAR}
+                      alt=""
+                      className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+                    />
+                  )}
                   <div className="inline-flex items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
                     <Loader2
                       size={14}
@@ -1455,14 +1701,18 @@ export function SessionsPage() {
               )}
               {waitingForReply && streamingText && (
                 <div className="flex gap-3 items-start">
-                  <img
-                    src={BOT_AVATAR}
-                    alt=""
-                    className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
-                  />
+                  {lastDisplayedIsAssistant ? (
+                    <div aria-hidden className="shrink-0 w-9 h-9 -ml-1" />
+                  ) : (
+                    <img
+                      src={BOT_AVATAR}
+                      alt=""
+                      className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
+                    />
+                  )}
                   <div className="rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] max-w-[80%]">
                     <p className="text-[13px] text-text-secondary whitespace-pre-wrap break-words">
-                      {streamingText}
+                      {stripMediaMarkerLines(streamingText)}
                       <span className="inline-block w-1.5 h-4 ml-0.5 bg-text-secondary animate-pulse align-text-bottom" />
                     </p>
                   </div>
@@ -1481,8 +1731,8 @@ export function SessionsPage() {
             bots={bots}
             selectedBot={selectedBot}
             onSelectBot={() => {}}
-            onSend={(text, attachments) => {
-              void handleSend(text, attachments);
+            onSend={(text, attachments, skillSlug) => {
+              void handleSend(text, attachments, skillSlug);
             }}
             onCancel={handleCancel}
             sending={false}

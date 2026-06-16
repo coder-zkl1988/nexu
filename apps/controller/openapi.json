@@ -7685,6 +7685,9 @@
                             "content"
                           ]
                         }
+                      },
+                      "skillSlug": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -7919,6 +7922,9 @@
                             "content"
                           ]
                         }
+                      },
+                      "skillSlug": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -8160,7 +8166,8 @@
                             "type": "string",
                             "enum": [
                               "user",
-                              "assistant"
+                              "assistant",
+                              "toolResult"
                             ]
                           },
                           "content": {
@@ -8173,6 +8180,12 @@
                           "createdAt": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "toolName": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -8914,7 +8927,8 @@
                             "type": "string",
                             "enum": [
                               "user",
-                              "assistant"
+                              "assistant",
+                              "toolResult"
                             ]
                           },
                           "content": {
@@ -8927,6 +8941,12 @@
                           "createdAt": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "toolName": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
                           }
                         },
                         "required": [

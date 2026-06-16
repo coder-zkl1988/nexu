@@ -922,6 +922,8 @@ const en = {
   "sessions.chat.replyLabel": "Reply",
   "sessions.chat.toolActivity": "Tool",
   "sessions.chat.toolCompleted": "Completed",
+  "sessions.chat.interactivePanel": "Interactive panel",
+  "sessions.chat.openPanel": "Open",
   "sessions.chat.thinking": "Thinking...",
   "sessions.chat.newSession": "New conversation",
   "sessions.pending.title": "Starting conversation",

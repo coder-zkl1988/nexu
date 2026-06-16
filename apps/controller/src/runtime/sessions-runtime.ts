@@ -21,6 +21,7 @@ import type {
 } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
 import { logger } from "../lib/logger.js";
+import { ensureMediaCached, mediaCacheDir } from "../lib/media-cache.js";
 import { proxyFetch } from "../lib/proxy-fetch.js";
 
 /**
@@ -31,10 +32,14 @@ const OPENCLAW_RESERVED_AGENT_NAMES = new Set(["main"]);
 
 export type ChatMessage = {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "toolResult";
   content: unknown;
   timestamp: number | null;
   createdAt: string | null;
+  /** Present on toolResult messages — name of the tool that produced the result. */
+  toolName?: string;
+  /** Present on toolResult messages — correlates with the assistant toolCall block id. */
+  toolCallId?: string;
 };
 
 type SessionMetadata = {
@@ -130,6 +135,59 @@ const SynthesizedUserMessagePatterns: readonly RegExp[] = [
   /^Pre-compaction memory flush\. Store durable memories now/u,
 ];
 
+/**
+ * Tool names whose toolResult transcript records are surfaced through the
+ * chat-history API.  These results carry renderable payloads (A2UI JSONL)
+ * that the web frontend consumes; every other tool result stays internal so
+ * the history payload remains bounded.
+ */
+const SurfacedToolResultNames = new Set([
+  "render_a2ui",
+  "render_skill_confirmation",
+]);
+
+/**
+ * Placeholder text OpenClaw stores for a chat.send user turn that carried
+ * media but no caption.  Hidden whenever the media itself is surfaced.
+ */
+const MEDIA_ONLY_PLACEHOLDER_TEXT = "[User sent media without caption]";
+
+/**
+ * Prefix of user-role messages OpenClaw synthesizes to route content from
+ * another session or internal tool (e.g. background image_generate
+ * completions).  The envelope text is runtime-internal; only the media
+ * payload should be shown to the user.
+ */
+const INTER_SESSION_MESSAGE_PREFIX = "[Inter-session message]";
+
+/** Matches `MEDIA:<path>` directive lines OpenClaw appends to assistant replies. */
+const ASSISTANT_MEDIA_MARKER_PATTERN = /^MEDIA:(\S[^\n]*)$/gmu;
+
+const IMAGE_EXTENSION_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
+
+function mimeTypeForMediaPath(filePath: string, hint?: string): string {
+  if (hint?.trim()) return hint;
+  return (
+    IMAGE_EXTENSION_MIME[path.extname(filePath).toLowerCase()] ??
+    "application/octet-stream"
+  );
+}
+
+/** URL the web app uses to fetch a transcript-referenced media file. */
+function mediaFileUrl(filePath: string): string {
+  return `/api/v1/media/state-file?path=${encodeURIComponent(filePath)}`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function sessionMetadataPath(filePath: string): string {
   return filePath.replace(/\.jsonl$/, ".meta.json");
 }
@@ -199,7 +257,80 @@ export class SessionsRuntime {
   private _sessionsCacheMtime = 0;
   private static SESSIONS_CACHE_TTL_MS = 2000;
 
+  /** Media paths queued for mirroring into the durable cache. */
+  private readonly mediaCacheQueue = new Set<string>();
+  /** Media paths already mirrored (or attempted) — skip on later reads. */
+  private readonly mediaCacheAttempted = new Set<string>();
+
   constructor(private readonly env: ControllerEnv) {}
+
+  /** Root of OpenClaw's TTL-cleaned transient media directory. */
+  private mediaRootDir(): string {
+    return path.resolve(this.env.openclawStateDir, "media");
+  }
+
+  /**
+   * Queue a transcript-referenced media file for durable caching.  Only
+   * paths inside OpenClaw's media root are eligible — the media route
+   * refuses to serve anything else, so caching it would be wasted (and a
+   * model-authored path outside the root must never become servable).
+   */
+  private queueMediaCache(absolutePath: string): void {
+    if (this.mediaCacheAttempted.has(absolutePath)) return;
+    const relative = path.relative(
+      this.mediaRootDir(),
+      path.resolve(absolutePath),
+    );
+    if (relative.startsWith("..") || path.isAbsolute(relative)) return;
+    this.mediaCacheQueue.add(absolutePath);
+  }
+
+  /** Best-effort mirror of queued media files into the durable cache. */
+  private async flushMediaCacheQueue(): Promise<void> {
+    if (this.mediaCacheQueue.size === 0) return;
+    const queued = [...this.mediaCacheQueue];
+    this.mediaCacheQueue.clear();
+    const cacheDir = mediaCacheDir(this.env.nexuHomeDir);
+    for (const absolutePath of queued) {
+      this.mediaCacheAttempted.add(absolutePath);
+      try {
+        await ensureMediaCached(cacheDir, absolutePath);
+      } catch (err) {
+        logger.warn(
+          {
+            absolutePath,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "sessions-runtime: media cache mirror failed",
+        );
+      }
+    }
+  }
+
+  /**
+   * Rewrite absolute OpenClaw media paths embedded in surfaced tool-result
+   * text (A2UI JSONL — e.g. Image.source from render_a2ui) into controller
+   * media URLs the browser can load, queuing each file for durable caching.
+   * Paths outside the media root are left untouched.
+   */
+  private rewriteToolResultMediaPaths(content: unknown): unknown {
+    if (!Array.isArray(content)) return content;
+    const pathPattern = new RegExp(
+      `${escapeRegExp(this.mediaRootDir() + path.sep)}[^"\\s]+`,
+      "g",
+    );
+    return content.map((part) => {
+      const block = part as Record<string, unknown> | null;
+      if (block?.type !== "text" || typeof block.text !== "string") {
+        return part;
+      }
+      const text = block.text.replace(pathPattern, (match) => {
+        this.queueMediaCache(match);
+        return mediaFileUrl(match);
+      });
+      return text === block.text ? part : { ...block, text };
+    });
+  }
 
   async listSessions(forceRefresh = false): Promise<SessionResponse[]> {
     // Check if cache is still valid
@@ -845,11 +976,46 @@ export class SessionsRuntime {
             role?: string;
             content?: unknown;
             timestamp?: number;
+            toolName?: string;
+            toolCallId?: string;
+            MediaPath?: string;
+            MediaPaths?: string[];
+            MediaType?: string;
+            MediaTypes?: string[];
           };
         };
         if (entry.type !== "message" || !entry.message) continue;
         const role = entry.message.role;
+        if (role === "toolResult") {
+          // Surface renderable tool results (A2UI) so the frontend can pair
+          // them with the assistant's toolCall block; drop everything else.
+          const toolName = entry.message.toolName;
+          if (
+            typeof toolName !== "string" ||
+            !SurfacedToolResultNames.has(toolName)
+          ) {
+            continue;
+          }
+          messages.push({
+            id: entry.id ?? "",
+            role,
+            content: this.rewriteToolResultMediaPaths(entry.message.content),
+            timestamp: entry.message.timestamp ?? null,
+            createdAt: entry.timestamp ?? null,
+            toolName,
+            ...(typeof entry.message.toolCallId === "string"
+              ? { toolCallId: entry.message.toolCallId }
+              : {}),
+          });
+          continue;
+        }
         if (role !== "user" && role !== "assistant") continue;
+        const mediaPaths =
+          entry.message.MediaPaths ??
+          (entry.message.MediaPath ? [entry.message.MediaPath] : []);
+        const mediaTypes =
+          entry.message.MediaTypes ??
+          (entry.message.MediaType ? [entry.message.MediaType] : []);
         const normalizedMessage = this.normalizeChatMessage(
           {
             id: entry.id ?? "",
@@ -859,6 +1025,7 @@ export class SessionsRuntime {
             createdAt: entry.timestamp ?? null,
           },
           channelType,
+          { paths: mediaPaths, types: mediaTypes },
         );
         if (normalizedMessage) {
           messages.push(normalizedMessage);
@@ -868,6 +1035,11 @@ export class SessionsRuntime {
       }
     }
 
+    // Mirror referenced media into the durable cache while the originals
+    // still exist — OpenClaw TTL-cleans <state-dir>/media/ but transcripts
+    // (and therefore this history view) reference the files forever.
+    await this.flushMediaCacheQueue();
+
     // Return last N messages
     return messages.slice(-limit);
   }
@@ -875,20 +1047,212 @@ export class SessionsRuntime {
   private normalizeChatMessage(
     message: ChatMessage,
     channelType?: string | null,
+    media?: { paths: string[]; types: string[] },
   ): ChatMessage | null {
-    const content = this.normalizeMessageContent(
-      message.role,
-      message.content,
-      channelType,
+    // Inter-session routed messages (background tool completions) carry a
+    // runtime-internal envelope as user-role text.  Strip the envelope, keep
+    // the media payload, and re-attribute bot-originated content.
+    const interSession = this.transformInterSessionMessage(message);
+    const role = interSession?.role ?? message.role;
+    const rawContent = interSession ? interSession.content : message.content;
+
+    const content = this.normalizeMessageContent(role, rawContent, channelType);
+
+    const mediaEntries: Array<{ path: string; mimeType?: string }> = (
+      media?.paths ?? []
+    )
+      .filter((p): p is string => typeof p === "string" && p.length > 0)
+      .map((p, i) => ({ path: p, mimeType: media?.types?.[i] }));
+
+    // Assistant replies reference generated files via `MEDIA:<path>` lines.
+    const withMarkers =
+      role === "assistant"
+        ? this.extractAssistantMediaMarkers(content)
+        : { content, mediaPaths: [] as string[] };
+    for (const markerPath of withMarkers.mediaPaths) {
+      mediaEntries.push({ path: markerPath });
+    }
+
+    const finalContent = this.appendMediaBlocks(
+      withMarkers.content,
+      mediaEntries,
     );
-    if (content == null) {
+    if (finalContent == null) {
       return null;
     }
 
     return {
       ...message,
-      content,
+      role,
+      content: finalContent,
     };
+  }
+
+  /**
+   * Detect an inter-session envelope message and return the display-level
+   * transformation: envelope text removed, role re-attributed to the bot
+   * when the routed content is not end-user input (`isUser=false`).
+   * Returns null when the message is not an inter-session envelope.
+   */
+  private transformInterSessionMessage(
+    message: ChatMessage,
+  ): { role: ChatMessage["role"]; content: unknown } | null {
+    if (message.role !== "user") return null;
+
+    const findEnvelopeText = (): string | null => {
+      if (typeof message.content === "string") {
+        return message.content.startsWith(INTER_SESSION_MESSAGE_PREFIX)
+          ? message.content
+          : null;
+      }
+      if (!Array.isArray(message.content)) return null;
+      for (const part of message.content) {
+        const block = part as Record<string, unknown> | null;
+        if (
+          block?.type === "text" &&
+          typeof block.text === "string" &&
+          block.text.startsWith(INTER_SESSION_MESSAGE_PREFIX)
+        ) {
+          return block.text;
+        }
+      }
+      return null;
+    };
+
+    const envelopeText = findEnvelopeText();
+    if (envelopeText == null) return null;
+
+    const headerLine = envelopeText.split("\n", 1)[0] ?? "";
+    const role = /\bisUser=false\b/.test(headerLine) ? "assistant" : "user";
+
+    if (typeof message.content === "string") {
+      // Pure-text envelope: nothing user-visible remains.
+      return { role, content: [] };
+    }
+    const remaining = (message.content as unknown[]).filter((part) => {
+      const block = part as Record<string, unknown> | null;
+      return !(
+        block?.type === "text" &&
+        typeof block.text === "string" &&
+        block.text.startsWith(INTER_SESSION_MESSAGE_PREFIX)
+      );
+    });
+    return { role, content: remaining };
+  }
+
+  /**
+   * Pull `MEDIA:<path>` directive lines out of normalized assistant content.
+   * Returns the content with those lines removed plus the extracted paths.
+   */
+  private extractAssistantMediaMarkers(content: unknown): {
+    content: unknown;
+    mediaPaths: string[];
+  } {
+    const mediaPaths: string[] = [];
+    const stripFromText = (text: string): string =>
+      text
+        .replace(ASSISTANT_MEDIA_MARKER_PATTERN, (_m, p: string) => {
+          mediaPaths.push(p.trim());
+          return "";
+        })
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+    if (typeof content === "string") {
+      const stripped = stripFromText(content);
+      return { content: stripped, mediaPaths };
+    }
+    if (!Array.isArray(content)) {
+      return { content, mediaPaths };
+    }
+    const blocks = content.map((part) => {
+      const block = part as Record<string, unknown> | null;
+      if (block?.type === "text" && typeof block.text === "string") {
+        return { ...block, text: stripFromText(block.text) };
+      }
+      return part;
+    });
+    return { content: blocks, mediaPaths };
+  }
+
+  /**
+   * Append transcript-referenced media (MediaPaths fields, MEDIA: markers)
+   * to normalized message content as image/file blocks the frontend can
+   * render.  Image bytes are served by `/api/v1/media/state-file`.
+   */
+  private appendMediaBlocks(
+    content: unknown | null,
+    mediaEntries: Array<{ path: string; mimeType?: string }>,
+  ): unknown | null {
+    if (mediaEntries.length === 0) {
+      // Re-apply the empty check normalizeMessageContent already performed —
+      // marker stripping may have emptied a previously non-empty string.
+      if (typeof content === "string" && content.trim().length === 0) {
+        return null;
+      }
+      return content;
+    }
+
+    const seen = new Set<string>();
+    const mediaBlocks: Array<Record<string, unknown>> = [];
+    for (const entry of mediaEntries) {
+      if (seen.has(entry.path)) continue;
+      seen.add(entry.path);
+      const mimeType = mimeTypeForMediaPath(entry.path, entry.mimeType);
+      if (mimeType.startsWith("image/")) {
+        this.queueMediaCache(entry.path);
+        mediaBlocks.push({
+          type: "image",
+          url: mediaFileUrl(entry.path),
+          mimeType,
+        });
+      } else {
+        mediaBlocks.push({
+          type: "file",
+          metadata: {
+            filename: path.basename(entry.path),
+            mimeType,
+          },
+        });
+      }
+    }
+
+    const mediaPathSet = seen;
+    const isHiddenMediaText = (text: string): boolean => {
+      const trimmed = text.trim();
+      if (trimmed.length === 0) return true;
+      if (trimmed === MEDIA_ONLY_PLACEHOLDER_TEXT) return true;
+      // Legacy format prepended the raw media path as the first text line.
+      return mediaPathSet.has(trimmed);
+    };
+    const stripLeadingMediaPathLine = (text: string): string => {
+      const lines = text.split("\n");
+      while (lines.length > 0 && mediaPathSet.has((lines[0] ?? "").trim())) {
+        lines.shift();
+      }
+      return lines.join("\n").trim();
+    };
+
+    const textBlocks: Array<Record<string, unknown>> = [];
+    if (typeof content === "string") {
+      const cleaned = stripLeadingMediaPathLine(content);
+      if (!isHiddenMediaText(cleaned)) {
+        textBlocks.push({ type: "text", text: cleaned });
+      }
+    } else if (Array.isArray(content)) {
+      for (const part of content) {
+        const block = part as Record<string, unknown> | null;
+        if (block?.type === "text" && typeof block.text === "string") {
+          const cleaned = stripLeadingMediaPathLine(block.text);
+          if (isHiddenMediaText(cleaned)) continue;
+          textBlocks.push({ ...block, text: cleaned });
+          continue;
+        }
+        if (block != null) textBlocks.push(block);
+      }
+    }
+
+    return [...textBlocks, ...mediaBlocks];
   }
 
   private normalizeMessageContent(

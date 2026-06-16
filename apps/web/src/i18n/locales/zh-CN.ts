@@ -847,6 +847,8 @@ const zhCN = {
   "sessions.chat.replyLabel": "回复",
   "sessions.chat.toolActivity": "工具",
   "sessions.chat.toolCompleted": "已完成",
+  "sessions.chat.interactivePanel": "互动面板",
+  "sessions.chat.openPanel": "打开",
   "sessions.chat.thinking": "思考中...",
   "sessions.chat.newSession": "新会话",
   "sessions.pending.title": "正在创建会话",

@@ -47,7 +47,11 @@ export interface ChatInputAreaProps {
   bots: BotItem[];
   selectedBot: BotItem | null;
   onSelectBot: (bot: BotItem) => void;
-  onSend: (text: string, attachments: PendingAttachment[]) => void;
+  onSend: (
+    text: string,
+    attachments: PendingAttachment[],
+    skillSlug: string | null,
+  ) => void;
   onCancel?: () => void;
   sending: boolean;
   waitingReply: boolean;
@@ -457,7 +461,11 @@ export function ChatInputArea({
     setInput("");
     const atts = [...pendingAttachments];
     setPendingAttachments([]);
-    onSend(text, atts);
+    const skillSlug = selectedSkillSlug;
+    // Skill selection is single-shot: applies to this message only, then
+    // resets so the next message isn't silently forced into the same skill.
+    setSelectedSkillSlug(null);
+    onSend(text, atts, skillSlug);
   }
 
   return (
