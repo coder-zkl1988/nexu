@@ -1,4 +1,10 @@
-import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import {
+  getApiV1Devices,
+  postApiV1DevicesByDeviceIdMedia,
+  postApiV1DevicesByDeviceIdTasks,
+} from "../../../../lib/api/sdk.gen";
 import type { CustomComponentProps } from "./registry";
 
 interface XHSEditorProps extends CustomComponentProps {}
@@ -9,6 +15,18 @@ interface XHSCompData {
   images?: string[];
   hashtags?: string[];
   maxTitleLength?: number;
+}
+
+type PublishStatus =
+  | { state: "idle" }
+  | { state: "publishing"; step: string }
+  | { state: "success" }
+  | { state: "error"; message: string };
+
+/** "image/png" → "png" for a stable gallery filename extension. */
+function extForMime(mimeType: string): string {
+  const sub = mimeType.split("/")[1] ?? "png";
+  return sub === "jpeg" ? "jpg" : sub;
 }
 
 export function XHSEditor({ comp, onAction }: XHSEditorProps) {
@@ -25,8 +43,27 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const [images, setImages] = useState<string[]>(initialImages);
   const [hashtags, setHashtags] = useState<string[]>(initialHashtags);
   const [newTag, setNewTag] = useState("");
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [publish, setPublish] = useState<PublishStatus>({ state: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
+
+  // Online devices for publishing. Every listed device is connected, so the
+  // list itself is the "online" set; default to the first one.
+  const { data: devicesData } = useQuery({
+    queryKey: ["devices"],
+    queryFn: async () => {
+      const { data: d } = await getApiV1Devices();
+      return d;
+    },
+    refetchInterval: 10_000,
+  });
+  const devices = devicesData?.devices ?? [];
+  useEffect(() => {
+    if (!deviceId && devices.length > 0) {
+      setDeviceId(devices[0]?.deviceId ?? "");
+    }
+  }, [deviceId, devices]);
 
   // Image upload handler (local FileReader, no server upload)
   const handleImageUpload = (files: FileList | null) => {
@@ -60,19 +97,72 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
     setHashtags((prev) => prev.filter((t) => t !== tag));
   };
 
-  // Confirm action
-  const handleConfirm = () => {
-    onAction?.("xhs_editor_confirm", {
-      title,
-      content,
-      images,
-      hashtags,
-    });
-  };
+  // Publish: push the configured images into the selected device's gallery,
+  // then dispatch a Xiaohongshu publish task to that phone. Deterministic —
+  // the image transfer is not left to the agent, only the in-app navigation is.
+  const handlePublish = async () => {
+    if (!deviceId) {
+      setPublish({ state: "error", message: "请先选择一台在线设备" });
+      return;
+    }
+    try {
+      // 1. Push images (base64 → device gallery) one batch.
+      if (images.length > 0) {
+        setPublish({ state: "publishing", step: "正在推送图片到手机相册…" });
+        const payload = images.map((dataUrl, i) => {
+          const mimeType =
+            dataUrl.match(/^data:([^;]+);base64,/)?.[1] ?? "image/png";
+          const base64 = dataUrl.includes(",")
+            ? dataUrl.slice(dataUrl.indexOf(",") + 1)
+            : dataUrl;
+          return {
+            filename: `xhs-${Date.now()}-${i}.${extForMime(mimeType)}`,
+            mimeType,
+            dataBase64: base64,
+          };
+        });
+        const { data: pushRes } = await postApiV1DevicesByDeviceIdMedia({
+          path: { deviceId },
+          body: { images: payload },
+        });
+        const failed = (pushRes?.results ?? []).filter(
+          (r: { success: boolean }) => !r.success,
+        );
+        if (failed.length > 0) {
+          throw new Error(`图片推送失败 ${failed.length}/${images.length} 张`);
+        }
+      }
 
-  // Cancel action
-  const handleCancel = () => {
-    onAction?.("xhs_editor_cancel", {});
+      // 2. Dispatch the publish task to the phone.
+      setPublish({ state: "publishing", step: "正在发送发布任务到手机…" });
+      const tagLine =
+        hashtags.length > 0
+          ? `\n话题：${hashtags.map((t) => `#${t}`).join(" ")}`
+          : "";
+      const imageLine =
+        images.length > 0
+          ? `\n从相册选择最新的 ${images.length} 张图片（刚推送的）`
+          : "";
+      const task = `打开小红书发布一篇笔记。\n标题：${title}\n正文：${content}${tagLine}${imageLine}\n填写完成后进入发布页，但在最终点击「发布」前停下，让我确认。`;
+      await postApiV1DevicesByDeviceIdTasks({
+        path: { deviceId },
+        body: { task, allowedApps: ["com.xingin.xhs"] },
+      });
+
+      setPublish({ state: "success" });
+      // Surface a chip in the conversation (no base64 — just a signal).
+      onAction?.("xhs_editor_publish", {
+        deviceId,
+        title,
+        hashtags,
+        imageCount: images.length,
+      });
+    } catch (err) {
+      setPublish({
+        state: "error",
+        message: err instanceof Error ? err.message : "发布失败",
+      });
+    }
   };
 
   return (
@@ -115,32 +205,6 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
             小红书内容编辑
           </span>
         </div>
-        <button
-          type="button"
-          onClick={handleCancel}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 4,
-            color: "#999",
-          }}
-        >
-          <svg
-            aria-hidden="true"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-          >
-            <path
-              d="M4 4L12 12M12 4L4 12"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
       </div>
 
       {/* Image upload grid */}
@@ -388,47 +452,96 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
         </div>
       </div>
 
-      {/* Footer buttons */}
+      {/* Footer: device selector + publish */}
       <div
         style={{
           display: "flex",
-          justifyContent: "flex-end",
+          alignItems: "center",
+          justifyContent: "space-between",
           gap: 8,
           padding: "12px 16px 16px",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+          <span style={{ fontSize: 12, color: "#666", whiteSpace: "nowrap" }}>
+            发布到
+          </span>
+          <select
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "6px 8px",
+              border: "1px solid #e5e5e5",
+              borderRadius: 6,
+              fontSize: 12,
+              color: "#1a1a1a",
+              background: "#fff",
+              outline: "none",
+            }}
+          >
+            {devices.length === 0 ? (
+              <option value="">无在线设备</option>
+            ) : (
+              devices.map((d: { deviceId: string; name?: string }) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.name || d.deviceId}
+                </option>
+              ))
+            )}
+          </select>
+        </div>
         <button
           type="button"
-          onClick={handleCancel}
-          style={{
-            padding: "6px 16px",
-            borderRadius: 6,
-            border: "1px solid #d9d9d9",
-            background: "#fff",
-            cursor: "pointer",
-            fontSize: 13,
-            color: "#666",
+          onClick={() => {
+            void handlePublish();
           }}
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          onClick={handleConfirm}
+          disabled={
+            publish.state === "publishing" || devices.length === 0 || !deviceId
+          }
           style={{
             padding: "6px 16px",
             borderRadius: 6,
             border: "none",
-            background: "#bb0028",
-            cursor: "pointer",
+            background:
+              publish.state === "publishing" || devices.length === 0
+                ? "#e3a3b0"
+                : "#bb0028",
+            cursor:
+              publish.state === "publishing" || devices.length === 0
+                ? "not-allowed"
+                : "pointer",
             fontSize: 13,
             color: "#fff",
             fontWeight: 500,
+            whiteSpace: "nowrap",
           }}
         >
-          确认更新
+          {publish.state === "publishing" ? "发布中…" : "发布"}
         </button>
       </div>
+
+      {/* Status line */}
+      {publish.state !== "idle" && (
+        <div
+          style={{
+            padding: "0 16px 14px",
+            fontSize: 12,
+            color:
+              publish.state === "error"
+                ? "#bb0028"
+                : publish.state === "success"
+                  ? "#00a365"
+                  : "#666",
+          }}
+        >
+          {publish.state === "publishing" && publish.step}
+          {publish.state === "success" &&
+            "✅ 已发送到手机，请在手机上确认最终发布"}
+          {publish.state === "error" && `⚠️ ${publish.message}`}
+        </div>
+      )}
     </div>
   );
 }

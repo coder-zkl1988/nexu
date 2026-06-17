@@ -5043,6 +5043,66 @@ export type PostApiV1DevicesByDeviceIdTasksResponses = {
 
 export type PostApiV1DevicesByDeviceIdTasksResponse = PostApiV1DevicesByDeviceIdTasksResponses[keyof PostApiV1DevicesByDeviceIdTasksResponses];
 
+export type PostApiV1DevicesByDeviceIdMediaData = {
+    body?: {
+        images: Array<{
+            filename: string;
+            mimeType: string;
+            dataBase64: string;
+        }>;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/media';
+};
+
+export type PostApiV1DevicesByDeviceIdMediaErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Internal error
+     */
+    500: {
+        message: string;
+    };
+    /**
+     * Device control plugin is not running
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * Media push timed out
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdMediaError = PostApiV1DevicesByDeviceIdMediaErrors[keyof PostApiV1DevicesByDeviceIdMediaErrors];
+
+export type PostApiV1DevicesByDeviceIdMediaResponses = {
+    /**
+     * Per-image push results
+     */
+    200: {
+        results: Array<{
+            mediaId: string;
+            success: boolean;
+            savedUri?: string;
+            error?: string;
+        }>;
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdMediaResponse = PostApiV1DevicesByDeviceIdMediaResponses[keyof PostApiV1DevicesByDeviceIdMediaResponses];
+
 export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdData = {
     body?: never;
     path: {

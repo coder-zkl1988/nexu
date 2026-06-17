@@ -189,6 +189,9 @@ interface ExtractedMessage {
   a2uiMessages: A2UIMessage[] | null;
   /** Sidebar-bound A2UI rendered as a jump button instead of inline. */
   sidebarA2UI: SidebarA2UIPayload | null;
+  /** Machine round-trip A2UI action (e.g. XHSEditor publish) — shown as a chip,
+   * never as raw JSON/base64. */
+  a2uiAction: { actionName: string } | null;
   images: ImageBlockInfo[];
   fileCards: FileCardInfo[];
 }
@@ -403,11 +406,16 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   const text = extractedReply.text;
   replyContextText ??= extractedReply.replyContextText;
 
+  // Detect machine A2UI action round-trips (e.g. XHSEditor publish). These are
+  // sent as a JSON text message carrying the full payload (including base64
+  // images); render a friendly chip instead of dumping raw JSON/base64.
+  const a2uiAction = parseA2UIAction(text);
+
   // Parse <file> XML blocks from text so they render as file cards instead of raw markup
   const parsedFiles = parseFileBlocksFromText(text);
 
   return {
-    text: parsedFiles.cleanText,
+    text: a2uiAction ? "" : parsedFiles.cleanText,
     replyContextText,
     senderName,
     hasToolCall,
@@ -415,9 +423,45 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     hasA2UI,
     a2uiMessages,
     sidebarA2UI: null,
-    images,
-    fileCards: [...fileCards, ...parsedFiles.fileCards],
+    a2uiAction,
+    images: a2uiAction ? [] : images,
+    fileCards: a2uiAction ? [] : [...fileCards, ...parsedFiles.fileCards],
   };
+}
+
+/**
+ * Detect an `a2ui_action` machine message (the JSON round-trip an A2UI button
+ * click posts back to the agent). Returns the action name, or null.
+ */
+function parseA2UIAction(text: string): { actionName: string } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.includes("a2ui_action")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      type?: string;
+      actionName?: string;
+    };
+    if (parsed?.type === "a2ui_action") {
+      return { actionName: String(parsed.actionName ?? "") };
+    }
+  } catch {
+    // not JSON — fall through
+  }
+  return null;
+}
+
+/** Friendly label for a known A2UI action chip. */
+function a2uiActionLabel(actionName: string): string {
+  switch (actionName) {
+    case "xhs_editor_publish":
+      return "已提交小红书发布";
+    case "skill_confirmation":
+      return "已确认操作";
+    default:
+      return "已提交操作";
+  }
 }
 
 /** Millisecond timestamp -> HH:mm */
@@ -836,6 +880,7 @@ function ChatBubble({
     hasA2UI,
     a2uiMessages,
     sidebarA2UI,
+    a2uiAction,
     images,
     fileCards,
   } = resolvedExtracted;
@@ -872,6 +917,16 @@ function ChatBubble({
             {fileCards.map((fc, i) => (
               <MessageFileCard key={`fc-${fc.name}-${i}`} {...fc} />
             ))}
+          </div>
+        )}
+        {a2uiAction && (
+          <div className="inline-flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--color-success)_12%,transparent)] bg-[rgba(0,163,101,0.06)] px-3 py-1.5 text-[12px]">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-success-muted)] text-[var(--color-success)]">
+              <CheckCircle2 className="size-[13px]" />
+            </span>
+            <span className="font-medium text-text-primary">
+              {a2uiActionLabel(a2uiAction.actionName)}
+            </span>
           </div>
         )}
         {hasText && (
@@ -1413,6 +1468,7 @@ export function SessionsPage() {
       if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
       if (extracted.hasToolCall) return true;
       if (extracted.sidebarA2UI) return true;
+      if (extracted.a2uiAction) return true;
       if (extracted.images.length > 0) return true;
       if (extracted.fileCards.length > 0) return true;
       return false;

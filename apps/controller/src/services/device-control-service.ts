@@ -3,6 +3,8 @@ import type {
   DeviceExecuteTaskBody,
   DeviceInfo,
   DeviceListResponse,
+  DevicePushMediaBody,
+  DevicePushMediaResponse,
   TaskResult,
 } from "@nexu/shared";
 import { logger } from "../lib/logger.js";
@@ -165,5 +167,41 @@ export class DeviceControlService {
       "device.cancel_task",
       { deviceId, taskId: body.taskId },
     );
+  }
+
+  /**
+   * Push images into the device gallery one at a time. Each image is sent over
+   * the device WS and confirmed independently so one failure doesn't abort the
+   * batch; returns a per-image result for the caller to act on.
+   */
+  async pushMedia(
+    deviceId: string,
+    body: DevicePushMediaBody,
+  ): Promise<DevicePushMediaResponse> {
+    const results: DevicePushMediaResponse["results"] = [];
+    for (const image of body.images) {
+      try {
+        const result = await this.rpc<
+          DevicePushMediaResponse["results"][number]
+        >(
+          "device.push_media",
+          {
+            deviceId,
+            filename: image.filename,
+            mimeType: image.mimeType,
+            dataBase64: image.dataBase64,
+          },
+          35_000,
+        );
+        results.push(result);
+      } catch (err) {
+        results.push({
+          mediaId: "",
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { results };
   }
 }

@@ -59,6 +59,7 @@ import { SkillhubService } from "../services/skillhub-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
+import { DeviceNameStore } from "../store/device-name-store.js";
 import { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import { NexuConfigStore } from "../store/nexu-config-store.js";
 import { type ControllerEnv, env } from "./env.js";
@@ -111,7 +112,7 @@ export interface ControllerContainer {
   deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
-  deviceNameStore: Map<string, string>;
+  deviceNameStore: DeviceNameStore;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   scheduleService: ScheduleService;
@@ -523,7 +524,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,
-    deviceNameStore: new Map(),
+    deviceNameStore: new DeviceNameStore(env.deviceNamesPath),
     wsClient,
     gatewayService,
     configStore,
