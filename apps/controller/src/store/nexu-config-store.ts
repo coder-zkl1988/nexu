@@ -642,7 +642,7 @@ export class NexuConfigStore {
       env.nexuConfigPath,
       nexuConfigSchema,
       () => ({
-        $schema: "https://nexu.io/config.json",
+        $schema: "https://tabby.picaso.studio/config.json",
         schemaVersion: CANONICAL_MODELS_PROVIDERS_CUTOVER_SCHEMA_VERSION,
         app: {},
         bots: [],

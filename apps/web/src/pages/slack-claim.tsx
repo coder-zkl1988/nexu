@@ -445,7 +445,7 @@ export function SlackClaimPage() {
             style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
           >
             <a
-              href="https://nexu.io/terms"
+              href="https://tabby.picaso.studio/terms"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-text-secondary transition-colors"
@@ -454,7 +454,7 @@ export function SlackClaimPage() {
             </a>
             <span className="text-border">&middot;</span>
             <a
-              href="https://nexu.io/privacy"
+              href="https://tabby.picaso.studio/privacy"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-text-secondary transition-colors"
@@ -545,7 +545,7 @@ export function SlackClaimPage() {
             style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
           >
             <a
-              href="https://nexu.io/terms"
+              href="https://tabby.picaso.studio/terms"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-text-secondary transition-colors"
@@ -554,7 +554,7 @@ export function SlackClaimPage() {
             </a>
             <span className="text-border">&middot;</span>
             <a
-              href="https://nexu.io/privacy"
+              href="https://tabby.picaso.studio/privacy"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-text-secondary transition-colors"

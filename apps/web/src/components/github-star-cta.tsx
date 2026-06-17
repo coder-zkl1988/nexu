@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { ArrowUpRight, Star } from "lucide-react";
 
-const GITHUB_URL = "https://github.com/nexu-io/nexu";
+const GITHUB_URL = "https://github.com/coder-zkl1988/tabby";
 
 type GitHubStarCtaProps = {
   label: string;

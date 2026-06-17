@@ -994,7 +994,7 @@ export function SkillsPage() {
           <p className="text-[12px] text-text-tertiary mb-4 font-medium">
             {t("skills.clawhubDisclaimer")}{" "}
             <a
-              href="https://github.com/nexu-io/nexu/issues"
+              href="https://github.com/coder-zkl1988/tabby/issues"
               target="_blank"
               rel="noopener noreferrer"
               className="text-[var(--color-accent)] hover:underline"

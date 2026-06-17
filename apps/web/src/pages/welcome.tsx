@@ -414,7 +414,7 @@ export function WelcomePage() {
                   <FadeIn delay={380}>
                     <div className="mt-5 flex items-center justify-center gap-4 border-t border-black/8 pt-5 text-[12px] text-text-muted">
                       <a
-                        href="https://nexu.io/terms"
+                        href="https://tabby.picaso.studio/terms"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="cursor-pointer transition-colors hover:text-text-secondary"
@@ -423,7 +423,7 @@ export function WelcomePage() {
                       </a>
                       <span className="select-none text-border-hover">·</span>
                       <a
-                        href="https://nexu.io/privacy"
+                        href="https://tabby.picaso.studio/privacy"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="cursor-pointer transition-colors hover:text-text-secondary"

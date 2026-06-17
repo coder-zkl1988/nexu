@@ -1217,18 +1217,21 @@ function _GeneralSettings() {
           </div>
           <div className="space-y-1">
             {[
-              { label: t("settings.about.docs"), url: "https://docs.nexu.io" },
+              {
+                label: t("settings.about.docs"),
+                url: "https://tabby.picaso.studio/docs",
+              },
               {
                 label: t("settings.about.github"),
-                url: "https://github.com/nexu-io/nexu",
+                url: "https://github.com/coder-zkl1988/tabby",
               },
               {
                 label: t("settings.about.changelog"),
-                url: "https://github.com/nexu-io/nexu/releases",
+                url: "https://github.com/coder-zkl1988/tabby/releases",
               },
               {
                 label: t("settings.about.feedback"),
-                url: "https://github.com/nexu-io/nexu/issues/new",
+                url: "https://github.com/coder-zkl1988/tabby/issues/new",
               },
             ].map((link) => (
               <button

@@ -463,9 +463,6 @@ function compilePlugins(
         hooks: {
           allowConversationAccess: true,
         },
-        config: {
-          contactUrl: "https://nexu.app/contact",
-        },
       },
       "nexu-a2ui": {
         enabled: true,

@@ -226,14 +226,14 @@ function EmptyState({ onGoConfig }: { onGoConfig: () => void }) {
 }
 
 const SETUP_COMPLETE_KEY = "nexu_setup_complete";
-const GITHUB_URL = "https://github.com/nexu-io/nexu";
+const GITHUB_URL = "https://github.com/coder-zkl1988/tabby";
 function resolveCloudUsageUrl(cloudUrl?: string | null): string {
-  if (!cloudUrl) return "https://nexu.io/workspace/usage";
+  if (!cloudUrl) return "https://tabby.picaso.studio/workspace/usage";
   try {
     const origin = new URL(cloudUrl).origin;
     return `${origin}/workspace/usage`;
   } catch {
-    return "https://nexu.io/workspace/usage";
+    return "https://tabby.picaso.studio/workspace/usage";
   }
 }
 
@@ -1428,7 +1428,7 @@ function WorkspaceLayoutContent() {
                   <div className="rounded-xl border bg-surface-1 border-border shadow-xl shadow-black/10 overflow-hidden">
                     <div className="p-1.5">
                       <a
-                        href="https://docs.nexu.io/"
+                        href="https://tabby.picaso.studio/docs/"
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() =>
@@ -1452,7 +1452,7 @@ function WorkspaceLayoutContent() {
                     </div>
                     <div className="border-t border-border p-1.5">
                       <a
-                        href="https://github.com/nexu-io/nexu/releases"
+                        href="https://github.com/coder-zkl1988/tabby/releases"
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() =>
