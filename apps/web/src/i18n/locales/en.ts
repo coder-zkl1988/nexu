@@ -3,11 +3,10 @@ const en = {
   "brand.title.line1": "OpenClaw,",
   "brand.title.line2": "ready to use.",
   "brand.body":
-    "Tabby turns OpenClaw into a truly ready-to-use product experience, bringing Feishu tools and top-tier model access into one unified workspace.",
+    "Tabby turns OpenClaw into a truly ready-to-use product experience, bringing Feishu tools and workflows into one unified workspace.",
   "brand.bullet.openclaw":
     "Turns OpenClaw into a truly out-of-the-box experience",
   "brand.bullet.feishu": "Deep support for Feishu tools and workflows",
-  "brand.bullet.models": "Connect top-tier models",
   "brand.github": "Star us on GitHub",
 
   // ── Welcome ──
@@ -15,15 +14,14 @@ const en = {
   "welcome.mobileLabel": "Client",
   "welcome.title": "Connect Tabby in one step",
   "welcome.subtitle":
-    "Sign in with your Tabby account to unlock hosted premium models in your local workspace, then keep earning extra usage through rewards.",
+    "Sign in with your Tabby account to use hosted models directly in your local workspace, no manual setup required.",
   "welcome.option.login.title": "Use your Tabby account",
   "welcome.option.login.badge": "Recommended",
   "welcome.option.login.description":
-    "Complete browser-based sign in to unlock Tabby hosted premium models, rewards, and the full workspace experience without manual model setup.",
+    "Complete browser-based sign in to unlock Tabby hosted models and the full workspace experience without manual model setup.",
   "welcome.option.login.meta.1": "Google / GitHub / Email",
   "welcome.option.login.meta.2": "Browser OAuth",
   "welcome.option.login.meta.3": "Best for most users",
-  "welcome.option.login.highlight.unlimited": "Unlimited usage",
   "welcome.option.byok.title": "Use your own models",
   "welcome.option.byok.badge": "BYOK",
   "welcome.option.byok.description":
@@ -32,8 +30,6 @@ const en = {
   "welcome.option.byok.meta.2": "Local configuration",
   "welcome.option.byok.meta.3": "Best for advanced users",
   "welcome.byokLink": "Prefer BYOK? Open provider settings instead",
-  "welcome.rewardsHint":
-    "Rewards live inside the workspace after sign-in: 11 task slots across daily check-ins, open source, and social sharing.",
   "welcome.back": "Back to options",
   "welcome.byok.title": "Connect your models",
   "welcome.byok.subtitle":

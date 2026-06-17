@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   Eye,
   EyeOff,
-  Infinity as InfinityIcon,
   Key,
   Zap,
 } from "lucide-react";
@@ -141,11 +140,6 @@ export function WelcomePage() {
     title: t("welcome.option.login.title"),
     badge: t("welcome.option.login.badge"),
     description: t("welcome.option.login.description"),
-    highlights: [
-      "Claude Sonnet 4.5",
-      "GPT-4o",
-      t("welcome.option.login.highlight.unlimited"),
-    ],
     meta: [
       t("welcome.option.login.meta.1"),
       t("welcome.option.login.meta.2"),
@@ -369,21 +363,6 @@ export function WelcomePage() {
                             />
                           </div>
 
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {loginOption.highlights.map((tag) => (
-                              <span
-                                key={tag}
-                                className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] text-white/78"
-                              >
-                                {tag ===
-                                  t(
-                                    "welcome.option.login.highlight.unlimited",
-                                  ) && <InfinityIcon size={11} />}
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-
                           <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/44">
                             {loginOption.meta.map((item) => (
                               <span key={item}>{item}</span>
@@ -402,12 +381,6 @@ export function WelcomePage() {
                         <span>{t("welcome.byokLink")}</span>
                         <ArrowRight size={15} className="text-text-muted" />
                       </button>
-                    </FadeIn>
-
-                    <FadeIn delay={320}>
-                      <div className="rounded-[22px] border border-black/8 bg-[#f5f1e7] px-4 py-3 text-[12px] leading-[1.75] text-text-secondary">
-                        {t("welcome.rewardsHint")}
-                      </div>
                     </FadeIn>
                   </div>
 

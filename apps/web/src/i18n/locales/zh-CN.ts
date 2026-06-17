@@ -3,10 +3,9 @@ const zhCN = {
   "brand.title.line1": "OpenClaw，",
   "brand.title.line2": "开箱即用",
   "brand.body":
-    "Tabby 让 OpenClaw 变成一个安装即可使用的完整产品。飞书文档、日历、审批等工具能力开箱可用，同时接入 Claude、GPT 等顶级模型，所有工作都在一个工作台里完成。",
+    "Tabby 让 OpenClaw 变成一个安装即可使用的完整产品。飞书文档、日历、审批等工具能力开箱可用，所有工作都在一个工作台里完成。",
   "brand.bullet.openclaw": "安装即用，无需额外配置 OpenClaw",
   "brand.bullet.feishu": "飞书文档、日历、审批等工具能力开箱可用",
-  "brand.bullet.models": "接入 Claude、GPT 等顶级模型",
   "brand.github": "在 GitHub 上 Star Tabby",
 
   // ── Welcome ──
@@ -14,15 +13,14 @@ const zhCN = {
   "welcome.mobileLabel": "客户端",
   "welcome.title": "一步连接 Tabby",
   "welcome.subtitle":
-    "使用 Tabby 账号登录后，可以在本地工作区里直接使用托管高级模型，并通过奖励中心继续获得额外用量。",
+    "使用 Tabby 账号登录后，可以在本地工作区里直接使用托管模型，无需手动配置。",
   "welcome.option.login.title": "使用 Tabby 账号",
   "welcome.option.login.badge": "推荐",
   "welcome.option.login.description":
-    "通过浏览器授权登录后，直接启用 Tabby 托管高级模型、奖励中心和完整工作区体验，无需手动配置模型。",
+    "通过浏览器授权登录后，直接启用 Tabby 托管模型和完整工作区体验，无需手动配置模型。",
   "welcome.option.login.meta.1": "Google / GitHub / 邮箱",
   "welcome.option.login.meta.2": "Browser OAuth",
   "welcome.option.login.meta.3": "适合大多数用户",
-  "welcome.option.login.highlight.unlimited": "无限量使用",
   "welcome.option.byok.title": "使用你自己的模型",
   "welcome.option.byok.badge": "BYOK",
   "welcome.option.byok.description":
@@ -31,8 +29,6 @@ const zhCN = {
   "welcome.option.byok.meta.2": "本地配置",
   "welcome.option.byok.meta.3": "适合高级用户",
   "welcome.byokLink": "想用 BYOK？直接打开服务商设置",
-  "welcome.rewardsHint":
-    "奖励中心会在登录后出现在工作区里：共 11 个任务位，覆盖每日打卡、开源支持和社交分享。",
   "welcome.back": "返回选择",
   "welcome.byok.title": "连接你的模型",
   "welcome.byok.subtitle":

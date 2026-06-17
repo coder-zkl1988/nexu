@@ -1,10 +1,5 @@
 import { track } from "@/lib/tracking";
-import {
-  ArrowRight,
-  Infinity as InfinityIcon,
-  Shield,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, Shield, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { useGitHubStars } from "../hooks/use-github-stars";
 import { useLocale } from "../hooks/use-locale";
@@ -113,7 +108,6 @@ export function BrandRail({
   const bullets = [
     { icon: Sparkles, text: t("brand.bullet.openclaw") },
     { icon: Shield, text: t("brand.bullet.feishu") },
-    { icon: InfinityIcon, text: t("brand.bullet.models") },
   ];
 
   return (
