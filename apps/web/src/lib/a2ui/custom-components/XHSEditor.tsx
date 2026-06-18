@@ -1,11 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import {
-  getApiV1Devices,
-  postApiV1DevicesByDeviceIdMedia,
-  postApiV1DevicesByDeviceIdTasks,
-} from "../../../../lib/api/sdk.gen";
+import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
 import type { CustomComponentProps } from "./registry";
+import { setRowStatus, updatePost } from "./xhs-batch-store";
+import { publishXhsPost } from "./xhs-publish";
 
 interface XHSEditorProps extends CustomComponentProps {}
 
@@ -15,6 +13,9 @@ interface XHSCompData {
   images?: string[];
   hashtags?: string[];
   maxTitleLength?: number;
+  /** Set when opened from the batch table → edits/status mirror to the store. */
+  batchId?: string;
+  postId?: string;
 }
 
 type PublishStatus =
@@ -23,19 +24,16 @@ type PublishStatus =
   | { state: "success" }
   | { state: "error"; message: string };
 
-/** "image/png" → "png" for a stable gallery filename extension. */
-function extForMime(mimeType: string): string {
-  const sub = mimeType.split("/")[1] ?? "png";
-  return sub === "jpeg" ? "jpg" : sub;
-}
-
-export function XHSEditor({ comp, onAction }: XHSEditorProps) {
+export function XHSEditor({ comp }: XHSEditorProps) {
   const data = comp as unknown as XHSCompData;
   const initialTitle = data.title ?? "";
   const initialContent = data.content ?? "";
   const initialImages: string[] = data.images ?? [];
   const initialHashtags: string[] = data.hashtags ?? [];
   const maxTitleLength: number = data.maxTitleLength ?? 20;
+  const batchId = data.batchId;
+  const postId = data.postId;
+  const bound = Boolean(batchId && postId);
 
   // Local state
   const [title, setTitle] = useState(initialTitle);
@@ -47,6 +45,21 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const [publish, setPublish] = useState<PublishStatus>({ state: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
+
+  // Batch binding: mirror every local edit back to the shared store so the
+  // inline table row reflects edits in real time.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mirror on any field change
+  useEffect(() => {
+    if (bound && batchId && postId) {
+      updatePost(batchId, postId, {
+        title,
+        content,
+        images,
+        hashtags,
+        deviceId,
+      });
+    }
+  }, [bound, batchId, postId, title, content, images, hashtags, deviceId]);
 
   // Online devices for publishing. Every listed device is connected, so the
   // list itself is the "online" set; default to the first one.
@@ -97,71 +110,34 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
     setHashtags((prev) => prev.filter((t) => t !== tag));
   };
 
-  // Publish: push the configured images into the selected device's gallery,
-  // then dispatch a Xiaohongshu publish task to that phone. Deterministic —
-  // the image transfer is not left to the agent, only the in-app navigation is.
+  // Publish via the shared helper (push images + dispatch task). Fully
+  // self-contained — no onAction round-trip (the agent would re-execute and
+  // collide with the task we just dispatched). When bound to a batch, mirror
+  // the phase into the store so the table row's status syncs.
   const handlePublish = async () => {
     if (!deviceId) {
       setPublish({ state: "error", message: "请先选择一台在线设备" });
       return;
     }
+    const post = { title, content, images, hashtags };
     try {
-      // 1. Push images (base64 → device gallery) one batch.
-      if (images.length > 0) {
-        setPublish({ state: "publishing", step: "正在推送图片到手机相册…" });
-        const payload = images.map((dataUrl, i) => {
-          const mimeType =
-            dataUrl.match(/^data:([^;]+);base64,/)?.[1] ?? "image/png";
-          const base64 = dataUrl.includes(",")
-            ? dataUrl.slice(dataUrl.indexOf(",") + 1)
-            : dataUrl;
-          return {
-            filename: `xhs-${Date.now()}-${i}.${extForMime(mimeType)}`,
-            mimeType,
-            dataBase64: base64,
-          };
+      await publishXhsPost(deviceId, post, (phase) => {
+        if (bound && batchId && postId) setRowStatus(batchId, postId, phase);
+        setPublish({
+          state: "publishing",
+          step:
+            phase === "pushing"
+              ? "正在推送图片到手机相册…"
+              : "正在发送发布任务到手机…",
         });
-        const { data: pushRes } = await postApiV1DevicesByDeviceIdMedia({
-          path: { deviceId },
-          body: { images: payload },
-        });
-        const failed = (pushRes?.results ?? []).filter(
-          (r: { success: boolean }) => !r.success,
-        );
-        if (failed.length > 0) {
-          throw new Error(`图片推送失败 ${failed.length}/${images.length} 张`);
-        }
-      }
-
-      // 2. Dispatch the publish task to the phone.
-      setPublish({ state: "publishing", step: "正在发送发布任务到手机…" });
-      const tagLine =
-        hashtags.length > 0
-          ? `\n话题：${hashtags.map((t) => `#${t}`).join(" ")}`
-          : "";
-      const imageLine =
-        images.length > 0
-          ? `\n从相册选择最新的 ${images.length} 张图片（刚推送的）`
-          : "";
-      const task = `打开小红书发布一篇笔记。\n标题：${title}\n正文：${content}${tagLine}${imageLine}\n填写完成后进入发布页，但在最终点击「发布」前停下，让我确认。`;
-      await postApiV1DevicesByDeviceIdTasks({
-        path: { deviceId },
-        body: { task, allowedApps: ["com.xingin.xhs"] },
       });
-
+      if (bound && batchId && postId) setRowStatus(batchId, postId, "success");
       setPublish({ state: "success" });
-      // Surface a chip in the conversation (no base64 — just a signal).
-      onAction?.("xhs_editor_publish", {
-        deviceId,
-        title,
-        hashtags,
-        imageCount: images.length,
-      });
     } catch (err) {
-      setPublish({
-        state: "error",
-        message: err instanceof Error ? err.message : "发布失败",
-      });
+      const message = err instanceof Error ? err.message : "发布失败";
+      if (bound && batchId && postId)
+        setRowStatus(batchId, postId, "error", message);
+      setPublish({ state: "error", message });
     }
   };
 

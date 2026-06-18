@@ -170,13 +170,13 @@ const en = {
   "layout.sidebar.balanceUnit": "credits",
   "layout.sidebar.balancePlaceholder": "Balance syncing…",
   "layout.sidebar.rewardsCta": "Open",
-  "layout.sidebar.balancePopup.total": "Total credits",
-  "layout.sidebar.balancePopup.recharged": "Plan credits",
+  "layout.sidebar.balancePopup.total": "Total balance",
+  "layout.sidebar.balancePopup.recharged": "Plan balance",
   "layout.sidebar.balancePopup.rechargedTooltip":
-    "Current credits remaining from your subscription plan.",
-  "layout.sidebar.balancePopup.earned": "Gifted credits",
+    "Current balance from your top-ups / subscription plan.",
+  "layout.sidebar.balancePopup.earned": "Gifted balance",
   "layout.sidebar.balancePopup.earnedTooltip":
-    "Current credits remaining from signup rewards and reward activities.",
+    "Current balance from signup rewards and reward activities.",
   "layout.sidebar.balancePopup.consumed": "Consumed",
   "layout.sidebar.balancePopup.viewDetail": "View details",
   "layout.mobile.settings": "Settings",
@@ -623,6 +623,10 @@ const en = {
   "models.byok.none": "None",
   "models.byok.refreshModels": "Refresh",
   "models.byok.fetchingModels": "Fetching models...",
+  "models.byok.contextWindowPlaceholder": "auto",
+  "models.byok.contextWindowLabel": "Context",
+  "models.byok.contextWindowHint":
+    "Context window in tokens. Auto-detected from the provider when available; set manually to enable auto-compaction for providers that don't report it.",
   "models.byok.refreshSuccess": "Model list refreshed: {{count}} models",
   "models.byok.refreshFailed":
     "Failed to refresh model list. Please try again.",

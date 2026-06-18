@@ -44,14 +44,25 @@ export const validateProviderInstanceBodySchema =
     instanceKey: z.string().min(1),
   });
 
+// Per-model capabilities discovered from a provider's `/models` endpoint.
+// `contextWindow` / `maxTokens` are only present when the provider reports
+// them (e.g. OpenRouter returns `context_length`); omitted otherwise.
+export const verifiedModelDetailSchema = z.object({
+  id: z.string(),
+  contextWindow: z.number().optional(),
+  maxTokens: z.number().optional(),
+});
+
 export const refreshModelsResponseSchema = z.object({
   models: z.array(z.string()),
+  modelDetails: z.array(verifiedModelDetailSchema).optional(),
   error: z.string().optional(),
 });
 
 export const verifyProviderResponseSchema = z.object({
   valid: z.boolean(),
   models: z.array(z.string()).optional(),
+  modelDetails: z.array(verifiedModelDetailSchema).optional(),
   error: z.string().optional(),
 });
 

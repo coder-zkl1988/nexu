@@ -73,6 +73,16 @@ interface SidebarSession {
   sessionKey: string;
 }
 
+// Cloud balance amounts arrive as integer US cents; show them as exact USD.
+export function formatUsdCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+// The balance popup currently shows only remaining balance + consumed. The
+// gifted/plan breakdown rows are kept (hidden) for when a gifted-credits
+// system is wired up; flip this to re-enable them.
+const SHOW_BALANCE_BREAKDOWN = false;
+
 export function getSidebarCreditBreakdown(input: {
   progress: {
     earnedCredits: number;
@@ -688,14 +698,14 @@ function WorkspaceLayoutContent() {
   const canOpenBalancePopup =
     cloudConnected || rewardsStatus.cloudBalance !== null;
   const rewardBalanceValue = rewardsStatus.cloudBalance
-    ? `${rewardsStatus.cloudBalance.totalBalance} ${t("layout.sidebar.balanceUnit")}`
+    ? formatUsdCents(rewardsStatus.cloudBalance.totalBalance)
     : cloudConnected
       ? rewardsBalancePending
         ? t("layout.sidebar.balancePlaceholder")
-        : `0 ${t("layout.sidebar.balanceUnit")}`
+        : formatUsdCents(0)
       : t("layout.sidebar.balancePlaceholder");
   const rewardBalancePopupValue = rewardsStatus.cloudBalance
-    ? String(rewardsStatus.cloudBalance.totalBalance)
+    ? formatUsdCents(rewardsStatus.cloudBalance.totalBalance)
     : rewardBalanceValue;
   const sidebarCreditBreakdown = getSidebarCreditBreakdown({
     progress: rewardsStatus.progress,
@@ -1322,48 +1332,67 @@ function WorkspaceLayoutContent() {
                             </span>
                           </div>
                           <div className="space-y-2 border-t border-border/60 pt-2.5">
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                                {t("layout.sidebar.balancePopup.earned")}
-                                <span className="group relative inline-flex cursor-default items-center">
-                                  <Info
-                                    size={10}
-                                    className="text-text-muted/60"
-                                  />
-                                  <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                                  >
-                                    {t(
-                                      "layout.sidebar.balancePopup.earnedTooltip",
+                            {SHOW_BALANCE_BREAKDOWN && (
+                              <>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1 text-[11px] text-text-muted">
+                                    {t("layout.sidebar.balancePopup.earned")}
+                                    <span className="group relative inline-flex cursor-default items-center">
+                                      <Info
+                                        size={10}
+                                        className="text-text-muted/60"
+                                      />
+                                      <span
+                                        role="tooltip"
+                                        className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+                                      >
+                                        {t(
+                                          "layout.sidebar.balancePopup.earnedTooltip",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </span>
+                                  <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                    {formatUsdCents(
+                                      sidebarCreditBreakdown.giftedBalance,
                                     )}
                                   </span>
-                                </span>
-                              </span>
-                              <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                {sidebarCreditBreakdown.giftedBalance}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                                {t("layout.sidebar.balancePopup.recharged")}
-                                <span className="group relative inline-flex cursor-default items-center">
-                                  <Info
-                                    size={10}
-                                    className="text-text-muted/60"
-                                  />
-                                  <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                                  >
-                                    {t(
-                                      "layout.sidebar.balancePopup.rechargedTooltip",
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1 text-[11px] text-text-muted">
+                                    {t("layout.sidebar.balancePopup.recharged")}
+                                    <span className="group relative inline-flex cursor-default items-center">
+                                      <Info
+                                        size={10}
+                                        className="text-text-muted/60"
+                                      />
+                                      <span
+                                        role="tooltip"
+                                        className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+                                      >
+                                        {t(
+                                          "layout.sidebar.balancePopup.rechargedTooltip",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </span>
+                                  <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                    {formatUsdCents(
+                                      sidebarCreditBreakdown.planBalance,
                                     )}
                                   </span>
-                                </span>
+                                </div>
+                              </>
+                            )}
+                            <div className="flex items-center justify-between border-t border-border/60 pt-2">
+                              <span className="text-[11px] text-text-muted">
+                                {t("layout.sidebar.balancePopup.consumed")}
                               </span>
                               <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                {sidebarCreditBreakdown.planBalance}
+                                {formatUsdCents(
+                                  rewardsStatus.cloudBalance?.totalConsumed ??
+                                    0,
+                                )}
                               </span>
                             </div>
                           </div>

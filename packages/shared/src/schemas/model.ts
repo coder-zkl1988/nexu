@@ -6,6 +6,9 @@ export const modelSchema = z.object({
   provider: z.string(),
   isDefault: z.boolean().optional(),
   description: z.string().optional(),
+  // Effective context window (tokens). Present when known from the provider
+  // catalog or discovered from the provider's `/models` endpoint.
+  contextWindow: z.number().optional(),
 });
 
 export const modelListResponseSchema = z.object({

@@ -410,6 +410,49 @@ const COMPONENT_SCHEMAS = [
       },
     },
   },
+  {
+    type: "XHSBatchTable",
+    required: ["id", "type", "posts"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XHSBatchTable" },
+      batchId: {
+        type: "string",
+        description:
+          "Stable id for this batch session; reuse the same value to keep edits/status across re-renders. Defaults to 'default'.",
+      },
+      posts: {
+        type: "array",
+        description:
+          "The posts to publish in this batch. Each row opens the XHSEditor in the side panel when clicked. Leave deviceId empty to auto-assign phones round-robin.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Stable post id" },
+            title: { type: "string", description: "Post title" },
+            content: { type: "string", description: "Post body text" },
+            images: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Image URLs, data URIs, or local media file paths for this post",
+            },
+            hashtags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Hashtag strings (without # prefix)",
+            },
+            deviceId: {
+              type: "string",
+              description:
+                "Target phone deviceId; omit to auto-assign round-robin across connected phones",
+            },
+          },
+          required: ["title", "content"],
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -471,6 +514,8 @@ const plugin = {
 WHEN TO USE:
 - Displaying connected phone/device status — use PhonePreview component
 - Showing copywriting, markdown, or generated text content — use MarkdownEditor component
+- Publishing ONE Xiaohongshu/RedNote post (title + body + images + hashtags) to a phone — use XHSEditor component
+- Publishing MULTIPLE Xiaohongshu posts at once, optionally to different phones — use XHSBatchTable component (inline table; each row opens an XHSEditor in the side panel)
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
 - Offering selectable actions (confirm/cancel, option selection)
@@ -506,8 +551,9 @@ NOTE: This is standard A2UI v0.9 format. It is NOT OpenClaw Canvas format — do
 CUSTOM COMPONENTS:
 - PhonePreview: Show connected phone devices with name, model, status, and screenshot.
 - MarkdownEditor: Display markdown/copywriting content with a copy button.
-- XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, or XHSEditor.`,
+- XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags, and a device picker + publish button.
+- XHSBatchTable: Inline table for batch-publishing multiple XHS posts (fixed height, max ~5 rows). Each row shows thumbnail/title/preview/target-phone/status; clicking a row opens that post in an XHSEditor side panel; a "全部发布" button fans out all posts to their assigned phones. Pass each post's title/content/images/hashtags; omit deviceId to auto-assign phones round-robin.
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, or XHSBatchTable.`,
 
             parameters: {
               type: "object",

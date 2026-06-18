@@ -9023,6 +9023,9 @@
                           },
                           "description": {
                             "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
                           }
                         },
                         "required": [
@@ -10139,6 +10142,26 @@
                         "type": "string"
                       }
                     },
+                    "modelDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "maxTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ]
+                      }
+                    },
                     "error": {
                       "type": "string"
                     }
@@ -10200,6 +10223,26 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "modelDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "maxTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ]
                       }
                     },
                     "error": {
@@ -10453,6 +10496,26 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "modelDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "maxTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ]
                       }
                     },
                     "error": {

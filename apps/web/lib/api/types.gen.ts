@@ -2993,6 +2993,7 @@ export type GetApiV1ModelsResponses = {
             provider: string;
             isDefault?: boolean;
             description?: string;
+            contextWindow?: number;
         }>;
     };
 };
@@ -3277,6 +3278,11 @@ export type PostApiV1ModelProvidersInstancesValidateResponses = {
     200: {
         valid: boolean;
         models?: Array<string>;
+        modelDetails?: Array<{
+            id: string;
+            contextWindow?: number;
+            maxTokens?: number;
+        }>;
         error?: string;
     };
 };
@@ -3302,6 +3308,11 @@ export type PostApiV1ModelProvidersByProviderIdValidateResponses = {
     200: {
         valid: boolean;
         models?: Array<string>;
+        modelDetails?: Array<{
+            id: string;
+            contextWindow?: number;
+            maxTokens?: number;
+        }>;
         error?: string;
     };
 };
@@ -3395,6 +3406,11 @@ export type PostApiV1ProvidersByProviderIdVerifyResponses = {
     200: {
         valid: boolean;
         models?: Array<string>;
+        modelDetails?: Array<{
+            id: string;
+            contextWindow?: number;
+            maxTokens?: number;
+        }>;
         error?: string;
     };
 };
