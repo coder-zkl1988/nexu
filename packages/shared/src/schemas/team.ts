@@ -79,6 +79,20 @@ export const runTeamTaskResponseSchema = z.object({
   ),
 });
 
+/**
+ * Phase 2: the lead orchestrator decomposes the task automatically. The caller
+ * supplies only the goal; the lead's model produces the subtask breakdown.
+ */
+export const autoRunTeamTaskRequestSchema = z.object({
+  task: z.string().min(1).max(8_000),
+  maxSubtasks: z.number().int().min(1).max(20).optional(),
+});
+
+export const autoRunTeamTaskResponseSchema = runTeamTaskResponseSchema.extend({
+  /** The subtask breakdown the lead produced. */
+  plan: z.array(teamSubtaskInputSchema),
+});
+
 export type TeamMember = z.infer<typeof teamMemberSchema>;
 export type TeamResponse = z.infer<typeof teamResponseSchema>;
 export type TeamListResponse = z.infer<typeof teamListResponseSchema>;
@@ -88,3 +102,9 @@ export type DeleteTeamResponse = z.infer<typeof deleteTeamResponseSchema>;
 export type TeamSubtaskInput = z.infer<typeof teamSubtaskInputSchema>;
 export type RunTeamTaskRequest = z.infer<typeof runTeamTaskRequestSchema>;
 export type RunTeamTaskResponse = z.infer<typeof runTeamTaskResponseSchema>;
+export type AutoRunTeamTaskRequest = z.infer<
+  typeof autoRunTeamTaskRequestSchema
+>;
+export type AutoRunTeamTaskResponse = z.infer<
+  typeof autoRunTeamTaskResponseSchema
+>;

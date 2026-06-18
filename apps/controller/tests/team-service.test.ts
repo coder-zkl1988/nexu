@@ -7,6 +7,7 @@ import { TeamLedgerStore } from "../src/services/teams/team-ledger.js";
 import {
   TeamAssigneeNotMemberError,
   TeamMemberNotInstalledError,
+  TeamPlanFailedError,
   TeamService,
   type TeamServiceDeps,
 } from "../src/services/teams/team-service.js";
@@ -46,6 +47,7 @@ describe("TeamService", () => {
   };
   let syncAll: ReturnType<typeof vi.fn>;
   let createBot: ReturnType<typeof vi.fn>;
+  let planSubtasks: ReturnType<typeof vi.fn>;
 
   function buildService(overrides: Partial<TeamServiceDeps> = {}): TeamService {
     return new TeamService({
@@ -62,6 +64,9 @@ describe("TeamService", () => {
       defaultModelId: "link/default",
       genId: () => "team-id-1",
       genBotSlug: (base) => `${base}-slug`,
+      planner: { planSubtasks },
+      getBotModel: async () => "link/lead-model",
+      resolveExpertDescription: async (slug) => `desc of ${slug}`,
       ...overrides,
     });
   }
@@ -103,6 +108,9 @@ describe("TeamService", () => {
     };
     syncAll = vi.fn(async () => undefined);
     createBot = vi.fn(async () => ({ id: "bot-lead" }));
+    planSubtasks = vi.fn(async () => [
+      { title: "Review the diff", assigneeSlug: "reviewer" },
+    ]);
   });
 
   afterEach(() => {
@@ -203,6 +211,51 @@ describe("TeamService", () => {
         subtasks: [{ title: "x", assigneeSlug: "writer" }],
       }),
     ).rejects.toBeInstanceOf(TeamAssigneeNotMemberError);
+    expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
+  });
+
+  it("runTaskAuto plans via the lead model then dispatches the plan", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer", "writer"],
+    });
+
+    const result = await service.runTaskAuto(team.id, {
+      task: "Ship the release notes",
+    });
+
+    // The planner is called with the team roster and the lead model.
+    expect(planSubtasks).toHaveBeenCalledTimes(1);
+    const plannerArg = planSubtasks.mock.calls[0][0];
+    expect(plannerArg.task).toBe("Ship the release notes");
+    expect(plannerArg.model).toBe("link/lead-model");
+    expect(plannerArg.members.map((m: { slug: string }) => m.slug)).toEqual([
+      "reviewer",
+      "writer",
+    ]);
+
+    // The generated plan is dispatched with persona injected into notes.
+    const decomposeArg = gateway.workboardCardDecompose.mock.calls[0][0];
+    expect(decomposeArg.children[0].agentId).toBe("bot-reviewer");
+    expect(decomposeArg.children[0].notes).toContain("Code Sentinel");
+    expect(result.plan).toEqual([
+      { title: "Review the diff", assigneeSlug: "reviewer" },
+    ]);
+    expect(result.started).toHaveLength(1);
+  });
+
+  it("runTaskAuto throws when the lead returns an empty plan", async () => {
+    planSubtasks.mockResolvedValueOnce([]);
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    await expect(
+      service.runTaskAuto(team.id, { task: "vague" }),
+    ).rejects.toBeInstanceOf(TeamPlanFailedError);
     expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
   });
 });

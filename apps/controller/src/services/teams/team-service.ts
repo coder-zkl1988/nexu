@@ -1,13 +1,17 @@
 import type {
+  AutoRunTeamTaskRequest,
+  AutoRunTeamTaskResponse,
   CreateTeamRequest,
   RunTeamTaskRequest,
   RunTeamTaskResponse,
   TeamMember,
   TeamResponse,
+  TeamSubtaskInput,
 } from "@nexu/shared";
 import type { ExpertLedger } from "../experthub/types.js";
 import type { OpenClawGatewayService } from "../openclaw-gateway-service.js";
 import type { TeamLedgerStore } from "./team-ledger.js";
+import type { TeamPlanner, TeamPlannerMember } from "./team-planner.js";
 
 /** Cap the member persona block so notes stay within the worker-context budget. */
 const MAX_PERSONA_CHARS = 3_000;
@@ -32,6 +36,13 @@ export class TeamAssigneeNotMemberError extends Error {
   constructor(public readonly slug: string) {
     super(`Subtask assignee is not a team member: ${slug}`);
     this.name = "TeamAssigneeNotMemberError";
+  }
+}
+
+export class TeamPlanFailedError extends Error {
+  constructor(public readonly teamId: string) {
+    super(`The lead could not produce a task plan for team: ${teamId}`);
+    this.name = "TeamPlanFailedError";
   }
 }
 
@@ -61,6 +72,12 @@ export type TeamServiceDeps = {
   defaultModelId: string;
   genId: () => string;
   genBotSlug: (base: string) => string;
+  /** Agentic decomposition (Phase 2): the lead's model plans the subtasks. */
+  planner: Pick<TeamPlanner, "planSubtasks">;
+  /** Resolve a bot's configured model ref (used as the planning model). */
+  getBotModel: (botId: string) => Promise<string | null>;
+  /** Resolve a member expert's short description (used in the planning roster). */
+  resolveExpertDescription: (slug: string) => Promise<string | null>;
 };
 
 /**
@@ -139,25 +156,80 @@ export class TeamService {
     return removed;
   }
 
+  /** Phase 1: caller supplies the subtask breakdown explicitly. */
   async runTask(
     teamId: string,
     input: RunTeamTaskRequest,
   ): Promise<RunTeamTaskResponse> {
-    const team = this.deps.ledger.get(teamId);
-    if (!team) {
-      throw new TeamNotFoundError(teamId);
-    }
+    const team = this.requireTeam(teamId);
 
-    const memberBySlug = new Map(team.members.map((m) => [m.expertSlug, m]));
+    const memberSlugs = new Set(team.members.map((m) => m.expertSlug));
     for (const subtask of input.subtasks) {
-      if (!memberBySlug.has(subtask.assigneeSlug)) {
+      if (!memberSlugs.has(subtask.assigneeSlug)) {
         throw new TeamAssigneeNotMemberError(subtask.assigneeSlug);
       }
     }
 
+    return this.dispatchSubtasks(team, input.task, input.subtasks);
+  }
+
+  /** Phase 2: the lead's model decomposes the task; the controller dispatches. */
+  async runTaskAuto(
+    teamId: string,
+    input: AutoRunTeamTaskRequest,
+  ): Promise<AutoRunTeamTaskResponse> {
+    const team = this.requireTeam(teamId);
+
+    const roster: TeamPlannerMember[] = await Promise.all(
+      team.members.map(async (member) => ({
+        slug: member.expertSlug,
+        name: member.name ?? member.expertSlug,
+        description:
+          (await this.deps.resolveExpertDescription(member.expertSlug)) ?? "",
+      })),
+    );
+
+    const model =
+      (await this.deps.getBotModel(team.leadBotId)) ?? this.deps.defaultModelId;
+
+    const plan = await this.deps.planner.planSubtasks({
+      task: input.task,
+      members: roster,
+      model,
+      maxSubtasks: input.maxSubtasks,
+    });
+    if (plan.length === 0) {
+      throw new TeamPlanFailedError(teamId);
+    }
+
+    const result = await this.dispatchSubtasks(team, input.task, plan);
+    return { ...result, plan };
+  }
+
+  private requireTeam(teamId: string): TeamResponse {
+    const team = this.deps.ledger.get(teamId);
+    if (!team) {
+      throw new TeamNotFoundError(teamId);
+    }
+    return team;
+  }
+
+  /**
+   * Deterministic board execution shared by manual and agentic runs: create the
+   * board + parent card, decompose into member cards with persona injected into
+   * notes, promote to ready, and dispatch.
+   */
+  private async dispatchSubtasks(
+    team: TeamResponse,
+    task: string,
+    subtasks: readonly TeamSubtaskInput[],
+  ): Promise<RunTeamTaskResponse> {
+    const memberBySlug = new Map(team.members.map((m) => [m.expertSlug, m]));
+    const valid = subtasks.filter((s) => memberBySlug.has(s.assigneeSlug));
+
     // Persona is resolved once per distinct assignee and reused across subtasks.
     const personaBySlug = new Map<string, string>();
-    for (const slug of new Set(input.subtasks.map((s) => s.assigneeSlug))) {
+    for (const slug of new Set(valid.map((s) => s.assigneeSlug))) {
       personaBySlug.set(slug, await this.resolvePersonaBlock(slug));
     }
 
@@ -167,7 +239,7 @@ export class TeamService {
     });
 
     const { card: parentCard } = await this.deps.gateway.workboardCardCreate({
-      title: input.task,
+      title: task,
       board: team.boardId,
       agentId: team.leadBotId,
       priority: "high",
@@ -175,8 +247,8 @@ export class TeamService {
 
     const { children } = await this.deps.gateway.workboardCardDecompose({
       id: parentCard.id,
-      children: input.subtasks.map((subtask) => {
-        // biome-ignore lint/style/noNonNullAssertion: validated above
+      children: valid.map((subtask) => {
+        // biome-ignore lint/style/noNonNullAssertion: filtered to members above
         const member = memberBySlug.get(subtask.assigneeSlug)!;
         return {
           title: subtask.title,

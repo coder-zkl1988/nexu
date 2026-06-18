@@ -14001,6 +14001,153 @@
         }
       }
     },
+    "/api/v1/teams/{id}/run-auto": {
+      "post": {
+        "tags": [
+          "Teams"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000
+                  },
+                  "maxSubtasks": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  }
+                },
+                "required": [
+                  "task"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task auto-decomposed and dispatched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "boardId": {
+                      "type": "string"
+                    },
+                    "parentCardId": {
+                      "type": "string"
+                    },
+                    "started": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "cardId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "cardId",
+                          "sessionKey"
+                        ]
+                      }
+                    },
+                    "plan": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "assigneeSlug": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "notes": {
+                            "type": "string",
+                            "maxLength": 8000
+                          }
+                        },
+                        "required": [
+                          "title",
+                          "assigneeSlug"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "boardId",
+                    "parentCardId",
+                    "started",
+                    "plan"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The lead could not produce a usable plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "tags": [

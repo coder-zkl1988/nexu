@@ -56,6 +56,7 @@ import { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.j
 import { SessionService } from "../services/session-service.js";
 import { SkillhubService } from "../services/skillhub-service.js";
 import { TeamLedgerStore } from "../services/teams/team-ledger.js";
+import { TeamPlanner } from "../services/teams/team-planner.js";
 import { TeamService } from "../services/teams/team-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
@@ -301,6 +302,18 @@ export async function createContainer(): Promise<ControllerContainer> {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 32)}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+    planner: new TeamPlanner({
+      gatewayBaseUrl: env.openclawBaseUrl,
+      gatewayToken: env.openclawGatewayToken ?? null,
+    }),
+    getBotModel: async (botId) => {
+      const bot = await configStore.getBot(botId);
+      return bot?.modelId ?? null;
+    },
+    resolveExpertDescription: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      return resolved?.manifest.description ?? null;
+    },
   });
 
   const installExpertFn = (args: { slug: string }) =>

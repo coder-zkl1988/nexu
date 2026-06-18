@@ -1,4 +1,8 @@
-import type { CreateTeamRequest, RunTeamTaskRequest } from "@nexu/shared";
+import type {
+  AutoRunTeamTaskRequest,
+  CreateTeamRequest,
+  RunTeamTaskRequest,
+} from "@nexu/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteApiV1TeamsById,
@@ -6,6 +10,7 @@ import {
   getApiV1TeamsById,
   postApiV1Teams,
   postApiV1TeamsByIdRun,
+  postApiV1TeamsByIdRunAuto,
 } from "../../lib/api/sdk.gen";
 
 const TEAMS_QUERY_KEY = ["teams"] as const;
@@ -81,6 +86,23 @@ export function useRunTeamTask() {
       });
       if (error) throw new Error("Run team task request failed");
       if (!data) throw new Error("Run team task returned no data");
+      return data;
+    },
+  });
+}
+
+export function useRunTeamTaskAuto() {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: { id: string; body: AutoRunTeamTaskRequest }) => {
+      const { data, error } = await postApiV1TeamsByIdRunAuto({
+        path: { id },
+        body,
+      });
+      if (error) throw new Error("Auto-run team task request failed");
+      if (!data) throw new Error("Auto-run team task returned no data");
       return data;
     },
   });

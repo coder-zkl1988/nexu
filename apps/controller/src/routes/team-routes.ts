@@ -1,5 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  autoRunTeamTaskRequestSchema,
+  autoRunTeamTaskResponseSchema,
   createTeamRequestSchema,
   createTeamResponseSchema,
   deleteTeamResponseSchema,
@@ -12,13 +14,19 @@ import {
   TeamAssigneeNotMemberError,
   TeamMemberNotInstalledError,
   TeamNotFoundError,
+  TeamPlanFailedError,
   type TeamService,
 } from "../services/teams/team-service.js";
 
 export type TeamRoutesDeps = {
   teamService: Pick<
     TeamService,
-    "listTeams" | "getTeam" | "createTeam" | "deleteTeam" | "runTask"
+    | "listTeams"
+    | "getTeam"
+    | "createTeam"
+    | "deleteTeam"
+    | "runTask"
+    | "runTaskAuto"
   >;
 };
 
@@ -183,6 +191,55 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
           return c.json({ message: error.message }, 404);
         }
         if (error instanceof TeamAssigneeNotMemberError) {
+          return c.json({ message: error.message }, 400);
+        }
+        throw error;
+      }
+    },
+  );
+
+  // POST /teams/{id}/run-auto — lead decomposes the task automatically
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/{id}/run-auto",
+      tags: ["Teams"],
+      request: {
+        params: teamIdParamSchema,
+        body: {
+          content: {
+            "application/json": { schema: autoRunTeamTaskRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: autoRunTeamTaskResponseSchema },
+          },
+          description: "Task auto-decomposed and dispatched",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "The lead could not produce a usable plan",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Team not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const input = c.req.valid("json");
+      try {
+        const result = await deps.teamService.runTaskAuto(id, input);
+        return c.json(result, 200);
+      } catch (error) {
+        if (error instanceof TeamNotFoundError) {
+          return c.json({ message: error.message }, 404);
+        }
+        if (error instanceof TeamPlanFailedError) {
           return c.json({ message: error.message }, 400);
         }
         throw error;

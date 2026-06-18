@@ -4669,6 +4669,56 @@ export type PostApiV1TeamsByIdRunResponses = {
 
 export type PostApiV1TeamsByIdRunResponse = PostApiV1TeamsByIdRunResponses[keyof PostApiV1TeamsByIdRunResponses];
 
+export type PostApiV1TeamsByIdRunAutoData = {
+    body?: {
+        task: string;
+        maxSubtasks?: number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/run-auto';
+};
+
+export type PostApiV1TeamsByIdRunAutoErrors = {
+    /**
+     * The lead could not produce a usable plan
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdRunAutoError = PostApiV1TeamsByIdRunAutoErrors[keyof PostApiV1TeamsByIdRunAutoErrors];
+
+export type PostApiV1TeamsByIdRunAutoResponses = {
+    /**
+     * Task auto-decomposed and dispatched
+     */
+    200: {
+        boardId: string;
+        parentCardId: string;
+        started: Array<{
+            cardId: string;
+            sessionKey: string;
+        }>;
+        plan: Array<{
+            title: string;
+            assigneeSlug: string;
+            notes?: string;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsByIdRunAutoResponse = PostApiV1TeamsByIdRunAutoResponses[keyof PostApiV1TeamsByIdRunAutoResponses];
+
 export type GetApiV1MeData = {
     body?: never;
     path?: never;
