@@ -16,7 +16,9 @@ import { resolvePlatformArchiveComponent } from "../platforms/platform-identifie
 import { resolveRuntimePlatform } from "../platforms/platform-resolver";
 
 const GITHUB_BASE_URL = "https://github.com/nexu-io/nexu/releases/download";
-export const R2_BASE_URL = "https://desktop-releases.nexu.io";
+// Auto-update feed host. The desktop release workflow publishes the per-arch
+// update manifests + artifacts under this base on Cloudflare R2.
+export const R2_BASE_URL = "https://downloads.picaso.studio/updates";
 
 export type ComponentInfo = {
   id: string;
