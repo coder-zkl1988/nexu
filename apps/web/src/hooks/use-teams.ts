@@ -8,6 +8,7 @@ import {
   deleteApiV1TeamsById,
   getApiV1Teams,
   getApiV1TeamsById,
+  getApiV1TeamsByIdBoard,
   postApiV1Teams,
   postApiV1TeamsByIdRun,
   postApiV1TeamsByIdRunAuto,
@@ -37,6 +38,22 @@ export function useTeam(id: string | null) {
       const { data, error } = await getApiV1TeamsById({ path: { id } });
       if (error) throw new Error("Team fetch failed");
       if (!data) throw new Error("Team returned no data");
+      return data;
+    },
+  });
+}
+
+/** Polls the team's Workboard for a near-real-time Kanban snapshot. */
+export function useTeamBoard(id: string | null) {
+  return useQuery({
+    queryKey: id ? ["teams", id, "board"] : ["teams", "__board_disabled__"],
+    enabled: !!id,
+    refetchInterval: 3000,
+    queryFn: async () => {
+      if (!id) throw new Error("Team id missing");
+      const { data, error } = await getApiV1TeamsByIdBoard({ path: { id } });
+      if (error) throw new Error("Team board fetch failed");
+      if (!data) throw new Error("Team board returned no data");
       return data;
     },
   });

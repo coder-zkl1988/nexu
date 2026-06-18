@@ -4620,6 +4620,44 @@ export type GetApiV1TeamsByIdResponses = {
 
 export type GetApiV1TeamsByIdResponse = GetApiV1TeamsByIdResponses[keyof GetApiV1TeamsByIdResponses];
 
+export type GetApiV1TeamsByIdBoardData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/board';
+};
+
+export type GetApiV1TeamsByIdBoardErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdBoardError = GetApiV1TeamsByIdBoardErrors[keyof GetApiV1TeamsByIdBoardErrors];
+
+export type GetApiV1TeamsByIdBoardResponses = {
+    /**
+     * Team board cards
+     */
+    200: {
+        boardId: string;
+        cards: Array<{
+            id: string;
+            title: string;
+            status: string;
+            agentId: string;
+            assigneeName: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsByIdBoardResponse = GetApiV1TeamsByIdBoardResponses[keyof GetApiV1TeamsByIdBoardResponses];
+
 export type PostApiV1TeamsByIdRunData = {
     body?: {
         task: string;

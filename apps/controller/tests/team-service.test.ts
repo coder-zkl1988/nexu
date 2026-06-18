@@ -43,6 +43,7 @@ describe("TeamService", () => {
     workboardCardCreate: ReturnType<typeof vi.fn>;
     workboardCardDecompose: ReturnType<typeof vi.fn>;
     workboardCardMove: ReturnType<typeof vi.fn>;
+    workboardCardsList: ReturnType<typeof vi.fn>;
     workboardDispatch: ReturnType<typeof vi.fn>;
   };
   let syncAll: ReturnType<typeof vi.fn>;
@@ -95,6 +96,7 @@ describe("TeamService", () => {
       workboardCardMove: vi.fn(async () => ({
         card: { id: "x", title: "t", status: "ready" },
       })),
+      workboardCardsList: vi.fn(async () => ({ cards: [] })),
       workboardDispatch: vi.fn(async () => ({
         started: [
           {
@@ -257,5 +259,67 @@ describe("TeamService", () => {
       service.runTaskAuto(team.id, { task: "vague" }),
     ).rejects.toBeInstanceOf(TeamPlanFailedError);
     expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
+  });
+
+  it("getBoard maps cards and resolves assignee names by bot id", async () => {
+    gateway.workboardCardsList.mockResolvedValueOnce({
+      cards: [
+        { id: "p", title: "Audit", status: "todo", agentId: "bot-lead" },
+        {
+          id: "c1",
+          title: "Review",
+          status: "running",
+          agentId: "bot-reviewer",
+        },
+        { id: "c2", title: "Orphan", status: "ready", agentId: "bot-unknown" },
+      ],
+    });
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer", "writer"],
+    });
+
+    const board = await service.getBoard(team.id);
+
+    expect(gateway.workboardCardsList).toHaveBeenCalledWith({
+      board: team.boardId,
+    });
+    expect(board.boardId).toBe(team.boardId);
+    expect(board.cards).toEqual([
+      {
+        id: "p",
+        title: "Audit",
+        status: "todo",
+        agentId: "bot-lead",
+        assigneeName: null,
+      },
+      {
+        id: "c1",
+        title: "Review",
+        status: "running",
+        agentId: "bot-reviewer",
+        assigneeName: "Code Reviewer",
+      },
+      {
+        id: "c2",
+        title: "Orphan",
+        status: "ready",
+        agentId: "bot-unknown",
+        assigneeName: null,
+      },
+    ]);
+  });
+
+  it("getBoard degrades to an empty board when the gateway errors", async () => {
+    gateway.workboardCardsList.mockRejectedValueOnce(new Error("offline"));
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    const board = await service.getBoard(team.id);
+    expect(board).toEqual({ boardId: team.boardId, cards: [] });
   });
 });

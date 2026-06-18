@@ -93,6 +93,27 @@ export const autoRunTeamTaskResponseSchema = runTeamTaskResponseSchema.extend({
   plan: z.array(teamSubtaskInputSchema),
 });
 
+/**
+ * Phase 3: a live snapshot of the team's Workboard for the Kanban view.
+ * `status` mirrors the Workboard lifecycle (triage/backlog/todo/scheduled/
+ * ready/running/review/blocked/done) and is kept as a string so new runtime
+ * statuses don't break the contract.
+ */
+export const teamBoardCardSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  /** Member bot id this card is assigned to (null for the orchestration card). */
+  agentId: z.string().nullable(),
+  /** Display name of the assigned member, when resolvable. */
+  assigneeName: z.string().nullable(),
+});
+
+export const teamBoardResponseSchema = z.object({
+  boardId: z.string(),
+  cards: z.array(teamBoardCardSchema),
+});
+
 export type TeamMember = z.infer<typeof teamMemberSchema>;
 export type TeamResponse = z.infer<typeof teamResponseSchema>;
 export type TeamListResponse = z.infer<typeof teamListResponseSchema>;
@@ -108,3 +129,5 @@ export type AutoRunTeamTaskRequest = z.infer<
 export type AutoRunTeamTaskResponse = z.infer<
   typeof autoRunTeamTaskResponseSchema
 >;
+export type TeamBoardCard = z.infer<typeof teamBoardCardSchema>;
+export type TeamBoardResponse = z.infer<typeof teamBoardResponseSchema>;

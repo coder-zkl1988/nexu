@@ -1,3 +1,4 @@
+import { TeamBoard } from "@/components/teams/team-board";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -282,6 +283,17 @@ export function TeamDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {id ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Board</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TeamBoard teamId={id} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {plan ? (
         <Card>

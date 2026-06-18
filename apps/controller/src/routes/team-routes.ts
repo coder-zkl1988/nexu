@@ -7,6 +7,7 @@ import {
   deleteTeamResponseSchema,
   runTeamTaskRequestSchema,
   runTeamTaskResponseSchema,
+  teamBoardResponseSchema,
   teamListResponseSchema,
   teamResponseSchema,
 } from "@nexu/shared";
@@ -23,6 +24,7 @@ export type TeamRoutesDeps = {
     TeamService,
     | "listTeams"
     | "getTeam"
+    | "getBoard"
     | "createTeam"
     | "deleteTeam"
     | "runTask"
@@ -120,6 +122,40 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
         return c.json({ message: "Team not found" }, 404);
       }
       return c.json(team, 200);
+    },
+  );
+
+  // GET /teams/{id}/board — live Workboard snapshot for the Kanban view
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/{id}/board",
+      tags: ["Teams"],
+      request: { params: teamIdParamSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: teamBoardResponseSchema },
+          },
+          description: "Team board cards",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Team not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      try {
+        const board = await deps.teamService.getBoard(id);
+        return c.json(board, 200);
+      } catch (error) {
+        if (error instanceof TeamNotFoundError) {
+          return c.json({ message: error.message }, 404);
+        }
+        throw error;
+      }
     },
   );
 

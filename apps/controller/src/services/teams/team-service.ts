@@ -4,6 +4,7 @@ import type {
   CreateTeamRequest,
   RunTeamTaskRequest,
   RunTeamTaskResponse,
+  TeamBoardResponse,
   TeamMember,
   TeamResponse,
   TeamSubtaskInput,
@@ -54,6 +55,7 @@ export type TeamServiceDeps = {
     | "workboardCardCreate"
     | "workboardCardDecompose"
     | "workboardCardMove"
+    | "workboardCardsList"
     | "workboardDispatch"
   >;
   /** Resolve a member expert's persona text (SOUL.md, falling back to systemPrompt). */
@@ -98,6 +100,38 @@ export class TeamService {
 
   getTeam(teamId: string): TeamResponse | null {
     return this.deps.ledger.get(teamId);
+  }
+
+  /**
+   * Live snapshot of the team's Workboard for the Kanban view. Degrades to an
+   * empty board when the gateway is offline or the board has no cards yet, so
+   * the polling UI never error-spams.
+   */
+  async getBoard(teamId: string): Promise<TeamBoardResponse> {
+    const team = this.requireTeam(teamId);
+    const memberByBotId = new Map(team.members.map((m) => [m.botId, m]));
+    try {
+      const { cards } = await this.deps.gateway.workboardCardsList({
+        board: team.boardId,
+      });
+      return {
+        boardId: team.boardId,
+        cards: cards.map((card) => {
+          const agentId = card.agentId ?? null;
+          return {
+            id: card.id,
+            title: card.title,
+            status: card.status,
+            agentId,
+            assigneeName: agentId
+              ? (memberByBotId.get(agentId)?.name ?? null)
+              : null,
+          };
+        }),
+      };
+    } catch {
+      return { boardId: team.boardId, cards: [] };
+    }
   }
 
   async createTeam(input: CreateTeamRequest): Promise<TeamResponse> {
