@@ -115,6 +115,8 @@ jobs:
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+      # Surfaced so the R2 upload step can self-skip when R2 is not configured.
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
 
     steps:
       - name: Checkout
@@ -247,6 +249,29 @@ jobs:
             "apps/desktop/release/tabby-${VERSION}-mac-${ARCH}-sha256.txt" \
             --clobber
 
+      - name: Upload macOS installer to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          dmg="apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg"
+          # Permanent versioned copy, plus a stable "latest" alias the website links to.
+          aws s3 cp "$dmg" "s3://${R2_BUCKET}/releases/tabby-${VERSION}-${ARCH}.dmg" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/x-apple-diskimage --no-progress
+          aws s3 cp "$dmg" "s3://${R2_BUCKET}/releases/tabby-latest-mac-${ARCH}.dmg" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/x-apple-diskimage \
+            --cache-control "no-cache, must-revalidate" --no-progress
+
   windows:
     name: Windows x64
     needs: prepare-release
@@ -255,6 +280,8 @@ jobs:
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+      # Surfaced so the R2 upload step can self-skip when R2 is not configured.
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
 
     steps:
       - name: Checkout
@@ -359,6 +386,27 @@ jobs:
             "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}" `
             "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.checksum_file }}" `
             --clobber
+
+      - name: Upload Windows installer to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+        run: |
+          $installer = "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}"
+          # Permanent versioned copy, plus a stable "latest" alias the website links to.
+          aws s3 cp $installer "s3://$env:R2_BUCKET/releases/tabby-setup-$env:VERSION-win-x64.exe" `
+            --endpoint-url $env:R2_ENDPOINT `
+            --content-type application/octet-stream --no-progress
+          aws s3 cp $installer "s3://$env:R2_BUCKET/releases/tabby-latest-win-x64.exe" `
+            --endpoint-url $env:R2_ENDPOINT `
+            --content-type application/octet-stream `
+            --cache-control "no-cache, must-revalidate" --no-progress
 
   summary:
     name: Release summary
