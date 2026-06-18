@@ -14,6 +14,9 @@ export type TeamPlannerDeps = {
   fetchImpl?: typeof globalThis.fetch;
 };
 
+/** A planning agent turn should be quick; abort if the gateway wedges. */
+const PLAN_TIMEOUT_MS = 60_000;
+
 const SYSTEM_PROMPT = [
   "You are the orchestrator of a team of expert AI agents.",
   "Given a task and the team roster, break the task into focused subtasks,",
@@ -70,6 +73,9 @@ export class TeamPlanner {
       `${this.deps.gatewayBaseUrl}/v1/chat/completions`,
       {
         method: "POST",
+        // Bound the wait: the endpoint runs a full agent turn, so a wedged
+        // gateway must not hang the team request forever.
+        signal: AbortSignal.timeout(PLAN_TIMEOUT_MS),
         headers: {
           "Content-Type": "application/json",
           ...(this.deps.gatewayToken

@@ -9,6 +9,7 @@ import type {
   TeamResponse,
   TeamSubtaskInput,
 } from "@nexu/shared";
+import { logger } from "../../lib/logger.js";
 import type { ExpertLedger } from "../experthub/types.js";
 import type { OpenClawGatewayService } from "../openclaw-gateway-service.js";
 import type { TeamLedgerStore } from "./team-ledger.js";
@@ -129,7 +130,16 @@ export class TeamService {
           };
         }),
       };
-    } catch {
+    } catch (error) {
+      // Expected when the gateway is transiently offline; keep the polling UI
+      // quiet but leave a debug trail rather than swallowing silently.
+      logger.debug(
+        {
+          teamId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "team board fetch failed; returning empty board",
+      );
       return { boardId: team.boardId, cards: [] };
     }
   }
@@ -302,17 +312,31 @@ export class TeamService {
       ),
     );
 
-    const dispatch = await this.deps.gateway.workboardDispatch({
-      board: team.boardId,
-    });
+    // The dispatcher starts at most a few workers per pass (and one per member
+    // per pass), so a single dispatch can leave a larger team's cards stuck in
+    // `ready`. Loop until a pass starts nothing new or every child has started.
+    const started = new Map<string, { cardId: string; sessionKey: string }>();
+    const maxPasses = Math.min(8, Math.ceil(children.length / 2) + 1);
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const dispatch = await this.deps.gateway.workboardDispatch({
+        board: team.boardId,
+      });
+      const fresh = dispatch.started.filter((s) => !started.has(s.cardId));
+      if (fresh.length === 0) {
+        break;
+      }
+      for (const s of fresh) {
+        started.set(s.cardId, { cardId: s.cardId, sessionKey: s.sessionKey });
+      }
+      if (started.size >= children.length) {
+        break;
+      }
+    }
 
     return {
       boardId: team.boardId,
       parentCardId: parentCard.id,
-      started: dispatch.started.map((s) => ({
-        cardId: s.cardId,
-        sessionKey: s.sessionKey,
-      })),
+      started: [...started.values()],
     };
   }
 

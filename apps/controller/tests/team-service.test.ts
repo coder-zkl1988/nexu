@@ -216,6 +216,37 @@ describe("TeamService", () => {
     expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
   });
 
+  it("runTask dispatches across multiple passes until all cards start", async () => {
+    // The dispatcher starts a capped batch per pass; the service loops to start
+    // the rest. Mock distinct started cards per pass for the two subtasks.
+    gateway.workboardDispatch
+      .mockResolvedValueOnce({
+        started: [{ cardId: "child-0", sessionKey: "k0" }],
+      })
+      .mockResolvedValueOnce({
+        started: [{ cardId: "child-1", sessionKey: "k1" }],
+      });
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer", "writer"],
+    });
+
+    const result = await service.runTask(team.id, {
+      task: "ship",
+      subtasks: [
+        { title: "a", assigneeSlug: "reviewer" },
+        { title: "b", assigneeSlug: "writer" },
+      ],
+    });
+
+    expect(gateway.workboardDispatch).toHaveBeenCalledTimes(2);
+    expect(result.started).toEqual([
+      { cardId: "child-0", sessionKey: "k0" },
+      { cardId: "child-1", sessionKey: "k1" },
+    ]);
+  });
+
   it("runTaskAuto plans via the lead model then dispatches the plan", async () => {
     const service = buildService();
     const team = await service.createTeam({
