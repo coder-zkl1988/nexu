@@ -285,18 +285,19 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
-          # electron-updater (MacUpdater) reads latest-mac.yml + the .zip from
-          # this per-arch feed dir, matching R2_BASE_URL/stable/<arch> in the app.
+          # The mac production build writes latest-mac.yml referencing the DMG
+          # (not a zip), so publish the DMG alongside it to this per-arch feed
+          # dir, matching R2_BASE_URL/stable/<arch> in the app.
           rel="apps/desktop/release"
           dest="s3://${R2_BUCKET}/updates/stable/${ARCH}"
           aws s3 cp "$rel/latest-mac.yml" "$dest/latest-mac.yml" \
             --endpoint-url "$R2_ENDPOINT" --content-type text/yaml \
             --cache-control "no-cache, must-revalidate" --no-progress
-          aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.zip" "$dest/tabby-${VERSION}-${ARCH}.zip" \
-            --endpoint-url "$R2_ENDPOINT" --content-type application/zip --no-progress
-          if [ -f "$rel/tabby-${VERSION}-${ARCH}.zip.blockmap" ]; then
-            aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.zip.blockmap" \
-              "$dest/tabby-${VERSION}-${ARCH}.zip.blockmap" \
+          aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.dmg" "$dest/tabby-${VERSION}-${ARCH}.dmg" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/x-apple-diskimage --no-progress
+          if [ -f "$rel/tabby-${VERSION}-${ARCH}.dmg.blockmap" ]; then
+            aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.dmg.blockmap" \
+              "$dest/tabby-${VERSION}-${ARCH}.dmg.blockmap" \
               --endpoint-url "$R2_ENDPOINT" --content-type application/octet-stream --no-progress
           fi
 

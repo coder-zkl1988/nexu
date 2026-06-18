@@ -1,6 +1,6 @@
 {
   "name": "@nexu/desktop",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -149,7 +149,7 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
-      "target": ["dmg", "zip"],
+      "target": ["dmg"],
       "artifactName": "tabby-${version}-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
