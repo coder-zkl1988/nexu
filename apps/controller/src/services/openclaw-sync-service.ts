@@ -25,6 +25,7 @@ import type { NexuConfig } from "../store/schemas.js";
 import type { OpenClawGatewayService } from "./openclaw-gateway-service.js";
 import type { SkillDb } from "./skillhub/skill-db.js";
 import type { WorkspaceSkillScanner } from "./skillhub/workspace-skill-scanner.js";
+import type { TeamLedgerStore } from "./teams/team-ledger.js";
 
 function resolvePrimaryModelRef(
   model: string | { primary: string } | undefined,
@@ -144,7 +145,13 @@ export class OpenClawSyncService {
     private readonly gatewayService: OpenClawGatewayService,
     private readonly skillDb: SkillDb | null = null,
     private readonly workspaceScanner: WorkspaceSkillScanner | null = null,
+    private readonly teamLedger: TeamLedgerStore | null = null,
   ) {}
+
+  /** Teams enable the Workboard plugin in the compiled OpenClaw config. */
+  private hasTeams(): boolean {
+    return (this.teamLedger?.list().length ?? 0) > 0;
+  }
 
   async compileCurrentConfig(): Promise<
     ReturnType<typeof compileOpenClawConfig>
@@ -171,6 +178,7 @@ export class OpenClawSyncService {
       oauthState,
       installedSlugs,
       workspaceMap,
+      this.hasTeams(),
     );
   }
 
@@ -308,6 +316,7 @@ export class OpenClawSyncService {
       oauthState,
       installedSlugs,
       workspaceMap,
+      this.hasTeams(),
     );
 
     const hasAnyProvider =

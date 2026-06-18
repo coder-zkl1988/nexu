@@ -129,6 +129,7 @@ const en = {
   "layout.nav.skillStore": "Skill Store",
   "layout.nav.experts": "Experts",
   "layout.nav.agents": "Agents",
+  "layout.nav.teams": "Teams",
   "layout.nav.devices": "Devices",
   "layout.nav.settings": "Settings",
   "layout.nav.localChat": "Chat",

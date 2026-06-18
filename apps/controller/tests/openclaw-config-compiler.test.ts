@@ -1342,3 +1342,24 @@ describe("resolveControlUiRoot", () => {
     );
   });
 });
+
+describe("compileOpenClawConfig > workboard (teams) gating", () => {
+  it("omits the workboard plugin when no teams exist (hasTeams unset)", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.plugins?.allow).not.toContain("workboard");
+    expect(result.plugins?.entries?.workboard).toBeUndefined();
+  });
+
+  it("enables the workboard plugin when hasTeams is true", () => {
+    const result = compileOpenClawConfig(
+      createConfig(),
+      createEnv(),
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+    expect(result.plugins?.allow).toContain("workboard");
+    expect(result.plugins?.entries?.workboard).toEqual({ enabled: true });
+  });
+});

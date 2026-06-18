@@ -1,0 +1,194 @@
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  createTeamRequestSchema,
+  createTeamResponseSchema,
+  deleteTeamResponseSchema,
+  runTeamTaskRequestSchema,
+  runTeamTaskResponseSchema,
+  teamListResponseSchema,
+  teamResponseSchema,
+} from "@nexu/shared";
+import {
+  TeamAssigneeNotMemberError,
+  TeamMemberNotInstalledError,
+  TeamNotFoundError,
+  type TeamService,
+} from "../services/teams/team-service.js";
+
+export type TeamRoutesDeps = {
+  teamService: Pick<
+    TeamService,
+    "listTeams" | "getTeam" | "createTeam" | "deleteTeam" | "runTask"
+  >;
+};
+
+const errorSchema = z.object({ message: z.string() });
+const teamIdParamSchema = z.object({ id: z.string().min(1) });
+
+/**
+ * Team HTTP routes. Mounted at `/api/v1/teams`. Phase 1 surface: CRUD plus a
+ * `run` endpoint that decomposes a task into member-assigned Workboard cards
+ * and dispatches workers (see TeamService).
+ */
+export function buildTeamRoutes(deps: TeamRoutesDeps) {
+  const app = new OpenAPIHono();
+
+  // GET /teams
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/",
+      tags: ["Teams"],
+      responses: {
+        200: {
+          content: { "application/json": { schema: teamListResponseSchema } },
+          description: "List of teams",
+        },
+      },
+    }),
+    async (c) => {
+      return c.json({ teams: deps.teamService.listTeams() }, 200);
+    },
+  );
+
+  // POST /teams
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/",
+      tags: ["Teams"],
+      request: {
+        body: {
+          content: { "application/json": { schema: createTeamRequestSchema } },
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: createTeamResponseSchema } },
+          description: "Team created",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "A member expert is not installed",
+        },
+      },
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      try {
+        const team = await deps.teamService.createTeam(input);
+        return c.json(team, 200);
+      } catch (error) {
+        if (error instanceof TeamMemberNotInstalledError) {
+          return c.json({ message: error.message }, 400);
+        }
+        throw error;
+      }
+    },
+  );
+
+  // GET /teams/{id}
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/{id}",
+      tags: ["Teams"],
+      request: { params: teamIdParamSchema },
+      responses: {
+        200: {
+          content: { "application/json": { schema: teamResponseSchema } },
+          description: "Team detail",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Team not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const team = deps.teamService.getTeam(id);
+      if (!team) {
+        return c.json({ message: "Team not found" }, 404);
+      }
+      return c.json(team, 200);
+    },
+  );
+
+  // DELETE /teams/{id}
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: "/{id}",
+      tags: ["Teams"],
+      request: { params: teamIdParamSchema },
+      responses: {
+        200: {
+          content: { "application/json": { schema: deleteTeamResponseSchema } },
+          description: "Team deleted",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Team not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const removed = await deps.teamService.deleteTeam(id);
+      if (!removed) {
+        return c.json({ message: "Team not found" }, 404);
+      }
+      return c.json({ ok: true as const }, 200);
+    },
+  );
+
+  // POST /teams/{id}/run
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/{id}/run",
+      tags: ["Teams"],
+      request: {
+        params: teamIdParamSchema,
+        body: {
+          content: { "application/json": { schema: runTeamTaskRequestSchema } },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: runTeamTaskResponseSchema },
+          },
+          description: "Task decomposed and dispatched",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "A subtask assignee is not a team member",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Team not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const input = c.req.valid("json");
+      try {
+        const result = await deps.teamService.runTask(id, input);
+        return c.json(result, 200);
+      } catch (error) {
+        if (error instanceof TeamNotFoundError) {
+          return c.json({ message: error.message }, 404);
+        }
+        if (error instanceof TeamAssigneeNotMemberError) {
+          return c.json({ message: error.message }, 400);
+        }
+        throw error;
+      }
+    },
+  );
+
+  return app;
+}

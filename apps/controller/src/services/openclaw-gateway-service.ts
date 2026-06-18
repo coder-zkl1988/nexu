@@ -142,6 +142,30 @@ function resolveOpenClawAccountId(
 }
 
 // ---------------------------------------------------------------------------
+// Public types — Workboard (team task board)
+// ---------------------------------------------------------------------------
+
+/** Minimal Workboard card shape used by team task orchestration. */
+export interface WorkboardCard {
+  id: string;
+  title: string;
+  status: string;
+  agentId?: string | null;
+  notes?: string;
+}
+
+export interface WorkboardDispatchStarted {
+  cardId: string;
+  sessionKey: string;
+  runId?: string;
+}
+
+export interface WorkboardDispatchResult {
+  started: WorkboardDispatchStarted[];
+  startFailures?: unknown[];
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -192,6 +216,55 @@ export class OpenClawGatewayService {
         timeoutMs: opts?.timeoutMs ?? 1000,
       },
     );
+  }
+
+  // ---- Workboard (team task board) --------------------------------------
+  // workboard.* RPC requires an operator-scoped gateway connection; the
+  // controller's WS client connects with the shared gateway token. Note the
+  // dispatcher worker does NOT load the member AGENTS.md persona — member
+  // persona is injected via card.notes by TeamService.
+
+  async workboardBoardUpsert(params: {
+    id: string;
+    name?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.boards.upsert", params);
+  }
+
+  async workboardCardCreate(params: {
+    title: string;
+    board: string;
+    agentId?: string;
+    notes?: string;
+    priority?: "low" | "normal" | "high" | "urgent";
+  }): Promise<{ card: WorkboardCard }> {
+    return this.wsClient.request("workboard.cards.create", params);
+  }
+
+  async workboardCardDecompose(params: {
+    id: string;
+    children: Array<{ title: string; agentId?: string; notes?: string }>;
+  }): Promise<{ children: WorkboardCard[] }> {
+    return this.wsClient.request("workboard.cards.decompose", params);
+  }
+
+  async workboardCardMove(params: {
+    id: string;
+    status: string;
+  }): Promise<{ card: WorkboardCard }> {
+    return this.wsClient.request("workboard.cards.move", params);
+  }
+
+  async workboardCardsList(params?: {
+    board?: string;
+  }): Promise<{ cards: WorkboardCard[] }> {
+    return this.wsClient.request("workboard.cards.list", params ?? {});
+  }
+
+  async workboardDispatch(params?: {
+    board?: string;
+  }): Promise<WorkboardDispatchResult> {
+    return this.wsClient.request("workboard.cards.dispatch", params ?? {});
   }
 
   async getGatewayStatusSummary(opts?: {

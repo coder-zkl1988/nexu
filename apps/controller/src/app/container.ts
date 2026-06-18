@@ -55,6 +55,8 @@ import { ScheduleService } from "../services/schedule-service.js";
 import { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.js";
 import { SessionService } from "../services/session-service.js";
 import { SkillhubService } from "../services/skillhub-service.js";
+import { TeamLedgerStore } from "../services/teams/team-ledger.js";
+import { TeamService } from "../services/teams/team-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
@@ -83,6 +85,7 @@ export interface ControllerContainer {
   attachmentStore: AttachmentStore;
   templateService: TemplateService;
   skillhubService: SkillhubService;
+  teamService: TeamService;
   experthubCatalogManager: ExperthubCatalogManager;
   installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
   installDefaultExpertsFn: () => Promise<{
@@ -174,6 +177,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       return config.bots.map((b) => b.id);
     },
   });
+  const teamLedgerStore = new TeamLedgerStore(env.teamDbPath);
   const openclawSyncService = new OpenClawSyncService(
     env,
     configStore,
@@ -190,6 +194,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     gatewayService,
     skillhubService.skillDb,
     skillhubService.workspaceSkillScanner,
+    teamLedgerStore,
   );
   syncService = openclawSyncService;
   const cronGateway = new OpenClawCronGateway(wsClient, env);
@@ -259,6 +264,44 @@ export async function createContainer(): Promise<ControllerContainer> {
   // AgentService is used by both the return block and the experthub install
   // flow. Construct it once so both paths share the same cache/syncAll semantics.
   const agentService = new AgentService(configStore, openclawSyncService);
+
+  const teamService = new TeamService({
+    ledger: teamLedgerStore,
+    gateway: gatewayService,
+    resolveExpertPersona: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      if (!resolved) {
+        return null;
+      }
+      // SOUL.md is the canonical persona file; fall back to the systemPrompt.
+      return (
+        resolved.manifest.workspaceFiles["SOUL.md"] ??
+        resolved.manifest.systemPrompt ??
+        null
+      );
+    },
+    readExpertLedger: () => experthubCatalogManager.readLedger(),
+    botService: {
+      createBot: async (input) => {
+        const bot = await agentService.createBot({
+          name: input.name,
+          slug: input.slug,
+          modelId: input.modelId,
+        });
+        return { id: bot.id };
+      },
+      deleteBot: (botId) => agentService.deleteBot(botId),
+    },
+    syncAll: () => openclawSyncService.syncAll(),
+    defaultModelId: env.defaultModelId,
+    genId: () => randomUUID(),
+    genBotSlug: (base) =>
+      `${base
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 32)}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+  });
 
   const installExpertFn = (args: { slug: string }) =>
     installExpert({
@@ -504,6 +547,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     attachmentStore,
     templateService: new TemplateService(configStore, openclawSyncService),
     skillhubService,
+    teamService,
     experthubCatalogManager,
     installExpertFn,
     installDefaultExpertsFn,

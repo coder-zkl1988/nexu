@@ -45,6 +45,7 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -656,6 +657,7 @@ function WorkspaceLayoutContent() {
   const isRewardsPage = location.pathname.includes("/rewards");
   const isSkillsPage = location.pathname.includes("/skills");
   const isExpertsPage = location.pathname.includes("/experts");
+  const isTeamsPage = location.pathname.includes("/teams");
   const isLocalChatPage = location.pathname === "/workspace/chat";
   const isModelsPage =
     location.pathname.includes("/models") ||
@@ -709,6 +711,7 @@ function WorkspaceLayoutContent() {
     !isRewardsPage &&
     !isSkillsPage &&
     !isExpertsPage &&
+    !isTeamsPage &&
     !isModelsPage &&
     !isDevicesPage &&
     !isLocalChatPage &&
@@ -951,6 +954,19 @@ function WorkspaceLayoutContent() {
             >
               <Bot size={16} className="shrink-0" />
               {t("layout.nav.agents")}
+            </Link>
+            <Link
+              to="/workspace/teams"
+              onClick={() => {
+                track("workspace_sidebar_click", { target: "teams" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isTeamsPage && "nav-item-active",
+              )}
+            >
+              <UsersRound size={16} className="shrink-0" />
+              {t("layout.nav.teams")}
             </Link>
             <Link
               to="/workspace/devices"

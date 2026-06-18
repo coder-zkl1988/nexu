@@ -1,0 +1,208 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExpertLedger } from "../src/services/experthub/types.js";
+import { TeamLedgerStore } from "../src/services/teams/team-ledger.js";
+import {
+  TeamAssigneeNotMemberError,
+  TeamMemberNotInstalledError,
+  TeamService,
+  type TeamServiceDeps,
+} from "../src/services/teams/team-service.js";
+
+function makeExpertLedger(): ExpertLedger {
+  return {
+    version: 1,
+    updatedAt: null,
+    entries: {
+      reviewer: {
+        slug: "reviewer",
+        version: "1.0.0",
+        botId: "bot-reviewer",
+        installedAt: "2026-01-01T00:00:00.000Z",
+        name: "Code Reviewer",
+      },
+      writer: {
+        slug: "writer",
+        version: "1.0.0",
+        botId: "bot-writer",
+        installedAt: "2026-01-01T00:00:00.000Z",
+        name: "Tech Writer",
+      },
+    },
+  };
+}
+
+describe("TeamService", () => {
+  let tmpDir: string;
+  let ledger: TeamLedgerStore;
+  let gateway: {
+    workboardBoardUpsert: ReturnType<typeof vi.fn>;
+    workboardCardCreate: ReturnType<typeof vi.fn>;
+    workboardCardDecompose: ReturnType<typeof vi.fn>;
+    workboardCardMove: ReturnType<typeof vi.fn>;
+    workboardDispatch: ReturnType<typeof vi.fn>;
+  };
+  let syncAll: ReturnType<typeof vi.fn>;
+  let createBot: ReturnType<typeof vi.fn>;
+
+  function buildService(overrides: Partial<TeamServiceDeps> = {}): TeamService {
+    return new TeamService({
+      ledger,
+      gateway,
+      resolveExpertPersona: async (slug) =>
+        slug === "reviewer" ? "You are the Code Sentinel." : "I write docs.",
+      readExpertLedger: async () => makeExpertLedger(),
+      botService: {
+        createBot,
+        deleteBot: vi.fn(async () => true),
+      },
+      syncAll,
+      defaultModelId: "link/default",
+      genId: () => "team-id-1",
+      genBotSlug: (base) => `${base}-slug`,
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "team-svc-"));
+    ledger = new TeamLedgerStore(join(tmpDir, "team-ledger.json"));
+    gateway = {
+      workboardBoardUpsert: vi.fn(async () => ({})),
+      workboardCardCreate: vi.fn(async () => ({
+        card: { id: "parent-1", title: "task", status: "todo" },
+      })),
+      workboardCardDecompose: vi.fn(
+        async (params: {
+          children: Array<{ title: string; agentId?: string; notes?: string }>;
+        }) => ({
+          children: params.children.map((child, index) => ({
+            id: `child-${index}`,
+            title: child.title,
+            status: "todo",
+            agentId: child.agentId,
+            notes: child.notes,
+          })),
+        }),
+      ),
+      workboardCardMove: vi.fn(async () => ({
+        card: { id: "x", title: "t", status: "ready" },
+      })),
+      workboardDispatch: vi.fn(async () => ({
+        started: [
+          {
+            cardId: "child-0",
+            sessionKey:
+              "agent:bot-reviewer:subagent:workboard-team-id-1-child-0",
+            runId: "run-1",
+          },
+        ],
+      })),
+    };
+    syncAll = vi.fn(async () => undefined);
+    createBot = vi.fn(async () => ({ id: "bot-lead" }));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("createTeam resolves installed members, creates a lead bot, and persists", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer", "writer"],
+    });
+
+    expect(team.leadBotId).toBe("bot-lead");
+    expect(team.members).toEqual([
+      { expertSlug: "reviewer", botId: "bot-reviewer", name: "Code Reviewer" },
+      { expertSlug: "writer", botId: "bot-writer", name: "Tech Writer" },
+    ]);
+    expect(team.boardId).toBe("team-team-id-1");
+    expect(ledger.get(team.id)).not.toBeNull();
+    expect(createBot).toHaveBeenCalledTimes(1);
+    expect(syncAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("createTeam rejects an uninstalled member", async () => {
+    const service = buildService();
+    await expect(
+      service.createTeam({ name: "X", memberSlugs: ["ghost"] }),
+    ).rejects.toBeInstanceOf(TeamMemberNotInstalledError);
+    expect(createBot).not.toHaveBeenCalled();
+  });
+
+  it("runTask decomposes into member cards with persona injected into notes, then dispatches", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer", "writer"],
+    });
+
+    const result = await service.runTask(team.id, {
+      task: "Ship the release notes",
+      subtasks: [
+        { title: "Review the diff", assigneeSlug: "reviewer" },
+        {
+          title: "Draft the notes",
+          assigneeSlug: "writer",
+          notes: "keep it short",
+        },
+      ],
+    });
+
+    // Board + parent card created against the team board.
+    expect(gateway.workboardBoardUpsert).toHaveBeenCalledWith({
+      id: team.boardId,
+      name: "Docs Squad",
+    });
+    expect(gateway.workboardCardCreate).toHaveBeenCalledWith({
+      title: "Ship the release notes",
+      board: team.boardId,
+      agentId: "bot-lead",
+      priority: "high",
+    });
+
+    // Each child card is assigned to the member bot and carries the member's
+    // persona in notes (the dispatcher worker does not load member AGENTS.md).
+    const decomposeArg = gateway.workboardCardDecompose.mock.calls[0][0];
+    expect(decomposeArg.id).toBe("parent-1");
+    expect(decomposeArg.children[0].agentId).toBe("bot-reviewer");
+    expect(decomposeArg.children[0].notes).toContain("Code Sentinel");
+    expect(decomposeArg.children[0].notes).toContain("[PERSONA");
+    expect(decomposeArg.children[1].agentId).toBe("bot-writer");
+    expect(decomposeArg.children[1].notes).toContain("keep it short");
+
+    // Children promoted to ready, then dispatched.
+    expect(gateway.workboardCardMove).toHaveBeenCalledTimes(2);
+    expect(gateway.workboardDispatch).toHaveBeenCalledWith({
+      board: team.boardId,
+    });
+    expect(result.parentCardId).toBe("parent-1");
+    expect(result.started).toEqual([
+      {
+        cardId: "child-0",
+        sessionKey: "agent:bot-reviewer:subagent:workboard-team-id-1-child-0",
+      },
+    ]);
+  });
+
+  it("runTask rejects a subtask assigned to a non-member", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    await expect(
+      service.runTask(team.id, {
+        task: "do it",
+        subtasks: [{ title: "x", assigneeSlug: "writer" }],
+      }),
+    ).rejects.toBeInstanceOf(TeamAssigneeNotMemberError);
+    expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
+  });
+});

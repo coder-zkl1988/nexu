@@ -21,6 +21,7 @@ import { registerRuntimeConfigRoutes } from "../routes/runtime-config-routes.js"
 import { registerScheduleRoutes } from "../routes/schedule-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillhubRoutes } from "../routes/skillhub-routes.js";
+import { buildTeamRoutes } from "../routes/team-routes.js";
 import { registerUserRoutes } from "../routes/user-routes.js";
 import { registerWorkspaceTemplateRoutes } from "../routes/workspace-template-routes.js";
 import type { ControllerBindings } from "../types.js";
@@ -65,6 +66,10 @@ export function createApp(container: ControllerContainer) {
       agentsDir: path.join(container.env.openclawStateDir, "agents"),
       platformTemplatesDir: container.env.platformTemplatesDir ?? "",
     }),
+  );
+  app.route(
+    "/api/v1/teams",
+    buildTeamRoutes({ teamService: container.teamService }),
   );
   registerUserRoutes(app, container);
   registerRuntimeConfigRoutes(app, container);

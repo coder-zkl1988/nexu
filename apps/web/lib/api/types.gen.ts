@@ -4475,6 +4475,200 @@ export type GetApiV1ExperthubPlatformTemplatesByFilenameResponses = {
 
 export type GetApiV1ExperthubPlatformTemplatesByFilenameResponse = GetApiV1ExperthubPlatformTemplatesByFilenameResponses[keyof GetApiV1ExperthubPlatformTemplatesByFilenameResponses];
 
+export type GetApiV1TeamsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/teams';
+};
+
+export type GetApiV1TeamsResponses = {
+    /**
+     * List of teams
+     */
+    200: {
+        teams: Array<{
+            id: string;
+            name: string;
+            leadBotId: string;
+            members: Array<{
+                expertSlug: string;
+                botId: string;
+                name?: string;
+            }>;
+            boardId: string;
+            createdAt: string;
+            updatedAt: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsResponse = GetApiV1TeamsResponses[keyof GetApiV1TeamsResponses];
+
+export type PostApiV1TeamsData = {
+    body?: {
+        name: string;
+        memberSlugs: Array<string>;
+        leadModelId?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/teams';
+};
+
+export type PostApiV1TeamsErrors = {
+    /**
+     * A member expert is not installed
+     */
+    400: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsError = PostApiV1TeamsErrors[keyof PostApiV1TeamsErrors];
+
+export type PostApiV1TeamsResponses = {
+    /**
+     * Team created
+     */
+    200: {
+        id: string;
+        name: string;
+        leadBotId: string;
+        members: Array<{
+            expertSlug: string;
+            botId: string;
+            name?: string;
+        }>;
+        boardId: string;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiV1TeamsResponse = PostApiV1TeamsResponses[keyof PostApiV1TeamsResponses];
+
+export type DeleteApiV1TeamsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}';
+};
+
+export type DeleteApiV1TeamsByIdErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type DeleteApiV1TeamsByIdError = DeleteApiV1TeamsByIdErrors[keyof DeleteApiV1TeamsByIdErrors];
+
+export type DeleteApiV1TeamsByIdResponses = {
+    /**
+     * Team deleted
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type DeleteApiV1TeamsByIdResponse = DeleteApiV1TeamsByIdResponses[keyof DeleteApiV1TeamsByIdResponses];
+
+export type GetApiV1TeamsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}';
+};
+
+export type GetApiV1TeamsByIdErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdError = GetApiV1TeamsByIdErrors[keyof GetApiV1TeamsByIdErrors];
+
+export type GetApiV1TeamsByIdResponses = {
+    /**
+     * Team detail
+     */
+    200: {
+        id: string;
+        name: string;
+        leadBotId: string;
+        members: Array<{
+            expertSlug: string;
+            botId: string;
+            name?: string;
+        }>;
+        boardId: string;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type GetApiV1TeamsByIdResponse = GetApiV1TeamsByIdResponses[keyof GetApiV1TeamsByIdResponses];
+
+export type PostApiV1TeamsByIdRunData = {
+    body?: {
+        task: string;
+        subtasks: Array<{
+            title: string;
+            assigneeSlug: string;
+            notes?: string;
+        }>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/run';
+};
+
+export type PostApiV1TeamsByIdRunErrors = {
+    /**
+     * A subtask assignee is not a team member
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdRunError = PostApiV1TeamsByIdRunErrors[keyof PostApiV1TeamsByIdRunErrors];
+
+export type PostApiV1TeamsByIdRunResponses = {
+    /**
+     * Task decomposed and dispatched
+     */
+    200: {
+        boardId: string;
+        parentCardId: string;
+        started: Array<{
+            cardId: string;
+            sessionKey: string;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsByIdRunResponse = PostApiV1TeamsByIdRunResponses[keyof PostApiV1TeamsByIdRunResponses];
+
 export type GetApiV1MeData = {
     body?: never;
     path?: never;

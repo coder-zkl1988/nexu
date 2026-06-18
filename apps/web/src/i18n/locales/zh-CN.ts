@@ -127,6 +127,7 @@ const zhCN = {
   "layout.nav.newChat": "新对话",
   "layout.nav.automations": "自动化",
   "layout.nav.agents": "AI·伙伴",
+  "layout.nav.teams": "团队",
   "layout.nav.devices": "设备",
   "layout.nav.settings": "设置",
   "layout.nav.experts": "AI·伙伴",

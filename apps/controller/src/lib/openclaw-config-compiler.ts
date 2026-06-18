@@ -359,6 +359,7 @@ function compileAgentList(
 function compilePlugins(
   config: NexuConfig,
   env: ControllerEnv,
+  hasTeams: boolean,
 ): OpenClawConfig["plugins"] {
   const resolvedMiniMaxOauth = listModelProviderRuntimeDescriptors(config).some(
     (descriptor) =>
@@ -410,6 +411,10 @@ function compilePlugins(
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
       ...(deviceControlEnabled ? ["tabby-control"] : []),
+      // Workboard backs the team task board (decompose / dependencies /
+      // dispatch). Bundled but disabled by default; enabling it adds a
+      // plugin to plugins.allow which triggers a one-time gateway restart.
+      ...(hasTeams ? ["workboard"] : []),
     ]),
   ).sort();
 
@@ -470,6 +475,13 @@ function compilePlugins(
       "nexu-a2ui": {
         enabled: true,
       },
+      ...(hasTeams
+        ? {
+            workboard: {
+              enabled: true,
+            },
+          }
+        : {}),
       ...(resolvedMiniMaxOauth
         ? {
             "minimax-portal-auth": {
@@ -499,6 +511,7 @@ export function compileOpenClawConfig(
   oauthState: OAuthConnectionState = EMPTY_OAUTH_CONNECTION_STATE,
   installedSkillSlugs?: readonly string[],
   workspaceSkillsByAgent?: ReadonlyMap<string, readonly string[]>,
+  hasTeams = false,
 ): OpenClawConfig {
   const disableMdnsDiscovery = process.env.CI === "true";
   const activeBots = config.bots.filter((bot) => bot.status === "active");
@@ -648,7 +661,7 @@ export function compileOpenClawConfig(
       gatewayToken: env.openclawGatewayToken,
     }),
     bindings: compileChannelBindings(config.bots, config.channels),
-    plugins: compilePlugins(config, env),
+    plugins: compilePlugins(config, env, hasTeams),
     skills: {
       load: {
         watch: true,
