@@ -70,16 +70,15 @@ type LiveStatusData = {
   }[];
 };
 
+// Only China-market channels are surfaced. WhatsApp / Telegram / Slack /
+// Discord remain implemented (OpenClaw bundles them) but are intentionally
+// hidden from this product's UI.
 const PLATFORMS: { id: Platform; emoji: string; desc: string }[] = [
-  { id: "whatsapp", emoji: "\u{1F4DE}", desc: "Personal WhatsApp" },
   { id: "wechat", emoji: "\u{1F4AC}", desc: "Personal WeChat" },
-  { id: "telegram", emoji: "\u{2708}\u{FE0F}", desc: "Telegram Bot" },
   { id: "dingtalk", emoji: "\u{1F4F1}", desc: "DingTalk Bot" },
   { id: "qqbot", emoji: "\u{1F427}", desc: "QQ Bot" },
   { id: "wecom", emoji: "\u{1F4BC}", desc: "WeCom Bot" },
   { id: "feishu", emoji: "\u{1F426}", desc: "Feishu Bot" },
-  { id: "slack", emoji: "#", desc: "Workspace Bot" },
-  { id: "discord", emoji: "\u{1F3AE}", desc: "Server Bot" },
 ];
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -105,7 +104,7 @@ export function ChannelsPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [platform, setPlatform] = useState<Platform>("slack");
+  const [platform, setPlatform] = useState<Platform>("wechat");
   const [forceGuide, setForceGuide] = useState(false);
   // For multi-instance platforms: when user clicks "Connect another",
   // we show the setup view even though instances already exist.
