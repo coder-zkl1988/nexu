@@ -74,6 +74,27 @@ export class DeviceControlService {
     return data.result as T;
   }
 
+  /**
+   * Push the signed-in user's VLM gateway credential to the tabby-control plugin
+   * so it's handed to phones on connect. Called on startup and whenever the
+   * cloud login state changes. Best-effort: if the plugin isn't up, ignore.
+   */
+  async pushVlmCredential(): Promise<void> {
+    let credential: { apiUrl: string; apiKey: string; model: string } | null =
+      null;
+    try {
+      credential = await this.configStore.getVlmGatewayCredential();
+    } catch {
+      credential = null;
+    }
+    try {
+      await this.rpc("device_set_vlm_credential", { credential });
+    } catch {
+      // Plugin not running / RPC unavailable — phones will fall back to local
+      // VLM settings until the next push succeeds.
+    }
+  }
+
   async isAvailable(): Promise<boolean> {
     // Cancel any in-flight health check
     this.healthAbortController?.abort();

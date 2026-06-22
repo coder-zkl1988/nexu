@@ -149,23 +149,14 @@ function homeChannelIcon(
   return ch.icon ?? null;
 }
 
+// Only the China-market channels are surfaced on the home screen. WhatsApp /
+// Telegram / Slack / Discord remain implemented (OpenClaw bundles them) but are
+// intentionally hidden from onboarding for this product.
 const ONBOARDING_CHANNELS = [
   {
     id: "wechat",
     name: "WeChat",
     recommended: true,
-  },
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    icon: WHATSAPP_ICON,
-    recommended: false,
-  },
-  {
-    id: "telegram",
-    name: "Telegram",
-    icon: TELEGRAM_ICON,
-    recommended: false,
   },
   {
     id: "dingtalk",
@@ -189,18 +180,6 @@ const ONBOARDING_CHANNELS = [
     id: "feishu",
     name: "Feishu",
     icon: FEISHU_ICON,
-    recommended: false,
-  },
-  {
-    id: "slack",
-    name: "Slack",
-    icon: SLACK_SVG,
-    recommended: false,
-  },
-  {
-    id: "discord",
-    name: "Discord",
-    icon: DISCORD_SVG,
     recommended: false,
   },
 ];

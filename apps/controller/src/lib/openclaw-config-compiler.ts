@@ -395,6 +395,7 @@ function compilePlugins(
     // plugins.allow which triggers a full gateway restart (~11s).
     "langfuse-tracer",
     "nexu-a2ui",
+    "nexu-toolcall-guard",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -466,6 +467,12 @@ function compilePlugins(
       },
       "nexu-a2ui": {
         enabled: true,
+      },
+      "nexu-toolcall-guard": {
+        enabled: true,
+        hooks: {
+          allowConversationAccess: true,
+        },
       },
       ...(resolvedMiniMaxOauth
         ? {

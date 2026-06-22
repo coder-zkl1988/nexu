@@ -1,0 +1,18 @@
+{
+  "id": "nexu-toolcall-guard",
+  "name": "Nexu Tool Call Guard",
+  "description": "Breaks infinite tool-call retry loops when a model repeatedly fails argument validation (e.g. emits empty arguments with no progress), preventing runaway token usage.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "threshold": {
+        "type": "number",
+        "description": "Consecutive same-tool validation failures (with no argument progress) before further calls are blocked. Minimum 2, default 3."
+      }
+    }
+  },
+  "activation": {
+    "onStartup": true
+  }
+}
