@@ -513,9 +513,11 @@ const plugin = {
 
 WHEN TO USE:
 - Displaying connected phone/device status — use PhonePreview component
-- Showing copywriting, markdown, or generated text content — use MarkdownEditor component
-- Publishing ONE Xiaohongshu/RedNote post (title + body + images + hashtags) to a phone — use XHSEditor component
-- Publishing MULTIPLE Xiaohongshu posts at once, optionally to different phones — use XHSBatchTable component (inline table; each row opens an XHSEditor in the side panel)
+- Showing generic copywriting / markdown / plain generated text that is NOT a Xiaohongshu post — use MarkdownEditor component
+- Writing Xiaohongshu/RedNote post(s) — ALWAYS render with XHS components, NEVER MarkdownEditor or a plain-text list:
+    • exactly ONE post → XHSEditor
+    • TWO OR MORE posts → a SINGLE XHSBatchTable holding all of them (one row per post). Do not emit multiple XHSEditors or a text list for multiple posts.
+    • Images are OPTIONAL and are NOT a prerequisite for publishing: render the post(s) immediately with images:[] and let the user add images afterwards. NEVER stall, loop, or refuse to render just because there are no images yet.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
 - Offering selectable actions (confirm/cancel, option selection)
@@ -532,7 +534,9 @@ SURFACE PLACEMENT (automatic — you normally don't control it):
 - Only when the user explicitly asks for the side panel (侧边栏), prefix the surfaceId with "sidebar:" to force panel placement.
 
 IMAGE / MEDIA SOURCES:
-- Image.source, PhonePreview screenshot, and XHSEditor images accept http(s) URLs, data URIs, or absolute local file paths under the OpenClaw media directory (e.g. files produced by image_generate). Local media paths are automatically converted to servable URLs in webchat.
+- Image.source, PhonePreview screenshot, and XHS images accept http(s) URLs, data URIs, or absolute local file paths UNDER THE OPENCLAW MEDIA DIRECTORY. Only paths under that media directory are auto-converted to servable URLs in webchat.
+- To create post/cover images, use the image_generate tool — its output lands in the media directory and previews correctly. Pass the returned local path straight into images.
+- Do NOT scrape image sites (pexels / freepik / Baidu Images etc. — they block scraping and will fail) and do NOT download/save images to /tmp or any path outside the media directory: webchat cannot serve those, so the preview will 404. If you cannot generate an image, just render the post with images:[] rather than fetching from the web.
 
 BUTTON ACTIONS:
 - Use \`"action": {"event": {"name": "actionName", "context": {}}}\` for buttons.

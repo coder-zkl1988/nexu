@@ -283,6 +283,26 @@ export class OpenClawRuntimePluginWriter {
         }
       }
 
+      // Inject XHSBatchTable + 配图 guidance. Separate marker ("XHSBatchTable")
+      // so it also reaches skills that already carry the older XHSEditor-only
+      // 内容可视化 section. Steers the agent to (1) render ≥2 posts with one
+      // XHSBatchTable instead of multiple editors / plain text, and (2) treat
+      // images as optional and source them via image_generate (which lands in
+      // the OpenClaw media dir and previews) rather than scraping image sites
+      // or saving to /tmp (which webchat cannot serve → broken previews).
+      if (!content.includes("XHSBatchTable")) {
+        const batchInjection =
+          '\n\n## 多篇笔记与配图\n\n### 多篇（≥2 篇）必须用 XHSBatchTable\n\n一次生成 2 篇及以上小红书笔记时，**必须用一个 `XHSBatchTable` 一次性渲染全部笔记**（每篇一行，点击行可在侧边栏编辑、可逐篇分配到不同手机），**不要**拆成多个 XHSEditor，也不要只用纯文本罗列：\n```json\n{\n  "surfaceId": "xhs-batch",\n  "catalogId": "https://nexu.app/a2ui/custom-catalog.json",\n  "components": [\n    { "id": "batch", "type": "XHSBatchTable", "posts": [\n      { "id": "p1", "title": "标题1", "content": "正文1...", "hashtags": ["话题"], "images": [] },\n      { "id": "p2", "title": "标题2", "content": "正文2...", "hashtags": ["话题"], "images": [] }\n    ] }\n  ]\n}\n```\nXHSBatchTable 的 `surfaceId` **不要**加 `sidebar:` 前缀（它在对话流里内联展示）。\n\n### 配图是可选的，绝不要因为没配图而卡住\n\n- **先渲染、后配图**：写完笔记立刻用 XHSEditor/XHSBatchTable 渲染出来给用户看，`images` 留空完全可以，配图可以之后再补。**绝不要**因为"还没有配图"就迟迟不渲染笔记、或反复找图导致流程卡死。\n- **要配图就用 `image_generate` 生成**：它产出的图片落在 OpenClaw media 目录、能在 webchat 里正常预览，把返回的本地图片路径直接填进 `images` 即可。\n- **不要抓图片站、不要存 `/tmp`**：pexels / freepik / 百度图片等图片站普遍反爬、抓不到；而 webchat 只能预览 OpenClaw media 目录下的文件，下载到 `/tmp` 的图片一律预览失败（404）。所以除了 `image_generate`，不要用 web_fetch / exec 去网上抓图来当配图。\n';
+        const prereqIdx = content.indexOf("## 通用执行前提");
+        if (prereqIdx !== -1) {
+          content =
+            content.slice(0, prereqIdx) +
+            batchInjection +
+            content.slice(prereqIdx);
+          await writeFile(skillMd, content, "utf8");
+        }
+      }
+
       // Inject sub-task decomposition into post.md if missing
       let postContent = await readFile(postMd, "utf8");
       if (!postContent.includes("子任务分解")) {
