@@ -108,6 +108,32 @@ describe("macOS Entitlements — V8 JIT requirements", () => {
   });
 
   // -------------------------------------------------------------------------
+  // 4b. Both must have disable-library-validation so the controller child
+  //     process (ELECTRON_RUN_AS_NODE via the cloned runner) can load the
+  //     better-sqlite3 native addon. macOS 14.7.4+ does not reliably propagate
+  //     this to children via inherit alone — without it the controller crashes
+  //     on strict (library-validation-enforcing) machines and the desktop app
+  //     hangs on the loading screen with "本地运行时启动超时".
+  // -------------------------------------------------------------------------
+  it("parent plist grants disable-library-validation", () => {
+    expect(
+      plistHasKey(
+        parentPlist,
+        "com.apple.security.cs.disable-library-validation",
+      ),
+    ).toBe(true);
+  });
+
+  it("inherit plist explicitly grants disable-library-validation (native addon load guard)", () => {
+    expect(
+      plistHasKey(
+        inheritPlist,
+        "com.apple.security.cs.disable-library-validation",
+      ),
+    ).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
   // 5. electron-builder config references both plists
   // -------------------------------------------------------------------------
   it("electron-builder config references both entitlement files", () => {
