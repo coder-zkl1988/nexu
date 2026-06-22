@@ -469,6 +469,10 @@ export async function createContainer(): Promise<ControllerContainer> {
     // fresh login because the registry never saw the new providers map.
     // `restart()` handles both dev-managed and launchd-managed modes.
     await openclawProcess.restart("cloud_state_changed");
+    // After the restart the tabby-control plugin comes up with no VLM
+    // credential; push the signed-in user's gateway credential (or null on
+    // logout) so phones run the model on their cloud account.
+    await deviceControlService.pushVlmCredential();
   };
 
   // Hoisted so both the container surface and the channel-health watchdog
@@ -572,6 +576,22 @@ export async function createContainer(): Promise<ControllerContainer> {
       nexuOfficialModelRefreshInterval.unref?.();
       skillhubService.start();
       devicePollingService.start();
+
+      // On cold start, push the signed-in user's VLM gateway credential to the
+      // device-control plugin once its RPC is up, so phones connecting before
+      // any login change still run the model on the user's cloud account.
+      void (async () => {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const up = await deviceControlService
+            .isAvailable()
+            .catch(() => false);
+          if (up) {
+            await deviceControlService.pushVlmCredential();
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      })();
 
       return () => {
         stopHealthLoop();

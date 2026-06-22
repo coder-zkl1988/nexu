@@ -2079,6 +2079,35 @@ export class NexuConfigStore {
     return nextProfile;
   }
 
+  /**
+   * VLM gateway credential pushed to phones (tabby-control → connected handshake)
+   * so the phone runs its vision model on the signed-in user's cloud account,
+   * billed to their balance. Returns null when no user is signed in — the phone
+   * then falls back to its own local VLM settings.
+   *
+   * apiUrl = `${linkUrl}/v1/` (new-api gateway, OpenAI-compatible); the phone
+   * appends `/chat/completions`. The gateway routes `step-3.7-flash` to StepFun's
+   * step_plan upstream internally, so no step_plan path is needed here.
+   */
+  async getVlmGatewayCredential(): Promise<{
+    apiUrl: string;
+    apiKey: string;
+    model: string;
+  } | null> {
+    const config = await this.getConfig();
+    const cloud = readDesktopCloud(config);
+    const { activeProfile } =
+      await this.readConfiguredDesktopCloudProfile(config);
+    const linkUrl = activeProfile.linkUrl ?? cloud.linkUrl;
+    if (!cloud.connected || !linkUrl || !cloud.apiKey) return null;
+    const base = String(linkUrl).replace(/\/+$/, "");
+    return {
+      apiUrl: `${base}/v1/`,
+      apiKey: cloud.apiKey,
+      model: "step-3.7-flash",
+    };
+  }
+
   async getDesktopCloudStatus() {
     const config = await this.getConfig();
     const cloud = readDesktopCloud(config);
