@@ -2086,8 +2086,12 @@ export class NexuConfigStore {
    * then falls back to its own local VLM settings.
    *
    * apiUrl = `${linkUrl}/v1/` (new-api gateway, OpenAI-compatible); the phone
-   * appends `/chat/completions`. The gateway routes `step-3.7-flash` to StepFun's
-   * step_plan upstream internally, so no step_plan path is needed here.
+   * appends `/chat/completions`. The gateway routes the phone model name to
+   * StepFun's step_plan upstream internally, so no step_plan path is needed here.
+   *
+   * Model name is the gateway's published name for the phone VLM (currently
+   * `tabby-phone`; was `step-3.7-flash`). Override via NEXU_PHONE_VLM_MODEL so a
+   * gateway rename doesn't need a code change.
    */
   async getVlmGatewayCredential(): Promise<{
     apiUrl: string;
@@ -2104,7 +2108,7 @@ export class NexuConfigStore {
     return {
       apiUrl: `${base}/v1/`,
       apiKey: cloud.apiKey,
-      model: "step-3.7-flash",
+      model: process.env.NEXU_PHONE_VLM_MODEL ?? "tabby-phone",
     };
   }
 
