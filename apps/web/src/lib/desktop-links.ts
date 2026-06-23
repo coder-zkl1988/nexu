@@ -26,25 +26,6 @@ function getHostInvokeBridge(): HostInvokeBridge | null {
   };
 }
 
-function getSessionMetadataPath(
-  metadata: Record<string, unknown> | null | undefined,
-): string | null {
-  if (!metadata) {
-    return null;
-  }
-
-  const pathValue = metadata.path;
-  return typeof pathValue === "string" && pathValue.trim().length > 0
-    ? pathValue
-    : null;
-}
-
-function getParentPath(filePath: string): string | null {
-  const normalized = filePath.replace(/[\\/]+$/, "");
-  const match = normalized.match(/^(.*)[\\/][^\\/]+$/);
-  return match?.[1] ?? null;
-}
-
 export function pathToFileUrl(path: string): string {
   const normalized = path.replace(/\\/g, "/");
   if (/^[A-Za-z]:\//.test(normalized)) {
@@ -54,18 +35,6 @@ export function pathToFileUrl(path: string): string {
     return `file://${encodeURI(normalized)}`;
   }
   return `file://${encodeURI(normalized)}`;
-}
-
-export function getSessionFolderUrl(
-  metadata: Record<string, unknown> | null | undefined,
-): string | null {
-  const filePath = getSessionMetadataPath(metadata);
-  if (!filePath) {
-    return null;
-  }
-
-  const folderPath = getParentPath(filePath);
-  return folderPath ? pathToFileUrl(folderPath) : null;
 }
 
 function fileUrlToPath(fileUrl: string): string | null {

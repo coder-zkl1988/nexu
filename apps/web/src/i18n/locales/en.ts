@@ -930,7 +930,6 @@ const en = {
   "sessions.pending.waiting": "Waiting for {{name}} to reply...",
   "sessions.pending.streaming": "{{name}} is replying...",
   "sessions.pending.error": "Still waiting for the conversation...",
-  "sessions.openFolder": "Open Folder",
 
   // ── Integrations Page ──
   "integrations.pageTitle": "Integrations",

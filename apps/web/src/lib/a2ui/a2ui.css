@@ -13,6 +13,17 @@
   gap: 8px;
 }
 
+/* Sidebar-bound full-height editors (XHSEditor) fill the right panel.
+   The sidebar host (.a2ui-sidebar-host) has a definite flex height, so this
+   percentage-height chain resolves. Scoped via :has() to surfaces that
+   actually contain an .xhs-editor, so MarkdownEditor and inline A2UI hosts
+   (auto height) are untouched. */
+.a2ui-sidebar-host > .a2ui-surfaces:has(.xhs-editor),
+.a2ui-sidebar-host > .a2ui-surfaces > .a2ui-surface:has(> .xhs-editor) {
+  height: 100%;
+  min-height: 0;
+}
+
 /* ── Text ────────────────────────────────────────────────────── */
 .a2ui-text {
   margin: 0;

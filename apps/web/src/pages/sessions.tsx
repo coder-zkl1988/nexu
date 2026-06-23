@@ -10,7 +10,6 @@ import type { A2UIMessage } from "@/lib/a2ui";
 import { useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import { getChannelChatUrl } from "@/lib/channel-links";
-import { getSessionFolderUrl, openLocalFolderUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,7 +18,6 @@ import {
   CheckCircle2,
   FileImage,
   FileText,
-  FolderOpen,
   Loader2,
   MessageSquare,
   PanelRight,
@@ -1531,7 +1529,6 @@ export function SessionsPage() {
   const linkedChannel = channelsData?.channels?.find(
     (channel) => channel.id === session?.channelId,
   );
-  const sessionFolderUrl = getSessionFolderUrl(sessionMetadata);
   const externalChatUrl =
     platform === "web"
       ? ""
@@ -1555,19 +1552,6 @@ export function SessionsPage() {
     "inline-flex h-12 items-center justify-center gap-3 rounded-[18px] border bg-white px-5 text-[13px] font-medium text-text-primary shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors",
     "border-[rgba(15,23,42,0.1)] hover:bg-[rgba(248,250,252,0.9)]",
   );
-
-  const handleOpenFolder = async (): Promise<void> => {
-    if (!sessionFolderUrl) {
-      toast.error("Session folder is unavailable.");
-      return;
-    }
-
-    try {
-      await openLocalFolderUrl(sessionFolderUrl);
-    } catch {
-      toast.error("Failed to open session folder.");
-    }
-  };
 
   const handleUnavailableChatLink = (): void => {
     if (platform === "feishu") {
@@ -1617,21 +1601,6 @@ export function SessionsPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              data-session-folder-url={sessionFolderUrl ?? undefined}
-              onClick={() => {
-                void handleOpenFolder();
-              }}
-              disabled={!sessionFolderUrl}
-              className={cn(
-                buttonClassName,
-                !sessionFolderUrl && "cursor-not-allowed opacity-60",
-              )}
-            >
-              <FolderOpen className="size-[18px] text-text-secondary" />
-              <span>{t("sessions.openFolder")}</span>
-            </button>
             {!!session?.channelId &&
               platform !== "wechat" &&
               (externalChatUrl ? (

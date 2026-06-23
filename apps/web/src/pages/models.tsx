@@ -2371,10 +2371,10 @@ function ManagedProviderDetail({
           </span>
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
-              {provider.name}
+              {t("models.provider.nexu.name")}
             </div>
             <div className="text-[11px] text-text-tertiary">
-              {t(provider.description)}
+              {t("models.provider.nexu.description")}
             </div>
           </div>
         </div>
