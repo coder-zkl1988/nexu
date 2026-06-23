@@ -115,12 +115,6 @@ export class OpenClawRuntimePluginWriter {
       handledPluginIds.add(entry.name);
     }
 
-    // Patch tabby-rednote SKILL.md with execution strategy (idempotent)
-    await this.patchTabbyRednoteSkill(
-      this.env.openclawSkillsDir,
-      "tabby-rednote",
-    );
-
     return handledPluginIds;
   }
 
@@ -225,94 +219,6 @@ export class OpenClawRuntimePluginWriter {
       }
     } catch {
       // tools.js missing — non-fatal
-    }
-  }
-
-  /**
-   * Patch tabby-rednote SKILL.md and references/post.md to inject dual-layer
-   * orchestration guidance.
-   *
-   * The default execution mode is **autonomous** (device_execute_task) where
-   * the phone-side VLM executes sub-tasks independently.  If the phone VLM is
-   * unstable, agents should fall back to step-by-step device_execute_skill.
-   *
-   * The skill is installed from SkillHub (not source-controlled), so we patch
-   * it at runtime.  The patch is idempotent: it checks for marker strings
-   * before injecting.
-   */
-  private async patchTabbyRednoteSkill(
-    skillsDir: string,
-    skillName: string,
-  ): Promise<void> {
-    const skillMd = path.join(skillsDir, skillName, "SKILL.md");
-    const postMd = path.join(skillsDir, skillName, "references", "post.md");
-    try {
-      // Inject execution strategy into SKILL.md if missing
-      let content = await readFile(skillMd, "utf8");
-      if (
-        !content.includes("执行策略") ||
-        content.includes("必须使用 `device_execute_skill`")
-      ) {
-        const oldStrategy = content.match(/\n\n## 执行策略[\s\S]*?(?=\n\n## )/);
-        if (oldStrategy) {
-          content = content.replace(oldStrategy[0], "");
-        }
-        const injection =
-          "\n\n## 执行策略\n\n本技能采用**双层自治架构**：\n\n### 默认模式：自主执行（device_execute_task）\n\n将整体任务拆解为 **2~3 个子任务**，每个子任务包含 2~3 步相关操作，用自然语言描述后通过 `device_execute_task` 下发给手机端自主执行。手机端 VLM 会在子任务内部自主循环（截图→分析→操作→截图→…），直到完成或遇到问题才上报。\n\n### 降级模式：逐步执行（device_execute_skill）\n\n当手机端 VLM 不稳定时（频繁 stuck、跳转错误应用、重复点击），降级为 `device_execute_skill`，将操作拆分为 ≤3 步的子任务逐组下发。\n";
-        const frontmatterEnd = content.indexOf("---", 4);
-        if (frontmatterEnd !== -1) {
-          const insertPos = content.indexOf("\n", frontmatterEnd + 3) + 1;
-          content =
-            content.slice(0, insertPos) + injection + content.slice(insertPos);
-          await writeFile(skillMd, content, "utf8");
-        }
-      }
-
-      // Inject XHSEditor guidance into SKILL.md if missing
-      if (!content.includes("内容可视化")) {
-        const xhsInjection =
-          '\n\n## 内容可视化\n\n当用户要求生成小红书笔记内容（标题、正文、话题标签等）时，**必须**调用 `render_a2ui` 工具将内容渲染为可视化编辑卡片，而非仅以纯文本输出。\n\n调用方式：\n```json\n{\n  "surfaceId": "sidebar:xhs-editor",\n  "catalogId": "https://nexu.app/a2ui/custom-catalog.json",\n  "components": [\n    {\n      "id": "xhs-editor",\n      "type": "XHSEditor",\n      "title": "笔记标题",\n      "content": "笔记正文内容...",\n      "images": [],\n      "hashtags": ["穿搭", "OOTD"],\n      "maxTitleLength": 20\n    }\n  ]\n}\n```\n\n**要点**：\n- `surfaceId` 必须以 `sidebar:` 开头，这样编辑卡片会自动在右侧边栏打开\n- 先调用 `render_a2ui` 展示内容，再下发 `device_execute_task` 执行发布操作\n- 用户可在编辑卡片中修改标题、正文、话题，点击"确认更新"后更新内容\n- 如果用户没有提供标题，根据正文内容自动生成一个不超过20字的标题\n';
-        // Insert before "通用执行前提"
-        const prereqIdx = content.indexOf("## 通用执行前提");
-        if (prereqIdx !== -1) {
-          content =
-            content.slice(0, prereqIdx) +
-            xhsInjection +
-            content.slice(prereqIdx);
-          await writeFile(skillMd, content, "utf8");
-        }
-      }
-
-      // Inject XHSBatchTable + 配图 guidance. Separate marker ("XHSBatchTable")
-      // so it also reaches skills that already carry the older XHSEditor-only
-      // 内容可视化 section. Steers the agent to (1) render ≥2 posts with one
-      // XHSBatchTable instead of multiple editors / plain text, and (2) treat
-      // images as optional and source them via image_generate (which lands in
-      // the OpenClaw media dir and previews) rather than scraping image sites
-      // or saving to /tmp (which webchat cannot serve → broken previews).
-      if (!content.includes("XHSBatchTable")) {
-        const batchInjection =
-          '\n\n## 多篇笔记与配图\n\n### 多篇（≥2 篇）必须用 XHSBatchTable\n\n一次生成 2 篇及以上小红书笔记时，**必须用一个 `XHSBatchTable` 一次性渲染全部笔记**（每篇一行，点击行可在侧边栏编辑、可逐篇分配到不同手机），**不要**拆成多个 XHSEditor，也不要只用纯文本罗列：\n```json\n{\n  "surfaceId": "xhs-batch",\n  "catalogId": "https://nexu.app/a2ui/custom-catalog.json",\n  "components": [\n    { "id": "batch", "type": "XHSBatchTable", "posts": [\n      { "id": "p1", "title": "标题1", "content": "正文1...", "hashtags": ["话题"], "images": [] },\n      { "id": "p2", "title": "标题2", "content": "正文2...", "hashtags": ["话题"], "images": [] }\n    ] }\n  ]\n}\n```\nXHSBatchTable 的 `surfaceId` **不要**加 `sidebar:` 前缀（它在对话流里内联展示）。\n\n### 配图是可选的，绝不要因为没配图而卡住\n\n- **先渲染、后配图**：写完笔记立刻用 XHSEditor/XHSBatchTable 渲染出来给用户看，`images` 留空完全可以，配图可以之后再补。**绝不要**因为"还没有配图"就迟迟不渲染笔记、或反复找图导致流程卡死。\n- **要配图就用 `image_generate` 生成**：它产出的图片落在 OpenClaw media 目录、能在 webchat 里正常预览，把返回的本地图片路径直接填进 `images` 即可。\n- **不要抓图片站、不要存 `/tmp`**：pexels / freepik / 百度图片等图片站普遍反爬、抓不到；而 webchat 只能预览 OpenClaw media 目录下的文件，下载到 `/tmp` 的图片一律预览失败（404）。所以除了 `image_generate`，不要用 web_fetch / exec 去网上抓图来当配图。\n';
-        const prereqIdx = content.indexOf("## 通用执行前提");
-        if (prereqIdx !== -1) {
-          content =
-            content.slice(0, prereqIdx) +
-            batchInjection +
-            content.slice(prereqIdx);
-          await writeFile(skillMd, content, "utf8");
-        }
-      }
-
-      // Inject sub-task decomposition into post.md if missing
-      let postContent = await readFile(postMd, "utf8");
-      if (!postContent.includes("子任务分解")) {
-        const postInjection =
-          "\n\n## 子任务分解\n\n### 子任务 1：打开发布入口并选择类型\n使用 `device_execute_task` 发送：\n```\n\"打开小红书 App，点击底部导航栏中间的红色'+'按钮，在弹出的半屏抽屉中，如果发布模式为 text 则点击'写文字'，如果为 photo 则点击'从相册选择'\"\n```\n验收：text 进入封面图生成页 / photo 进入图片选择页\n\n### 子任务 2：选择素材并填写标题正文\n使用 `device_execute_task` 发送（photo 模式）：\n```\n\"在相册选择页面点选第一张图片，点击右下角'下一步'，进入编辑页后再次点击'下一步'，然后在标题输入框（占位文字'添加标题'）输入标题，在正文输入框输入正文\"\n```\n或（text 模式）：\n```\n\"在文字封面图页面输入标题精简内容，点击'下一步'，选择效果模板后点击'下一步'，然后在标题输入框输入标题，在正文输入框输入正文\"\n```\n验收：笔记编辑页标题正文已填写\n\n### 子任务 3：添加标签并发布\n使用 `device_execute_task` 发送：\n```\n\"点击'#话题'按钮搜索添加话题标签，然后点击右上角红色'发布'按钮（键盘弹起时）或页面底部'发布笔记'按钮（键盘隐藏时）\"\n```\n验收：出现发布进度提示\n\n## 降级模式\n若 `device_execute_task` 子任务连续返回 stuck，切换为 `device_execute_skill` 逐步模式：步骤组1（maxSteps=3）打开发布入口并选择类型 → 步骤组2（maxSteps=3）选择素材填标题正文 → 步骤组3（maxSteps=3）添加标签发布。\n";
-        postContent += postInjection;
-        await writeFile(postMd, postContent, "utf8");
-      }
-    } catch {
-      // Skill not installed yet — non-fatal
     }
   }
 }
