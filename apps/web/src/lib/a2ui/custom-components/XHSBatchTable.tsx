@@ -66,6 +66,7 @@ function buildEditorSurface(
             content: post.content,
             images: post.images,
             hashtags: post.hashtags,
+            deviceId: post.deviceId,
             batchId,
             postId: post.id,
           } as unknown as A2UIComponent,

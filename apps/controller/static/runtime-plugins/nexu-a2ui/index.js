@@ -386,7 +386,8 @@ const COMPONENT_SCHEMAS = [
       },
       content: {
         type: "string",
-        description: "Initial content/body text for the post",
+        description:
+          "Initial body text for the post. PLAIN TEXT only — Xiaohongshu does not render Markdown. Do NOT use Markdown: no `#` headings, `**bold**`, or `-`/`*` bullets. The title is the separate `title` field, so never restate it as a `# heading` on the first body line. Emojis and line breaks are fine.",
       },
       images: {
         type: "array",
@@ -430,7 +431,11 @@ const COMPONENT_SCHEMAS = [
           properties: {
             id: { type: "string", description: "Stable post id" },
             title: { type: "string", description: "Post title" },
-            content: { type: "string", description: "Post body text" },
+            content: {
+              type: "string",
+              description:
+                "Post body text. PLAIN TEXT only — Xiaohongshu does not render Markdown; no `#` headings, `**bold**`, or `-`/`*` bullets, and never restate the title as a `# heading` on the first line. Emojis and line breaks are fine.",
+            },
             images: {
               type: "array",
               items: { type: "string" },
@@ -517,6 +522,7 @@ WHEN TO USE:
 - Writing Xiaohongshu/RedNote post(s) — ALWAYS render with XHS components, NEVER MarkdownEditor or a plain-text list:
     • exactly ONE post → XHSEditor
     • TWO OR MORE posts → a SINGLE XHSBatchTable holding all of them (one row per post). Do not emit multiple XHSEditors or a text list for multiple posts.
+    • CONTENT FORMAT: title and body are SEPARATE fields. Write the body as PLAIN TEXT — Xiaohongshu does not render Markdown. No \`#\` headings, no \`**bold**\`, no \`-\`/\`*\` bullets, and NEVER repeat the title as a \`# heading\` on the first body line. Emojis and line breaks are encouraged.
     • Images are OPTIONAL and are NOT a prerequisite for publishing: render the post(s) immediately with images:[] and let the user add images afterwards. NEVER stall, loop, or refuse to render just because there are no images yet.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
