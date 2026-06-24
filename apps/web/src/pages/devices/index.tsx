@@ -111,6 +111,14 @@ export function DevicesPage() {
     const es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
     let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
+    // Safety net: never let the spinner hang forever. If no device_list
+    // snapshot arrives within the grace window — e.g. an older controller that
+    // stays silent when the device-control plugin is down, and the SSE connects
+    // fine so onerror's polling fallback never fires — fall back to the empty
+    // state. The controller normally emits an initial snapshot within ~5s, so
+    // this only triggers when that contract isn't met.
+    const loadingFallback = setTimeout(() => setLoading(false), 8000);
+
     es.addEventListener("device_list", (e) => {
       try {
         const data = JSON.parse(e.data);
@@ -153,6 +161,7 @@ export function DevicesPage() {
     };
 
     return () => {
+      clearTimeout(loadingFallback);
       es.close();
       if (fallbackInterval !== null) {
         clearInterval(fallbackInterval);
