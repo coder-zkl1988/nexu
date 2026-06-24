@@ -43,7 +43,7 @@ function resolveUpdateFeedUrl(options: {
   }
 
   if (options.source === "github") {
-    return "github://nexu-io/nexu";
+    return "github://coder-zkl1988/tabby";
   }
 
   return getDefaultR2FeedUrl(options.channel, options.arch);
@@ -83,11 +83,11 @@ export class MacUpdateDriver implements PlatformUpdateDriver {
   configure(options: UpdateDriverOptions): void {
     this.currentFeedUrl = resolveUpdateFeedUrl(options);
 
-    if (this.currentFeedUrl === "github://nexu-io/nexu") {
+    if (this.currentFeedUrl === "github://coder-zkl1988/tabby") {
       autoUpdater.setFeedURL({
         provider: "github",
-        owner: "nexu-io",
-        repo: "nexu",
+        owner: "coder-zkl1988",
+        repo: "tabby",
       });
       return;
     }
