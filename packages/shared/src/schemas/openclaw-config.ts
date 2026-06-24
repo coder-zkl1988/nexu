@@ -593,6 +593,20 @@ const sessionConfigSchema = z
   })
   .passthrough();
 
+/** OpenClaw self-update policy. `checkOnStart` gates the boot-time
+ * `registry.npmjs.org/openclaw/latest` version fetch; `auto.enabled` gates
+ * background auto-update installs. Nexu ships a version-pinned bundled OpenClaw
+ * (slimclaw + desktop auto-updater), so both stay off. */
+const updateConfigSchema = z
+  .object({
+    checkOnStart: z.boolean().optional(),
+    auto: z
+      .object({ enabled: z.boolean().optional() })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 export const openclawConfigSchema = z.object({
   gateway: gatewayConfigSchema,
   models: modelsConfigSchema.optional(),
@@ -608,6 +622,7 @@ export const openclawConfigSchema = z.object({
   diagnostics: diagnosticsConfigSchema.optional(),
   plugins: pluginsConfigSchema.optional(),
   hooks: hooksConfigSchema.optional(),
+  update: updateConfigSchema.optional(),
 });
 
 export type OpenClawConfig = z.infer<typeof openclawConfigSchema>;

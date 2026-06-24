@@ -526,6 +526,11 @@ export function compileOpenClawConfig(
           },
         }
       : {}),
+    // Bundled, version-pinned OpenClaw must not phone npm for a newer version
+    // on boot. `checkOnStart` is the `registry.npmjs.org/openclaw/latest` fetch
+    // that times out on restricted networks (e.g. China) and stalls startup.
+    // The OpenClaw version is managed by slimclaw + the desktop auto-updater.
+    update: { checkOnStart: false },
     gateway: {
       port: env.openclawGatewayPort,
       mode: "local",
