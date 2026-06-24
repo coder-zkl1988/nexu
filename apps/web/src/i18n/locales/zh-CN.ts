@@ -133,6 +133,7 @@ const zhCN = {
   "layout.conversations": "对话",
   "layout.scheduledTasks": "定时任务",
   "layout.deleteSession": "删除对话",
+  "layout.signOut": "退出登录",
   "layout.mobile.conversations": "对话",
   "layout.sidebar.loginTitle": "登录 Tabby 账号",
   "layout.sidebar.loginSubtitle": "使用官方额度",
