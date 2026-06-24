@@ -876,7 +876,29 @@ export class OpenClawWsClient {
    * Called by the health loop when it detects the gateway is reachable.
    */
   retryNow(): void {
-    if (this.closed || this.ws) return;
+    if (this.closed) return;
+    // A gateway restart (SIGUSR1 / supervisor restart → ws close code 1012) can
+    // leave a half-dead socket: `this.ws` is non-null but not OPEN, and a native
+    // WebSocket may never fire onclose, so scheduleReconnect never runs and the
+    // controller stays "disconnected" forever even though the gateway HTTP
+    // health is back. Tear down a non-OPEN socket so we can actually reconnect;
+    // leave a genuinely-open socket alone.
+    if (this.ws) {
+      // Leave a connected (OPEN) or still-connecting socket alone — only clear a
+      // CLOSING/CLOSED zombie that scheduleReconnect failed to null out (a
+      // gateway restart can leave one behind, blocking every future reconnect).
+      const readyState = this.ws.readyState;
+      if (readyState !== WebSocket.CLOSING && readyState !== WebSocket.CLOSED) {
+        return;
+      }
+      this.cleanup();
+      try {
+        this.ws.close();
+      } catch {
+        /* already closed */
+      }
+      this.ws = null;
+    }
     if (this.connectTimer) {
       clearTimeout(this.connectTimer);
       this.connectTimer = null;
