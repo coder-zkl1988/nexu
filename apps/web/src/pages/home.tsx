@@ -189,6 +189,15 @@ const MULTI_INSTANCE_PLATFORMS: ReadonlySet<string> = new Set([
   "wechat",
 ]);
 
+// The "add a channel" grid only offers the China-market channels (derived from
+// ONBOARDING_CHANNELS so the two never drift). WhatsApp / Telegram / Slack /
+// Discord stay implemented (OpenClaw bundles them) but are hidden from the
+// connect grid. This gates ONLY the not-yet-connected grid — an already-
+// connected channel is always rendered so it stays visible and disconnectable.
+const HOME_VISIBLE_CHANNEL_IDS: ReadonlySet<string> = new Set(
+  ONBOARDING_CHANNELS.map((channel) => channel.id),
+);
+
 function getChannelOptions(t: (key: string) => string) {
   return [
     {
@@ -1168,11 +1177,16 @@ export function HomePage() {
             )}
 
             {/* Not-yet-connected channels — dashed border grid */}
-            {CHANNEL_OPTIONS.filter((ch) => !effectiveConnectedTypes.has(ch.id))
-              .length > 0 && (
+            {CHANNEL_OPTIONS.filter(
+              (ch) =>
+                !effectiveConnectedTypes.has(ch.id) &&
+                HOME_VISIBLE_CHANNEL_IDS.has(ch.id),
+            ).length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {CHANNEL_OPTIONS.filter(
-                  (ch) => !effectiveConnectedTypes.has(ch.id),
+                  (ch) =>
+                    !effectiveConnectedTypes.has(ch.id) &&
+                    HOME_VISIBLE_CHANNEL_IDS.has(ch.id),
                 ).map((ch) => (
                   <button
                     key={ch.id}
