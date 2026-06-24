@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readlinkSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as Sentry from "@sentry/electron/main";
@@ -98,7 +98,67 @@ const __dirname = dirname(__filename);
 app.setName("nexu");
 nativeTheme.themeSource = "light";
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+/**
+ * Electron's single-instance lock can be left stale by a prior crash, Force
+ * Quit, or SIGKILL: the SingletonLock symlink + SingletonSocket survive in
+ * userData even though no instance is running. requestSingleInstanceLock() then
+ * fails on every subsequent launch and the app exits silently (just below),
+ * before it ever reaches cold start — i.e. the app "won't start" forever. If the
+ * lock's owner PID is provably dead, remove the stale singleton files so we can
+ * re-acquire. Conservative: if any process still owns that PID (or we cannot
+ * prove it dead), the lock is left untouched, so we never evict a live instance
+ * or spawn a real second one.
+ */
+function cleanStaleSingletonLock(userDataPath: string): boolean {
+  let pid = Number.NaN;
+  try {
+    const target = readlinkSync(join(userDataPath, "SingletonLock"));
+    pid = Number.parseInt(target.slice(target.lastIndexOf("-") + 1), 10);
+  } catch {
+    return false; // no/unreadable lock symlink — nothing to recover
+  }
+
+  // Only reclaim a lock whose owner PID is provably DEAD (the crash / Force
+  // Quit / SIGKILL case that orphaned the singleton files). If the PID is alive,
+  // unparseable, or unprobeable (EPERM ⇒ a live owner under another user), leave
+  // the lock alone — proving liveness by process name is unreliable (PID reuse),
+  // and staying conservative means we never evict a live instance.
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0); // throws ESRCH if dead, EPERM if alive but foreign
+    return false; // a process still owns this PID → assume a real instance
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ESRCH") {
+      return false; // EPERM / unknown → cannot prove dead, stay safe
+    }
+  }
+
+  let removed = false;
+  for (const name of ["SingletonLock", "SingletonSocket", "SingletonCookie"]) {
+    try {
+      rmSync(join(userDataPath, name), { force: true });
+      removed = true;
+    } catch {
+      /* best effort */
+    }
+  }
+  return removed;
+}
+
+let hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  // Self-heal a stale lock left by a prior crash / Force Quit so the app does
+  // not silently refuse to start forever; retry once after cleaning it.
+  if (cleanStaleSingletonLock(app.getPath("userData"))) {
+    console.warn(
+      "[desktop:singleton] removed stale single-instance lock from a prior unclean exit; retrying",
+    );
+    hasSingleInstanceLock = app.requestSingleInstanceLock();
+  }
+}
 
 if (!hasSingleInstanceLock) {
   app.quit();
