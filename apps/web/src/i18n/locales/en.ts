@@ -1462,6 +1462,10 @@ const en = {
 
   // ── Devices ──
   "devices.subtitle": "Connected Android devices via device control plugin",
+  "devices.loginTitle": "Sign in to unlock devices",
+  "devices.loginBody":
+    "Running tasks on a device needs the cloud model. Sign in to your account to continue.",
+  "devices.loginCta": "Sign in",
   "devices.taskHistory": "Task history",
   "devices.refresh": "Refresh",
   "devices.errorTitle": "Device control plugin is not running",

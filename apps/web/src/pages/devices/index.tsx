@@ -4,8 +4,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useCloudConnect } from "@/hooks/use-cloud-connect";
+import { useDesktopCloudStatus } from "@/hooks/use-desktop-cloud-status";
 import { useQuery } from "@tanstack/react-query";
-import { Download, QrCode } from "lucide-react";
+import { Download, Loader2, Lock, LogIn, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -58,6 +60,23 @@ export function DevicesPage() {
     deviceControl?.enabled && deviceControl?.localIp
       ? `ws://${deviceControl.localIp}:${wsPort}/phone`
       : null;
+
+  // Device task execution needs the cloud model, so the whole tab is gated
+  // behind cloud login. Reuse the same cloud-status / connect path as the
+  // sidebar and rewards page instead of inventing a parallel auth check.
+  const {
+    data: cloudStatus,
+    isLoading: cloudStatusLoading,
+    refetch: refetchCloudStatus,
+  } = useDesktopCloudStatus();
+  const cloudConnected = cloudStatus?.connected ?? false;
+  const { cloudConnecting, handleCloudConnect } = useCloudConnect({
+    cloudConnected,
+    onPoll: refetchCloudStatus,
+  });
+  // Only show the gate once we actually know the user is signed out — avoid a
+  // flash of the overlay for logged-in users during the initial status fetch.
+  const showLoginGate = !cloudStatusLoading && !cloudConnected;
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -151,7 +170,7 @@ export function DevicesPage() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full">
       <div className="flex-1 min-w-0 px-4 py-4 sm:px-6 sm:py-6 md:p-8 overflow-y-auto">
         <div className="mx-auto">
           <div className="mb-6 flex items-center justify-between gap-4">
@@ -321,6 +340,35 @@ export function DevicesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {showLoginGate && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-surface-0/80 px-6 backdrop-blur-sm">
+          <div className="flex max-w-sm flex-col items-center rounded-2xl border border-border bg-surface-0 px-8 py-8 text-center shadow-lg">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2">
+              <Lock className="h-6 w-6 text-text-secondary" />
+            </div>
+            <h2 className="text-[15px] font-semibold text-text-primary">
+              {t("devices.loginTitle")}
+            </h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
+              {t("devices.loginBody")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleCloudConnect()}
+              disabled={cloudConnecting}
+              className="mt-5 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-medium text-white transition-all hover:bg-accent/90 disabled:opacity-60"
+            >
+              {cloudConnecting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogIn className="h-4 w-4" />
+              )}
+              {t("devices.loginCta")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

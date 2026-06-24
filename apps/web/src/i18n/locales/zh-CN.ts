@@ -1369,6 +1369,9 @@ const zhCN = {
 
   // ── Devices ──
   "devices.subtitle": "通过设备控制插件连接的 Android 设备",
+  "devices.loginTitle": "登录后解锁设备功能",
+  "devices.loginBody": "设备执行任务需要连接云模型，请先登录账号后使用。",
+  "devices.loginCta": "登录",
   "devices.taskHistory": "任务历史",
   "devices.refresh": "刷新",
   "devices.errorTitle": "设备控制插件未运行",
