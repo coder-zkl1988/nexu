@@ -67,21 +67,32 @@ export function registerDeviceControlRoutes(
 
       await stream.writeSSE({ data: "connected", event: "connected" });
 
-      // Send initial device list
-      if (await container.deviceControlService.isAvailable()) {
-        try {
-          const list = await container.deviceControlService.listDevices();
-          const devices = list.devices.map((d) => ({
-            ...d,
-            name: container.deviceNameStore.get(d.deviceId) ?? d.name,
-          }));
-          await stream.writeSSE({
-            data: JSON.stringify({ type: "device_list", devices }),
-            event: "device_list",
-          });
-        } catch {
-          /* ignore */
-        }
+      // Send an initial device_list snapshot. This MUST go out in every case —
+      // available, unavailable, or lookup failure — so the client can clear its
+      // loading state. Otherwise an unavailable device-control plugin leaves the
+      // SSE open but silent (no device_list event, and no error to trigger the
+      // client's polling fallback), and the devices page spins forever.
+      try {
+        const list = (await container.deviceControlService.isAvailable())
+          ? await container.deviceControlService.listDevices()
+          : { devices: [] };
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "device_list",
+            devices: list.devices.map((d) => ({
+              ...d,
+              name: container.deviceNameStore.get(d.deviceId) ?? d.name,
+            })),
+          }),
+          event: "device_list",
+        });
+      } catch {
+        // Lookup failed — still emit an empty snapshot so the client stops
+        // spinning and renders its empty state.
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "device_list", devices: [] }),
+          event: "device_list",
+        });
       }
 
       // Listen for changes — broadcast immediately without re-checking
