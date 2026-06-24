@@ -256,9 +256,11 @@ describe("compileOpenClawConfig", () => {
     ]);
   });
 
-  it("prewarms openclaw-weixin in plugins.allow even with no connected wechat channel", () => {
-    // Regression: without this, first wechat connect changes plugins.allow
-    // -> SIGUSR1 -> ~11s drain -> GatewayDrainingError on inbound messages.
+  it("does not allow/enable openclaw-weixin without a connected wechat channel", () => {
+    // The empty-config prewarm was removed because always-loading the channel
+    // plugins (plus the placeholder channels) blocked controller readiness for
+    // ~120s. openclaw-weixin is only allowed/enabled once a real WeChat channel
+    // connects; the first connect then triggers a one-time gateway reload.
     const result = compileOpenClawConfig(
       createConfig({
         channels: [],
@@ -267,8 +269,8 @@ describe("compileOpenClawConfig", () => {
       createEnv(),
     );
 
-    expect(result.plugins?.allow).toContain("openclaw-weixin");
-    expect(result.plugins?.entries?.["openclaw-weixin"]?.enabled).toBe(true);
+    expect(result.plugins?.allow).not.toContain("openclaw-weixin");
+    expect(result.plugins?.entries?.["openclaw-weixin"]).toBeUndefined();
   });
 
   it("compiles qqbot channels and enables the canonical qq plugin id", () => {

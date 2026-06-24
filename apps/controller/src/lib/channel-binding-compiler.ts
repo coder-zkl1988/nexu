@@ -14,9 +14,6 @@ import { logger } from "./logger.js";
 /** Prefix for all internal placeholder account IDs that must never be persisted to runtime state. */
 export const NEXU_INTERNAL_ACCOUNT_PREFIX = "__nexu_internal_";
 
-const INTERNAL_FEISHU_PREWARM_ACCOUNT_ID = `${NEXU_INTERNAL_ACCOUNT_PREFIX}feishu_prewarm__`;
-const INTERNAL_WECHAT_PREWARM_ACCOUNT_ID = `${NEXU_INTERNAL_ACCOUNT_PREFIX}wechat_prewarm__`;
-
 export const MANAGED_CHANNEL_PLUGIN_IDS: Partial<Record<ChannelType, string>> =
   {
     dingtalk: "dingtalk-connector",
@@ -262,25 +259,13 @@ export function compileChannelsConfig(params: {
     }
   }
 
-  if (Object.keys(feishuAccounts).length === 0) {
-    // Keep the Feishu channel subtree stable from the first cold start so the
-    // first real Feishu connect only updates account-level config and can
-    // restart the Feishu channel instead of forcing a full gateway restart.
-    feishuAccounts[INTERNAL_FEISHU_PREWARM_ACCOUNT_ID] = {
-      enabled: false,
-      appId: "nexu-feishu-prewarm",
-      appSecret: "nexu-feishu-prewarm",
-      connectionMode: "websocket",
-    };
-  }
-
-  if (Object.keys(wechatAccounts).length === 0) {
-    // Keep the openclaw-weixin channel subtree stable from the first cold
-    // start so the first real WeChat connect only updates account-level
-    // config and can hot-reload the channel instead of forcing a full
-    // gateway restart (~20-45s → ~500ms).
-    wechatAccounts[INTERNAL_WECHAT_PREWARM_ACCOUNT_ID] = { enabled: false };
-  }
+  // No empty-config prewarm. We previously injected internal placeholder
+  // Feishu/WeChat accounts to keep the channel subtrees "stable" so a later
+  // connect would hot-reload instead of restart the gateway — but starting
+  // those empty/disabled channels blocked controller readiness for ~120s on
+  // machines with no channels configured, making the app unusable. The subtrees
+  // now stay absent until a real account connects (the one-time gateway reload
+  // then converges via the controller's WS reconnect).
 
   const compiled: Record<string, number> = {};
   if (Object.keys(slackAccounts).length > 0)
@@ -381,9 +366,13 @@ export function compileChannelsConfig(params: {
     ...(dingtalkChannel ? { "dingtalk-connector": dingtalkChannel } : {}),
     ...(wecomChannel ? { wecom: wecomChannel } : {}),
     ...(qqbotChannel ? { qqbot: qqbotChannel } : {}),
-    "openclaw-weixin": {
-      enabled: true,
-      accounts: wechatAccounts,
-    },
+    ...(Object.keys(wechatAccounts).length > 0
+      ? {
+          "openclaw-weixin": {
+            enabled: true,
+            accounts: wechatAccounts,
+          },
+        }
+      : {}),
   };
 }

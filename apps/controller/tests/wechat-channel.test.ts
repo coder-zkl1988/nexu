@@ -73,18 +73,16 @@ function makeChannel(
 // WeChat prewarm config compilation
 // ---------------------------------------------------------------------------
 
-describe("WeChat prewarm config compilation", () => {
-  it("includes openclaw-weixin with prewarm account when no WeChat channels exist", () => {
+describe("WeChat channel config compilation (no empty-config prewarm)", () => {
+  it("omits openclaw-weixin entirely when no WeChat channels exist", () => {
     const result = compileChannelsConfig({
       channels: [],
       secrets: {},
     });
 
-    expect(result["openclaw-weixin"]).toBeDefined();
-    expect(result["openclaw-weixin"]?.enabled).toBe(true);
-    expect(
-      result["openclaw-weixin"]?.accounts.__nexu_internal_wechat_prewarm__,
-    ).toEqual({ enabled: false });
+    // Empty-config prewarm removed: no placeholder account and no channel
+    // subtree — it stays absent until a real WeChat account connects.
+    expect(result["openclaw-weixin"]).toBeUndefined();
   });
 
   it("replaces prewarm with real account when WeChat channel is connected", () => {
@@ -112,15 +110,15 @@ describe("WeChat prewarm config compilation", () => {
     expect(accountKeys).toHaveLength(1);
   });
 
-  it("ignores disconnected WeChat channels and falls back to prewarm", () => {
+  it("omits openclaw-weixin for a disconnected WeChat channel", () => {
     const result = compileChannelsConfig({
       channels: [makeChannel({ status: "disconnected" })],
       secrets: {},
     });
 
-    expect(
-      result["openclaw-weixin"]?.accounts.__nexu_internal_wechat_prewarm__,
-    ).toEqual({ enabled: false });
+    // Disconnected channels don't count; with no connected account the
+    // openclaw-weixin subtree stays absent (no prewarm fallback).
+    expect(result["openclaw-weixin"]).toBeUndefined();
   });
 });
 
