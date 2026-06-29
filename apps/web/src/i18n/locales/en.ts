@@ -1530,6 +1530,69 @@ const en = {
     "Ports must be integers between 1 and 65535",
   "devices.settings.portConflictError": "WebSocket and RPC ports must differ",
   "devices.settings.updateFailed": "Update failed",
+
+  // ── Teams ──
+  "teams.title": "Teams",
+  "teams.description":
+    "Group installed experts into a team and run a task across them.",
+  "teams.create": "Create team",
+  "teams.loading": "Loading teams…",
+  "teams.loadError": "Failed to load teams.",
+  "teams.empty":
+    "No teams yet. Create one to run a task across multiple experts.",
+  "teams.memberCount": "{{count}} members",
+  "teams.deleteConfirm": 'Delete team "{{name}}"?',
+  "teams.deleteAria": "Delete team",
+  "teams.nameLabel": "Name",
+  "teams.namePlaceholder": "e.g. Release Squad",
+  "teams.membersLabel": "Members (installed experts)",
+  "teams.noInstalled":
+    "No installed experts. Install experts first, then create a team.",
+  "teams.selected": "Selected",
+  "teams.cancel": "Cancel",
+  "teams.createSubmit": "Create",
+  "teams.errNameRequired": "Team name is required.",
+  "teams.errSelectMember": "Select at least one member.",
+  "teams.errCreateFailed": "Failed to create team. Please try again.",
+  "teams.loadingTeam": "Loading team…",
+  "teams.notFound": "Team not found.",
+  "teams.back": "Back to teams",
+  "teams.runTitle": "Run a task",
+  "teams.modeAuto": "Let the lead plan",
+  "teams.modeManual": "Manual subtasks",
+  "teams.autoHint":
+    "The lead agent will break the task into subtasks and assign each to the best-suited member, then dispatch them.",
+  "teams.taskLabel": "Task",
+  "teams.taskPlaceholder": "What should the team accomplish?",
+  "teams.subtasks": "Subtasks",
+  "teams.subtaskTitlePlaceholder": "Subtask title",
+  "teams.assignPlaceholder": "Assign to…",
+  "teams.subtaskNotesPlaceholder": "Optional detail for this subtask",
+  "teams.removeSubtask": "Remove subtask",
+  "teams.addSubtask": "Add subtask",
+  "teams.planAndDispatch": "Let the lead plan & dispatch",
+  "teams.dispatch": "Dispatch task",
+  "teams.errTaskRequired": "Task description is required.",
+  "teams.errSubtaskRequired":
+    "Add at least one subtask with a title and an assignee.",
+  "teams.errDispatchFailed":
+    "Failed to dispatch the task. Is the runtime online?",
+  "teams.errPlanFailed":
+    "The lead couldn't produce a plan. Try a clearer task, or use manual mode.",
+  "teams.board": "Board",
+  "teams.planTitle": "Lead's plan ({{count}})",
+  "teams.dispatchedTitle": "Dispatched workers ({{count}})",
+  "teams.noWorkers":
+    "No workers started this pass. The dispatcher starts at most one card per member per pass — re-dispatch to start the rest.",
+  "teams.loadingBoard": "Loading board…",
+  "teams.boardError": "Failed to load the board.",
+  "teams.boardEmpty": "No cards yet. Run a task to populate the board.",
+  "teams.col.todo": "To do",
+  "teams.col.ready": "Ready",
+  "teams.col.running": "Running",
+  "teams.col.review": "Review",
+  "teams.col.done": "Done",
+  "teams.col.blocked": "Blocked",
 } as const;
 
 export default en;

@@ -17,6 +17,7 @@ import { useRunTeamTask, useRunTeamTaskAuto, useTeam } from "@/hooks/use-teams";
 import type { TeamSubtaskInput } from "@nexu/shared";
 import { ArrowLeft, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 
 type SubtaskDraft = {
@@ -29,6 +30,7 @@ type SubtaskDraft = {
 type StartedRun = { cardId: string; sessionKey: string };
 
 export function TeamDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const { data: team, isLoading, isError } = useTeam(id ?? null);
   const runTask = useRunTeamTask();
@@ -47,7 +49,7 @@ export function TeamDetailPage() {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading team…
+        {t("teams.loadingTeam")}
       </div>
     );
   }
@@ -55,7 +57,7 @@ export function TeamDetailPage() {
     return (
       <div className="flex flex-col gap-4">
         <BackLink />
-        <p className="text-destructive">Team not found.</p>
+        <p className="text-destructive">{t("teams.notFound")}</p>
       </div>
     );
   }
@@ -84,7 +86,7 @@ export function TeamDetailPage() {
     setStarted(null);
     setPlan(null);
     if (!task.trim()) {
-      setError("Task description is required.");
+      setError(t("teams.errTaskRequired"));
       return;
     }
     const cleaned = subtasks
@@ -95,7 +97,7 @@ export function TeamDetailPage() {
       }))
       .filter((s) => s.title && s.assigneeSlug);
     if (cleaned.length === 0) {
-      setError("Add at least one subtask with a title and an assignee.");
+      setError(t("teams.errSubtaskRequired"));
       return;
     }
     if (!id) {
@@ -108,7 +110,7 @@ export function TeamDetailPage() {
       });
       setStarted(result.started);
     } catch {
-      setError("Failed to dispatch the task. Is the runtime online?");
+      setError(t("teams.errDispatchFailed"));
     }
   }
 
@@ -117,7 +119,7 @@ export function TeamDetailPage() {
     setStarted(null);
     setPlan(null);
     if (!task.trim()) {
-      setError("Task description is required.");
+      setError(t("teams.errTaskRequired"));
       return;
     }
     if (!id) {
@@ -131,9 +133,7 @@ export function TeamDetailPage() {
       setPlan(result.plan);
       setStarted(result.started);
     } catch {
-      setError(
-        "The lead couldn't produce a plan. Try a clearer task, or use manual mode.",
-      );
+      setError(t("teams.errPlanFailed"));
     }
   }
 
@@ -155,7 +155,7 @@ export function TeamDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Run a task</CardTitle>
+          <CardTitle>{t("teams.runTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex gap-2">
@@ -165,29 +165,29 @@ export function TeamDetailPage() {
               onClick={() => setMode("auto")}
             >
               <Sparkles className="mr-1 h-4 w-4" />
-              Let the lead plan
+              {t("teams.modeAuto")}
             </Button>
             <Button
               variant={mode === "manual" ? "default" : "outline"}
               size="sm"
               onClick={() => setMode("manual")}
             >
-              Manual subtasks
+              {t("teams.modeManual")}
             </Button>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="team-task">Task</Label>
+            <Label htmlFor="team-task">{t("teams.taskLabel")}</Label>
             <Textarea
               id="team-task"
               value={task}
-              placeholder="What should the team accomplish?"
+              placeholder={t("teams.taskPlaceholder")}
               onChange={(e) => setTask(e.target.value)}
             />
           </div>
 
           {mode === "manual" ? (
             <div className="flex flex-col gap-2">
-              <Label>Subtasks</Label>
+              <Label>{t("teams.subtasks")}</Label>
               {subtasks.map((subtask) => (
                 <div
                   key={subtask.id}
@@ -196,7 +196,7 @@ export function TeamDetailPage() {
                   <div className="flex gap-2">
                     <Input
                       value={subtask.title}
-                      placeholder="Subtask title"
+                      placeholder={t("teams.subtaskTitlePlaceholder")}
                       onChange={(e) =>
                         updateSubtask(subtask.id, { title: e.target.value })
                       }
@@ -208,7 +208,9 @@ export function TeamDetailPage() {
                       }
                     >
                       <SelectTrigger className="w-48 shrink-0">
-                        <SelectValue placeholder="Assign to…" />
+                        <SelectValue
+                          placeholder={t("teams.assignPlaceholder")}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {members.map((m) => (
@@ -224,14 +226,14 @@ export function TeamDetailPage() {
                       className="shrink-0"
                       onClick={() => removeSubtask(subtask.id)}
                       disabled={subtasks.length === 1}
-                      aria-label="Remove subtask"
+                      aria-label={t("teams.removeSubtask")}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                   <Textarea
                     value={subtask.notes}
-                    placeholder="Optional detail for this subtask"
+                    placeholder={t("teams.subtaskNotesPlaceholder")}
                     onChange={(e) =>
                       updateSubtask(subtask.id, { notes: e.target.value })
                     }
@@ -244,13 +246,12 @@ export function TeamDetailPage() {
                 className="self-start"
               >
                 <Plus className="mr-1 h-4 w-4" />
-                Add subtask
+                {t("teams.addSubtask")}
               </Button>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              The lead agent will break the task into subtasks and assign each
-              to the best-suited member, then dispatch them.
+              {t("teams.autoHint")}
             </p>
           )}
 
@@ -267,7 +268,7 @@ export function TeamDetailPage() {
               ) : (
                 <Sparkles className="mr-1 h-4 w-4" />
               )}
-              Let the lead plan &amp; dispatch
+              {t("teams.planAndDispatch")}
             </Button>
           ) : (
             <Button
@@ -278,7 +279,7 @@ export function TeamDetailPage() {
               {runTask.isPending ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
               ) : null}
-              Dispatch task
+              {t("teams.dispatch")}
             </Button>
           )}
         </CardContent>
@@ -287,7 +288,7 @@ export function TeamDetailPage() {
       {id ? (
         <Card>
           <CardHeader>
-            <CardTitle>Board</CardTitle>
+            <CardTitle>{t("teams.board")}</CardTitle>
           </CardHeader>
           <CardContent>
             <TeamBoard teamId={id} />
@@ -298,7 +299,9 @@ export function TeamDetailPage() {
       {plan ? (
         <Card>
           <CardHeader>
-            <CardTitle>Lead's plan ({plan.length})</CardTitle>
+            <CardTitle>
+              {t("teams.planTitle", { count: plan.length })}
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {plan.map((item) => (
@@ -326,21 +329,22 @@ export function TeamDetailPage() {
       {started ? (
         <Card>
           <CardHeader>
-            <CardTitle>Dispatched workers ({started.length})</CardTitle>
+            <CardTitle>
+              {t("teams.dispatchedTitle", { count: started.length })}
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {started.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No workers started this pass. The dispatcher starts at most one
-                card per member per pass — re-dispatch to start the rest.
+                {t("teams.noWorkers")}
               </p>
             ) : (
-              started.map((run) => (
+              started.map((worker) => (
                 <div
-                  key={run.cardId}
+                  key={worker.cardId}
                   className="rounded-md border px-3 py-2 font-mono text-xs"
                 >
-                  {run.sessionKey}
+                  {worker.sessionKey}
                 </div>
               ))
             )}
@@ -352,13 +356,14 @@ export function TeamDetailPage() {
 }
 
 function BackLink() {
+  const { t } = useTranslation();
   return (
     <Link
       to="/workspace/teams"
       className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="h-4 w-4" />
-      Back to teams
+      {t("teams.back")}
     </Link>
   );
 }

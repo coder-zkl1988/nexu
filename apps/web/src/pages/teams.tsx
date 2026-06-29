@@ -23,9 +23,11 @@ import { useCreateTeam, useDeleteTeam, useTeams } from "@/hooks/use-teams";
 import { cn } from "@/lib/utils";
 import { Loader2, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 export function TeamsPage() {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useTeams();
   const deleteTeam = useDeleteTeam();
   const [createOpen, setCreateOpen] = useState(false);
@@ -35,12 +37,12 @@ export function TeamsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Teams"
-        description="Group installed experts into a team and run a task across them."
+        title={t("teams.title")}
+        description={t("teams.description")}
         actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-1 h-4 w-4" />
-            Create team
+            {t("teams.create")}
           </Button>
         }
       />
@@ -48,20 +50,18 @@ export function TeamsPage() {
       {isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading teams…
+          {t("teams.loading")}
         </div>
       ) : isError ? (
-        <p className="text-destructive">Failed to load teams.</p>
+        <p className="text-destructive">{t("teams.loadError")}</p>
       ) : teams.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
             <Users className="h-8 w-8 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              No teams yet. Create one to run a task across multiple experts.
-            </p>
+            <p className="text-muted-foreground">{t("teams.empty")}</p>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="mr-1 h-4 w-4" />
-              Create team
+              {t("teams.create")}
             </Button>
           </CardContent>
         </Card>
@@ -81,18 +81,19 @@ export function TeamsPage() {
                     size="icon"
                     disabled={deleteTeam.isPending}
                     onClick={() => {
-                      if (confirm(`Delete team "${team.name}"?`)) {
+                      if (
+                        confirm(t("teams.deleteConfirm", { name: team.name }))
+                      ) {
                         deleteTeam.mutate(team.id);
                       }
                     }}
-                    aria-label="Delete team"
+                    aria-label={t("teams.deleteAria")}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
                 <CardDescription>
-                  {team.members.length} member
-                  {team.members.length === 1 ? "" : "s"}
+                  {t("teams.memberCount", { count: team.members.length })}
                 </CardDescription>
               </CardHeader>
               <CardContent className="mt-auto">
@@ -121,6 +122,7 @@ function CreateTeamDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const { data: catalog } = useExperthubCatalog();
   const createTeam = useCreateTeam();
   const [name, setName] = useState("");
@@ -153,11 +155,11 @@ function CreateTeamDialog({
   async function submit() {
     setError(null);
     if (!name.trim()) {
-      setError("Team name is required.");
+      setError(t("teams.errNameRequired"));
       return;
     }
     if (selected.size === 0) {
-      setError("Select at least one member.");
+      setError(t("teams.errSelectMember"));
       return;
     }
     try {
@@ -168,7 +170,7 @@ function CreateTeamDialog({
       reset();
       onOpenChange(false);
     } catch {
-      setError("Failed to create team. Please try again.");
+      setError(t("teams.errCreateFailed"));
     }
   }
 
@@ -182,24 +184,24 @@ function CreateTeamDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create team</DialogTitle>
+          <DialogTitle>{t("teams.create")}</DialogTitle>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="team-name">Name</Label>
+            <Label htmlFor="team-name">{t("teams.nameLabel")}</Label>
             <Input
               id="team-name"
               value={name}
-              placeholder="e.g. Release Squad"
+              placeholder={t("teams.namePlaceholder")}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Members (installed experts)</Label>
+            <Label>{t("teams.membersLabel")}</Label>
             {installed.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No installed experts. Install experts first, then create a team.
+                {t("teams.noInstalled")}
               </p>
             ) : (
               <div className="flex max-h-60 flex-col gap-1 overflow-y-auto rounded-md border p-2">
@@ -219,7 +221,7 @@ function CreateTeamDialog({
                         {expert.name ?? expert.slug}
                       </span>
                       {isSelected ? (
-                        <Badge variant="default">Selected</Badge>
+                        <Badge variant="default">{t("teams.selected")}</Badge>
                       ) : null}
                     </button>
                   );
@@ -232,7 +234,7 @@ function CreateTeamDialog({
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("teams.cancel")}
           </Button>
           <Button
             onClick={submit}
@@ -241,7 +243,7 @@ function CreateTeamDialog({
             {createTeam.isPending ? (
               <Loader2 className="mr-1 h-4 w-4 animate-spin" />
             ) : null}
-            Create
+            {t("teams.createSubmit")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -3,19 +3,16 @@ import { useTeamBoard } from "@/hooks/use-teams";
 import { cn } from "@/lib/utils";
 import type { TeamBoardCard } from "@nexu/shared";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /** Workboard lifecycle statuses mapped onto the visible Kanban columns. */
-const COLUMNS: Array<{ key: string; label: string; statuses: string[] }> = [
-  {
-    key: "todo",
-    label: "To do",
-    statuses: ["triage", "backlog", "scheduled", "todo"],
-  },
-  { key: "ready", label: "Ready", statuses: ["ready"] },
-  { key: "running", label: "Running", statuses: ["running"] },
-  { key: "review", label: "Review", statuses: ["review"] },
-  { key: "done", label: "Done", statuses: ["done"] },
-  { key: "blocked", label: "Blocked", statuses: ["blocked"] },
+const COLUMNS: Array<{ key: string; statuses: string[] }> = [
+  { key: "todo", statuses: ["triage", "backlog", "scheduled", "todo"] },
+  { key: "ready", statuses: ["ready"] },
+  { key: "running", statuses: ["running"] },
+  { key: "review", statuses: ["review"] },
+  { key: "done", statuses: ["done"] },
+  { key: "blocked", statuses: ["blocked"] },
 ];
 
 const STATUS_DOT: Record<string, string> = {
@@ -33,20 +30,19 @@ function columnKeyFor(status: string): string {
 }
 
 export function TeamBoard({ teamId }: { teamId: string }) {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useTeamBoard(teamId);
 
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading board…
+        {t("teams.loadingBoard")}
       </div>
     );
   }
   if (isError || !data) {
-    return (
-      <p className="text-sm text-destructive">Failed to load the board.</p>
-    );
+    return <p className="text-sm text-destructive">{t("teams.boardError")}</p>;
   }
 
   const cards = data.cards;
@@ -59,9 +55,7 @@ export function TeamBoard({ teamId }: { teamId: string }) {
 
   if (cards.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No cards yet. Run a task to populate the board.
-      </p>
+      <p className="text-sm text-muted-foreground">{t("teams.boardEmpty")}</p>
     );
   }
 
@@ -72,7 +66,7 @@ export function TeamBoard({ teamId }: { teamId: string }) {
         return (
           <div key={column.key} className="flex flex-col gap-2">
             <div className="flex items-center justify-between px-1 text-xs font-medium text-muted-foreground">
-              <span>{column.label}</span>
+              <span>{t(`teams.col.${column.key}`)}</span>
               <span>{columnCards.length}</span>
             </div>
             <div className="flex min-h-12 flex-col gap-2 rounded-md bg-muted/40 p-2">
