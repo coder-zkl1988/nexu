@@ -213,8 +213,10 @@ function CreateTeamDialog({
                       type="button"
                       onClick={() => toggle(expert.slug)}
                       className={cn(
-                        "flex items-center justify-between rounded px-2 py-1.5 text-left text-sm hover:bg-accent",
-                        isSelected && "bg-accent",
+                        "flex items-center justify-between rounded px-2 py-1.5 text-left text-sm",
+                        isSelected
+                          ? "bg-accent text-accent-fg"
+                          : "hover:bg-accent-subtle",
                       )}
                     >
                       <span className="truncate">
