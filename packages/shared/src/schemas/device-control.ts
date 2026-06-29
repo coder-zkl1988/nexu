@@ -64,6 +64,33 @@ export const deviceExecuteTaskBodySchema = z.object({
   timeout: z.number().int().positive().optional().default(120000),
 });
 
+/** One image pushed to the device gallery (base64, no data: prefix). */
+export const devicePushMediaItemSchema = z.object({
+  filename: z.string().min(1).max(128),
+  mimeType: z.string().min(1),
+  dataBase64: z.string().min(1),
+});
+export type DevicePushMediaItem = z.infer<typeof devicePushMediaItemSchema>;
+
+export const devicePushMediaBodySchema = z.object({
+  images: z.array(devicePushMediaItemSchema).min(1).max(9),
+});
+export type DevicePushMediaBody = z.infer<typeof devicePushMediaBodySchema>;
+
+export const devicePushMediaResultSchema = z.object({
+  mediaId: z.string(),
+  success: z.boolean(),
+  savedUri: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const devicePushMediaResponseSchema = z.object({
+  results: z.array(devicePushMediaResultSchema),
+});
+export type DevicePushMediaResponse = z.infer<
+  typeof devicePushMediaResponseSchema
+>;
+
 export const stepRecordSchema = z.object({
   step: z.number().int().min(1),
   action: z.string(),

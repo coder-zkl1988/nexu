@@ -144,6 +144,7 @@ export const env = {
   nexuConfigPath: path.join(nexuHomeDir, "config.json"),
   artifactsIndexPath: path.join(nexuHomeDir, "artifacts", "index.json"),
   deviceTaskHistoryPath: path.join(nexuHomeDir, "device-task-history.json"),
+  deviceNamesPath: path.join(nexuHomeDir, "device-names.json"),
   screenshotsDir: path.join(
     os.homedir(),
     ".openclaw",

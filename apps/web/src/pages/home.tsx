@@ -1,5 +1,4 @@
 import { ActivityFeed } from "@/components/activity-feed";
-import { BudgetWarningBanner } from "@/components/budget-warning-banner";
 import { ChannelConnectModal } from "@/components/channel-connect-modal";
 import { DingtalkSetupView } from "@/components/channel-setup/dingtalk-setup-view";
 import { QqbotSetupView } from "@/components/channel-setup/qqbot-setup-view";
@@ -17,11 +16,6 @@ import {
   WhatsAppIcon,
 } from "@/components/platform-icons";
 import { useBots } from "@/hooks/use-bots";
-import {
-  getBudgetBannerRouteVariant,
-  useDesktopBudgetGuard,
-} from "@/hooks/use-desktop-budget-guard";
-import { useDesktopRewardsStatus } from "@/hooks/use-desktop-rewards";
 import {
   type ChannelLiveStatus,
   getChannelStatusLabel,
@@ -70,12 +64,6 @@ type LiveStatusResponse = {
     alive: boolean;
   };
 };
-
-type BudgetBannerStatus = "healthy" | "warning" | "depleted";
-type BudgetBannerDebugMode = "actual" | Exclude<BudgetBannerStatus, "healthy">;
-
-const budgetBannerDebugStorageKey = "nexu_budget_banner_debug_mode";
-const showBudgetBannerDebugPanel = import.meta.env.DEV;
 
 function formatRelativeTime(
   date: string | null | undefined,
@@ -149,23 +137,14 @@ function homeChannelIcon(
   return ch.icon ?? null;
 }
 
+// Only the China-market channels are surfaced on the home screen. WhatsApp /
+// Telegram / Slack / Discord remain implemented (OpenClaw bundles them) but are
+// intentionally hidden from onboarding for this product.
 const ONBOARDING_CHANNELS = [
   {
     id: "wechat",
     name: "WeChat",
     recommended: true,
-  },
-  {
-    id: "whatsapp",
-    name: "WhatsApp",
-    icon: WHATSAPP_ICON,
-    recommended: false,
-  },
-  {
-    id: "telegram",
-    name: "Telegram",
-    icon: TELEGRAM_ICON,
-    recommended: false,
   },
   {
     id: "dingtalk",
@@ -191,24 +170,21 @@ const ONBOARDING_CHANNELS = [
     icon: FEISHU_ICON,
     recommended: false,
   },
-  {
-    id: "slack",
-    name: "Slack",
-    icon: SLACK_SVG,
-    recommended: false,
-  },
-  {
-    id: "discord",
-    name: "Discord",
-    icon: DISCORD_SVG,
-    recommended: false,
-  },
 ];
 
 const MULTI_INSTANCE_PLATFORMS: ReadonlySet<string> = new Set([
   "feishu",
   "wechat",
 ]);
+
+// The "add a channel" grid only offers the China-market channels (derived from
+// ONBOARDING_CHANNELS so the two never drift). WhatsApp / Telegram / Slack /
+// Discord stay implemented (OpenClaw bundles them) but are hidden from the
+// connect grid. This gates ONLY the not-yet-connected grid — an already-
+// connected channel is always rendered so it stays visible and disconnectable.
+const HOME_VISIBLE_CHANNEL_IDS: ReadonlySet<string> = new Set(
+  ONBOARDING_CHANNELS.map((channel) => channel.id),
+);
 
 function getChannelOptions(t: (key: string) => string) {
   return [
@@ -335,35 +311,6 @@ export function HomePage() {
   const [modalChannel, setModalChannel] = useState<
     "feishu" | "slack" | "discord" | null
   >(null);
-  const [budgetBannerDebugMode, setBudgetBannerDebugMode] =
-    useState<BudgetBannerDebugMode>(() => {
-      if (!showBudgetBannerDebugPanel) return "actual";
-      try {
-        const stored = localStorage.getItem(budgetBannerDebugStorageKey);
-        if (stored === "warning" || stored === "depleted") {
-          return stored;
-        }
-      } catch {
-        // ignore storage errors
-      }
-      return "actual";
-    });
-
-  const handleBudgetBannerDebugModeChange = useCallback(
-    (mode: BudgetBannerDebugMode) => {
-      setBudgetBannerDebugMode(mode);
-      try {
-        if (mode === "actual") {
-          localStorage.removeItem(budgetBannerDebugStorageKey);
-          return;
-        }
-        localStorage.setItem(budgetBannerDebugStorageKey, mode);
-      } catch {
-        // ignore storage errors
-      }
-    },
-    [],
-  );
   const [wechatQrOpen, setWechatQrOpen] = useState(false);
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
@@ -621,21 +568,6 @@ export function HomePage() {
           label: t("home.agent.starting"),
         };
   }, [hasOperationalContext, liveStatus, t]);
-  const budgetBannerDebugPanel = showBudgetBannerDebugPanel ? (
-    <BudgetBannerDebugPanel
-      actualStatus="healthy"
-      mode={budgetBannerDebugMode}
-      onModeChange={handleBudgetBannerDebugModeChange}
-    />
-  ) : null;
-  const { status: rewardsStatus } = useDesktopRewardsStatus();
-  const { bannerDismissible, budgetStatus, dismissBanner, shouldShowPrompt } =
-    useDesktopBudgetGuard({
-      pathname: "/workspace/home",
-      cloudConnected: rewardsStatus.viewer.cloudConnected,
-    });
-  const budgetBannerRouteVariant =
-    getBudgetBannerRouteVariant("/workspace/home");
 
   const handleChannelCreated = useCallback(
     (channelId: string) => {
@@ -749,16 +681,6 @@ export function HomePage() {
             </div>
           </div>
 
-          {budgetBannerRouteVariant === "inline" &&
-          shouldShowPrompt &&
-          budgetStatus !== "healthy" ? (
-            <BudgetWarningBanner
-              status={budgetStatus}
-              dismissible={bannerDismissible}
-              onDismiss={dismissBanner}
-            />
-          ) : null}
-
           {/* ═══ MIDDLE: Channels — default open, Feishu highlighted ═══ */}
           <div className="card card-static overflow-visible">
             <div className="px-5 pt-4 pb-3">
@@ -857,7 +779,6 @@ export function HomePage() {
             }}
           />
         )}
-        {budgetBannerDebugPanel}
 
         {qqbotOpen && (
           <QqbotModal
@@ -964,16 +885,6 @@ export function HomePage() {
             </div>
           </div>
         </div>
-
-        {budgetBannerRouteVariant === "inline" &&
-        shouldShowPrompt &&
-        budgetStatus !== "healthy" ? (
-          <BudgetWarningBanner
-            status={budgetStatus}
-            dismissible={bannerDismissible}
-            onDismiss={dismissBanner}
-          />
-        ) : null}
 
         {/* ═══ MIDDLE: Channels panel ═══ */}
         <div className="card card-static">
@@ -1189,11 +1100,16 @@ export function HomePage() {
             )}
 
             {/* Not-yet-connected channels — dashed border grid */}
-            {CHANNEL_OPTIONS.filter((ch) => !effectiveConnectedTypes.has(ch.id))
-              .length > 0 && (
+            {CHANNEL_OPTIONS.filter(
+              (ch) =>
+                !effectiveConnectedTypes.has(ch.id) &&
+                HOME_VISIBLE_CHANNEL_IDS.has(ch.id),
+            ).length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {CHANNEL_OPTIONS.filter(
-                  (ch) => !effectiveConnectedTypes.has(ch.id),
+                  (ch) =>
+                    !effectiveConnectedTypes.has(ch.id) &&
+                    HOME_VISIBLE_CHANNEL_IDS.has(ch.id),
                 ).map((ch) => (
                   <button
                     key={ch.id}
@@ -1281,7 +1197,6 @@ export function HomePage() {
           }}
         />
       )}
-      {budgetBannerDebugPanel}
 
       {qqbotOpen && (
         <QqbotModal
@@ -1312,57 +1227,6 @@ export function HomePage() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function BudgetBannerDebugPanel({
-  actualStatus,
-  mode,
-  onModeChange,
-}: {
-  actualStatus: BudgetBannerStatus;
-  mode: BudgetBannerDebugMode;
-  onModeChange: (mode: BudgetBannerDebugMode) => void;
-}) {
-  const options: Array<{
-    label: string;
-    value: BudgetBannerDebugMode;
-  }> = [
-    { label: "真实状态", value: "actual" },
-    { label: "预警", value: "warning" },
-    { label: "耗尽", value: "depleted" },
-  ];
-
-  return (
-    <div className="pointer-events-none fixed bottom-6 right-6 z-40">
-      <div className="pointer-events-auto w-[220px] rounded-2xl border border-border bg-white/95 p-3 shadow-[0_20px_60px_rgba(15,23,42,0.16)] backdrop-blur">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-muted">
-          Budget Debug
-        </div>
-        <div className="mt-1 text-[12px] text-text-secondary">
-          当前真实状态：{actualStatus}
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-1.5">
-          {options.map((option) => {
-            const active = mode === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => onModeChange(option.value)}
-                className={
-                  active
-                    ? "rounded-lg bg-[#111317] px-2 py-2 text-[12px] font-medium text-white transition"
-                    : "rounded-lg border border-border bg-surface-1 px-2 py-2 text-[12px] font-medium text-text-secondary transition hover:border-border-hover hover:bg-surface-2"
-                }
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }

@@ -3,6 +3,8 @@ import type {
   DeviceExecuteTaskBody,
   DeviceInfo,
   DeviceListResponse,
+  DevicePushMediaBody,
+  DevicePushMediaResponse,
   TaskResult,
 } from "@nexu/shared";
 import { logger } from "../lib/logger.js";
@@ -70,6 +72,27 @@ export class DeviceControlService {
     }
 
     return data.result as T;
+  }
+
+  /**
+   * Push the signed-in user's VLM gateway credential to the tabby-control plugin
+   * so it's handed to phones on connect. Called on startup and whenever the
+   * cloud login state changes. Best-effort: if the plugin isn't up, ignore.
+   */
+  async pushVlmCredential(): Promise<void> {
+    let credential: { apiUrl: string; apiKey: string; model: string } | null =
+      null;
+    try {
+      credential = await this.configStore.getVlmGatewayCredential();
+    } catch {
+      credential = null;
+    }
+    try {
+      await this.rpc("device_set_vlm_credential", { credential });
+    } catch {
+      // Plugin not running / RPC unavailable — phones will fall back to local
+      // VLM settings until the next push succeeds.
+    }
   }
 
   async isAvailable(): Promise<boolean> {
@@ -165,5 +188,41 @@ export class DeviceControlService {
       "device.cancel_task",
       { deviceId, taskId: body.taskId },
     );
+  }
+
+  /**
+   * Push images into the device gallery one at a time. Each image is sent over
+   * the device WS and confirmed independently so one failure doesn't abort the
+   * batch; returns a per-image result for the caller to act on.
+   */
+  async pushMedia(
+    deviceId: string,
+    body: DevicePushMediaBody,
+  ): Promise<DevicePushMediaResponse> {
+    const results: DevicePushMediaResponse["results"] = [];
+    for (const image of body.images) {
+      try {
+        const result = await this.rpc<
+          DevicePushMediaResponse["results"][number]
+        >(
+          "device.push_media",
+          {
+            deviceId,
+            filename: image.filename,
+            mimeType: image.mimeType,
+            dataBase64: image.dataBase64,
+          },
+          35_000,
+        );
+        results.push(result);
+      } catch (err) {
+        results.push({
+          mediaId: "",
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { results };
   }
 }

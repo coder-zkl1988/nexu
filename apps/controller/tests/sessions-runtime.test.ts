@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
+import { mediaCacheDir, mediaCachePathFor } from "../src/lib/media-cache.js";
 import { SessionsRuntime } from "../src/runtime/sessions-runtime.js";
 
 function createEnv(overrides: Record<string, unknown> = {}): ControllerEnv {
@@ -1692,5 +1693,352 @@ describe("SessionsRuntime", () => {
     const session = sessions.find((s) => s.sessionKey === sessionKey);
 
     expect(session?.title).toBe("Ray");
+  });
+
+  function createWebchatRuntime(dir: string): SessionsRuntime {
+    return new SessionsRuntime(
+      createEnv({
+        openclawStateDir: dir,
+        openclawConfigPath: path.join(dir, "openclaw.json"),
+        openclawSkillsDir: path.join(dir, "skills"),
+        openclawCuratedSkillsDir: path.join(dir, "bundled-skills"),
+        openclawWorkspaceTemplatesDir: path.join(dir, "workspace-templates"),
+      }),
+    );
+  }
+
+  async function writeWebchatSession(
+    dir: string,
+    fileName: string,
+    records: unknown[],
+  ): Promise<void> {
+    const sessionsDir = path.join(dir, "agents", "bot-web", "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    const sessionPath = path.join(sessionsDir, fileName);
+    await writeFile(
+      sessionPath.replace(/\.jsonl$/, ".meta.json"),
+      JSON.stringify({ title: "Webchat", channelType: "webchat" }, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      sessionPath,
+      `${records.map((r) => JSON.stringify(r)).join("\n")}\n`,
+      "utf8",
+    );
+  }
+
+  it("surfaces render_a2ui toolResult records and drops other tool results", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "a2ui-history.jsonl", [
+      {
+        type: "message",
+        id: "msg-assistant",
+        timestamp: "2026-06-11T06:30:00.000Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-06-11T06:30:00.000Z"),
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "render_a2ui",
+              arguments: { surfaceId: "sidebar:poster" },
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "msg-a2ui-result",
+        timestamp: "2026-06-11T06:30:01.000Z",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-1",
+          toolName: "render_a2ui",
+          timestamp: Date.parse("2026-06-11T06:30:01.000Z"),
+          content: [
+            {
+              type: "text",
+              text: '```a2ui\n{"version":"v0.9","createSurface":{"surfaceId":"sidebar:poster"}}\n```',
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "msg-exec-result",
+        timestamp: "2026-06-11T06:30:02.000Z",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-2",
+          toolName: "exec",
+          timestamp: Date.parse("2026-06-11T06:30:02.000Z"),
+          content: [{ type: "text", text: "ls output" }],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("a2ui-history.jsonl");
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1]).toMatchObject({
+      id: "msg-a2ui-result",
+      role: "toolResult",
+      toolName: "render_a2ui",
+      toolCallId: "call-1",
+    });
+    const resultContent = result.messages[1]?.content as Array<{
+      type: string;
+      text: string;
+    }>;
+    expect(resultContent[0]?.text).toContain("```a2ui");
+  });
+
+  it("converts MediaPaths transcript fields into served image blocks", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    const inboundPath = path.join(rootDir, "media", "inbound", "photo.png");
+    await writeWebchatSession(rootDir, "media-history.jsonl", [
+      {
+        type: "message",
+        id: "msg-captioned",
+        timestamp: "2026-06-11T06:31:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-06-11T06:31:00.000Z"),
+          content: "告诉我图片中的信息",
+          MediaPaths: [inboundPath],
+          MediaTypes: ["image/png"],
+        },
+      },
+      {
+        type: "message",
+        id: "msg-media-only",
+        timestamp: "2026-06-11T06:32:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-06-11T06:32:00.000Z"),
+          content: "[User sent media without caption]",
+          MediaPath: inboundPath,
+          MediaType: "image/png",
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("media-history.jsonl");
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "text", text: "告诉我图片中的信息" },
+      {
+        type: "image",
+        url: `/api/v1/media/state-file?path=${encodeURIComponent(inboundPath)}`,
+        mimeType: "image/png",
+      },
+    ]);
+    // Media-only message: placeholder text hidden, image block remains.
+    expect(result.messages[1]?.content).toStrictEqual([
+      {
+        type: "image",
+        url: `/api/v1/media/state-file?path=${encodeURIComponent(inboundPath)}`,
+        mimeType: "image/png",
+      },
+    ]);
+  });
+
+  it("extracts MEDIA: markers from assistant replies into image blocks", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    const generatedPath = path.join(
+      rootDir,
+      "media",
+      "tool-image-generation",
+      "cover.png",
+    );
+    await writeWebchatSession(rootDir, "media-marker.jsonl", [
+      {
+        type: "message",
+        id: "msg-assistant-media",
+        timestamp: "2026-06-11T06:33:00.000Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-06-11T06:33:00.000Z"),
+          content: [
+            {
+              type: "text",
+              text: `专辑封面已生成：\n\nMEDIA:${generatedPath}\n\n喜欢吗？`,
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("media-marker.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "text", text: "专辑封面已生成：\n\n喜欢吗？" },
+      {
+        type: "image",
+        url: `/api/v1/media/state-file?path=${encodeURIComponent(generatedPath)}`,
+        mimeType: "image/png",
+      },
+    ]);
+  });
+
+  it("strips inter-session envelopes and re-attributes routed media to the bot", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "inter-session.jsonl", [
+      {
+        type: "message",
+        id: "msg-routed-image",
+        timestamp: "2026-06-11T06:34:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-06-11T06:34:00.000Z"),
+          content: [
+            {
+              type: "text",
+              text: "[Inter-session message] sourceSession=image_generate:abc sourceChannel=webchat sourceTool=image_generate isUser=false\nThis content was routed by OpenClaw from another session or internal tool.\n<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>\ninternal details\n<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+            },
+            { type: "image", data: "aGVsbG8=", mimeType: "image/jpeg" },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "msg-routed-text-only",
+        timestamp: "2026-06-11T06:35:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-06-11T06:35:00.000Z"),
+          content:
+            "[Inter-session message] sourceSession=cron:xyz isUser=false\nrouting envelope only",
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("inter-session.jsonl");
+
+    // Text-only envelope is dropped entirely; media-bearing envelope keeps
+    // its image and is shown as a bot message.
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toMatchObject({
+      id: "msg-routed-image",
+      role: "assistant",
+    });
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "image", data: "aGVsbG8=", mimeType: "image/jpeg" },
+    ]);
+  });
+
+  it("rewrites media paths inside A2UI tool results and mirrors files to the cache", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const nexuHomeDir = path.join(rootDir, "nexu-home");
+    const runtime = new SessionsRuntime(
+      createEnv({
+        openclawStateDir: rootDir,
+        openclawConfigPath: path.join(rootDir, "openclaw.json"),
+        openclawSkillsDir: path.join(rootDir, "skills"),
+        openclawCuratedSkillsDir: path.join(rootDir, "bundled-skills"),
+        openclawWorkspaceTemplatesDir: path.join(
+          rootDir,
+          "workspace-templates",
+        ),
+        nexuHomeDir,
+      }),
+    );
+    const generatedPath = path.join(
+      rootDir,
+      "media",
+      "tool-image-generation",
+      "poster.png",
+    );
+    await mkdir(path.dirname(generatedPath), { recursive: true });
+    await writeFile(generatedPath, "png-bytes", "utf8");
+    const outsidePath = "/etc/passwd";
+    await writeWebchatSession(rootDir, "a2ui-media.jsonl", [
+      {
+        type: "message",
+        id: "msg-a2ui-media",
+        timestamp: "2026-06-11T07:00:00.000Z",
+        message: {
+          role: "toolResult",
+          toolCallId: "call-9",
+          toolName: "render_a2ui",
+          timestamp: Date.parse("2026-06-11T07:00:00.000Z"),
+          content: [
+            {
+              type: "text",
+              text: `\`\`\`a2ui\n{"version":"v0.9","updateComponents":{"surfaceId":"sidebar:poster","components":[{"id":"img","type":"Image","source":"${generatedPath}"},{"id":"raw","type":"Image","source":"${outsidePath}"}]}}\n\`\`\``,
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("a2ui-media.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    const text = (
+      result.messages[0]?.content as Array<{ type: string; text: string }>
+    )[0]?.text;
+    // In-root path becomes a served URL; outside-root path stays untouched.
+    expect(text).toContain(
+      `/api/v1/media/state-file?path=${encodeURIComponent(generatedPath)}`,
+    );
+    expect(text).not.toContain(`"source":"${generatedPath}"`);
+    expect(text).toContain(`"source":"${outsidePath}"`);
+    // The referenced file is mirrored into the durable cache.
+    const cached = await readFile(
+      mediaCachePathFor(mediaCacheDir(nexuHomeDir), generatedPath),
+      "utf8",
+    );
+    expect(cached).toBe("png-bytes");
+  });
+
+  it("mirrors MediaPaths media into the cache at history-read time", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const nexuHomeDir = path.join(rootDir, "nexu-home");
+    const runtime = new SessionsRuntime(
+      createEnv({
+        openclawStateDir: rootDir,
+        openclawConfigPath: path.join(rootDir, "openclaw.json"),
+        openclawSkillsDir: path.join(rootDir, "skills"),
+        openclawCuratedSkillsDir: path.join(rootDir, "bundled-skills"),
+        openclawWorkspaceTemplatesDir: path.join(
+          rootDir,
+          "workspace-templates",
+        ),
+        nexuHomeDir,
+      }),
+    );
+    const inboundPath = path.join(rootDir, "media", "inbound", "upload.jpg");
+    await mkdir(path.dirname(inboundPath), { recursive: true });
+    await writeFile(inboundPath, "jpg-bytes", "utf8");
+    await writeWebchatSession(rootDir, "media-cache.jsonl", [
+      {
+        type: "message",
+        id: "msg-upload",
+        timestamp: "2026-06-11T07:01:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-06-11T07:01:00.000Z"),
+          content: "看看这张图",
+          MediaPath: inboundPath,
+          MediaType: "image/jpeg",
+        },
+      },
+    ]);
+
+    await runtime.getChatHistory("media-cache.jsonl");
+
+    const cached = await readFile(
+      mediaCachePathFor(mediaCacheDir(nexuHomeDir), inboundPath),
+      "utf8",
+    );
+    expect(cached).toBe("jpg-bytes");
   });
 });

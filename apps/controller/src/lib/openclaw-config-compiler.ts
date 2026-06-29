@@ -377,15 +377,14 @@ function compilePlugins(
         .filter((pluginId): pluginId is string => pluginId !== null),
     ),
   ];
-  // Always-allow channel plugins whose extensions are bundled in every
-  // environment so connect/disconnect only mutates channel-level config
-  // and hot-reloads (~500ms) instead of changing plugins.allow which
-  // triggers a full gateway restart (~11s).
-  // "feishu" must be listed here because OpenClaw auto-enables it and
-  // writes it back to plugins.allow on disk; if controller's compiled
-  // config omits it, the next write creates a diff that triggers a
-  // gateway restart, and the cycle repeats.
-  const prewarmedChannelPluginIds = ["openclaw-lark", "openclaw-weixin"];
+  // No prewarmed channel plugins. openclaw-lark/openclaw-weixin used to be
+  // always allowed (+ enabled) so connecting Feishu/WeChat only mutated
+  // channel-level config rather than plugins.allow. But always-loading them
+  // together with the empty placeholder channels blocked controller readiness
+  // for ~120s when no channel was configured. Allow/enable them only when a
+  // matching channel is actually connected (via connectedPluginIds); the first
+  // connect triggers a one-time gateway reload that then converges.
+  const prewarmedChannelPluginIds: string[] = [];
   const analyticsEnabled = config.desktop.analyticsEnabled !== false;
   const platformPluginIds = [
     "nexu-runtime-model",
@@ -396,6 +395,7 @@ function compilePlugins(
     // plugins.allow which triggers a full gateway restart (~11s).
     "langfuse-tracer",
     "nexu-a2ui",
+    "nexu-toolcall-guard",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -424,12 +424,20 @@ function compilePlugins(
     },
     allow,
     entries: {
-      "openclaw-lark": {
-        enabled: true,
-      },
-      "openclaw-weixin": {
-        enabled: true,
-      },
+      ...(connectedPluginIds.includes("openclaw-lark")
+        ? {
+            "openclaw-lark": {
+              enabled: true,
+            },
+          }
+        : {}),
+      ...(connectedPluginIds.includes("openclaw-weixin")
+        ? {
+            "openclaw-weixin": {
+              enabled: true,
+            },
+          }
+        : {}),
       ...(connectedPluginIds.includes("dingtalk-connector")
         ? {
             "dingtalk-connector": {
@@ -468,12 +476,15 @@ function compilePlugins(
         hooks: {
           allowConversationAccess: true,
         },
-        config: {
-          contactUrl: "https://nexu.app/contact",
-        },
       },
       "nexu-a2ui": {
         enabled: true,
+      },
+      "nexu-toolcall-guard": {
+        enabled: true,
+        hooks: {
+          allowConversationAccess: true,
+        },
       },
       ...(hasTeams
         ? {
@@ -535,6 +546,11 @@ export function compileOpenClawConfig(
           },
         }
       : {}),
+    // Bundled, version-pinned OpenClaw must not phone npm for a newer version
+    // on boot. `checkOnStart` is the `registry.npmjs.org/openclaw/latest` fetch
+    // that times out on restricted networks (e.g. China) and stalls startup.
+    // The OpenClaw version is managed by slimclaw + the desktop auto-updater.
+    update: { checkOnStart: false },
     gateway: {
       port: env.openclawGatewayPort,
       mode: "local",

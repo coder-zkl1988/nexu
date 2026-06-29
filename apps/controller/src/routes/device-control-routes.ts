@@ -5,6 +5,8 @@ import {
   deviceExecuteTaskResponseSchema,
   deviceInfoSchema,
   deviceListResponseSchema,
+  devicePushMediaBodySchema,
+  devicePushMediaResponseSchema,
   deviceRenameBodySchema,
 } from "@nexu/shared";
 import { streamSSE } from "hono/streaming";
@@ -65,21 +67,32 @@ export function registerDeviceControlRoutes(
 
       await stream.writeSSE({ data: "connected", event: "connected" });
 
-      // Send initial device list
-      if (await container.deviceControlService.isAvailable()) {
-        try {
-          const list = await container.deviceControlService.listDevices();
-          const devices = list.devices.map((d) => ({
-            ...d,
-            name: container.deviceNameStore.get(d.deviceId) ?? d.name,
-          }));
-          await stream.writeSSE({
-            data: JSON.stringify({ type: "device_list", devices }),
-            event: "device_list",
-          });
-        } catch {
-          /* ignore */
-        }
+      // Send an initial device_list snapshot. This MUST go out in every case —
+      // available, unavailable, or lookup failure — so the client can clear its
+      // loading state. Otherwise an unavailable device-control plugin leaves the
+      // SSE open but silent (no device_list event, and no error to trigger the
+      // client's polling fallback), and the devices page spins forever.
+      try {
+        const list = (await container.deviceControlService.isAvailable())
+          ? await container.deviceControlService.listDevices()
+          : { devices: [] };
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "device_list",
+            devices: list.devices.map((d) => ({
+              ...d,
+              name: container.deviceNameStore.get(d.deviceId) ?? d.name,
+            })),
+          }),
+          event: "device_list",
+        });
+      } catch {
+        // Lookup failed — still emit an empty snapshot so the client stops
+        // spinning and renders its empty state.
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "device_list", devices: [] }),
+          event: "device_list",
+        });
       }
 
       // Listen for changes — broadcast immediately without re-checking
@@ -277,6 +290,64 @@ export function registerDeviceControlRoutes(
       const body = c.req.valid("json");
       try {
         const result = await container.deviceControlService.executeTask(
+          deviceId,
+          body,
+        );
+        return c.json(result, 200);
+      } catch (err) {
+        const mapped = mapRpcErrorToStatus(err);
+        return c.json({ message: mapped.message }, mapped.status);
+      }
+    },
+  );
+
+  // POST /api/v1/devices/{deviceId}/media — push images into the gallery
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/devices/{deviceId}/media",
+      tags: ["Device Control"],
+      request: {
+        params: deviceIdParamSchema,
+        body: {
+          content: {
+            "application/json": { schema: devicePushMediaBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: devicePushMediaResponseSchema },
+          },
+          description: "Per-image push results",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Device not found",
+        },
+        503: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Device control plugin is not running",
+        },
+        500: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Internal error",
+        },
+        504: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Media push timed out",
+        },
+      },
+    }),
+    async (c) => {
+      if (!(await container.deviceControlService.isAvailable())) {
+        return c.json({ message: "Device control plugin is not running" }, 503);
+      }
+      const { deviceId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      try {
+        const result = await container.deviceControlService.pushMedia(
           deviceId,
           body,
         );

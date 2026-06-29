@@ -155,6 +155,9 @@ type ProviderInventoryInput = {
   enabled: boolean;
   apiKey: string | null;
   models: string[];
+  // Per-model capabilities keyed by model id, sourced from the stored
+  // provider config. Only populated for models with a known context window.
+  modelMeta: Record<string, { contextWindow?: number }>;
   baseUrl: string | null;
   oauthRegion: "global" | "cn" | null;
   auth: ModelProviderConfig["auth"] | undefined;
@@ -166,6 +169,55 @@ function resolveInventoryModelIds(
   models: string[],
 ): string[] {
   return models.length > 0 ? models : getBundledProviderModelIds(providerId);
+}
+
+// Shape of a single entry in an OpenAI-compatible `/models` response.
+// OpenRouter (and some aggregators) extend the standard `{ id }` with a
+// model context length, exposed either at the top level or under
+// `top_provider`. Everything beyond `id` is best-effort/optional.
+type DiscoveredModelEntry = {
+  id: string;
+  context_length?: number;
+  context_window?: number;
+  max_tokens?: number;
+  max_output_tokens?: number;
+  top_provider?: {
+    context_length?: number;
+    max_completion_tokens?: number;
+  };
+};
+
+function firstPositive(
+  ...values: Array<number | undefined>
+): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && value > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function toVerifiedModelDetail(entry: DiscoveredModelEntry): {
+  id: string;
+  contextWindow?: number;
+  maxTokens?: number;
+} {
+  const contextWindow = firstPositive(
+    entry.context_length,
+    entry.context_window,
+    entry.top_provider?.context_length,
+  );
+  const maxTokens = firstPositive(
+    entry.max_tokens,
+    entry.max_output_tokens,
+    entry.top_provider?.max_completion_tokens,
+  );
+  return {
+    id: entry.id,
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(maxTokens !== undefined ? { maxTokens } : {}),
+  };
 }
 
 function toProviderInventoryInput(
@@ -183,6 +235,11 @@ function toProviderInventoryInput(
         models: resolveInventoryModelIds(
           providerId,
           provider.models.map((model) => model.id),
+        ),
+        modelMeta: Object.fromEntries(
+          provider.models
+            .filter((model) => (model.contextWindow ?? 0) > 0)
+            .map((model) => [model.id, { contextWindow: model.contextWindow }]),
         ),
         baseUrl: provider.baseUrl ?? null,
         oauthRegion: provider.oauthRegion ?? null,
@@ -330,6 +387,7 @@ export class ModelProviderService {
       providerId: string;
       apiKey: string | null;
       models: string[];
+      modelMeta: Record<string, { contextWindow?: number }>;
       auth: ModelProviderConfig["auth"] | undefined;
     }>,
     desktopCloud: {
@@ -350,11 +408,15 @@ export class ModelProviderService {
     const byokModels: Model[] = providers
       .filter((provider) => !expiredOAuthProviderIds.has(provider.providerId))
       .flatMap((provider) =>
-        provider.models.map((modelId) => ({
-          id: `${provider.providerKey}/${modelId}`,
-          name: modelId,
-          provider: provider.providerKey,
-        })),
+        provider.models.map((modelId) => {
+          const contextWindow = provider.modelMeta[modelId]?.contextWindow;
+          return {
+            id: `${provider.providerKey}/${modelId}`,
+            name: modelId,
+            provider: provider.providerKey,
+            ...(contextWindow !== undefined ? { contextWindow } : {}),
+          };
+        }),
       );
 
     return { cloudModels, byokModels };
@@ -692,7 +754,7 @@ export class ModelProviderService {
       }
 
       const payload = (await response.json()) as {
-        data?: Array<{ id: string }>;
+        data?: Array<DiscoveredModelEntry>;
       };
       if (providerId === "xiaomi") {
         return {
@@ -711,6 +773,9 @@ export class ModelProviderService {
           : providerId === "minimax"
             ? MINI_MAX_API_MODELS
             : [],
+        ...(Array.isArray(payload.data)
+          ? { modelDetails: payload.data.map(toVerifiedModelDetail) }
+          : {}),
       };
     } catch (error) {
       return {

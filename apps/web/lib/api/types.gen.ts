@@ -2524,6 +2524,7 @@ export type PostApiV1ChatLocalStartData = {
                     size?: number;
                 };
             }>;
+            skillSlug?: string;
         };
     };
     path?: never;
@@ -2591,6 +2592,7 @@ export type PostApiV1ChatLocalData = {
                     size?: number;
                 };
             }>;
+            skillSlug?: string;
         };
     };
     path?: never;
@@ -2673,10 +2675,12 @@ export type GetApiV1ChatHistoryResponses = {
     200: {
         messages: Array<{
             id: string;
-            role: 'user' | 'assistant';
+            role: 'user' | 'assistant' | 'toolResult';
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            toolName?: string;
+            toolCallId?: string;
         }>;
         sessionCount: number;
     };
@@ -2958,10 +2962,12 @@ export type GetApiV1SessionsByIdMessagesResponses = {
     200: {
         messages: Array<{
             id: string;
-            role: 'user' | 'assistant';
+            role: 'user' | 'assistant' | 'toolResult';
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            toolName?: string;
+            toolCallId?: string;
         }>;
         sessionKey: string;
     };
@@ -2987,6 +2993,7 @@ export type GetApiV1ModelsResponses = {
             provider: string;
             isDefault?: boolean;
             description?: string;
+            contextWindow?: number;
         }>;
     };
 };
@@ -3271,6 +3278,11 @@ export type PostApiV1ModelProvidersInstancesValidateResponses = {
     200: {
         valid: boolean;
         models?: Array<string>;
+        modelDetails?: Array<{
+            id: string;
+            contextWindow?: number;
+            maxTokens?: number;
+        }>;
         error?: string;
     };
 };
@@ -3296,6 +3308,11 @@ export type PostApiV1ModelProvidersByProviderIdValidateResponses = {
     200: {
         valid: boolean;
         models?: Array<string>;
+        modelDetails?: Array<{
+            id: string;
+            contextWindow?: number;
+            maxTokens?: number;
+        }>;
         error?: string;
     };
 };
@@ -3389,6 +3406,11 @@ export type PostApiV1ProvidersByProviderIdVerifyResponses = {
     200: {
         valid: boolean;
         models?: Array<string>;
+        modelDetails?: Array<{
+            id: string;
+            contextWindow?: number;
+            maxTokens?: number;
+        }>;
         error?: string;
     };
 };
@@ -5318,6 +5340,66 @@ export type PostApiV1DevicesByDeviceIdTasksResponses = {
 };
 
 export type PostApiV1DevicesByDeviceIdTasksResponse = PostApiV1DevicesByDeviceIdTasksResponses[keyof PostApiV1DevicesByDeviceIdTasksResponses];
+
+export type PostApiV1DevicesByDeviceIdMediaData = {
+    body?: {
+        images: Array<{
+            filename: string;
+            mimeType: string;
+            dataBase64: string;
+        }>;
+    };
+    path: {
+        deviceId: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{deviceId}/media';
+};
+
+export type PostApiV1DevicesByDeviceIdMediaErrors = {
+    /**
+     * Device not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Internal error
+     */
+    500: {
+        message: string;
+    };
+    /**
+     * Device control plugin is not running
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * Media push timed out
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdMediaError = PostApiV1DevicesByDeviceIdMediaErrors[keyof PostApiV1DevicesByDeviceIdMediaErrors];
+
+export type PostApiV1DevicesByDeviceIdMediaResponses = {
+    /**
+     * Per-image push results
+     */
+    200: {
+        results: Array<{
+            mediaId: string;
+            success: boolean;
+            savedUri?: string;
+            error?: string;
+        }>;
+    };
+};
+
+export type PostApiV1DevicesByDeviceIdMediaResponse = PostApiV1DevicesByDeviceIdMediaResponses[keyof PostApiV1DevicesByDeviceIdMediaResponses];
 
 export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdData = {
     body?: never;

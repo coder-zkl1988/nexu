@@ -99,7 +99,11 @@ export function LocalChatPage() {
   // Send message, then leave the new-conversation page as soon as OpenClaw
   // acknowledges chat.send. PendingSessionPage resolves the real session later.
   const sendMessage = useCallback(
-    async (text: string, atts: PendingAttachment[]) => {
+    async (
+      text: string,
+      atts: PendingAttachment[],
+      skillSlug: string | null,
+    ) => {
       if (!selectedBot) return;
 
       const botId = selectedBot.id;
@@ -122,6 +126,7 @@ export function LocalChatPage() {
             : {
                 type: "text" as const,
                 content: text,
+                ...(skillSlug ? { skillSlug } : {}),
                 attachments:
                   atts.length > 0
                     ? atts.map((a) => ({

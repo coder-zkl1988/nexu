@@ -392,7 +392,49 @@ describe("ModelProviderService", () => {
       expect(result).toEqual({
         valid: true,
         models: ["gpt-4.1", "gpt-4.1-mini"],
+        modelDetails: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }],
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("captures context window from provider model discovery", async () => {
+    const env = createEnv(tempDir);
+    const store = new NexuConfigStore(env);
+    const service = createService(store, env);
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: "moonshotai/kimi-k2", context_length: 262144 },
+            {
+              id: "anthropic/claude-3.5",
+              top_provider: { context_length: 200000 },
+            },
+            { id: "no-context-model" },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      )) as typeof globalThis.fetch;
+
+    try {
+      const result = await service.verifyProvider("openrouter", {
+        apiKey: "openrouter-test-key",
+        baseUrl: "https://openrouter.ai/api/v1",
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.modelDetails).toEqual([
+        { id: "moonshotai/kimi-k2", contextWindow: 262144 },
+        { id: "anthropic/claude-3.5", contextWindow: 200000 },
+        { id: "no-context-model" },
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -440,6 +482,7 @@ describe("ModelProviderService", () => {
       expect(result).toEqual({
         valid: true,
         models: ["claude-3-7-sonnet", "claude-sonnet-4"],
+        modelDetails: [{ id: "claude-3-7-sonnet" }, { id: "claude-sonnet-4" }],
       });
     } finally {
       globalThis.fetch = originalFetch;

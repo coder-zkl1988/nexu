@@ -1,6 +1,14 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ControllerEnv } from "../app/env.js";
+import {
+  isAgentDatabasePath,
+  readAgentAuthStore,
+  writeAgentAuthStore,
+} from "./openclaw-agent-auth-db.js";
+
+/** Per-agent OpenClaw SQLite database filename (OpenClaw >= 2026.6.5). */
+const AGENT_DB_FILENAME = "openclaw-agent.sqlite";
 
 export interface AuthProfilesData {
   version: number;
@@ -82,7 +90,7 @@ export class OpenClawAuthProfilesStore {
         .filter((entry) => entry.isDirectory())
         .sort((left, right) => left.name.localeCompare(right.name))
         .map((entry) =>
-          path.join(agentsDir, entry.name, "agent", "auth-profiles.json"),
+          path.join(agentsDir, entry.name, "agent", AGENT_DB_FILENAME),
         );
     } catch (error) {
       if (isMissingFileError(error)) {
@@ -118,13 +126,21 @@ export class OpenClawAuthProfilesStore {
   }
 
   authProfilesPathForWorkspace(workspace: string): string {
-    return path.join(workspace, "agent", "auth-profiles.json");
+    return path.join(workspace, "agent", AGENT_DB_FILENAME);
   }
 
   async readAuthProfiles(
     filePath: string,
     options?: { missingOk?: boolean },
   ): Promise<AuthProfilesData | null> {
+    if (isAgentDatabasePath(filePath)) {
+      const cell = readAgentAuthStore(filePath);
+      if (!cell) {
+        return options?.missingOk ? null : createEmptyAuthProfilesData();
+      }
+      return { version: cell.version, profiles: cell.profiles };
+    }
+
     try {
       const content = await readFile(filePath, "utf8");
       return parseAuthProfilesData(content, filePath);
@@ -150,6 +166,21 @@ export class OpenClawAuthProfilesStore {
           (await this.readAuthProfiles(filePath, { missingOk: true })) ??
           createEmptyAuthProfilesData();
         const next = await updater(current);
+
+        if (isAgentDatabasePath(filePath)) {
+          // Seed the per-agent SQLite store (created if absent so credentials
+          // are present before OpenClaw boots). Only the secrets-store row is
+          // touched; OpenClaw owns the rest of the agent schema and adopts this
+          // database on boot. The runtime caches the store in memory, so a
+          // restart is required after a write to a live database — that is
+          // already wired through provider/OAuth mutations (syncAll + restart).
+          writeAgentAuthStore(filePath, {
+            version: next.version,
+            profiles: next.profiles,
+          });
+          return;
+        }
+
         await mkdir(path.dirname(filePath), { recursive: true });
         await writeFile(filePath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
       });

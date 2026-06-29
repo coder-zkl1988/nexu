@@ -293,7 +293,7 @@ export class DeviceMirrorProxy {
               params: parsed,
             }),
           );
-          logger.info(
+          logger.debug(
             { deviceId, type: parsed.type },
             "control bridge: text action → upstream",
           );
@@ -319,7 +319,7 @@ export class DeviceMirrorProxy {
           const pressure = buf.readUInt16LE(26);
           detail = `TOUCH ${actionNames[touchAction as 0 | 1 | 2] ?? touchAction} pressure=${pressure} size=${size}`;
         }
-        logger.info(
+        logger.debug(
           { deviceId, detail },
           "control bridge: binary frame → upstream",
         );

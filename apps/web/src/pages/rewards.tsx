@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
-const MOBILE_SHARE_QR_URL = "https://github.com/nexu-io/nexu";
+const MOBILE_SHARE_QR_URL = "https://github.com/coder-zkl1988/tabby";
 
 // PM-defined tracking type names per reward task. mobile_share is intentionally
 // excluded from click tracking (the click only opens the QR modal, the
@@ -392,7 +392,7 @@ export function RewardsPage() {
           <p className="text-[13px] text-text-secondary">
             {t("rewards.desc")}{" "}
             <a
-              href={`https://docs.nexu.io${i18n?.language?.startsWith("zh") ? "/zh" : ""}/guide/rewards`}
+              href={`https://tabby.picaso.studio/docs${i18n?.language?.startsWith("zh") ? "/zh" : ""}/guide/rewards`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[var(--color-brand-primary)] hover:underline"

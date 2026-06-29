@@ -4,10 +4,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useCloudConnect } from "@/hooks/use-cloud-connect";
+import { useDesktopCloudStatus } from "@/hooks/use-desktop-cloud-status";
 import { useQuery } from "@tanstack/react-query";
-import { Download, QrCode } from "lucide-react";
+import { Download, Loader2, Lock, LogIn, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -59,9 +61,26 @@ export function DevicesPage() {
       ? `ws://${deviceControl.localIp}:${wsPort}/phone`
       : null;
 
+  // Device task execution needs the cloud model, so the whole tab is gated
+  // behind cloud login. Reuse the same cloud-status / connect path as the
+  // sidebar and rewards page instead of inventing a parallel auth check.
+  const {
+    data: cloudStatus,
+    isLoading: cloudStatusLoading,
+    refetch: refetchCloudStatus,
+  } = useDesktopCloudStatus();
+  const cloudConnected = cloudStatus?.connected ?? false;
+  const { cloudConnecting, handleCloudConnect } = useCloudConnect({
+    cloudConnected,
+    onPoll: refetchCloudStatus,
+  });
+  // Only show the gate once we actually know the user is signed out — avoid a
+  // flash of the overlay for logged-in users during the initial status fetch.
+  const showLoginGate = !cloudStatusLoading && !cloudConnected;
+
   const fetchDevices = useCallback(async () => {
     try {
-      const { data, error: apiError } = await getApiV1Devices();
+      const { data, error: apiError, response } = await getApiV1Devices();
       if (apiError) {
         const msg =
           typeof apiError === "object" &&
@@ -70,6 +89,12 @@ export function DevicesPage() {
             ? String((apiError as { message: unknown }).message)
             : t("devices.errorTitle");
         setError(msg);
+        // 503 = device control plugin is not running → no devices are
+        // reachable. Clear stale cards instead of leaving them looking
+        // connected. Other errors (transient network) keep the last list.
+        if (response?.status === 503) {
+          setDevices([]);
+        }
       } else {
         setError(null);
         setDevices(data?.devices ?? []);
@@ -81,10 +106,27 @@ export function DevicesPage() {
     }
   }, [t]);
 
+  // Keep the latest fetchDevices reachable from the mount-once effect below
+  // without listing it as a dependency — otherwise an unstable `t`/fetchDevices
+  // identity would re-run the effect, tearing down the EventSource and resetting
+  // the loading timeout on every render so neither ever completes.
+  const fetchDevicesRef = useRef(fetchDevices);
+  fetchDevicesRef.current = fetchDevices;
+
   useEffect(() => {
+    // Initial load via REST — the same call the manual refresh makes, but on
+    // mount. This clears the spinner fast and reliably (GET /devices responds
+    // immediately), independent of whether the SSE delivers an initial
+    // snapshot. The stream below only layers on live updates.
+    void fetchDevicesRef.current();
+
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
     const es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
     let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+
+    // Safety net: never let the spinner hang forever even if the initial fetch
+    // and the SSE both stall.
+    const loadingFallback = setTimeout(() => setLoading(false), 8000);
 
     es.addEventListener("device_list", (e) => {
       try {
@@ -100,28 +142,44 @@ export function DevicesPage() {
     });
 
     es.addEventListener("device_connected", () => {
-      void fetchDevices();
+      void fetchDevicesRef.current();
     });
 
-    es.addEventListener("device_disconnected", () => {
-      void fetchDevices();
+    es.addEventListener("device_disconnected", (e) => {
+      // Drop the card immediately using the deviceId in the event, so it
+      // disappears even if the reconciling refetch transiently fails.
+      try {
+        const data = JSON.parse(e.data);
+        if (data?.deviceId) {
+          setDevices((prev) =>
+            prev.filter((d) => d.deviceId !== data.deviceId),
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+      void fetchDevicesRef.current();
     });
 
     es.onerror = () => {
       // SSE failed — fall back to polling
       es.close();
       if (fallbackInterval === null) {
-        fallbackInterval = setInterval(() => void fetchDevices(), 3000);
+        fallbackInterval = setInterval(
+          () => void fetchDevicesRef.current(),
+          3000,
+        );
       }
     };
 
     return () => {
+      clearTimeout(loadingFallback);
       es.close();
       if (fallbackInterval !== null) {
         clearInterval(fallbackInterval);
       }
     };
-  }, [fetchDevices]);
+  }, []);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -133,7 +191,7 @@ export function DevicesPage() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full">
       <div className="flex-1 min-w-0 px-4 py-4 sm:px-6 sm:py-6 md:p-8 overflow-y-auto">
         <div className="mx-auto">
           <div className="mb-6 flex items-center justify-between gap-4">
@@ -164,7 +222,7 @@ export function DevicesPage() {
                 >
                   <div className="bg-white p-2 rounded-lg border border-border">
                     <QRCodeSVG
-                      value="https://github.com/coder-zkl1988/tabby-app/releases/download/v1.0.1/app-release.apk"
+                      value="https://downloads.picaso.studio/releases/app-release.apk"
                       size={160}
                       level="M"
                     />
@@ -303,6 +361,35 @@ export function DevicesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {showLoginGate && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-surface-0/80 px-6 backdrop-blur-sm">
+          <div className="flex max-w-sm flex-col items-center rounded-2xl border border-border bg-surface-0 px-8 py-8 text-center shadow-lg">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2">
+              <Lock className="h-6 w-6 text-text-secondary" />
+            </div>
+            <h2 className="text-[15px] font-semibold text-text-primary">
+              {t("devices.loginTitle")}
+            </h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-text-muted">
+              {t("devices.loginBody")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleCloudConnect()}
+              disabled={cloudConnecting}
+              className="mt-5 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-[13px] font-medium text-white transition-all hover:bg-accent/90 disabled:opacity-60"
+            >
+              {cloudConnecting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogIn className="h-4 w-4" />
+              )}
+              {t("devices.loginCta")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

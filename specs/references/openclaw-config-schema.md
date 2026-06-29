@@ -15,7 +15,8 @@ Config 生成器必须输出符合此格式的 JSON。OpenClaw gateway 通过 ch
   "bindings": [ /* 必填：路由规则 */ ],
   "skills":   { /* 可选：技能热加载 */ },
   "commands": { /* 可选：命令控制 */ },
-  "plugins":  { /* 可选：插件启用 */ }
+  "plugins":  { /* 可选：插件启用 */ },
+  "update":   { /* 可选：自更新策略。打包版置 checkOnStart:false，禁用开机查 npm 新版（registry.npmjs.org/openclaw/latest），避免受限网络下卡启动 */ }
 }
 ```
 

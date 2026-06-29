@@ -7685,6 +7685,9 @@
                             "content"
                           ]
                         }
+                      },
+                      "skillSlug": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -7919,6 +7922,9 @@
                             "content"
                           ]
                         }
+                      },
+                      "skillSlug": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -8160,7 +8166,8 @@
                             "type": "string",
                             "enum": [
                               "user",
-                              "assistant"
+                              "assistant",
+                              "toolResult"
                             ]
                           },
                           "content": {
@@ -8173,6 +8180,12 @@
                           "createdAt": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "toolName": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -8914,7 +8927,8 @@
                             "type": "string",
                             "enum": [
                               "user",
-                              "assistant"
+                              "assistant",
+                              "toolResult"
                             ]
                           },
                           "content": {
@@ -8927,6 +8941,12 @@
                           "createdAt": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "toolName": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -9003,6 +9023,9 @@
                           },
                           "description": {
                             "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
                           }
                         },
                         "required": [
@@ -10119,6 +10142,26 @@
                         "type": "string"
                       }
                     },
+                    "modelDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "maxTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ]
+                      }
+                    },
                     "error": {
                       "type": "string"
                     }
@@ -10180,6 +10223,26 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "modelDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "maxTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ]
                       }
                     },
                     "error": {
@@ -10433,6 +10496,26 @@
                       "type": "array",
                       "items": {
                         "type": "string"
+                      }
+                    },
+                    "modelDetails": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "contextWindow": {
+                            "type": "number"
+                          },
+                          "maxTokens": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ]
                       }
                     },
                     "error": {
@@ -15880,6 +15963,178 @@
           },
           "504": {
             "description": "Task execution timed out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{deviceId}/media": {
+      "post": {
+        "tags": [
+          "Device Control"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "deviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "filename": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128
+                        },
+                        "mimeType": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "dataBase64": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "filename",
+                        "mimeType",
+                        "dataBase64"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 9
+                  }
+                },
+                "required": [
+                  "images"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Per-image push results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "mediaId": {
+                            "type": "string"
+                          },
+                          "success": {
+                            "type": "boolean"
+                          },
+                          "savedUri": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "mediaId",
+                          "success"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Device not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Device control plugin is not running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Media push timed out",
             "content": {
               "application/json": {
                 "schema": {

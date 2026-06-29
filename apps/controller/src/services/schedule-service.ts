@@ -1,12 +1,16 @@
 import type {
+  ChannelType,
   CreateScheduleInput,
   ScheduleResponse,
   UpdateScheduleInput,
 } from "@nexu/shared";
+import { resolveOpenClawChannelKey } from "../lib/channel-binding-compiler.js";
 import { logger } from "../lib/logger.js";
+import type { SessionsRuntime } from "../runtime/sessions-runtime.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 import {
   type OpenClawCronGateway,
+  deliveryTargetFromSessionKey,
   mapCronJobToScheduleItem,
 } from "./openclaw-cron-gateway.js";
 import type { OpenClawSyncService } from "./openclaw-sync-service.js";
@@ -20,7 +24,64 @@ export class ScheduleService {
     private readonly configStore: NexuConfigStore,
     private readonly cronGateway: OpenClawCronGateway,
     private readonly syncService: OpenClawSyncService,
+    private readonly sessionsRuntime: SessionsRuntime,
   ) {}
+
+  /**
+   * Resolve the announce delivery target for a channel automation by picking
+   * the most-recently-active real conversation on that bot+channel and
+   * extracting its peer from the session key. This lets UI automations push
+   * to "the latest conversation" without the user pasting a raw chatId.
+   * Returns undefined when no eligible session exists (or channelType unset).
+   */
+  private async resolveLatestChannelTarget(
+    botId: string,
+    channelType?: string,
+    channelId?: string,
+  ): Promise<string | undefined> {
+    if (!channelType) return undefined;
+    // Session channelType is inconsistent across channels: Feishu sessions use
+    // the channel-type name ("feishu") while WeChat sessions use the plugin id
+    // ("openclaw-weixin") even though the schedule/channels API says "wechat".
+    // Match against both the raw type and its OpenClaw plugin key.
+    const openclawKey = resolveOpenClawChannelKey(channelType as ChannelType);
+    const channelMatches = (sct?: string | null): boolean =>
+      sct === channelType || sct === openclawKey;
+    let target: string | undefined;
+    try {
+      const sessions = await this.sessionsRuntime.listSessions();
+      const candidates = sessions
+        .filter((s) => s.botId === botId && channelMatches(s.channelType))
+        .map((s) => ({
+          to: deliveryTargetFromSessionKey(s.sessionKey ?? ""),
+          at: s.lastMessageAt ? Date.parse(s.lastMessageAt) : 0,
+        }))
+        .filter((c): c is { to: string; at: number } => c.to !== null)
+        .sort((a, b) => b.at - a.at);
+      target = candidates[0]?.to;
+    } catch (err) {
+      logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        "schedule_resolve_delivery_target_failed",
+      );
+    }
+    // WeChat: OpenClaw lowercases the session id, but the outbound contextToken
+    // is keyed by the original-case @im.wechat id. Recover the correct case so
+    // the token lookup hits (otherwise the push is silently dropped).
+    if (target?.endsWith("@im.wechat") && channelId) {
+      target = await this.cronGateway.resolveWechatDeliveryTarget(
+        channelId,
+        target,
+      );
+    }
+    if (!target) {
+      logger.warn(
+        { botId, channelType },
+        "schedule_no_channel_session_for_delivery_target",
+      );
+    }
+    return target;
+  }
 
   async bootstrap(): Promise<void> {
     const config = await this.configStore.getConfig();
@@ -29,6 +90,11 @@ export class ScheduleService {
     for (const s of schedules) {
       if (s.externalId || !s.enabled) continue;
       try {
+        const deliveryTo = await this.resolveLatestChannelTarget(
+          s.botId,
+          s.channelType,
+          s.channelId,
+        );
         const externalId = await this.cronGateway.createJob({
           name: s.name,
           agentId: s.botId,
@@ -38,6 +104,7 @@ export class ScheduleService {
           prompt: s.prompt,
           channelType: s.channelType,
           channelId: s.channelId,
+          deliveryTo,
           scheduleId: s.id,
         });
         await this.configStore.setScheduleExternalId(s.id, externalId);
@@ -92,6 +159,11 @@ export class ScheduleService {
     // Register directly with OpenClaw so the cron job runs immediately
     // without waiting for the agent to process SCHEDULE.md.
     try {
+      const deliveryTo = await this.resolveLatestChannelTarget(
+        schedule.botId,
+        schedule.channelType,
+        schedule.channelId,
+      );
       const externalId = await this.cronGateway.createJob({
         name: schedule.name,
         agentId: schedule.botId,
@@ -101,6 +173,7 @@ export class ScheduleService {
         prompt: schedule.prompt,
         channelType: schedule.channelType,
         channelId: schedule.channelId,
+        deliveryTo,
         scheduleId: schedule.id,
       });
       // Store the externalId for future updates/deletes
@@ -150,6 +223,11 @@ export class ScheduleService {
         }
       }
       try {
+        const deliveryTo = await this.resolveLatestChannelTarget(
+          updated.botId,
+          updated.channelType,
+          updated.channelId,
+        );
         const externalId = await this.cronGateway.createJob({
           name: updated.name,
           agentId: updated.botId,
@@ -159,6 +237,7 @@ export class ScheduleService {
           prompt: updated.prompt,
           channelType: updated.channelType,
           channelId: updated.channelId,
+          deliveryTo,
           scheduleId: updated.id,
         });
         await this.configStore.setScheduleExternalId(updated.id, externalId);

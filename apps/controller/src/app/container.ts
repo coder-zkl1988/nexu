@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { logger } from "../lib/logger.js";
+import { startChannelHealthWatchdog } from "../runtime/channel-health-watchdog.js";
 import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
 import { CreditGuardStateWriter } from "../runtime/credit-guard-state-writer.js";
 import { GatewayClient } from "../runtime/gateway-client.js";
@@ -61,6 +62,7 @@ import { TeamService } from "../services/teams/team-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
+import { DeviceNameStore } from "../store/device-name-store.js";
 import { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import { NexuConfigStore } from "../store/nexu-config-store.js";
 import { type ControllerEnv, env } from "./env.js";
@@ -114,7 +116,7 @@ export interface ControllerContainer {
   deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
-  deviceNameStore: Map<string, string>;
+  deviceNameStore: DeviceNameStore;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   scheduleService: ScheduleService;
@@ -203,6 +205,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     cronGateway,
     openclawSyncService,
+    sessionsRuntime,
   );
   const openclawAuthService = new OpenClawAuthService(env, authProfilesStore);
   const analyticsService = new AnalyticsService(
@@ -522,7 +525,24 @@ export async function createContainer(): Promise<ControllerContainer> {
     // fresh login because the registry never saw the new providers map.
     // `restart()` handles both dev-managed and launchd-managed modes.
     await openclawProcess.restart("cloud_state_changed");
+    // After the restart the tabby-control plugin comes up with no VLM
+    // credential; push the signed-in user's gateway credential (or null on
+    // logout) so phones run the model on their cloud account.
+    await deviceControlService.pushVlmCredential();
   };
+
+  // Hoisted so both the container surface and the channel-health watchdog
+  // (started in startBackgroundLoops) share one instance.
+  const channelService = new ChannelService(
+    env,
+    configStore,
+    openclawSyncService,
+    gatewayService,
+    openclawProcess,
+    controlPlaneHealth,
+    wsClient,
+    quotaFallbackService,
+  );
 
   return {
     env,
@@ -530,16 +550,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     controlPlaneHealth,
     openclawProcess,
     agentService,
-    channelService: new ChannelService(
-      env,
-      configStore,
-      openclawSyncService,
-      gatewayService,
-      openclawProcess,
-      controlPlaneHealth,
-      wsClient,
-      quotaFallbackService,
-    ),
+    channelService,
     channelFallbackService,
     sessionService: new SessionService(sessionsRuntime),
     runtimeConfigService: new RuntimeConfigService(
@@ -574,7 +585,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,
-    deviceNameStore: new Map(),
+    deviceNameStore: new DeviceNameStore(env.deviceNamesPath),
     wsClient,
     gatewayService,
     configStore,
@@ -592,6 +603,12 @@ export async function createContainer(): Promise<ControllerContainer> {
       const stopAnalyticsLoop = startAnalyticsLoop({
         env,
         analyticsService,
+      });
+      const stopChannelHealthWatchdog = startChannelHealthWatchdog({
+        env,
+        channelService,
+        gatewayService,
+        openclawProcess,
       });
       const nexuOfficialModelRefreshInterval = setInterval(() => {
         if (isRefreshingNexuOfficialModels) {
@@ -617,9 +634,26 @@ export async function createContainer(): Promise<ControllerContainer> {
       skillhubService.start();
       devicePollingService.start();
 
+      // On cold start, push the signed-in user's VLM gateway credential to the
+      // device-control plugin once its RPC is up, so phones connecting before
+      // any login change still run the model on the user's cloud account.
+      void (async () => {
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const up = await deviceControlService
+            .isAvailable()
+            .catch(() => false);
+          if (up) {
+            await deviceControlService.pushVlmCredential();
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      })();
+
       return () => {
         stopHealthLoop();
         stopAnalyticsLoop();
+        stopChannelHealthWatchdog();
         clearInterval(nexuOfficialModelRefreshInterval);
         skillhubService.dispose();
         devicePollingService.dispose();

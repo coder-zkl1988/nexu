@@ -3,27 +3,25 @@ const en = {
   "brand.title.line1": "OpenClaw,",
   "brand.title.line2": "ready to use.",
   "brand.body":
-    "nexu turns OpenClaw into a truly ready-to-use product experience, bringing Feishu tools and top-tier model access into one unified workspace.",
+    "Tabby turns OpenClaw into a truly ready-to-use product experience, bringing Feishu tools and workflows into one unified workspace.",
   "brand.bullet.openclaw":
     "Turns OpenClaw into a truly out-of-the-box experience",
   "brand.bullet.feishu": "Deep support for Feishu tools and workflows",
-  "brand.bullet.models": "Connect top-tier models",
   "brand.github": "Star us on GitHub",
 
   // ── Welcome ──
-  "welcome.pageTitle": "Welcome to nexu",
+  "welcome.pageTitle": "Welcome to Tabby",
   "welcome.mobileLabel": "Client",
-  "welcome.title": "Connect nexu in one step",
+  "welcome.title": "Connect Tabby in one step",
   "welcome.subtitle":
-    "Sign in with your nexu account to unlock hosted premium models in your local workspace, then keep earning extra usage through rewards.",
-  "welcome.option.login.title": "Use your nexu account",
+    "Sign in with your Tabby account to use hosted models directly in your local workspace, no manual setup required.",
+  "welcome.option.login.title": "Use your Tabby account",
   "welcome.option.login.badge": "Recommended",
   "welcome.option.login.description":
-    "Complete browser-based sign in to unlock nexu hosted premium models, rewards, and the full workspace experience without manual model setup.",
+    "Complete browser-based sign in to unlock Tabby hosted models and the full workspace experience without manual model setup.",
   "welcome.option.login.meta.1": "Google / GitHub / Email",
   "welcome.option.login.meta.2": "Browser OAuth",
   "welcome.option.login.meta.3": "Best for most users",
-  "welcome.option.login.highlight.unlimited": "Unlimited usage",
   "welcome.option.byok.title": "Use your own models",
   "welcome.option.byok.badge": "BYOK",
   "welcome.option.byok.description":
@@ -32,23 +30,21 @@ const en = {
   "welcome.option.byok.meta.2": "Local configuration",
   "welcome.option.byok.meta.3": "Best for advanced users",
   "welcome.byokLink": "Prefer BYOK? Open provider settings instead",
-  "welcome.rewardsHint":
-    "Rewards live inside the workspace after sign-in: 11 task slots across daily check-ins, open source, and social sharing.",
   "welcome.back": "Back to options",
   "welcome.byok.title": "Connect your models",
   "welcome.byok.subtitle":
     "No account required. Choose a provider and enter your API key. Every configuration stays under your control.",
   "welcome.byok.note":
-    "Your API key is used only for this client configuration. You do not need to create a nexu account first.",
+    "Your API key is used only for this client configuration. You do not need to create a Tabby account first.",
   "welcome.byok.verify.loading": "Verifying...",
   "welcome.byok.verify.idle": "Verify connection",
-  "welcome.byok.success": "Connected, enter nexu",
+  "welcome.byok.success": "Connected, enter Tabby",
   "welcome.waitingLogin": "Waiting for browser login...",
   "welcome.waitingLoginHint":
     "Please complete login in the browser. This page will redirect automatically.",
   "welcome.cancel": "Cancel",
   "welcome.connectFailed": "Connection failed, please try again",
-  "welcome.cloudConnectError": "Unable to connect to nexu cloud service",
+  "welcome.cloudConnectError": "Unable to connect to Tabby cloud service",
   "welcome.cloudConnectInProgress":
     "Browser sign-in is already in progress. Please finish it in your browser.",
   "welcome.browserOpened":
@@ -58,12 +54,12 @@ const en = {
   // ── Auth ──
   "auth.terms": "Terms of Service",
   "auth.privacy": "Privacy Policy",
-  "auth.copyright": "© 2026 nexu by Refly",
-  "auth.desktopConnectPrompt": "Log in to connect your nexu Desktop app",
+  "auth.copyright": "© 2026 Tabby by Refly",
+  "auth.desktopConnectPrompt": "Log in to connect your Tabby Desktop app",
   "auth.welcomeBack": "Welcome back",
   "auth.createAccount": "Create your account",
   "auth.loginSubtitle": "Log in to your digital clone",
-  "auth.signupSubtitle": "Sign up to get your nexu digital clone",
+  "auth.signupSubtitle": "Sign up to get your Tabby digital clone",
   "auth.continueGoogle": "Continue with Google",
   "auth.chooseMethod": "Choose how you'd like to get started",
   "auth.loginToContinue": "Log in to continue to your workspace",
@@ -92,7 +88,7 @@ const en = {
   "auth.backToSignup": "Back to sign up",
   "auth.connected": "Connected!",
   "auth.desktopConnected":
-    "Your nexu Desktop app is now connected to your cloud account. You can close this tab and return to the desktop app.",
+    "Your Tabby Desktop app is now connected to your cloud account. You can close this tab and return to the desktop app.",
   "auth.autoCloseIn": "Closing in {{seconds}}s",
   "auth.connectingDesktop": "Connecting your desktop app...",
   "auth.heroTitle.line1": "Your digital",
@@ -107,18 +103,18 @@ const en = {
   "auth.capability.automation": "Automation",
 
   // ── Document Titles ──
-  "title.signIn": "Sign In · nexu",
-  "title.claim": "Claim · nexu",
-  "title.home": "Home · nexu",
-  "title.integrations": "Integrations · nexu",
-  "title.rewards": "Rewards · nexu",
-  "title.skills": "Skills · nexu",
-  "title.experts": "Experts · nexu",
-  "title.settings": "Settings · nexu",
-  "title.linkFeishu": "Link Feishu · nexu",
-  "title.connecting": "Connecting · nexu",
+  "title.signIn": "Sign In · Tabby",
+  "title.claim": "Claim · Tabby",
+  "title.home": "Home · Tabby",
+  "title.integrations": "Integrations · Tabby",
+  "title.rewards": "Rewards · Tabby",
+  "title.skills": "Skills · Tabby",
+  "title.experts": "Experts · Tabby",
+  "title.settings": "Settings · Tabby",
+  "title.linkFeishu": "Link Feishu · Tabby",
+  "title.connecting": "Connecting · Tabby",
   "title.devices": "Devices",
-  "title.default": "nexu",
+  "title.default": "Tabby",
 
   // ── Workspace Layout ──
   "layout.brand": "Your digital coworker",
@@ -156,7 +152,7 @@ const en = {
   "layout.update.later": "Later",
   "layout.update.badge": "Update",
   "layout.mobile.home": "Home",
-  "layout.mobile.homeSubtitle": "Welcome to nexu",
+  "layout.mobile.homeSubtitle": "Welcome to Tabby",
   "layout.mobile.rewards": "Rewards",
   "layout.mobile.rewardsSubtitle": "Earn extra usage credits",
   "layout.mobile.deployments": "Deployments",
@@ -165,23 +161,23 @@ const en = {
   "layout.mobile.skillsSubtitle": "Browse AI capabilities",
   "layout.mobile.experts": "Experts",
   "layout.mobile.expertsSubtitle": "Install preset experts as bots",
-  "layout.sidebar.loginTitle": "Sign in with nexu",
+  "layout.sidebar.loginTitle": "Sign in with Tabby",
   "layout.sidebar.loginSubtitle": "Use official credits",
   "layout.sidebar.loginPending": "Waiting for browser sign-in",
-  "layout.sidebar.rewardsTitle": "Share nexu, earn extra credits",
+  "layout.sidebar.rewardsTitle": "Share Tabby, earn extra credits",
   "layout.sidebar.rewardsSubtitle": "Daily, open-source, and social tasks",
   "layout.sidebar.progressLabel": "Tasks claimed",
   "layout.sidebar.balanceLabel": "Balance",
   "layout.sidebar.balanceUnit": "credits",
   "layout.sidebar.balancePlaceholder": "Balance syncing…",
   "layout.sidebar.rewardsCta": "Open",
-  "layout.sidebar.balancePopup.total": "Total credits",
-  "layout.sidebar.balancePopup.recharged": "Plan credits",
+  "layout.sidebar.balancePopup.total": "Total balance",
+  "layout.sidebar.balancePopup.recharged": "Plan balance",
   "layout.sidebar.balancePopup.rechargedTooltip":
-    "Current credits remaining from your subscription plan.",
-  "layout.sidebar.balancePopup.earned": "Gifted credits",
+    "Current balance from your top-ups / subscription plan.",
+  "layout.sidebar.balancePopup.earned": "Gifted balance",
   "layout.sidebar.balancePopup.earnedTooltip":
-    "Current credits remaining from signup rewards and reward activities.",
+    "Current balance from signup rewards and reward activities.",
   "layout.sidebar.balancePopup.consumed": "Consumed",
   "layout.sidebar.balancePopup.viewDetail": "View details",
   "layout.mobile.settings": "Settings",
@@ -189,10 +185,10 @@ const en = {
   "layout.mobile.conversations": "Conversations",
   "layout.empty.title": "No conversations yet",
   "layout.empty.description":
-    "Set up a platform bot first, then mention @nexu or DM the lobster 🦞 in Slack / Discord / WhatsApp — conversations will appear here automatically.",
+    "Set up a platform bot first, then mention @Tabby or DM the lobster 🦞 in Slack / Discord / WhatsApp — conversations will appear here automatically.",
   "layout.empty.setupBot": "Set up Bot",
   "layout.empty.step1": "Connect a platform",
-  "layout.empty.step2": "Mention @nexu",
+  "layout.empty.step2": "Mention @Tabby",
   "layout.empty.step3": "Conversations appear",
   "layout.loginCta": "Sign in",
   "layout.credits.label": "Credits",
@@ -227,7 +223,7 @@ const en = {
   "home.channel.dingtalk": "DingTalk",
   "home.channel.qqbot": "QQ",
   "home.channel.wecom": "WeCom",
-  "home.channel.addBot": "Add nexu Bot",
+  "home.channel.addBot": "Add Tabby Bot",
   "home.tab.channels": "Channels",
   "home.tab.models": "Models & Key",
   "home.loading": "Loading...",
@@ -250,8 +246,8 @@ const en = {
     "Connection timed out, please check channel status later",
   "home.channel.phase.connecting": "Establishing connection...",
   "home.channel.phase.configuring": "Configuring skills...",
-  "home.channel.phase.almostReady": "nexu is almost ready...",
-  "home.channel.phase.done": "All set! nexu is ready to chat",
+  "home.channel.phase.almostReady": "Tabby is almost ready...",
+  "home.channel.phase.done": "All set! Tabby is ready to chat",
   "home.channel.restarting": "Restarting...",
   "home.channel.error": "Error",
   "home.channel.errorDetail.not configured": "Reconnect required",
@@ -281,38 +277,38 @@ const en = {
     "Facebook and WhatsApp now sit inside the merged social rewards group.",
   "home.rewardsTeaser.cta": "View rewards",
   "home.starGithub": "Star on GitHub",
-  "home.starNexu": "Star Nexu on GitHub",
+  "home.starTabby": "Star Tabby on GitHub",
   "home.starCta":
     "Help us grow the open-source community — your star makes a difference",
   "home.seedance.promo.title": "Seedance 2.0 Experience Key",
   "home.seedance.promo.badge": "Limited time",
   "home.seedance.promo.subtitle":
-    "nexu now supports Seedance 2.0. Star the repo, join the Feishu group, fill the form, and we'll send you a Key.",
+    "Tabby now supports Seedance 2.0. Star the repo, join the Feishu group, fill the form, and we'll send you a Key.",
   "home.seedance.promo.dismiss": "Dismiss promo",
   "home.seedance.modal.title": "Get your Seedance 2.0 Experience Key",
   "home.seedance.modal.lead":
     "Two quick steps: Star the repo, then join the Feishu group to apply.",
   "home.seedance.modal.step1.title": "Step 1: Star on GitHub & screenshot",
   "home.seedance.modal.step1.copy":
-    "Star the nexu repo on GitHub, then take a screenshot of the page.",
+    "Star the Tabby repo on GitHub, then take a screenshot of the page.",
   "home.seedance.modal.step1.cta": "Star on GitHub",
   "home.seedance.modal.step1.done": "Starred",
   "home.seedance.modal.step1.nextCta": "I have the screenshot, join the group",
   "home.seedance.modal.step2.title":
     "Step 2: Join Feishu group & fill the form",
   "home.seedance.modal.step2.copy":
-    "After joining the group and submitting the form, we'll reach out and send you a Key. Enter it in nexu Bot to start.",
+    "After joining the group and submitting the form, we'll reach out and send you a Key. Enter it in Tabby Bot to start.",
   "home.seedance.modal.step2.cta": "Join Feishu group",
   "home.seedance.modal.step2.tutorial":
-    "Tutorial: How to use Seedance 2.0 in nexu Bot",
+    "Tutorial: How to use Seedance 2.0 in Tabby Bot",
   "home.seedance.modal.step2.done": "Got it",
   "home.recentActivity": "Recent Activity",
   "home.noRecentActivity": "No recent conversations",
 
   // ── Rewards ──
-  "rewards.title": "Share nexu, earn extra credits",
+  "rewards.title": "Share Tabby, earn extra credits",
   "rewards.desc":
-    "Share nexu with your communities and complete tasks to earn extra credits.",
+    "Share Tabby with your communities and complete tasks to earn extra credits.",
   "rewards.progressLabel": "Completed",
   "rewards.earnedLabel": "Earned",
   "rewards.totalCredits": "Reward credits {{n}}",
@@ -330,17 +326,17 @@ const en = {
   "rewards.totalUsed": "Total used",
   "rewards.loginTitle": "Sign in to unlock hosted models and reward claims",
   "rewards.loginBody":
-    "Rewards are available to everyone for browsing, but hosted model usage and reward claiming are designed around your nexu cloud session.",
-  "rewards.loginCta": "Sign in with nexu",
+    "Rewards are available to everyone for browsing, but hosted model usage and reward claiming are designed around your Tabby cloud session.",
+  "rewards.loginCta": "Sign in with Tabby",
   "rewards.modelHintTitle":
-    "Switch back to nexu official models to use reward credits",
+    "Switch back to Tabby official models to use reward credits",
   "rewards.modelHintBody":
     "Your claims are kept, but reward credits are meant for the managed model experience. Switch providers any time in model settings.",
   "rewards.modelHintCta": "Open model settings",
   "rewards.claimSuccess": "Reward claimed",
   "rewards.claimAlreadyDone": "Reward already claimed for this period",
   "rewards.claimFailed": "Failed to claim reward",
-  "rewards.loginRequired": "Please sign in to your nexu account first",
+  "rewards.loginRequired": "Please sign in to your Tabby account first",
   "rewards.githubUnavailable": "Unavailable",
   "rewards.downloadFailed": "Failed to download share card",
   "rewards.githubSessionFailed":
@@ -364,7 +360,7 @@ const en = {
   "rewards.card.localState": "Controller-backed status",
   "rewards.card.localStateHint":
     "Claims now come from the desktop controller routes and stay idempotent across app restarts.",
-  "budget.viral.title": "Share nexu, earn extra credits",
+  "budget.viral.title": "Share Tabby, earn extra credits",
   "budget.viral.loginFirst": "Log in for free AI models",
   "budget.viral.desc": "Help spread the word, get rewarded.",
   "budget.viral.rules": "View reward rules →",
@@ -460,14 +456,14 @@ const en = {
     "Shown in the workspace sidebar and account surfaces",
   "settings.general.email": "Email",
   "settings.general.emailHint":
-    "Settings sync is on. Premium models available with your Nexu account.",
+    "Settings sync is on. Premium models available with your Tabby account.",
   "settings.general.loggedOut": "Not signed in",
   "settings.general.loggedOutHint":
     "Sign in to sync settings and use premium models.",
   "settings.general.goLogin": "Go to sign in",
-  "settings.general.logoutConfirmTitle": "Log out of your nexu account?",
+  "settings.general.logoutConfirmTitle": "Log out of your Tabby account?",
   "settings.general.logoutConfirmDescription":
-    "This will disconnect your current nexu account from this desktop workspace.",
+    "This will disconnect your current Tabby account from this desktop workspace.",
   "settings.general.preferences": "Preferences",
   "settings.general.language": "Language",
   "settings.general.languageHint": "Choose your interface language",
@@ -475,16 +471,16 @@ const en = {
   "settings.section.data": "Data & Privacy",
   "settings.desktop.launchAtLogin": "Launch at startup",
   "settings.desktop.launchAtLoginHint":
-    "Automatically open Nexu when your computer starts.",
+    "Automatically open Tabby when your computer starts.",
   "settings.desktop.showInDock": "Show in Dock",
   "settings.desktop.showInDockHint":
-    "Show nexu in your Mac Dock for quick access.",
+    "Show Tabby in your Mac Dock for quick access.",
   "settings.desktop.showInTaskbar": "Show in taskbar",
   "settings.desktop.showInTaskbarHint":
-    "Show nexu in the taskbar; when off, it stays in the system tray only",
+    "Show Tabby in the taskbar; when off, it stays in the system tray only",
   "settings.desktop.updateFailed": "Failed to update desktop setting",
   "settings.data.analytics": "Usage analytics",
-  "settings.data.analyticsHint": "Help improve nexu with anonymous usage data",
+  "settings.data.analyticsHint": "Help improve Tabby with anonymous usage data",
   "settings.data.crashReports": "Crash reports",
   "settings.data.crashReportsHint":
     "Send crash reports automatically to help fix bugs",
@@ -500,7 +496,7 @@ const en = {
   "settings.general.githubBody":
     "Follow releases and support the project in public.",
   "settings.general.githubBadge": "GitHub",
-  "settings.general.githubStarred": "Thanks for starring nexu",
+  "settings.general.githubStarred": "Thanks for starring Tabby",
   "settings.general.githubStarredBody":
     "You are helping shape the desktop and workspace experience.",
   "settings.general.githubStarredBadge": "Starred",
@@ -522,7 +518,7 @@ const en = {
   "settings.about.github": "GitHub Repository",
   "settings.about.changelog": "Changelog",
   "settings.about.feedback": "Send feedback",
-  "settings.providers.botModelTitle": "nexu Bot model",
+  "settings.providers.botModelTitle": "Tabby Bot model",
   "settings.providers.botModelDesc":
     "Pick the default model used by your desktop workspace.",
   "settings.providers.workspace": "Workspace",
@@ -544,9 +540,9 @@ const en = {
   "models.modelSwitchedSyncFailed": "Model switched (sync to bot pending)",
   "models.modelSwitchFailed": "Failed to switch model",
   "models.switchingModel": "Switching model…",
-  "models.provider.nexu.name": "nexu Official",
+  "models.provider.nexu.name": "Tabby Official",
   "models.provider.nexu.description":
-    "Use nexu official premium models after login, no API key needed",
+    "Use Tabby official premium models after login, no API key needed",
   "models.provider.anthropic.description": "Claude series AI models",
   "models.provider.openai.description": "GPT series AI models",
   "models.provider.google.description": "Gemini series AI models",
@@ -588,23 +584,23 @@ const en = {
     "OpenAI-compatible API provider",
   "models.managed.connected": "Log out",
   "models.managed.notConnected": "Not connected",
-  "models.managed.cloudConnectAria": "Connect to nexu cloud",
-  "models.managed.cloudDisconnectAria": "Disconnect from nexu cloud",
+  "models.managed.cloudConnectAria": "Connect to Tabby cloud",
+  "models.managed.cloudDisconnectAria": "Disconnect from Tabby cloud",
   "models.managed.loginRequired": "Login required",
-  "models.managed.cloudConnected": "Connected to nexu Cloud",
+  "models.managed.cloudConnected": "Connected to Tabby Cloud",
   "models.managed.cloudModelsAvailable":
     "Cloud models are now available. View and manage below.",
   "models.managed.refresh": "Refresh",
   "models.managed.refreshModelList": "Refresh model list",
   "models.managed.disconnect": "Disconnect",
-  "models.managed.loginPrompt": "Sign in to use nexu official models",
+  "models.managed.loginPrompt": "Sign in to use Tabby official models",
   "models.managed.loginDescription":
-    "Sign in with your nexu account to access unlimited premium models like Claude Opus 4.6, GPT-5.4, and more — no API key needed.",
+    "Sign in with your Tabby account to access unlimited premium models like Claude Opus 4.6, GPT-5.4, and more — no API key needed.",
   "models.managed.waitingLogin": "Waiting for browser login...",
-  "models.managed.loginButton": "Sign in to nexu",
-  "models.managed.logoutConfirmTitle": "Log out of nexu Official?",
+  "models.managed.loginButton": "Sign in to Tabby",
+  "models.managed.logoutConfirmTitle": "Log out of Tabby Official?",
   "models.managed.logoutConfirmDescription":
-    "This will disconnect nexu Official from your current nexu account on this device.",
+    "This will disconnect Tabby Official from your current Tabby account on this device.",
   "models.managed.availableModels": "Available models",
   "models.managed.refreshSucceeded": "Models refreshed",
   "models.managed.refreshFailed": "Could not refresh models",
@@ -628,6 +624,10 @@ const en = {
   "models.byok.none": "None",
   "models.byok.refreshModels": "Refresh",
   "models.byok.fetchingModels": "Fetching models...",
+  "models.byok.contextWindowPlaceholder": "auto",
+  "models.byok.contextWindowLabel": "Context",
+  "models.byok.contextWindowHint":
+    "Context window in tokens. Auto-detected from the provider when available; set manually to enable auto-compaction for providers that don't report it.",
   "models.byok.refreshSuccess": "Model list refreshed: {{count}} models",
   "models.byok.refreshFailed":
     "Failed to refresh model list. Please try again.",
@@ -687,7 +687,7 @@ const en = {
   // ── Channels Page ──
   "channels.pageTitle": "Channels",
   "channels.pageSubtitle":
-    "Connect your messaging platforms and let nexu 🦞 join your workspace",
+    "Connect your messaging platforms and let Tabby 🦞 join your workspace",
   "channels.comingSoon": "Microsoft Teams, Line and more coming soon",
   "channels.backToConfig": "Back to configuration",
   "channels.statusConnected": "{{platform}} Bot Connected",
@@ -731,7 +731,7 @@ const en = {
   "channels.confirmReset": "Confirm reset",
   "channels.confirmResetDesc": "{{platform}} will be disconnected.",
   "channels.confirmResetBody":
-    "This will remove your current {{platform}} Bot configuration. You will need to complete setup again before nexu can receive messages from this platform.",
+    "This will remove your current {{platform}} Bot configuration. You will need to complete setup again before Tabby can receive messages from this platform.",
   "channels.cancel": "Cancel",
   "channels.quotaTitle": "We're experiencing high demand",
   "channels.quotaBody":
@@ -802,7 +802,7 @@ const en = {
   "skills.cancelling": "Cancelling…",
   "skills.cancelFailed": "Failed to cancel: {{error}}",
   "skills.installNpmMissing":
-    "npm is required to install this skill. Please install Node.js from https://nodejs.org/ and restart Nexu.",
+    "npm is required to install this skill. Please install Node.js from https://nodejs.org/ and restart Tabby.",
   "skills.installDepsFailed":
     'Failed to install dependencies for "{{slug}}". Check the controller logs for details.',
   "skills.installFailed": 'Failed to install "{{slug}}": {{error}}',
@@ -851,7 +851,7 @@ const en = {
   "skills.tabCommunity": "Community",
   "skills.tabInstalled": "Installed",
   "skills.sourceRecommended": "Recommended",
-  "skills.sourceRecommendedDesc": "Pre-installed skills recommended by nexu",
+  "skills.sourceRecommendedDesc": "Pre-installed skills recommended by Tabby",
   "skills.sourceInstalled": "Installed",
   "skills.sourceInstalledDesc": "Community skills you installed",
   "skills.justNow": "just now",
@@ -880,7 +880,7 @@ const en = {
   "skillDetail.examples": "Examples",
   "skillDetail.tryPrompts": "Try these prompts",
   "skillDetail.tryPromptsDesc":
-    "Copy a prompt and send it to your nexu bot to try this skill.",
+    "Copy a prompt and send it to your Tabby bot to try this skill.",
   "skillDetail.copy": "Copy",
   "skillDetail.explore": "Explore",
   "skillDetail.relatedSkills": "Related Skills",
@@ -923,13 +923,14 @@ const en = {
   "sessions.chat.replyLabel": "Reply",
   "sessions.chat.toolActivity": "Tool",
   "sessions.chat.toolCompleted": "Completed",
+  "sessions.chat.interactivePanel": "Interactive panel",
+  "sessions.chat.openPanel": "Open",
   "sessions.chat.thinking": "Thinking...",
   "sessions.chat.newSession": "New conversation",
   "sessions.pending.title": "Starting conversation",
   "sessions.pending.waiting": "Waiting for {{name}} to reply...",
   "sessions.pending.streaming": "{{name}} is replying...",
   "sessions.pending.error": "Still waiting for the conversation...",
-  "sessions.openFolder": "Open Folder",
 
   // ── Integrations Page ──
   "integrations.pageTitle": "Integrations",
@@ -961,15 +962,15 @@ const en = {
   // ── OAuth Callback Page ──
   "oauth.connectTitle": "Connect {{name}}",
   "oauth.requestingAccess":
-    "nexu is requesting access to your {{name}} account",
+    "Tabby is requesting access to your {{name}} account",
   "oauth.connectingAccount": "Connecting your account...",
   "oauth.waitingForAuth": "Please wait while we establish the connection.",
   "oauth.permissionsRequested": "Permissions requested",
   "oauth.waitingAuth": "Waiting for authorization...",
   "oauth.securityNote":
-    "nexu uses OAuth 2.0. Your credentials are never stored. You can revoke access anytime.",
+    "Tabby uses OAuth 2.0. Your credentials are never stored. You can revoke access anytime.",
   "oauth.authSuccess": "Authorization Successful",
-  "oauth.connectedTo": "{{name}} has been connected to nexu",
+  "oauth.connectedTo": "{{name}} has been connected to Tabby",
   "oauth.returnSlack": "Return to Slack",
   "oauth.returnDiscord": "Return to Discord",
   "oauth.goToIntegrations": "Go to Integrations",
@@ -988,63 +989,63 @@ const en = {
     "This link is not valid. Please check your {{platform}} message for the correct link.",
   "claim.linkExpired": "Link expired",
   "claim.linkExpiredDesc":
-    "This claim link has expired. Send a message to the nexu bot in {{platform}} to get a new one.",
+    "This claim link has expired. Send a message to the Tabby bot in {{platform}} to get a new one.",
   "claim.linkUsed": "Link already used",
   "claim.linkUsedDesc":
     "This claim link has already been used. If this was you, your account is already set up.",
   "claim.open": "Open {{platform}}",
   "claim.goToSignIn": "Go to sign in",
-  "claim.getStarted": "Get started with nexu",
-  "claim.joinTeam": "Join your team on nexu",
+  "claim.getStarted": "Get started with Tabby",
+  "claim.joinTeam": "Join your team on Tabby",
   "claim.joinTeamDesc":
-    "Sign in to connect your {{platform}} identity and start using nexu with your team.",
+    "Sign in to connect your {{platform}} identity and start using Tabby with your team.",
   "claim.createAccountDesc":
     "Create an account to claim your {{platform}} access and unlock AI-powered workflows.",
   "claim.teammatesAlready":
-    "{{count}} teammates already using nexu — no additional configuration needed",
+    "{{count}} teammates already using Tabby — no additional configuration needed",
   "claim.createAccount": "Create account",
   "claim.alreadyHaveAccount": "Already have an account?",
   "claim.teamUsesnexu.line1": "Your team",
   "claim.teamUsesnexu.line2": "already uses",
-  "claim.teamUsesnexu.line3": "nexu",
+  "claim.teamUsesnexu.line3": "Tabby",
   "claim.teammatesHere": "{{count}} teammate{{s}} already here",
   "claim.noConfigNeeded":
-    "Your team has already connected nexu — no additional configuration needed. Just sign in to get started.",
+    "Your team has already connected Tabby — no additional configuration needed. Just sign in to get started.",
   "claim.claimAccess": "Claim your {{platform}} access",
   "claim.claimAccessDescExisting":
-    "Connect your {{platform}} identity to your nexu account and join {{team}}.",
+    "Connect your {{platform}} identity to your Tabby account and join {{team}}.",
   "claim.claimAccessDescNew":
-    "Link your {{platform}} identity to your nexu account to unlock AI-powered workflows.",
+    "Link your {{platform}} identity to your Tabby account to unlock AI-powered workflows.",
   "claim.signedInAs": "Signed in as",
   "claim.claimButton": "Claim your {{platform}} access",
   "claim.useDifferentAccount": "Use a different account",
   "claim.claiming": "Claiming your {{platform}} access...",
   "claim.claimingDesc":
-    "Linking your {{platform}} identity to your nexu account.",
+    "Linking your {{platform}} identity to your Tabby account.",
   "claim.allSet": "You're all set!",
-  "claim.allSetDesc": "Your {{platform}} account has been linked to nexu.",
+  "claim.allSetDesc": "Your {{platform}} account has been linked to Tabby.",
   "claim.nowPartOf": "You're now part of",
   "claim.backTo": "Back to {{platform}}",
-  "claim.explorenexu": "Explore nexu",
+  "claim.explorenexu": "Explore Tabby",
 
   // ── Feishu Bind Page ──
   "feishuBind.linked": "Feishu account linked!",
   "feishuBind.linkedDesc":
-    "Your Feishu identity has been linked to your nexu account. You can now use the bot normally.",
+    "Your Feishu identity has been linked to your Tabby account. You can now use the bot normally.",
   "feishuBind.backToFeishu": "Back to Feishu",
-  "feishuBind.explorenexu": "Explore nexu",
+  "feishuBind.explorenexu": "Explore Tabby",
   "feishuBind.bindFailed": "Binding failed",
   "feishuBind.tryAgain": "Try again",
   "feishuBind.linkTitle.line1": "Link your",
   "feishuBind.linkTitle.line2": "Feishu",
   "feishuBind.linkTitle.line3": "identity",
   "feishuBind.linkDesc":
-    "Connect your Feishu account to nexu to unlock AI-powered workflows directly in your chats.",
+    "Connect your Feishu account to Tabby to unlock AI-powered workflows directly in your chats.",
   "feishuBind.linkAccount": "Link your Feishu account",
   "feishuBind.signInFirst":
-    "Sign in to nexu first, then bind your Feishu identity.",
+    "Sign in to Tabby first, then bind your Feishu identity.",
   "feishuBind.authorizeDesc":
-    "Authorize with Feishu to link your identity to your nexu account.",
+    "Authorize with Feishu to link your identity to your Tabby account.",
   "feishuBind.signedInAs": "Signed in as",
   "feishuBind.bindButton": "Bind Feishu Account",
   "feishuBind.redirecting": "Redirecting to Feishu...",
@@ -1126,7 +1127,7 @@ const en = {
   // ── Telegram Setup ──
   "telegramSetup.title": "Connect Telegram",
   "telegramSetup.desc":
-    "Create a bot in BotFather, paste the token here, then add the bot to any group where you want replies. Nexu will reply in groups only when the bot is mentioned.",
+    "Create a bot in BotFather, paste the token here, then add the bot to any group where you want replies. Tabby will reply in groups only when the bot is mentioned.",
   "telegramSetup.quickSetup": "Quick setup",
   "telegramSetup.step1": "Open Telegram and chat with BotFather.",
   "telegramSetup.step2": "Create a bot with `/newbot`.",
@@ -1161,7 +1162,7 @@ const en = {
   // ── QQ Setup ──
   "qqbotSetup.title": "Connect QQ",
   "qqbotSetup.desc":
-    "Create a QQ bot app, paste the App ID and Secret here, then let Nexu reply through the bundled OpenClaw plugin.",
+    "Create a QQ bot app, paste the App ID and Secret here, then let Tabby reply through the bundled OpenClaw plugin.",
   "qqbotSetup.quickSetup": "Quick setup",
   "qqbotSetup.step1": "Open QQ Bot Platform",
   "qqbotSetup.step2": "Create or open your bot application.",
@@ -1231,9 +1232,9 @@ const en = {
   "slackSetup.stepBotToken": "Bot Token",
   "slackSetup.stepEnableDMs": "Enable DMs",
   "slackSetup.step": "Step {{number}}",
-  "slackSetup.addnexuTitle": "Add nexu to Slack",
+  "slackSetup.addnexuTitle": "Add Tabby to Slack",
   "slackSetup.addnexuDesc":
-    "One-click install \u2014 authorize nexu Bot to your Slack workspace via OAuth",
+    "One-click install \u2014 authorize Tabby Bot to your Slack workspace via OAuth",
   "slackSetup.addToSlack": "Add to Slack",
   "slackSetup.orConnectManually": "Or connect manually",
   "slackSetup.authorizing": "Authorizing...",
@@ -1462,6 +1463,10 @@ const en = {
 
   // ── Devices ──
   "devices.subtitle": "Connected Android devices via device control plugin",
+  "devices.loginTitle": "Sign in to unlock devices",
+  "devices.loginBody":
+    "Running tasks on a device needs the cloud model. Sign in to your account to continue.",
+  "devices.loginCta": "Sign in",
   "devices.taskHistory": "Task history",
   "devices.refresh": "Refresh",
   "devices.errorTitle": "Device control plugin is not running",

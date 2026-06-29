@@ -173,10 +173,12 @@ export function registerSessionRoutes(
                 messages: z.array(
                   z.object({
                     id: z.string(),
-                    role: z.enum(["user", "assistant"]),
+                    role: z.enum(["user", "assistant", "toolResult"]),
                     content: z.unknown(),
                     timestamp: z.number().nullable(),
                     createdAt: z.string().nullable(),
+                    toolName: z.string().optional(),
+                    toolCallId: z.string().optional(),
                   }),
                 ),
                 sessionKey: z.string().nullable(),

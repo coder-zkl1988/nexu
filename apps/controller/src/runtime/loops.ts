@@ -85,6 +85,16 @@ export function startHealthLoop(params: {
           params.state.gatewayStatus = "unhealthy";
           params.state.lastGatewayError =
             result.lastError ?? "control_plane_disconnected";
+          // Force an immediate WS reconnect. After a gateway restart (e.g.
+          // connecting a WeChat channel triggers a full gateway restart) the WS
+          // drops; once the gateway is reachable again the controller must
+          // reconnect, but the "ready"-transition retryNow() above is
+          // unreachable while the WS is down, so without this the reconnect just
+          // waits out the exponential backoff and the UI lingers in "重启中".
+          // retryNow() cancels that backoff and reconnects now. (restartForHealth
+          // only acts in managed dev mode when the child process itself has
+          // exited; in the packaged build launchd owns the gateway restart.)
+          params.wsClient?.retryNow();
           params.processManager?.restartForHealth();
         }
       }

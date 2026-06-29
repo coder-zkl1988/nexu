@@ -11,8 +11,10 @@ import {
   type IncomingMessage,
   type ServerResponse,
   createServer,
+  request as httpRequest,
 } from "node:http";
 import * as path from "node:path";
+import { Readable } from "node:stream";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -87,8 +89,16 @@ async function proxyToController(
     });
 
     res.writeHead(response.status, responseHeaders);
-    const resBody = await response.arrayBuffer();
-    res.end(Buffer.from(resBody));
+    // Stream the body through instead of buffering it with arrayBuffer().
+    // SSE endpoints (e.g. /api/v1/devices/stream) never "end", so awaiting the
+    // full body would hang forever and no events would ever reach the client.
+    if (response.body) {
+      Readable.fromWeb(
+        response.body as Parameters<typeof Readable.fromWeb>[0],
+      ).pipe(res);
+    } else {
+      res.end();
+    }
   } catch (err) {
     console.error("Proxy error:", err);
     res.writeHead(502);
@@ -214,6 +224,53 @@ export function startEmbeddedWebServer(
         res.writeHead(404);
         res.end("Not Found");
       }
+    });
+
+    // Proxy WebSocket upgrades (e.g. the device mirror at
+    // /api/v1/devices/{id}/mirror) to the controller. Without this, browser
+    // mirror/control sockets terminate at the embedded server and never reach
+    // the controller's DeviceMirrorProxy, so no frames flow (the plugin logs
+    // forwarders=0) and the screen mirror stays blank.
+    server.on("upgrade", (req, clientSocket, head) => {
+      const reqUrl = req.url ?? "/";
+      if (!(reqUrl.startsWith("/api") || reqUrl.startsWith("/v1"))) {
+        clientSocket.destroy();
+        return;
+      }
+
+      const proxyReq = httpRequest({
+        hostname: "127.0.0.1",
+        port: controllerPort,
+        path: reqUrl,
+        method: req.method ?? "GET",
+        headers: req.headers,
+      });
+
+      proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
+        const headerLines = Object.entries(proxyRes.headers).flatMap(
+          ([k, v]) =>
+            Array.isArray(v)
+              ? v.map((vv) => `${k}: ${vv}`)
+              : [`${k}: ${v as string}`],
+        );
+        clientSocket.write(
+          `HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage}\r\n${headerLines.join("\r\n")}\r\n\r\n`,
+        );
+        // Replay any bytes buffered past the handshake in both directions.
+        if (proxyHead?.length) clientSocket.write(proxyHead);
+        if (head?.length) proxySocket.write(head);
+        proxySocket.pipe(clientSocket);
+        clientSocket.pipe(proxySocket);
+        const cleanup = () => {
+          proxySocket.destroy();
+          clientSocket.destroy();
+        };
+        proxySocket.on("error", cleanup);
+        clientSocket.on("error", cleanup);
+      });
+
+      proxyReq.on("error", () => clientSocket.destroy());
+      proxyReq.end();
     });
 
     server.on("error", (err) => {

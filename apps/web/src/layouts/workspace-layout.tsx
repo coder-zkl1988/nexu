@@ -74,6 +74,16 @@ interface SidebarSession {
   sessionKey: string;
 }
 
+// Cloud balance amounts arrive as integer US cents; show them as exact USD.
+export function formatUsdCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+// The balance popup currently shows only remaining balance + consumed. The
+// gifted/plan breakdown rows are kept (hidden) for when a gifted-credits
+// system is wired up; flip this to re-enable them.
+const SHOW_BALANCE_BREAKDOWN = false;
+
 export function getSidebarCreditBreakdown(input: {
   progress: {
     earnedCredits: number;
@@ -227,14 +237,14 @@ function EmptyState({ onGoConfig }: { onGoConfig: () => void }) {
 }
 
 const SETUP_COMPLETE_KEY = "nexu_setup_complete";
-const GITHUB_URL = "https://github.com/nexu-io/nexu";
+const GITHUB_URL = "https://github.com/coder-zkl1988/tabby";
 function resolveCloudUsageUrl(cloudUrl?: string | null): string {
-  if (!cloudUrl) return "https://nexu.io/workspace/usage";
+  if (!cloudUrl) return "https://tabby.picaso.studio/workspace/usage";
   try {
     const origin = new URL(cloudUrl).origin;
     return `${origin}/workspace/usage`;
   } catch {
-    return "https://nexu.io/workspace/usage";
+    return "https://tabby.picaso.studio/workspace/usage";
   }
 }
 
@@ -534,6 +544,15 @@ function WorkspaceLayoutContent() {
   const balanceRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // The A2UI side panel belongs to the session conversation — close it when
+  // navigating to any other tab so it never lingers over unrelated pages.
+  const isSessionRoute = location.pathname.startsWith("/workspace/sessions");
+  useEffect(() => {
+    if (!isSessionRoute && rightSidebarOpen) {
+      closeRightSidebar();
+    }
+  }, [isSessionRoute, rightSidebarOpen, closeRightSidebar]);
   const { data: session } = authClient.useSession();
   const { data: skillsData } = useCommunitySkills();
   const {
@@ -681,14 +700,14 @@ function WorkspaceLayoutContent() {
   const canOpenBalancePopup =
     cloudConnected || rewardsStatus.cloudBalance !== null;
   const rewardBalanceValue = rewardsStatus.cloudBalance
-    ? `${rewardsStatus.cloudBalance.totalBalance} ${t("layout.sidebar.balanceUnit")}`
+    ? formatUsdCents(rewardsStatus.cloudBalance.totalBalance)
     : cloudConnected
       ? rewardsBalancePending
         ? t("layout.sidebar.balancePlaceholder")
-        : `0 ${t("layout.sidebar.balanceUnit")}`
+        : formatUsdCents(0)
       : t("layout.sidebar.balancePlaceholder");
   const rewardBalancePopupValue = rewardsStatus.cloudBalance
-    ? String(rewardsStatus.cloudBalance.totalBalance)
+    ? formatUsdCents(rewardsStatus.cloudBalance.totalBalance)
     : rewardBalanceValue;
   const sidebarCreditBreakdown = getSidebarCreditBreakdown({
     progress: rewardsStatus.progress,
@@ -1329,48 +1348,67 @@ function WorkspaceLayoutContent() {
                             </span>
                           </div>
                           <div className="space-y-2 border-t border-border/60 pt-2.5">
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                                {t("layout.sidebar.balancePopup.earned")}
-                                <span className="group relative inline-flex cursor-default items-center">
-                                  <Info
-                                    size={10}
-                                    className="text-text-muted/60"
-                                  />
-                                  <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                                  >
-                                    {t(
-                                      "layout.sidebar.balancePopup.earnedTooltip",
+                            {SHOW_BALANCE_BREAKDOWN && (
+                              <>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1 text-[11px] text-text-muted">
+                                    {t("layout.sidebar.balancePopup.earned")}
+                                    <span className="group relative inline-flex cursor-default items-center">
+                                      <Info
+                                        size={10}
+                                        className="text-text-muted/60"
+                                      />
+                                      <span
+                                        role="tooltip"
+                                        className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+                                      >
+                                        {t(
+                                          "layout.sidebar.balancePopup.earnedTooltip",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </span>
+                                  <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                    {formatUsdCents(
+                                      sidebarCreditBreakdown.giftedBalance,
                                     )}
                                   </span>
-                                </span>
-                              </span>
-                              <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                {sidebarCreditBreakdown.giftedBalance}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                                {t("layout.sidebar.balancePopup.recharged")}
-                                <span className="group relative inline-flex cursor-default items-center">
-                                  <Info
-                                    size={10}
-                                    className="text-text-muted/60"
-                                  />
-                                  <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                                  >
-                                    {t(
-                                      "layout.sidebar.balancePopup.rechargedTooltip",
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1 text-[11px] text-text-muted">
+                                    {t("layout.sidebar.balancePopup.recharged")}
+                                    <span className="group relative inline-flex cursor-default items-center">
+                                      <Info
+                                        size={10}
+                                        className="text-text-muted/60"
+                                      />
+                                      <span
+                                        role="tooltip"
+                                        className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+                                      >
+                                        {t(
+                                          "layout.sidebar.balancePopup.rechargedTooltip",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </span>
+                                  <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                    {formatUsdCents(
+                                      sidebarCreditBreakdown.planBalance,
                                     )}
                                   </span>
-                                </span>
+                                </div>
+                              </>
+                            )}
+                            <div className="flex items-center justify-between border-t border-border/60 pt-2">
+                              <span className="text-[11px] text-text-muted">
+                                {t("layout.sidebar.balancePopup.consumed")}
                               </span>
                               <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                {sidebarCreditBreakdown.planBalance}
+                                {formatUsdCents(
+                                  rewardsStatus.cloudBalance?.totalConsumed ??
+                                    0,
+                                )}
                               </span>
                             </div>
                           </div>
@@ -1435,7 +1473,7 @@ function WorkspaceLayoutContent() {
                   <div className="rounded-xl border bg-surface-1 border-border shadow-xl shadow-black/10 overflow-hidden">
                     <div className="p-1.5">
                       <a
-                        href="https://docs.nexu.io/"
+                        href="https://tabby.picaso.studio/docs/"
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() =>
@@ -1459,7 +1497,7 @@ function WorkspaceLayoutContent() {
                     </div>
                     <div className="border-t border-border p-1.5">
                       <a
-                        href="https://github.com/nexu-io/nexu/releases"
+                        href="https://github.com/coder-zkl1988/tabby/releases"
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() =>
@@ -1617,7 +1655,7 @@ function WorkspaceLayoutContent() {
       </div>
 
       {/* Right sidebar resize handle */}
-      {rightSidebarOpen && (
+      {rightSidebarOpen && isSessionRoute && (
         <div
           onMouseDown={handleRightResizeStart}
           className="hidden md:block w-px shrink-0 cursor-col-resize group relative z-10"
@@ -1633,14 +1671,22 @@ function WorkspaceLayoutContent() {
       )}
 
       {/* Right A2UI sidebar */}
-      {rightSidebarOpen && (
+      {rightSidebarOpen && isSessionRoute && (
         <div
           className="hidden md:flex shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
-          style={{
-            width: rightSidebarWidth,
-            background: "var(--color-tabby-bg)",
-          }}
+          style={
+            {
+              width: rightSidebarWidth,
+              background: "var(--color-tabby-bg)",
+              // Desktop title bar (hiddenInset) makes the top strip a system
+              // drag region; opt the whole panel out so its header buttons
+              // remain clickable on desktop.
+              WebkitAppRegion: "no-drag",
+            } as React.CSSProperties
+          }
         >
+          {/* Title-bar clearance so the header isn't under the inset traffic-bar */}
+          {isDesktopClient && <div className="shrink-0 h-8" />}
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
             <span className="text-sm font-medium text-[var(--color-text-heading)]">
               内容预览
@@ -1648,6 +1694,7 @@ function WorkspaceLayoutContent() {
             <button
               type="button"
               onClick={closeRightSidebar}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
               className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
             >
               <svg
@@ -1666,7 +1713,7 @@ function WorkspaceLayoutContent() {
               </svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="a2ui-sidebar-host flex-1 min-h-0 overflow-y-auto p-4">
             {rightSidebarMessages.length > 0 && (
               <A2UIRenderer
                 messages={rightSidebarMessages}

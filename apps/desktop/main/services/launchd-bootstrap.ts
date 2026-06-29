@@ -994,6 +994,23 @@ export async function bootstrapWithLaunchd(
     }
   }
 
+  // --- Reclaim canonical ports from our own stray/zombie runtime processes ---
+  // On a full fresh start (neither service healthy) a leftover controller or
+  // openclaw process from a prior crashed / force-quit session can still hold
+  // the canonical ports, which would silently shift us onto 18790+ below and
+  // leave the zombie behind to interfere. Sweep our own runtime processes first
+  // — matched only by launchd label and our runtime path patterns, so it never
+  // touches foreign processes or any user data — then give the OS a moment to
+  // release the sockets. Gated on BOTH services being unhealthy so we never
+  // kill a healthy service we intend to attach to.
+  if (!controllerHealthy && !openclawHealthy) {
+    log(
+      "[bootstrap] full fresh start — sweeping stray Nexu runtime processes to reclaim canonical ports",
+    );
+    await killOrphanNexuProcesses();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  }
+
   // Resolve port conflicts BEFORE generating plists. If a port is occupied
   // (e.g. packaged app running on the same port), find a free alternative.
   // This must happen before plist generation because the port is baked into

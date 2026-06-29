@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { proxyFetch } from "../lib/proxy-fetch.js";
 
-const GITHUB_STARS_API = "https://api.github.com/repos/nexu-io/nexu";
+const GITHUB_STARS_API = "https://api.github.com/repos/coder-zkl1988/tabby";
 const GITHUB_STAR_SESSION_TTL_MS = 15 * 60 * 1000;
 const GITHUB_STAR_MIN_VERIFICATION_AGE_MS = 10 * 1000;
 

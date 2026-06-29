@@ -511,6 +511,9 @@ export function createRuntimeUnitManifests(
       ...(openclawNodePath ? { NODE_PATH: openclawNodePath } : {}),
       OPENCLAW_CONFIG_PATH: path.resolve(openclawStateDir, "openclaw.json"),
       OPENCLAW_MDNS_HOSTNAME: openclawMdnsHostname,
+      // Bundled OpenClaw is version-pinned (slimclaw + desktop updater) — never
+      // self-update from npm. Belt-and-suspenders alongside update.checkOnStart.
+      OPENCLAW_NO_AUTO_UPDATE: "1",
       ...(process.env.CI ? { OPENCLAW_DISABLE_BONJOUR: "1" } : {}),
       OPENCLAW_STATE_DIR: openclawStateDir,
       ...langfuseEnv,

@@ -105,6 +105,7 @@ interface ProviderModel {
   id: string;
   name: string;
   description?: string;
+  contextWindow?: number;
 }
 
 interface ProviderConfig {
@@ -417,6 +418,7 @@ function buildProviders(
     provider: string;
     isDefault?: boolean;
     description?: string;
+    contextWindow?: number;
   }>,
   registryEntries: ProviderRegistryEntryDto[],
 ): ProviderConfig[] {
@@ -433,6 +435,7 @@ function buildProviders(
       id: m.id,
       name: m.name,
       description: m.description,
+      contextWindow: m.contextWindow,
     });
     grouped.set(normalizedProviderId, list);
   }
@@ -477,12 +480,23 @@ async function saveModelProviderConfig(
   return data.config;
 }
 
+type VerifiedModelDetail = {
+  id: string;
+  contextWindow?: number;
+  maxTokens?: number;
+};
+
 async function verifyApiKey(
   providerKey: string,
   providerId: ByokProviderId,
   apiKey?: string,
   baseUrl?: string,
-): Promise<{ valid: boolean; models?: string[]; error?: string }> {
+): Promise<{
+  valid: boolean;
+  models?: string[];
+  modelDetails?: VerifiedModelDetail[];
+  error?: string;
+}> {
   const customProvider = parseCustomProviderKey(providerKey);
   const { data, error } = customProvider
     ? await postApiV1ModelProvidersInstancesValidate({
@@ -575,12 +589,52 @@ function isStoredProviderConfigured(
 function buildStoredModels(
   provider: ProviderRegistryEntryDto,
   modelIds: string[],
+  modelMeta?: Record<string, { contextWindow?: number; maxTokens?: number }>,
 ): StoredProviderConfig["models"] {
-  return modelIds.map((modelId) => ({
-    id: modelId,
-    name: modelId,
-    api: provider.apiKind,
-  }));
+  return modelIds.map((modelId) => {
+    const meta = modelMeta?.[modelId];
+    return {
+      id: modelId,
+      name: modelId,
+      api: provider.apiKind,
+      ...(meta?.contextWindow && meta.contextWindow > 0
+        ? { contextWindow: meta.contextWindow }
+        : {}),
+      ...(meta?.maxTokens && meta.maxTokens > 0
+        ? { maxTokens: meta.maxTokens }
+        : {}),
+    };
+  });
+}
+
+// Format a token count as a compact context-window label, e.g. 262144 → "256K",
+// 1048576 → "1M". Returns null when unknown/zero so callers can hide the badge.
+function formatContextWindow(tokens: number | undefined): string | null {
+  if (!tokens || tokens <= 0) {
+    return null;
+  }
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    return `${Number.isInteger(millions) ? millions : Math.round(millions * 10) / 10}M`;
+  }
+  return `${Math.round(tokens / 1000)}K`;
+}
+
+function buildModelMetaMap(
+  details: VerifiedModelDetail[] | undefined,
+): Record<string, { contextWindow?: number; maxTokens?: number }> {
+  if (!details) {
+    return {};
+  }
+  const map: Record<string, { contextWindow?: number; maxTokens?: number }> =
+    {};
+  for (const detail of details) {
+    map[detail.id] = {
+      contextWindow: detail.contextWindow,
+      maxTokens: detail.maxTokens,
+    };
+  }
+  return map;
 }
 
 function buildStoredModelsConfig(
@@ -1217,18 +1271,21 @@ function _GeneralSettings() {
           </div>
           <div className="space-y-1">
             {[
-              { label: t("settings.about.docs"), url: "https://docs.nexu.io" },
+              {
+                label: t("settings.about.docs"),
+                url: "https://tabby.picaso.studio/docs",
+              },
               {
                 label: t("settings.about.github"),
-                url: "https://github.com/nexu-io/nexu",
+                url: "https://github.com/coder-zkl1988/tabby",
               },
               {
                 label: t("settings.about.changelog"),
-                url: "https://github.com/nexu-io/nexu/releases",
+                url: "https://github.com/coder-zkl1988/tabby/releases",
               },
               {
                 label: t("settings.about.feedback"),
-                url: "https://github.com/nexu-io/nexu/issues/new",
+                url: "https://github.com/coder-zkl1988/tabby/issues/new",
               },
             ].map((link) => (
               <button
@@ -1686,11 +1743,11 @@ export function ModelsPage() {
   const sidebarItems = useMemo(() => {
     const items: SidebarItem[] = [];
 
-    // Nexu official — always shown
+    // Tabby official — always shown
     const nexuProvider = providers.find((p) => p.id === "nexu");
     items.push({
       id: "nexu",
-      name: "nexu Official",
+      name: t("models.provider.nexu.name"),
       modelCount: nexuProvider?.models.length ?? 0,
       configured: (nexuProvider?.models.length ?? 0) > 0,
       managed: true,
@@ -2184,7 +2241,7 @@ export function ModelsPage() {
   );
 }
 
-// ── Managed provider detail (Nexu Official) ───────────────────
+// ── Managed provider detail (Tabby Official) ───────────────────
 
 function ManagedProviderDetail({
   provider,
@@ -2314,10 +2371,10 @@ function ManagedProviderDetail({
           </span>
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-text-primary">
-              {provider.name}
+              {t("models.provider.nexu.name")}
             </div>
             <div className="text-[11px] text-text-tertiary">
-              {t(provider.description)}
+              {t("models.provider.nexu.description")}
             </div>
           </div>
         </div>
@@ -2459,6 +2516,11 @@ function ManagedProviderDetail({
                   >
                     {model.name}
                   </span>
+                  {formatContextWindow(model.contextWindow) && (
+                    <span className="inline-flex items-center text-[10px] font-medium text-text-tertiary shrink-0 tabular-nums">
+                      {formatContextWindow(model.contextWindow)}
+                    </span>
+                  )}
                   {isSelected && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-secondary shrink-0">
                       <Check size={12} />
@@ -2563,6 +2625,16 @@ function ByokProviderDetail({
 
   // Available models from verification
   const [verifiedModels, setVerifiedModels] = useState<string[] | null>(null);
+  // Per-model capabilities discovered during the last verify/refresh, keyed
+  // by model id. Used to persist real context windows into the provider config.
+  const [verifiedModelMeta, setVerifiedModelMeta] = useState<
+    Record<string, { contextWindow?: number; maxTokens?: number }>
+  >({});
+  // Manual per-model context-window overrides (tokens), keyed by model id.
+  // Fallback for providers whose `/models` endpoint does not report a window.
+  const [manualContextOverrides, setManualContextOverrides] = useState<
+    Record<string, number>
+  >({});
 
   // ── OAuth state (OpenAI only) ──────────────────────────
   const isOAuthProvider = providerId === "openai";
@@ -2667,7 +2739,13 @@ function ByokProviderDetail({
     typeof persistedApiKey === "string" ? persistedApiKey : undefined;
 
   const buildProviderConfig = useCallback(
-    (modelIds: string[]): StoredProviderConfig => ({
+    (
+      modelIds: string[],
+      metaOverride?: Record<
+        string,
+        { contextWindow?: number; maxTokens?: number }
+      >,
+    ): StoredProviderConfig => ({
       ...(providerConfig?.providerTemplateId
         ? { providerTemplateId: providerConfig.providerTemplateId }
         : {}),
@@ -2690,7 +2768,28 @@ function ByokProviderDetail({
       ...(providerConfig?.metadata
         ? { metadata: providerConfig.metadata }
         : {}),
-      models: buildStoredModels(provider, modelIds),
+      models: buildStoredModels(provider, modelIds, {
+        // Preserve previously-stored windows, then layer freshly-discovered ones.
+        ...Object.fromEntries(
+          (providerConfig?.models ?? [])
+            .filter((model) => (model.contextWindow ?? 0) > 0)
+            .map((model) => [
+              model.id,
+              {
+                contextWindow: model.contextWindow,
+                maxTokens: model.maxTokens,
+              },
+            ]),
+        ),
+        ...verifiedModelMeta,
+        // Manual overrides win over both stored and discovered windows.
+        ...Object.fromEntries(
+          Object.entries(manualContextOverrides)
+            .filter(([, value]) => value > 0)
+            .map(([id, contextWindow]) => [id, { contextWindow }]),
+        ),
+        ...(metaOverride ?? {}),
+      }),
     }),
     [
       baseUrl,
@@ -2702,9 +2801,12 @@ function ByokProviderDetail({
       providerConfig?.headers,
       providerConfig?.displayName,
       providerConfig?.instanceId,
+      providerConfig?.models,
       isAwsSdkProvider,
       providerConfig?.providerTemplateId,
       providerConfig?.metadata,
+      verifiedModelMeta,
+      manualContextOverrides,
     ],
   );
 
@@ -2793,6 +2895,7 @@ function ByokProviderDetail({
       const modelIds = normalizeVerifiedModelIds(result.models);
       if (result.valid) {
         setVerifiedModels(modelIds);
+        setVerifiedModelMeta(buildModelMetaMap(result.modelDetails));
       }
     },
     onError: () => {
@@ -2817,10 +2920,12 @@ function ByokProviderDetail({
       }
 
       const models = normalizeVerifiedModelIds(result.models);
+      const meta = buildModelMetaMap(result.modelDetails);
       setVerifiedModels(models);
+      setVerifiedModelMeta(meta);
 
       if (hasSavedAccess || isOllama) {
-        await onSaveProviderConfig(provider, buildProviderConfig(models));
+        await onSaveProviderConfig(provider, buildProviderConfig(models, meta));
       }
 
       return models;
@@ -2837,6 +2942,8 @@ function ByokProviderDetail({
   const saveMutation = useMutation({
     mutationFn: async () => {
       let models = displayModels;
+      let meta: Record<string, { contextWindow?: number; maxTokens?: number }> =
+        {};
       if (isOllama || isAwsSdkProvider || effectiveApiKey || hasSavedApiKey) {
         const result = await verifyApiKey(
           providerKey,
@@ -2846,11 +2953,13 @@ function ByokProviderDetail({
         );
         if (result.valid && result.models) {
           models = normalizeVerifiedModelIds(result.models);
+          meta = buildModelMetaMap(result.modelDetails);
           setVerifiedModels(models);
+          setVerifiedModelMeta(meta);
         }
       }
 
-      await onSaveProviderConfig(provider, buildProviderConfig(models));
+      await onSaveProviderConfig(provider, buildProviderConfig(models, meta));
 
       return { models };
     },
@@ -2983,6 +3092,64 @@ function ByokProviderDetail({
     if (storedModelIds.length > 0) return storedModelIds;
     return [];
   }, [storedModelIds, verifiedModels]);
+
+  // Context window from the stored provider config, keyed by model id.
+  const storedContextById = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const model of providerConfig?.models ?? []) {
+      if ((model.contextWindow ?? 0) > 0) {
+        map[model.id] = model.contextWindow as number;
+      }
+    }
+    return map;
+  }, [providerConfig?.models]);
+
+  // Effective context window for display: manual override → discovered → stored.
+  const resolveContextWindow = useCallback(
+    (modelId: string): number | undefined =>
+      manualContextOverrides[modelId] ??
+      verifiedModelMeta[modelId]?.contextWindow ??
+      storedContextById[modelId],
+    [manualContextOverrides, verifiedModelMeta, storedContextById],
+  );
+
+  // Persist a manual context-window override on blur (0/empty clears it).
+  const commitContextOverride = useCallback(
+    (modelId: string, raw: string) => {
+      const parsed = Number.parseInt(raw, 10);
+      const value = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      if (
+        value === resolveContextWindow(modelId) ||
+        (value === 0 && !manualContextOverrides[modelId])
+      ) {
+        return;
+      }
+      setManualContextOverrides((prev) => {
+        if (value === 0) {
+          const { [modelId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [modelId]: value };
+      });
+      if (isProviderConfigured && value > 0) {
+        void onSaveProviderConfig(
+          provider,
+          buildProviderConfig(displayModels, {
+            [modelId]: { contextWindow: value },
+          }),
+        );
+      }
+    },
+    [
+      buildProviderConfig,
+      displayModels,
+      isProviderConfigured,
+      manualContextOverrides,
+      onSaveProviderConfig,
+      provider,
+      resolveContextWindow,
+    ],
+  );
 
   const getScopedByokModelId = useCallback(
     (modelId: string) =>
@@ -3583,42 +3750,79 @@ function ByokProviderDetail({
               modelId,
               currentModelId,
             );
+            const effectiveContext = resolveContextWindow(modelId);
             return (
-              <button
+              <div
                 key={modelId}
-                type="button"
-                disabled={!isProviderConfigured}
-                onClick={() => {
-                  if (!isProviderConfigured || isSelected) return;
-                  onSelectModel(scopedModelId);
-                }}
                 className={cn(
-                  "w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
+                  "w-full flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors",
                   isSelected ? "bg-surface-2" : "hover:bg-surface-2",
-                  !isProviderConfigured &&
-                    "cursor-not-allowed opacity-60 hover:bg-transparent",
+                  !isProviderConfigured && "opacity-60 hover:bg-transparent",
                 )}
               >
-                <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-white border border-border-subtle">
-                  <ModelLogo model={modelId} provider={providerId} size={14} />
-                </span>
-                <span
+                <button
+                  type="button"
+                  disabled={!isProviderConfigured}
+                  onClick={() => {
+                    if (!isProviderConfigured || isSelected) return;
+                    onSelectModel(scopedModelId);
+                  }}
                   className={cn(
-                    "flex-1 text-[12px] truncate",
-                    isSelected
-                      ? "font-semibold text-text-primary"
-                      : "font-medium text-text-primary",
+                    "flex flex-1 min-w-0 items-center gap-2.5 text-left",
+                    !isProviderConfigured && "cursor-not-allowed",
                   )}
                 >
-                  {modelId}
-                </span>
+                  <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-white border border-border-subtle">
+                    <ModelLogo
+                      model={modelId}
+                      provider={providerId}
+                      size={14}
+                    />
+                  </span>
+                  <span
+                    className={cn(
+                      "flex-1 text-[12px] truncate",
+                      isSelected
+                        ? "font-semibold text-text-primary"
+                        : "font-medium text-text-primary",
+                    )}
+                  >
+                    {modelId}
+                  </span>
+                </button>
+                <div
+                  className="flex items-center gap-1.5 shrink-0"
+                  title={t("models.byok.contextWindowHint")}
+                >
+                  <span className="text-[10px] text-text-muted">
+                    {t("models.byok.contextWindowLabel")}
+                  </span>
+                  <input
+                    key={`${modelId}-${effectiveContext ?? 0}`}
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    defaultValue={effectiveContext ?? ""}
+                    placeholder={t("models.byok.contextWindowPlaceholder")}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={(event) =>
+                      commitContextOverride(modelId, event.target.value)
+                    }
+                    className="w-20 rounded-md border border-border bg-surface-1 px-1.5 py-1 text-right text-[10px] tabular-nums text-text-secondary focus:border-border-strong focus:outline-none"
+                  />
+                </div>
                 {isSelected && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium text-text-secondary shrink-0">
                     <Check size={12} />
                     Active
                   </span>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

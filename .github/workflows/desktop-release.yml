@@ -115,6 +115,8 @@ jobs:
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+      # Surfaced so the R2 upload step can self-skip when R2 is not configured.
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
 
     steps:
       - name: Checkout
@@ -247,6 +249,58 @@ jobs:
             "apps/desktop/release/tabby-${VERSION}-mac-${ARCH}-sha256.txt" \
             --clobber
 
+      - name: Upload macOS installer to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          dmg="apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg"
+          # Permanent versioned copy, plus a stable "latest" alias the website links to.
+          aws s3 cp "$dmg" "s3://${R2_BUCKET}/releases/tabby-${VERSION}-${ARCH}.dmg" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/x-apple-diskimage --no-progress
+          aws s3 cp "$dmg" "s3://${R2_BUCKET}/releases/tabby-latest-mac-${ARCH}.dmg" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type application/x-apple-diskimage \
+            --cache-control "no-cache, must-revalidate" --no-progress
+
+      - name: Publish macOS update feed to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          # The mac production build writes latest-mac.yml referencing the DMG
+          # (not a zip), so publish the DMG alongside it to this per-arch feed
+          # dir, matching R2_BASE_URL/stable/<arch> in the app.
+          rel="apps/desktop/release"
+          dest="s3://${R2_BUCKET}/updates/stable/${ARCH}"
+          aws s3 cp "$rel/latest-mac.yml" "$dest/latest-mac.yml" \
+            --endpoint-url "$R2_ENDPOINT" --content-type text/yaml \
+            --cache-control "no-cache, must-revalidate" --no-progress
+          aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.dmg" "$dest/tabby-${VERSION}-${ARCH}.dmg" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/x-apple-diskimage --no-progress
+          if [ -f "$rel/tabby-${VERSION}-${ARCH}.dmg.blockmap" ]; then
+            aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.dmg.blockmap" \
+              "$dest/tabby-${VERSION}-${ARCH}.dmg.blockmap" \
+              --endpoint-url "$R2_ENDPOINT" --content-type application/octet-stream --no-progress
+          fi
+
   windows:
     name: Windows x64
     needs: prepare-release
@@ -255,6 +309,8 @@ jobs:
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+      # Surfaced so the R2 upload step can self-skip when R2 is not configured.
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
 
     steps:
       - name: Checkout
@@ -306,7 +362,7 @@ jobs:
           NEXU_DESKTOP_BUILD_SOURCE: release
           NEXU_DESKTOP_BUILD_BRANCH: ${{ needs.prepare-release.outputs.tag_name }}
           NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
-          NEXU_DESKTOP_AUTO_UPDATE_ENABLED: "false"
+          NEXU_DESKTOP_AUTO_UPDATE_ENABLED: "true"
           TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
@@ -359,6 +415,55 @@ jobs:
             "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}" `
             "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.checksum_file }}" `
             --clobber
+
+      - name: Upload Windows installer to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+        run: |
+          $installer = "apps/desktop/release-artifacts-win/${{ steps.artifacts.outputs.versioned_installer }}"
+          # Permanent versioned copy, plus a stable "latest" alias the website links to.
+          aws s3 cp $installer "s3://$env:R2_BUCKET/releases/tabby-setup-$env:VERSION-win-x64.exe" `
+            --endpoint-url $env:R2_ENDPOINT `
+            --content-type application/octet-stream --no-progress
+          aws s3 cp $installer "s3://$env:R2_BUCKET/releases/tabby-latest-win-x64.exe" `
+            --endpoint-url $env:R2_ENDPOINT `
+            --content-type application/octet-stream `
+            --cache-control "no-cache, must-revalidate" --no-progress
+
+      - name: Publish Windows update feed to Cloudflare R2
+        if: ${{ env.R2_ACCESS_KEY_ID != '' }}
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          CHANNEL: stable
+          BASE_URL: https://downloads.picaso.studio/updates/stable/win32/x64
+        run: |
+          # WindowsUpdateDriver reads latest-win.json from R2_BASE_URL/stable/win32/x64;
+          # the manifest's installer url is BASE_URL/<installer name>.
+          $installerName = "tabby-setup-$env:VERSION-win-x64.exe"
+          $installer = "apps/desktop/release-artifacts-win/$installerName"
+          $manifest = "apps/desktop/release-artifacts-win/latest-win.json"
+          $env:INSTALLER_FILE = $installer
+          $env:MANIFEST_OUTPUT = $manifest
+          node apps/desktop/scripts/generate-win-update-manifest.mjs
+          $dest = "s3://$env:R2_BUCKET/updates/stable/win32/x64"
+          aws s3 cp $installer "$dest/$installerName" `
+            --endpoint-url $env:R2_ENDPOINT --content-type application/octet-stream --no-progress
+          aws s3 cp $manifest "$dest/latest-win.json" `
+            --endpoint-url $env:R2_ENDPOINT --content-type application/json `
+            --cache-control "no-cache, must-revalidate" --no-progress
 
   summary:
     name: Release summary

@@ -300,7 +300,7 @@ const COMPONENT_SCHEMAS = [
     properties: {
       id: { type: "string" },
       type: { const: "Icon" },
-      name: { type: "string", description: "Icon name" },
+      name: { type: "string", description: "Icon name (lucide icon set, kebab-case, e.g. star, check, arrow-right, alert-circle)" },
       color: { type: "string" },
       size: { type: "number" },
     },
@@ -376,45 +376,87 @@ const COMPONENT_SCHEMAS = [
   },
   {
     type: "XHSEditor",
-    label: "Xiaohongshu Content Editor",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string", description: "Unique component ID" },
-        type: { const: "XHSEditor" },
-        title: {
-          type: "string",
-          description: "Initial title text for the post"
-        },
-        content: {
-          type: "string",
-          description: "Initial content/body text for the post"
-        },
-        images: {
-          type: "array",
-          items: { type: "string" },
-          description: "Array of image URLs or base64 data URIs to display as preview"
-        },
-        hashtags: {
-          type: "array",
-          items: { type: "string" },
-          description: "Array of hashtag strings (without # prefix)"
-        },
-        maxTitleLength: {
-          type: "number",
-          description: "Maximum title character count (default 20)",
-          default: 20
-        },
-        visibility: {
-          type: "string",
-          enum: ["visible", "hidden"],
-          description: "Component visibility",
-          default: "visible"
-        }
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XHSEditor" },
+      title: {
+        type: "string",
+        description: "Initial title text for the post",
       },
-      required: ["id", "type"],
-      additionalProperties: false
-    }
+      content: {
+        type: "string",
+        description:
+          "Initial body text for the post. PLAIN TEXT only — Xiaohongshu does not render Markdown. Do NOT use Markdown: no `#` headings, `**bold**`, or `-`/`*` bullets. The title is the separate `title` field, so never restate it as a `# heading` on the first body line. Emojis and line breaks are fine.",
+      },
+      images: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Array of image URLs, data URIs, or local media file paths to display as preview",
+      },
+      hashtags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Array of hashtag strings (without # prefix)",
+      },
+      maxTitleLength: {
+        type: "number",
+        description: "Maximum title character count (default 20)",
+      },
+      visibility: {
+        type: "string",
+        enum: ["visible", "hidden"],
+        description: "Component visibility",
+      },
+    },
+  },
+  {
+    type: "XHSBatchTable",
+    required: ["id", "type", "posts"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XHSBatchTable" },
+      batchId: {
+        type: "string",
+        description:
+          "Stable id for this batch session; reuse the same value to keep edits/status across re-renders. Defaults to 'default'.",
+      },
+      posts: {
+        type: "array",
+        description:
+          "The posts to publish in this batch. Each row opens the XHSEditor in the side panel when clicked. Leave deviceId empty to auto-assign phones round-robin.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string", description: "Stable post id" },
+            title: { type: "string", description: "Post title" },
+            content: {
+              type: "string",
+              description:
+                "Post body text. PLAIN TEXT only — Xiaohongshu does not render Markdown; no `#` headings, `**bold**`, or `-`/`*` bullets, and never restate the title as a `# heading` on the first line. Emojis and line breaks are fine.",
+            },
+            images: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Image URLs, data URIs, or local media file paths for this post",
+            },
+            hashtags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Hashtag strings (without # prefix)",
+            },
+            deviceId: {
+              type: "string",
+              description:
+                "Target phone deviceId; omit to auto-assign round-robin across connected phones",
+            },
+          },
+          required: ["title", "content"],
+        },
+      },
+    },
   },
 ];
 
@@ -476,7 +518,13 @@ const plugin = {
 
 WHEN TO USE:
 - Displaying connected phone/device status — use PhonePreview component
-- Showing copywriting, markdown, or generated text content — use MarkdownEditor component
+- Showing generic copywriting / markdown / plain generated text that is NOT a Xiaohongshu post — use MarkdownEditor component
+- Writing Xiaohongshu/RedNote post(s) — ALWAYS render with XHS components, NEVER MarkdownEditor or a plain-text list:
+    • exactly ONE post → XHSEditor
+    • TWO OR MORE posts → a SINGLE XHSBatchTable holding all of them (one row per post). Do not emit multiple XHSEditors or a text list for multiple posts.
+    • CONTENT FORMAT: title and body are SEPARATE fields. Write the body as PLAIN TEXT — Xiaohongshu does not render Markdown. No \`#\` headings, no \`**bold**\`, no \`-\`/\`*\` bullets, and NEVER repeat the title as a \`# heading\` on the first body line. Emojis and line breaks are encouraged.
+    • Images are OPTIONAL and are NOT a prerequisite for publishing: render the post(s) immediately with images:[] and let the user add images afterwards. NEVER stall, loop, or refuse to render just because there are no images yet.
+- Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
 - Offering selectable actions (confirm/cancel, option selection)
 - Any situation where plain text alone is insufficient
@@ -485,6 +533,16 @@ HOW TO USE:
 1. Call this tool with a unique surfaceId and an array of component definitions.
 2. The tool result is automatically rendered as interactive UI. Do NOT copy, repeat, or echo the JSONL in your text response. Just reply naturally — the UI appears alongside your message.
 3. CRITICAL: NEVER include raw JSONL or \`\`\`a2ui code blocks in your text output. The system renders UI automatically. Your text and A2UI are separate.
+
+SURFACE PLACEMENT (automatic — you normally don't control it):
+- Complex editor surfaces (MarkdownEditor, XHSEditor) automatically open in the right side panel, with an "open panel" button shown in the chat thread.
+- Everything else (forms, images, video/audio, confirmations, pickers, status cards) renders inline in the chat thread.
+- Only when the user explicitly asks for the side panel (侧边栏), prefix the surfaceId with "sidebar:" to force panel placement.
+
+IMAGE / MEDIA SOURCES:
+- Image.source, PhonePreview screenshot, and XHS images accept http(s) URLs, data URIs, or absolute local file paths UNDER THE OPENCLAW MEDIA DIRECTORY. Only paths under that media directory are auto-converted to servable URLs in webchat.
+- To create post/cover images, use the image_generate tool — its output lands in the media directory and previews correctly. Pass the returned local path straight into images.
+- Do NOT scrape image sites (pexels / freepik / Baidu Images etc. — they block scraping and will fail) and do NOT download/save images to /tmp or any path outside the media directory: webchat cannot serve those, so the preview will 404. If you cannot generate an image, just render the post with images:[] rather than fetching from the web.
 
 BUTTON ACTIONS:
 - Use \`"action": {"event": {"name": "actionName", "context": {}}}\` for buttons.
@@ -503,8 +561,9 @@ NOTE: This is standard A2UI v0.9 format. It is NOT OpenClaw Canvas format — do
 CUSTOM COMPONENTS:
 - PhonePreview: Show connected phone devices with name, model, status, and screenshot.
 - MarkdownEditor: Display markdown/copywriting content with a copy button.
-- XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, or XHSEditor.`,
+- XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags, and a device picker + publish button.
+- XHSBatchTable: Inline table for batch-publishing multiple XHS posts (fixed height, max ~5 rows). Each row shows thumbnail/title/preview/target-phone/status; clicking a row opens that post in an XHSEditor side panel; a "全部发布" button fans out all posts to their assigned phones. Pass each post's title/content/images/hashtags; omit deviceId to auto-assign phones round-robin.
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, or XHSBatchTable.`,
 
             parameters: {
               type: "object",

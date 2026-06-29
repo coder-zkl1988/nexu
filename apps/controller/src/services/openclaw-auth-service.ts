@@ -400,7 +400,7 @@ export class OpenClawAuthService {
         accountId,
       };
 
-      // Merge into auth-profiles.json
+      // Merge into the per-agent auth profile store (SQLite) + shared store.
       await this.mergeOAuthProfile("openai-codex:default", profile);
 
       res.writeHead(200, { "Content-Type": "text/html" });
