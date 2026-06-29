@@ -14,7 +14,7 @@ import {
   request as httpRequest,
 } from "node:http";
 import * as path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, pipeline } from "node:stream";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -92,17 +92,33 @@ async function proxyToController(
     // Stream the body through instead of buffering it with arrayBuffer().
     // SSE endpoints (e.g. /api/v1/devices/stream) never "end", so awaiting the
     // full body would hang forever and no events would ever reach the client.
+    // Use pipeline (not .pipe): the upstream fetch stream rejects with
+    // "terminated" when the controller socket closes mid-flight — e.g. on app
+    // quit while an SSE stream is open. With .pipe that error is unhandled and
+    // crashes the main process ("A JavaScript error occurred…"); pipeline routes
+    // it to the callback and tears both streams down cleanly.
     if (response.body) {
-      Readable.fromWeb(
-        response.body as Parameters<typeof Readable.fromWeb>[0],
-      ).pipe(res);
+      pipeline(
+        Readable.fromWeb(
+          response.body as Parameters<typeof Readable.fromWeb>[0],
+        ),
+        res,
+        () => {
+          // Expected on client disconnect / controller socket close; swallow so
+          // it never becomes an uncaught exception in the main process.
+        },
+      );
     } else {
       res.end();
     }
   } catch (err) {
     console.error("Proxy error:", err);
-    res.writeHead(502);
-    res.end("Bad Gateway");
+    if (!res.headersSent) {
+      res.writeHead(502);
+      res.end("Bad Gateway");
+    } else if (!res.destroyed) {
+      res.destroy();
+    }
   }
 }
 
