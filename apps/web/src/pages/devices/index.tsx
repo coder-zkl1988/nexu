@@ -9,7 +9,7 @@ import { useDesktopCloudStatus } from "@/hooks/use-desktop-cloud-status";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Loader2, Lock, LogIn, QrCode } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
@@ -106,17 +106,26 @@ export function DevicesPage() {
     }
   }, [t]);
 
+  // Keep the latest fetchDevices reachable from the mount-once effect below
+  // without listing it as a dependency — otherwise an unstable `t`/fetchDevices
+  // identity would re-run the effect, tearing down the EventSource and resetting
+  // the loading timeout on every render so neither ever completes.
+  const fetchDevicesRef = useRef(fetchDevices);
+  fetchDevicesRef.current = fetchDevices;
+
   useEffect(() => {
+    // Initial load via REST — the same call the manual refresh makes, but on
+    // mount. This clears the spinner fast and reliably (GET /devices responds
+    // immediately), independent of whether the SSE delivers an initial
+    // snapshot. The stream below only layers on live updates.
+    void fetchDevicesRef.current();
+
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
     const es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
     let fallbackInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Safety net: never let the spinner hang forever. If no device_list
-    // snapshot arrives within the grace window — e.g. an older controller that
-    // stays silent when the device-control plugin is down, and the SSE connects
-    // fine so onerror's polling fallback never fires — fall back to the empty
-    // state. The controller normally emits an initial snapshot within ~5s, so
-    // this only triggers when that contract isn't met.
+    // Safety net: never let the spinner hang forever even if the initial fetch
+    // and the SSE both stall.
     const loadingFallback = setTimeout(() => setLoading(false), 8000);
 
     es.addEventListener("device_list", (e) => {
@@ -133,7 +142,7 @@ export function DevicesPage() {
     });
 
     es.addEventListener("device_connected", () => {
-      void fetchDevices();
+      void fetchDevicesRef.current();
     });
 
     es.addEventListener("device_disconnected", (e) => {
@@ -149,14 +158,17 @@ export function DevicesPage() {
       } catch {
         /* ignore */
       }
-      void fetchDevices();
+      void fetchDevicesRef.current();
     });
 
     es.onerror = () => {
       // SSE failed — fall back to polling
       es.close();
       if (fallbackInterval === null) {
-        fallbackInterval = setInterval(() => void fetchDevices(), 3000);
+        fallbackInterval = setInterval(
+          () => void fetchDevicesRef.current(),
+          3000,
+        );
       }
     };
 
@@ -167,7 +179,7 @@ export function DevicesPage() {
         clearInterval(fallbackInterval);
       }
     };
-  }, [fetchDevices]);
+  }, []);
 
   const [refreshing, setRefreshing] = useState(false);
 
