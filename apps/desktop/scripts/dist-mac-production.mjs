@@ -14,7 +14,10 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeLatestMacYml } from "./mac-update-metadata.mjs";
+import {
+  writeAppUpdateYml,
+  writeLatestMacYml,
+} from "./mac-update-metadata.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const electronRoot = resolve(scriptDir, "..");
@@ -314,6 +317,7 @@ async function main() {
   if (!["arm64", "x64"].includes(targetArch)) {
     throw new Error(`Unsupported NEXU_DESKTOP_TARGET_ARCH: ${targetArch}`);
   }
+  const updateChannel = process.env.NEXU_DESKTOP_UPDATE_CHANNEL ?? "stable";
   const buildSource = "stable";
 
   const desktopPkg = JSON.parse(
@@ -337,7 +341,7 @@ async function main() {
     "entitlements.mac.inherit.plist",
   );
 
-  await step("1/7 构建 production unsigned .app", async () => {
+  await step("1/9 构建 production unsigned .app", async () => {
     try {
       await run("node", [resolve(scriptDir, "dist-mac.mjs"), "--unsigned"], {
         cwd: electronRoot,
@@ -369,7 +373,15 @@ async function main() {
     "payload.tar.gz",
   );
 
-  await step("2/7 签名 OpenClaw sidecar 归档内原生二进制", async () => {
+  await step("2/9 写入 macOS 自动更新配置", async () => {
+    await writeAppUpdateYml({
+      appPath,
+      channel: updateChannel,
+      arch: targetArch,
+    });
+  });
+
+  await step("3/9 签名 OpenClaw sidecar 归档内原生二进制", async () => {
     try {
       await access(openclawArchive);
     } catch {
@@ -413,7 +425,7 @@ async function main() {
     }
   });
 
-  await step("3/7 签名 .app 内全部 Mach-O 文件和应用包", async () => {
+  await step("4/9 签名 .app 内全部 Mach-O 文件和应用包", async () => {
     const rootExecutable = resolve(appPath, "Contents", "MacOS", productName);
     const allMachO = sortCodeSignTargets(
       findMachOFiles(appPath).filter((filePath) => filePath !== rootExecutable),
@@ -468,7 +480,7 @@ async function main() {
     ]);
   });
 
-  await step("4/8 公证并 stapling .app", async () => {
+  await step("5/9 公证并 stapling .app", async () => {
     if (await isAppNotarized(appPath)) {
       console.log("    app already has a stapled notarization ticket");
       return;
@@ -498,7 +510,7 @@ async function main() {
     }
   });
 
-  await step("5/8 清理旧发布包并创建 DMG + 更新 ZIP", async () => {
+  await step("6/9 清理旧发布包并创建 DMG + 更新 ZIP", async () => {
     await mkdir(releaseRoot, { recursive: true });
     await cleanOldReleaseMetadata(releaseRoot);
 
@@ -533,7 +545,7 @@ async function main() {
     ]);
   });
 
-  await step("6/8 签名并公证 DMG", async () => {
+  await step("7/9 签名并公证 DMG", async () => {
     await run("codesign", [
       "--force",
       "--sign",
@@ -547,11 +559,11 @@ async function main() {
     }
   });
 
-  await step("7/8 生成自动更新元数据", async () => {
+  await step("8/9 生成自动更新元数据", async () => {
     await writeLatestMacYml({ releaseRoot, updateZipPath, version });
   });
 
-  await step("8/8 最终验证", async () => {
+  await step("9/9 最终验证", async () => {
     await run("codesign", [
       "--verify",
       "--deep",

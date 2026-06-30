@@ -208,6 +208,7 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
         run: |
           set -euo pipefail
           dmg="apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg"
@@ -220,6 +221,11 @@ jobs:
           test -f "$dmg"
           test -f "$zip"
           test -d "$app"
+          app_update_yml="$app/Contents/Resources/app-update.yml"
+          test -f "$app_update_yml"
+          grep -Fxq "provider: generic" "$app_update_yml"
+          grep -Fxq "url: https://downloads.picaso.studio/updates/${CHANNEL}/${ARCH}" "$app_update_yml"
+          grep -Fxq "updaterCacheDirName: tabby-updater" "$app_update_yml"
           grep -q "url: tabby-${VERSION}-${ARCH}.zip" "apps/desktop/release/latest-mac.yml"
           if grep -q "url: tabby-${VERSION}-${ARCH}.dmg" "apps/desktop/release/latest-mac.yml"; then
             echo "latest-mac.yml must reference the update zip, not the DMG" >&2
@@ -293,12 +299,13 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
           ARCH: ${{ matrix.arch }}
+          CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
         run: |
           set -euo pipefail
           # The update feed must publish the ZIP referenced by latest-mac.yml.
           # The DMG remains available through the releases/ path for manual installs.
           rel="apps/desktop/release"
-          dest="s3://${R2_BUCKET}/updates/stable/${ARCH}"
+          dest="s3://${R2_BUCKET}/updates/${CHANNEL}/${ARCH}"
           aws s3 cp "$rel/latest-mac.yml" "$dest/latest-mac.yml" \
             --endpoint-url "$R2_ENDPOINT" --content-type text/yaml \
             --cache-control "no-cache, must-revalidate" --no-progress
