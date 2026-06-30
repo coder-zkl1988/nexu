@@ -414,6 +414,7 @@ function compilePlugins(
     "langfuse-tracer",
     "nexu-a2ui",
     "nexu-toolcall-guard",
+    "find-expert",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -496,6 +497,9 @@ function compilePlugins(
         },
       },
       "nexu-a2ui": {
+        enabled: true,
+      },
+      "find-expert": {
         enabled: true,
       },
       "nexu-toolcall-guard": {

@@ -123,7 +123,16 @@ R1+R2+R3 are the linchpins; R4/R5 have working precedents.
   - **Follow-up:** experts installed *before* P1 lack the fold in their AGENTS.md;
     a one-time migration (or fold-on-sync) is needed so existing experts keep
     persona when delegated to. New installs are covered.
-- **P2 Retrieval:** `find_expert` runtime plugin + AGENTS.md routing nudge.
+- **P2 Retrieval: ✅ done + validated.** New `find-expert` runtime plugin
+  (`static/runtime-plugins/find-expert`) registers a `find_expert(query)` tool that
+  fetches the controller catalog (via `WEB_API_ORIGIN`) and ranks experts by
+  keyword/tag overlap (Latin words + CJK bigrams), returning top-5
+  `{slug,name,description,installed,agentId}`. Registered in `compilePlugins`
+  (`platformPluginIds` + entries). Routing guidance lives in the tool description.
+  **Validated end-to-end**: asked the lead a 小红书 question → it called `find_expert`,
+  delegated to the matched installed expert via `sessions_spawn(agentId)`, the expert
+  answered in its folded persona, and the lead relayed it inline. (AGENTS.md nudge not
+  needed yet — the tool description sufficed for the model to route.)
 - **P3 Install card:** install card emission + `expert_install` action + `install_expert`
   tool (option A) + install-then-delegate.
 - **P4 Polish:** retrieval quality, failure-path cards, simple-vs-complex tuning,
