@@ -224,6 +224,12 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     deviceTaskHistoryStore,
   );
+  // The tabby-control plugin loses its in-memory VLM credential on every
+  // OpenClaw (re)start, so re-push it once the plugin RPC is reachable after
+  // any restart (provider change, watchdog, skills nudge, cloud login, ...).
+  openclawProcess.setVlmCredentialRepush(() =>
+    deviceControlService.pushVlmCredentialWhenReady(),
+  );
   const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
   const devicePollingService = new DevicePollingService(deviceControlService);
   const attachmentStore = new AttachmentStore({
@@ -467,12 +473,10 @@ export async function createContainer(): Promise<ControllerContainer> {
     // resident in memory and the runtime keeps resolving to stale entries
     // (e.g. link/*) after disconnect, or reports "Unknown model" after a
     // fresh login because the registry never saw the new providers map.
-    // `restart()` handles both dev-managed and launchd-managed modes.
+    // `restart()` handles both dev-managed and launchd-managed modes, and
+    // re-pushes the signed-in user's VLM gateway credential (or null on logout)
+    // to the tabby-control plugin once it is back up, via setVlmCredentialRepush.
     await openclawProcess.restart("cloud_state_changed");
-    // After the restart the tabby-control plugin comes up with no VLM
-    // credential; push the signed-in user's gateway credential (or null on
-    // logout) so phones run the model on their cloud account.
-    await deviceControlService.pushVlmCredential();
   };
 
   // Hoisted so both the container surface and the channel-health watchdog
@@ -580,18 +584,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       // On cold start, push the signed-in user's VLM gateway credential to the
       // device-control plugin once its RPC is up, so phones connecting before
       // any login change still run the model on the user's cloud account.
-      void (async () => {
-        for (let attempt = 0; attempt < 10; attempt++) {
-          const up = await deviceControlService
-            .isAvailable()
-            .catch(() => false);
-          if (up) {
-            await deviceControlService.pushVlmCredential();
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-      })();
+      void deviceControlService.pushVlmCredentialWhenReady();
 
       return () => {
         stopHealthLoop();
