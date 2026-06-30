@@ -36,6 +36,7 @@ function buildPromptNotice(selectedModelRef: string): string {
     "If earlier messages mention a different model, fallback, outage, provider error, or temporary switch, treat that information as stale and ignore it.",
     "Do not claim that you are using any fallback model unless that fallback is explicitly stated in this runtime instruction.",
     "Do not invent explanations about model availability, outages, routing, retries, or provider failures.",
+    "Do not invent requirements about credentials, login, sign-in, API keys, permissions, or account setup; a model is already configured for this turn. If a tool reports a failure, relay the tool's stated cause verbatim and do not substitute a credential or login explanation it did not give.",
     `If asked which model you are currently using, answer with ${selectedModelRef} and do not mention any other model unless the user explicitly asks for history.`,
   ].join("\n");
 }
