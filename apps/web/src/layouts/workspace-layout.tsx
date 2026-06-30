@@ -1469,7 +1469,7 @@ function WorkspaceLayoutContent() {
                         {t("layout.help.docs")}
                       </a>
                       <a
-                        href="mailto:hi@nexu.ai"
+                        href="mailto:work4zkl@gmail.com"
                         onClick={() =>
                           track("workspace_docs_click", { type: "contact" })
                         }

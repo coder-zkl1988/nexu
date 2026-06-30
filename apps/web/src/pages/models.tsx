@@ -1256,13 +1256,13 @@ function _GeneralSettings() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent/10 to-accent/5">
               <img
                 src="/brand/logo-black-1.svg"
-                alt="nexu"
+                alt="Tabby"
                 className="h-6 w-6 object-contain"
               />
             </div>
             <div>
               <div className="text-[13px] font-semibold text-text-primary">
-                nexu
+                Tabby
               </div>
               <div className="text-[11px] text-text-tertiary">
                 {appVersion ?? "Desktop client"}
@@ -1978,7 +1978,7 @@ export function ModelsPage() {
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent/10 to-accent/5">
                       <img
                         src="/brand/logo-black-1.svg"
-                        alt="nexu"
+                        alt="Tabby"
                         className="h-5 w-5 object-contain"
                       />
                     </div>
