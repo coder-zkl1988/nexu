@@ -42,6 +42,7 @@ export class OpenClawProcessManager {
   private controlledRestartTimer: NodeJS.Timeout | null = null;
   private controlledRestartSuccessorPid: number | null = null;
   private eventListeners = new Set<(event: OpenClawRuntimeEvent) => void>();
+  private vlmCredentialRepush: (() => Promise<void>) | null = null;
 
   constructor(private readonly env: ControllerEnv) {}
 
@@ -78,6 +79,31 @@ export class OpenClawProcessManager {
     return () => {
       this.eventListeners.delete(listener);
     };
+  }
+
+  /**
+   * Register a best-effort callback fired after every restart() so the
+   * tabby-control plugin — which loses its in-memory VLM credential on each
+   * (re)start — gets the credential re-pushed once it is reachable again.
+   */
+  setVlmCredentialRepush(repush: () => Promise<void>): void {
+    this.vlmCredentialRepush = repush;
+  }
+
+  private repushVlmCredentialAfterRestart(reason: string): void {
+    const repush = this.vlmCredentialRepush;
+    if (!repush) {
+      return;
+    }
+    void repush().catch((error) => {
+      logger.warn(
+        {
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "openclaw_vlm_credential_repush_failed",
+      );
+    });
   }
   /**
    * Check whether the managed OpenClaw process is currently alive.
@@ -216,6 +242,7 @@ export class OpenClawProcessManager {
       await this.stop();
       this.enableAutoRestart();
       this.start();
+      this.repushVlmCredentialAfterRestart(reason);
       return;
     }
 
@@ -234,6 +261,7 @@ export class OpenClawProcessManager {
           "openclaw_restart_launchd_failed",
         );
       }
+      this.repushVlmCredentialAfterRestart(reason);
       return;
     }
 

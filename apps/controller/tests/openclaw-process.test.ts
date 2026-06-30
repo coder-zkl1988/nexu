@@ -48,6 +48,43 @@ describe("OpenClawProcessManager log event parsing", () => {
     });
   });
 
+  it("re-pushes the VLM credential via the registered callback after restart", async () => {
+    // manageOpenclawProcess:true takes the managed restart branch; stub
+    // start()/stop() so no real process is spawned.
+    const manager = new OpenClawProcessManager({
+      manageOpenclawProcess: true,
+    } as unknown as ConstructorParameters<typeof OpenClawProcessManager>[0]);
+    const internal = manager as unknown as {
+      start(): void;
+      stop(): Promise<void>;
+    };
+    internal.start = () => {};
+    internal.stop = async () => {};
+
+    let repushCount = 0;
+    manager.setVlmCredentialRepush(async () => {
+      repushCount += 1;
+    });
+
+    await manager.restart("test_reason");
+
+    expect(repushCount).toBe(1);
+  });
+
+  it("restart does not throw when no VLM-credential repush is registered", async () => {
+    const manager = new OpenClawProcessManager({
+      manageOpenclawProcess: true,
+    } as unknown as ConstructorParameters<typeof OpenClawProcessManager>[0]);
+    const internal = manager as unknown as {
+      start(): void;
+      stop(): Promise<void>;
+    };
+    internal.start = () => {};
+    internal.stop = async () => {};
+
+    await expect(manager.restart("no_callback")).resolves.toBeUndefined();
+  });
+
   it("does not emit events for provider or unrelated log lines", () => {
     const { events, emitLine } = createTestHarness();
 

@@ -95,6 +95,26 @@ export class DeviceControlService {
     }
   }
 
+  /**
+   * Push the VLM credential once the tabby-control RPC is reachable. The plugin
+   * comes up with no credential after every OpenClaw (re)start, so this polls
+   * `isAvailable()` and pushes on first success. Best-effort: gives up silently
+   * after `maxAttempts`. Used by cold start and after every gateway restart.
+   */
+  async pushVlmCredentialWhenReady(
+    maxAttempts = 10,
+    intervalMs = 2000,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const up = await this.isAvailable().catch(() => false);
+      if (up) {
+        await this.pushVlmCredential();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
   async isAvailable(): Promise<boolean> {
     // Cancel any in-flight health check
     this.healthAbortController?.abort();
