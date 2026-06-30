@@ -34,6 +34,7 @@ import {
   openclawSupervisorPath,
 } from "../shared/paths.js";
 import { createDevMarkerArgs } from "../shared/trace.js";
+import { ensureTabbyControlPluginStaged } from "./tabby-control-plugin.js";
 
 const logger = rootLogger.child({
   component: "openclaw-service",
@@ -375,6 +376,9 @@ export async function startOpenclawDevProcess(options: {
   await ensureDirectory(
     join(runtimeConfig.openclawStateDir, "media", "tabby-screenshots"),
   );
+  // Stage the tabby-control device-control plugin into the extensions dir before
+  // openclaw boots, so fresh worktrees load it without a manual deploy. Non-fatal.
+  await ensureTabbyControlPluginStaged();
   const openclawEntryPath = await prepareOpenclawEntryPath();
 
   logOpenclawTiming("filesystem-ready", startedAt);
