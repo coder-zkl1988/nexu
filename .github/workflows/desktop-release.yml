@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: coder-zkl1988/tabby-control
-          ref: nexu-desktop
+          ref: main
           path: .release-worktrees/tabby-control
 
       - name: Build tabby-control plugin
@@ -151,6 +151,7 @@ jobs:
           npm --prefix .release-worktrees/tabby-control install --no-package-lock
           npm --prefix .release-worktrees/tabby-control run build:nexu
           test -d .release-worktrees/tabby-control/dist-nexu/tabby-control
+          node apps/desktop/scripts/validate-tabby-control-bundle.mjs .release-worktrees/tabby-control/dist-nexu/tabby-control
 
       - name: Import Apple Developer ID certificate
         shell: bash
@@ -351,7 +352,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: coder-zkl1988/tabby-control
-          ref: nexu-desktop
+          ref: main
           path: .release-worktrees/tabby-control
 
       - name: Build tabby-control plugin
@@ -362,6 +363,7 @@ jobs:
           if (-not (Test-Path .release-worktrees/tabby-control/dist-nexu/tabby-control)) {
             throw "Missing tabby-control dist-nexu output"
           }
+          node apps/desktop/scripts/validate-tabby-control-bundle.mjs .release-worktrees/tabby-control/dist-nexu/tabby-control
 
       - name: Install packaging tools
         shell: pwsh
