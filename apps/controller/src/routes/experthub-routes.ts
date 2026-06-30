@@ -317,10 +317,50 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
     async (c) => {
       const { slug } = c.req.valid("param");
       const resolved = await deps.catalog.resolveExpert(slug);
-      if (!resolved) {
-        return c.json({ message: "Expert not found" }, 404);
+      if (resolved) {
+        return c.json(resolved.manifest, 200);
       }
-      return c.json(resolved.manifest, 200);
+      // Custom experts have no bundled/managed manifest.json on disk — only an
+      // agent workspace + a ledger entry. Synthesize a manifest from the saved
+      // workspace files so the detail view and the edit form show the user's
+      // saved IDENTITY/SOUL/AGENTS instead of falling back to a default.
+      const ledger = await deps.catalog.readLedger();
+      const entry = ledger.entries[slug];
+      if (entry) {
+        const workspaceFiles: Record<string, string> = {};
+        for (const filename of ALLOWED_TEMPLATE_FILES) {
+          try {
+            const content = await readFile(
+              path.join(deps.agentsDir, entry.botId, filename),
+              "utf-8",
+            );
+            if (content) workspaceFiles[filename] = content;
+          } catch {
+            // File may not exist for this expert — skip it.
+          }
+        }
+        const manifest = expertManifestSchema.parse({
+          schemaVersion: 1,
+          slug: entry.slug,
+          name: entry.name || slug,
+          emoji: "🤖",
+          category: "custom",
+          description: entry.description || entry.name || slug,
+          version: entry.version,
+          systemPrompt: entry.description || entry.name || slug,
+          workspaceFiles,
+          // Manifest caps avatars at 200KB; the ledger allows up to 2MB. Omit an
+          // oversized avatar (detail view falls back to the emoji) rather than
+          // letting schema validation throw a 500. The edit form reads the
+          // avatar from the ledger entry, not from this manifest.
+          avatarDataUrl:
+            entry.avatarDataUrl && entry.avatarDataUrl.length <= 200_000
+              ? entry.avatarDataUrl
+              : undefined,
+        });
+        return c.json(manifest, 200);
+      }
+      return c.json({ message: "Expert not found" }, 404);
     },
   );
 

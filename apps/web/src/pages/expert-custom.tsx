@@ -30,6 +30,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Link } from "react-router-dom";
 import {
   getApiV1BotsByBotId,
+  getApiV1ExperthubExpertsBySlug,
   getApiV1Models,
   postApiV1ExperthubCustom,
 } from "../../lib/api/sdk.gen";
@@ -508,6 +509,52 @@ export function ExpertCustomPage() {
       }
     }
   }, [editData, editLedgerEntry, isEditing]);
+
+  // Load the saved file editors when editing an existing expert. The bots
+  // endpoint above only returns name/model, so fetch the full manifest — the
+  // controller reads IDENTITY/SOUL/AGENTS/USER back from the agent workspace.
+  // Without this the editors stay on the preset default and re-saving would
+  // overwrite the user's saved files with that default.
+  const { data: editManifest } = useQuery({
+    queryKey: ["expert-manifest", editSlug],
+    queryFn: async () => {
+      if (!editSlug) return null;
+      const { data } = await getApiV1ExperthubExpertsBySlug({
+        path: { slug: editSlug },
+      });
+      return data ?? null;
+    },
+    enabled: isEditing && !!editSlug,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+  // Restore the saved file editors exactly once per expert, marking each as
+  // "touched" so the platform-template override and name-sync effects above
+  // don't overwrite the user's saved content.
+  const filesRestoredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isEditing || !editSlug) return;
+    if (filesRestoredRef.current === editSlug) return;
+    const files = editManifest?.workspaceFiles;
+    if (!files) return;
+    filesRestoredRef.current = editSlug;
+    if (files["AGENTS.md"]) {
+      setAgentsMd(files["AGENTS.md"]);
+      agentsTouchedRef.current = true;
+    }
+    if (files["IDENTITY.md"]) {
+      setIdentityMd(files["IDENTITY.md"]);
+      identityTouchedRef.current = true;
+    }
+    if (files["SOUL.md"]) {
+      setSoulMd(files["SOUL.md"]);
+      soulTouchedRef.current = true;
+    }
+    if (files["USER.md"]) {
+      setUserMd(files["USER.md"]);
+      userTouchedRef.current = true;
+    }
+  }, [editManifest, isEditing, editSlug]);
 
   // Restore selected skills when the bot ID is resolved during editing.
   // Watch the raw skills query data (stable reference) rather than the derived
