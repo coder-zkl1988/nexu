@@ -1,4 +1,4 @@
-import { readdirSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
@@ -403,6 +403,12 @@ async function bundlePlugin({ id, npmName, localSource }) {
       "dist-nexu",
       "tabby-control",
     );
+    if (!existsSync(path.join(tabbyDistNexu, "openclaw.plugin.json"))) {
+      console.warn(
+        `  [${id}] source not found at ${tabbyDistNexu} — skipping. Run "pnpm build:nexu" in the tabby-control repo (or set TABBY_CONTROL_DIR) to bundle device control.`,
+      );
+      return;
+    }
     sourcePackageRoot = await realpath(tabbyDistNexu);
   } else {
     // Resolve the package root directory.
@@ -556,10 +562,31 @@ async function bundlePlugin({ id, npmName, localSource }) {
 }
 
 async function main() {
-  await rm(outputRoot, { recursive: true, force: true });
-  await mkdir(outputRoot, { recursive: true });
+  // Optional BUNDLE_PLUGINS=id[,id] filter for targeted rebuilds (e.g. local dev
+  // staging just "tabby-control"). Unset = bundle everything (build/packaging).
+  const only = (process.env.BUNDLE_PLUGINS ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const selected = only.length
+    ? bundledPlugins.filter((plugin) => only.includes(plugin.id))
+    : bundledPlugins;
 
-  for (const plugin of bundledPlugins) {
+  if (only.length) {
+    // Refresh only the selected plugins; leave any other bundled output intact.
+    await mkdir(outputRoot, { recursive: true });
+    for (const plugin of selected) {
+      await rm(path.join(outputRoot, plugin.id), {
+        recursive: true,
+        force: true,
+      });
+    }
+  } else {
+    await rm(outputRoot, { recursive: true, force: true });
+    await mkdir(outputRoot, { recursive: true });
+  }
+
+  for (const plugin of selected) {
     await bundlePlugin(plugin);
   }
 }
