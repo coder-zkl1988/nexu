@@ -4642,6 +4642,56 @@ export type GetApiV1TeamsByIdResponses = {
 
 export type GetApiV1TeamsByIdResponse = GetApiV1TeamsByIdResponses[keyof GetApiV1TeamsByIdResponses];
 
+export type PatchApiV1TeamsByIdData = {
+    body?: {
+        name?: string;
+        memberSlugs?: Array<string>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}';
+};
+
+export type PatchApiV1TeamsByIdErrors = {
+    /**
+     * A member expert could not be installed
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdError = PatchApiV1TeamsByIdErrors[keyof PatchApiV1TeamsByIdErrors];
+
+export type PatchApiV1TeamsByIdResponses = {
+    /**
+     * Team updated
+     */
+    200: {
+        id: string;
+        name: string;
+        leadBotId: string;
+        members: Array<{
+            expertSlug: string;
+            botId: string;
+            name?: string;
+        }>;
+        boardId: string;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdResponse = PatchApiV1TeamsByIdResponses[keyof PatchApiV1TeamsByIdResponses];
+
 export type GetApiV1TeamsByIdBoardData = {
     body?: never;
     path: {

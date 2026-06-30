@@ -49,6 +49,8 @@ describe("TeamService", () => {
   let syncAll: ReturnType<typeof vi.fn>;
   let createBot: ReturnType<typeof vi.fn>;
   let planSubtasks: ReturnType<typeof vi.fn>;
+  let installExpert: ReturnType<typeof vi.fn>;
+  let mockExpertLedger: ExpertLedger;
 
   function buildService(overrides: Partial<TeamServiceDeps> = {}): TeamService {
     return new TeamService({
@@ -56,7 +58,10 @@ describe("TeamService", () => {
       gateway,
       resolveExpertPersona: async (slug) =>
         slug === "reviewer" ? "You are the Code Sentinel." : "I write docs.",
-      readExpertLedger: async () => makeExpertLedger(),
+      resolveExpertName: async (slug) =>
+        mockExpertLedger.entries[slug]?.name ?? null,
+      readExpertLedger: async () => mockExpertLedger,
+      installExpert,
       botService: {
         createBot,
         deleteBot: vi.fn(async () => true),
@@ -75,6 +80,17 @@ describe("TeamService", () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "team-svc-"));
     ledger = new TeamLedgerStore(join(tmpDir, "team-ledger.json"));
+    mockExpertLedger = makeExpertLedger();
+    // Default: installing an expert adds it to the (mutable) experthub ledger.
+    installExpert = vi.fn(async (slug: string) => {
+      mockExpertLedger.entries[slug] = {
+        slug,
+        version: "1.0.0",
+        botId: `bot-${slug}`,
+        installedAt: "2026-01-01T00:00:00.000Z",
+        name: `Installed ${slug}`,
+      };
+    });
     gateway = {
       workboardBoardUpsert: vi.fn(async () => ({})),
       workboardCardCreate: vi.fn(async () => ({
@@ -137,12 +153,51 @@ describe("TeamService", () => {
     expect(syncAll).toHaveBeenCalledTimes(1);
   });
 
-  it("createTeam rejects an uninstalled member", async () => {
+  it("createTeam auto-installs an uninstalled member", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer", "ghost"],
+    });
+
+    expect(installExpert).toHaveBeenCalledTimes(1);
+    expect(installExpert).toHaveBeenCalledWith("ghost");
+    expect(team.members).toContainEqual({
+      expertSlug: "ghost",
+      botId: "bot-ghost",
+      name: "Installed ghost",
+    });
+  });
+
+  it("createTeam rejects when an uninstalled member fails to install", async () => {
+    installExpert.mockRejectedValueOnce(new Error("install failed"));
     const service = buildService();
     await expect(
       service.createTeam({ name: "X", memberSlugs: ["ghost"] }),
     ).rejects.toBeInstanceOf(TeamMemberNotInstalledError);
     expect(createBot).not.toHaveBeenCalled();
+  });
+
+  it("updateTeam renames and replaces members", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+    syncAll.mockClear();
+
+    const updated = await service.updateTeam(team.id, {
+      name: "Renamed Squad",
+      memberSlugs: ["writer"],
+    });
+
+    expect(updated.name).toBe("Renamed Squad");
+    expect(updated.members).toEqual([
+      { expertSlug: "writer", botId: "bot-writer", name: "Tech Writer" },
+    ]);
+    expect(updated.leadBotId).toBe(team.leadBotId);
+    expect(ledger.get(team.id)?.name).toBe("Renamed Squad");
+    expect(syncAll).toHaveBeenCalledTimes(1);
   });
 
   it("runTask decomposes into member cards with persona injected into notes, then dispatches", async () => {

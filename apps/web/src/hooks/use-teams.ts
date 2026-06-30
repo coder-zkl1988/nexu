@@ -2,6 +2,7 @@ import type {
   AutoRunTeamTaskRequest,
   CreateTeamRequest,
   RunTeamTaskRequest,
+  UpdateTeamRequest,
 } from "@nexu/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,6 +10,7 @@ import {
   getApiV1Teams,
   getApiV1TeamsById,
   getApiV1TeamsByIdBoard,
+  patchApiV1TeamsById,
   postApiV1Teams,
   postApiV1TeamsByIdRun,
   postApiV1TeamsByIdRunAuto,
@@ -70,6 +72,28 @@ export function useCreateTeam() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
+    },
+  });
+}
+
+export function useUpdateTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: { id: string; body: UpdateTeamRequest }) => {
+      const { data, error } = await patchApiV1TeamsById({ path: { id }, body });
+      if (error) throw new Error("Update team request failed");
+      if (!data) throw new Error("Update team returned no data");
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+      void queryClient.invalidateQueries({
+        queryKey: TEAM_DETAIL_QUERY_KEY(variables.id),
+      });
       void queryClient.invalidateQueries({ queryKey: ["bots"] });
     },
   });

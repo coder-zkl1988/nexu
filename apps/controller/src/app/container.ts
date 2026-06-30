@@ -290,7 +290,16 @@ export async function createContainer(): Promise<ControllerContainer> {
         null
       );
     },
+    resolveExpertName: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      return resolved?.manifest.name ?? null;
+    },
     readExpertLedger: () => experthubCatalogManager.readLedger(),
+    // Auto-install uninstalled experts when they are added to a team.
+    // installExpertFn is declared below; only invoked at request time.
+    installExpert: async (slug) => {
+      await installExpertFn({ slug });
+    },
     botService: {
       createBot: async (input) => {
         const bot = await agentService.createBot({

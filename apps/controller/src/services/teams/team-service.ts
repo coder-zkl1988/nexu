@@ -8,6 +8,7 @@ import type {
   TeamMember,
   TeamResponse,
   TeamSubtaskInput,
+  UpdateTeamRequest,
 } from "@nexu/shared";
 import { logger } from "../../lib/logger.js";
 import type { ExpertLedger } from "../experthub/types.js";
@@ -29,7 +30,7 @@ export class TeamNotFoundError extends Error {
 
 export class TeamMemberNotInstalledError extends Error {
   constructor(public readonly slug: string) {
-    super(`Team member expert is not installed: ${slug}`);
+    super(`Team member expert could not be installed: ${slug}`);
     this.name = "TeamMemberNotInstalledError";
   }
 }
@@ -61,7 +62,11 @@ export type TeamServiceDeps = {
   >;
   /** Resolve a member expert's persona text (SOUL.md, falling back to systemPrompt). */
   resolveExpertPersona: (slug: string) => Promise<string | null>;
+  /** Resolve a member expert's display name from its manifest (localized). */
+  resolveExpertName: (slug: string) => Promise<string | null>;
   readExpertLedger: () => Promise<ExpertLedger>;
+  /** Install an uninstalled expert so it has a bot to run as (auto-install on add). */
+  installExpert: (slug: string) => Promise<void>;
   botService: {
     createBot: (input: {
       name: string;
@@ -144,16 +149,40 @@ export class TeamService {
     }
   }
 
-  async createTeam(input: CreateTeamRequest): Promise<TeamResponse> {
-    // Resolve members from the experthub ledger; all members must be installed.
-    const expertLedger = await this.deps.readExpertLedger();
-    const members: TeamMember[] = input.memberSlugs.map((slug) => {
-      const entry = expertLedger.entries[slug];
-      if (!entry) {
+  /**
+   * Resolve member slugs to {expertSlug, botId, name}. Uninstalled experts are
+   * auto-installed so each member has a real bot to run as (the Workboard card
+   * assignee). Names come from the expert manifest (localized) so members render
+   * correctly even when the ledger entry has no name.
+   */
+  private async resolveMembers(memberSlugs: string[]): Promise<TeamMember[]> {
+    let ledger = await this.deps.readExpertLedger();
+    const missing = memberSlugs.filter((slug) => !ledger.entries[slug]);
+    for (const slug of missing) {
+      try {
+        await this.deps.installExpert(slug);
+      } catch {
         throw new TeamMemberNotInstalledError(slug);
       }
-      return { expertSlug: slug, botId: entry.botId, name: entry.name };
-    });
+    }
+    if (missing.length > 0) {
+      ledger = await this.deps.readExpertLedger();
+    }
+    return Promise.all(
+      memberSlugs.map(async (slug) => {
+        const entry = ledger.entries[slug];
+        if (!entry) {
+          throw new TeamMemberNotInstalledError(slug);
+        }
+        const name = (await this.deps.resolveExpertName(slug)) ?? entry.name;
+        return { expertSlug: slug, botId: entry.botId, name };
+      }),
+    );
+  }
+
+  async createTeam(input: CreateTeamRequest): Promise<TeamResponse> {
+    // Resolve members, auto-installing any uninstalled experts.
+    const members = await this.resolveMembers(input.memberSlugs);
 
     // The lead is the team's orchestrator agent (used for Phase 2 agentic
     // planning; in Phase 1 it owns the parent orchestration card).
@@ -180,6 +209,27 @@ export class TeamService {
     // (createBot already synced once; this picks up hasTeams=true.)
     await this.deps.syncAll();
     return team;
+  }
+
+  /** Rename a team and/or replace its member set. */
+  async updateTeam(
+    teamId: string,
+    input: UpdateTeamRequest,
+  ): Promise<TeamResponse> {
+    const team = this.requireTeam(teamId);
+    const members = input.memberSlugs
+      ? await this.resolveMembers(input.memberSlugs)
+      : team.members;
+    const updated: TeamResponse = {
+      ...team,
+      name: input.name ?? team.name,
+      members,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.deps.ledger.upsert(updated);
+    // Member set affects the compiled OpenClaw config (board assignees).
+    await this.deps.syncAll();
+    return updated;
   }
 
   async deleteTeam(teamId: string): Promise<boolean> {

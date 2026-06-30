@@ -10,6 +10,8 @@ import {
   teamBoardResponseSchema,
   teamListResponseSchema,
   teamResponseSchema,
+  updateTeamRequestSchema,
+  updateTeamResponseSchema,
 } from "@nexu/shared";
 import {
   TeamAssigneeNotMemberError,
@@ -26,6 +28,7 @@ export type TeamRoutesDeps = {
     | "getTeam"
     | "getBoard"
     | "createTeam"
+    | "updateTeam"
     | "deleteTeam"
     | "runTask"
     | "runTaskAuto"
@@ -122,6 +125,51 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
         return c.json({ message: "Team not found" }, 404);
       }
       return c.json(team, 200);
+    },
+  );
+
+  // PATCH /teams/{id} — rename and/or replace the member set
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/{id}",
+      tags: ["Teams"],
+      request: {
+        params: teamIdParamSchema,
+        body: {
+          content: { "application/json": { schema: updateTeamRequestSchema } },
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: updateTeamResponseSchema } },
+          description: "Team updated",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "A member expert could not be installed",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Team not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const input = c.req.valid("json");
+      try {
+        const team = await deps.teamService.updateTeam(id, input);
+        return c.json(team, 200);
+      } catch (error) {
+        if (error instanceof TeamNotFoundError) {
+          return c.json({ message: error.message }, 404);
+        }
+        if (error instanceof TeamMemberNotInstalledError) {
+          return c.json({ message: error.message }, 400);
+        }
+        throw error;
+      }
     },
   );
 

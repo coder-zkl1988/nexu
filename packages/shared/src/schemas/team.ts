@@ -38,13 +38,22 @@ export const teamListResponseSchema = z.object({
 
 export const createTeamRequestSchema = z.object({
   name: z.string().min(1).max(80),
-  /** Installed expert slugs to add as members (must already be installed). */
+  /** Expert slugs to add as members. Uninstalled experts are auto-installed. */
   memberSlugs: z.array(z.string().min(1)).min(1).max(10),
   /** Model for the lead orchestrator. Falls back to the runtime default. */
   leadModelId: z.string().min(1).optional(),
 });
 
 export const createTeamResponseSchema = teamResponseSchema;
+
+/** Partial update: rename and/or replace the member set. */
+export const updateTeamRequestSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  /** Replacement member set. Uninstalled experts are auto-installed. */
+  memberSlugs: z.array(z.string().min(1)).min(1).max(10).optional(),
+});
+
+export const updateTeamResponseSchema = teamResponseSchema;
 
 export const deleteTeamResponseSchema = z.object({ ok: z.literal(true) });
 
@@ -119,6 +128,8 @@ export type TeamResponse = z.infer<typeof teamResponseSchema>;
 export type TeamListResponse = z.infer<typeof teamListResponseSchema>;
 export type CreateTeamRequest = z.infer<typeof createTeamRequestSchema>;
 export type CreateTeamResponse = z.infer<typeof createTeamResponseSchema>;
+export type UpdateTeamRequest = z.infer<typeof updateTeamRequestSchema>;
+export type UpdateTeamResponse = z.infer<typeof updateTeamResponseSchema>;
 export type DeleteTeamResponse = z.infer<typeof deleteTeamResponseSchema>;
 export type TeamSubtaskInput = z.infer<typeof teamSubtaskInputSchema>;
 export type RunTeamTaskRequest = z.infer<typeof runTeamTaskRequestSchema>;
