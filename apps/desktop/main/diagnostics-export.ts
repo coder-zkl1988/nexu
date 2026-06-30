@@ -717,7 +717,7 @@ export async function exportDiagnostics({
   runtimeConfig: DesktopRuntimeConfig;
   source: "diagnostics-page" | "help-menu";
 }): Promise<DiagnosticsExportResult> {
-  const defaultFilename = `nexu-diagnostics-${getTimestampSlug()}.zip`;
+  const defaultFilename = `tabby-diagnostics-${getTimestampSlug()}.zip`;
   const defaultArchiveRoot = defaultFilename.replace(/\.zip$/i, "");
 
   let filePath: string | undefined;
