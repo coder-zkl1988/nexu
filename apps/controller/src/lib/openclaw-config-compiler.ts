@@ -321,6 +321,17 @@ export function resolveModelId(
   return rawModelId;
 }
 
+/**
+ * Native sub-agent tools added to delegation-capable chat bots. The default tool
+ * profile may not expose these, so we add them explicitly (see OpenClaw
+ * docs/tools/subagents.md). Spiked working in the live runtime 2026-06-30.
+ */
+const SUBAGENT_DELEGATION_TOOLS = [
+  "sessions_spawn",
+  "sessions_yield",
+  "subagents",
+];
+
 function compileAgentList(
   config: NexuConfig,
   env: ControllerEnv,
@@ -343,6 +354,11 @@ function compileAgentList(
         new Set([...sharedSlugs, ...workspaceSlugs]),
       ).sort((left, right) => left.localeCompare(right));
 
+      // Chat assistants (not installed experts) can delegate one turn to an
+      // expert bot via native sub-agents (in-chat auto-routing). OpenClaw's
+      // sub-agent tool policy strips these tools from spawned children, so a
+      // delegated expert cannot recurse. See
+      // specs/design-docs/2026-06-30-in-chat-expert-auto-route.md.
       return {
         id: bot.id,
         name: bot.name,
@@ -352,6 +368,8 @@ function compileAgentList(
           ? { primary: resolveModelId(config, env, bot.modelId, oauthState) }
           : undefined,
         ...(merged.length > 0 ? { skills: merged } : {}),
+        tools: { alsoAllow: SUBAGENT_DELEGATION_TOOLS },
+        subagents: { allowAgents: ["*"] },
       };
     });
 }

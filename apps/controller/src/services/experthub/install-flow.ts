@@ -134,11 +134,17 @@ export async function installExpert(args: {
 
   const workspaceRoot = path.join(deps.agentsDir, bot.id);
   await deps.fs.mkdir(workspaceRoot, { recursive: true });
+  const soulPersona = manifest.workspaceFiles["SOUL.md"];
   for (const [relPath, content] of Object.entries(manifest.workspaceFiles)) {
     const safeRel = normalizeWorkspacePath(relPath);
     const target = path.join(workspaceRoot, safeRel);
     await deps.fs.mkdir(path.dirname(target), { recursive: true });
-    await deps.fs.writeFile(target, content);
+    // Fold SOUL.md persona into AGENTS.md so it survives sub-agent delegation.
+    const toWrite =
+      safeRel === "AGENTS.md" && soulPersona
+        ? foldPersonaIntoAgents(content, soulPersona)
+        : content;
+    await deps.fs.writeFile(target, toWrite);
   }
 
   // Experts carry their own identity; remove the platform BOOTSTRAP.md so it
@@ -166,6 +172,44 @@ export async function installExpert(args: {
   await deps.sync.syncAll();
 
   return { ok: true, botId: bot.id, slug: manifest.slug };
+}
+
+const PERSONA_BLOCK_BEGIN = "<!-- NEXU:PERSONA:BEGIN -->";
+const PERSONA_BLOCK_END = "<!-- NEXU:PERSONA:END -->";
+
+/**
+ * Fold an expert's SOUL.md persona into its AGENTS.md inside a managed block so
+ * the persona survives native sub-agent delegation: OpenClaw's
+ * SUBAGENT_BOOTSTRAP_ALLOWLIST only injects AGENTS.md + TOOLS.md into a sub-agent,
+ * so a delegated expert would otherwise lose its SOUL.md persona. Idempotent —
+ * re-running replaces the managed block. See
+ * specs/design-docs/2026-06-30-in-chat-expert-auto-route.md.
+ */
+export function foldPersonaIntoAgents(
+  agentsContent: string,
+  soul: string,
+): string {
+  const persona = soul.trim();
+  if (!persona) {
+    return agentsContent;
+  }
+  const block = `${PERSONA_BLOCK_BEGIN}\n## 角色人设 (Persona)\n\n${persona}\n${PERSONA_BLOCK_END}`;
+  const base = stripPersonaBlock(agentsContent).trimEnd();
+  return base ? `${base}\n\n${block}\n` : `${block}\n`;
+}
+
+function stripPersonaBlock(content: string): string {
+  const start = content.indexOf(PERSONA_BLOCK_BEGIN);
+  if (start === -1) {
+    return content;
+  }
+  const end = content.indexOf(PERSONA_BLOCK_END);
+  if (end === -1) {
+    return content.slice(0, start);
+  }
+  return (
+    content.slice(0, start) + content.slice(end + PERSONA_BLOCK_END.length)
+  );
 }
 
 /**
@@ -371,12 +415,18 @@ export async function createCustomExpert(args: {
     );
   }
 
+  const soulPersona = workspaceFiles["SOUL.md"];
   for (const [relPath, content] of Object.entries(workspaceFiles)) {
     if (!content) continue;
     const safeRel = normalizeWorkspacePath(relPath);
     const target = path.join(workspaceRoot, safeRel);
     await deps.fs.mkdir(path.dirname(target), { recursive: true });
-    await deps.fs.writeFile(target, content);
+    // Fold SOUL.md persona into AGENTS.md so it survives sub-agent delegation.
+    const toWrite =
+      safeRel === "AGENTS.md" && soulPersona
+        ? foldPersonaIntoAgents(content, soulPersona)
+        : content;
+    await deps.fs.writeFile(target, toWrite);
   }
 
   // Custom experts have their identity fully specified — the bootstrap script

@@ -110,9 +110,19 @@ R1+R2+R3 are the linchpins; R4/R5 have working precedents.
 
 ## Phased plan (after spike go)
 
-- **P0 (this doc + spike):** prove R1/R2/R3 in the dev stack.
-- **P1 Delegation core:** compiler emits sub-agent profile + `allowAgents` for single
-  bots; persona-fold at install; prove lead→installed-expert inline delegation.
+- **P0 (this doc + spike): ✅ done** — R1/R2 + relay proven in the dev stack.
+- **P1 Delegation core: ✅ done + validated.** Compiler now emits
+  `tools.alsoAllow:["sessions_spawn","sessions_yield","subagents"]` +
+  `subagents.allowAgents:["*"]` on every agent (`compileAgentList`); install folds
+  SOUL.md→AGENTS.md (`installExpert`/`createCustomExpert`, `foldPersonaIntoAgents`,
+  idempotent managed block). **Validated via the real compiler path**: the lead
+  delegated to an expert and the sub-agent answered in its folded persona
+  (*"我是小红书运营专家，专注于内容种草、达人合作策略…"*), proving `alsoAllow` exposes
+  `sessions_spawn` and the fold reaches the sub-agent. Unit tests: compiler emission
+  + fold idempotency.
+  - **Follow-up:** experts installed *before* P1 lack the fold in their AGENTS.md;
+    a one-time migration (or fold-on-sync) is needed so existing experts keep
+    persona when delegated to. New installs are covered.
 - **P2 Retrieval:** `find_expert` runtime plugin + AGENTS.md routing nudge.
 - **P3 Install card:** install card emission + `expert_install` action + `install_expert`
   tool (option A) + install-then-delegate.

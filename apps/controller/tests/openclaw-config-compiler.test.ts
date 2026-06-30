@@ -157,6 +157,17 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("emits sub-agent delegation config on every agent (in-chat auto-routing)", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.agents.list.length).toBeGreaterThan(0);
+    for (const agent of result.agents.list) {
+      expect(agent.tools).toMatchObject({
+        alsoAllow: expect.arrayContaining(["sessions_spawn", "sessions_yield"]),
+      });
+      expect(agent.subagents).toEqual({ allowAgents: ["*"] });
+    }
+  });
+
   it("builds OpenClaw config with provider and channel parity defaults", () => {
     // Provide canonical models.providers so the compiler can resolve provider
     // descriptors (legacy config.providers is not read by the compiler).
