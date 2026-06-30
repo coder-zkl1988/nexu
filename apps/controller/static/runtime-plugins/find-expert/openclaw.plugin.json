@@ -5,10 +5,15 @@
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "properties": {}
+    "properties": {
+      "controllerUrl": {
+        "type": "string",
+        "description": "Base URL of the Nexu controller (loopback) for catalog + install calls."
+      }
+    }
   },
   "contracts": {
-    "tools": ["find_expert"]
+    "tools": ["find_expert", "propose_expert_install", "install_expert"]
   },
   "activation": {
     "onStartup": true

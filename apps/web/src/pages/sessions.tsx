@@ -195,7 +195,11 @@ interface ExtractedMessage {
 }
 
 /** Tools whose toolResult payloads carry renderable A2UI JSONL. */
-const A2UI_TOOL_NAMES = new Set(["render_a2ui", "render_skill_confirmation"]);
+const A2UI_TOOL_NAMES = new Set([
+  "render_a2ui",
+  "render_skill_confirmation",
+  "propose_expert_install",
+]);
 
 /** Complex editor components — their surfaces always open in the side panel. */
 const SIDEBAR_DOC_COMPONENT_TYPES = new Set(["MarkdownEditor", "XHSEditor"]);
@@ -457,6 +461,10 @@ function a2uiActionLabel(actionName: string): string {
       return "已提交小红书发布";
     case "skill_confirmation":
       return "已确认操作";
+    case "install_expert":
+      return "已确认安装专家";
+    case "install_expert_cancel":
+      return "已取消安装";
     default:
       return "已提交操作";
   }

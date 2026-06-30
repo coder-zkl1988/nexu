@@ -133,10 +133,22 @@ R1+R2+R3 are the linchpins; R4/R5 have working precedents.
   delegated to the matched installed expert via `sessions_spawn(agentId)`, the expert
   answered in its folded persona, and the lead relayed it inline. (AGENTS.md nudge not
   needed yet — the tool description sufficed for the model to route.)
-- **P3 Install card:** install card emission + `expert_install` action + `install_expert`
-  tool (option A) + install-then-delegate.
-- **P4 Polish:** retrieval quality, failure-path cards, simple-vs-complex tuning,
-  optionally embeddings.
+- **P3 Install card: ✅ done + validated.** `find-expert` plugin gained
+  `propose_expert_install` (server-built A2UI install card with an `install_expert`
+  action) and `install_expert` (calls `POST /experthub/install`, waits ~2.5s for the
+  hot-reload, returns the new `agentId`). Frontend: `A2UI_TOOL_NAMES` +
+  `a2uiActionLabel` updated. The plugin reaches the controller via a `controllerUrl`
+  injected through the plugin config by the compiler (the OpenClaw process has no
+  controller-URL env var). **Validated end-to-end**: confirming the card installed
+  the expert and the lead delegated to it **with no OpenClaw restart** (R3 proven),
+  the new expert answered in its install-time-folded persona.
+- **P4 Polish: ✅ done.** Per-turn expert-routing nudge in `chat-service`
+  (`EXPERT_ROUTING_HINT`, skipped for skill requests + a2ui_action turns) — fixed R7:
+  the model now reliably calls `find_expert` for specialist questions (it self-served
+  before). Strengthened `find_expert`/`install_expert` tool descriptions so the model
+  renders the install card for uninstalled matches and never auto-installs without
+  confirmation. Validated: a 抖音 question routed → `find_expert` → uninstalled →
+  install card rendered autonomously.
 
 ## Decisions needed
 

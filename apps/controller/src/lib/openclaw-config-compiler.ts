@@ -501,6 +501,11 @@ function compilePlugins(
       },
       "find-expert": {
         enabled: true,
+        config: {
+          // The plugin runs in the OpenClaw process and reaches the controller
+          // on loopback to read the expert catalog + trigger installs.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
       },
       "nexu-toolcall-guard": {
         enabled: true,

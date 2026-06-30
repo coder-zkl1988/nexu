@@ -6,6 +6,16 @@ import {
 import type { AttachmentStore } from "./attachment-store.js";
 import type { OpenClawGatewayService } from "./openclaw-gateway-service.js";
 
+/**
+ * Per-turn nudge so the model routes specialist requests to a domain expert
+ * (in-chat auto-routing). Kept balanced so general/simple questions are still
+ * answered directly. See specs/design-docs/2026-06-30-in-chat-expert-auto-route.md.
+ */
+const EXPERT_ROUTING_HINT =
+  "[路由提示：如果本请求属于某个垂直专业领域、且有更合适的专家来处理，请先调用 find_expert 检索；" +
+  "命中已安装专家就用 sessions_spawn 委派给它并把结果转述给用户，命中未安装专家就调用 propose_expert_install 让用户确认安装；" +
+  "如果只是通用、简单或闲聊类问题，直接自己回答，不要路由。]";
+
 export interface LocalChatMessageMetadata {
   width?: number;
   height?: number;
@@ -202,9 +212,17 @@ export class ChatService {
     // is the message text itself.  Prepend a directive the model reliably
     // resolves to the matching skills/<slug>/SKILL.md (verified empirically).
     const skillSlug = message.skillSlug?.trim();
-    const messageContent = skillSlug
-      ? `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`
-      : bodyContent;
+    // Expert auto-routing nudge (in-chat auto-route, P4): remind the model it can
+    // route a specialist request to a domain expert. Skipped for explicit skill
+    // requests and for A2UI action round-trips (e.g. install_expert confirms),
+    // which must reach the model verbatim.
+    const isA2uiAction = bodyContent.includes('"a2ui_action"');
+    let messageContent = bodyContent;
+    if (skillSlug) {
+      messageContent = `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`;
+    } else if (!isA2uiAction) {
+      messageContent = `${EXPERT_ROUTING_HINT}\n\n${bodyContent}`;
+    }
 
     logger.info(
       {
