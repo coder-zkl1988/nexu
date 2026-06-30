@@ -75,7 +75,7 @@ vi.mock("../../apps/desktop/main/services/launchd-manager", () => ({
 }));
 
 vi.mock("../../apps/desktop/main/updater/component-updater", () => ({
-  R2_BASE_URL: "https://desktop-releases.nexu.io",
+  R2_BASE_URL: "https://downloads.picaso.studio/updates",
 }));
 
 // ---------------------------------------------------------------------------
@@ -798,8 +798,8 @@ describe("setSource", () => {
 
     expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "github",
-      owner: "nexu-io",
-      repo: "nexu",
+      owner: "coder-zkl1988",
+      repo: "tabby",
     });
   });
 
@@ -813,7 +813,7 @@ describe("setSource", () => {
 
     expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
-      url: expect.stringContaining("desktop-releases.nexu.io"),
+      url: expect.stringContaining("downloads.picaso.studio/updates"),
     });
   });
 });
@@ -830,7 +830,7 @@ describe("configureFeedUrl (via constructor)", () => {
 
     expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
-      url: expect.stringContaining("desktop-releases.nexu.io/stable/"),
+      url: expect.stringContaining("downloads.picaso.studio/updates/stable/"),
     });
   });
 
@@ -841,8 +841,8 @@ describe("configureFeedUrl (via constructor)", () => {
 
     expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "github",
-      owner: "nexu-io",
-      repo: "nexu",
+      owner: "coder-zkl1988",
+      repo: "tabby",
     });
   });
 
@@ -995,7 +995,7 @@ describe("constructor", () => {
 
     expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
-      url: expect.stringContaining("desktop-releases.nexu.io/stable/"),
+      url: expect.stringContaining("downloads.picaso.studio/updates/stable/"),
     });
   });
 

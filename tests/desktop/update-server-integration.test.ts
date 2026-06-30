@@ -241,7 +241,7 @@ describe("Update server integration", () => {
       feedUrl: null,
     });
 
-    expect(url).toBe("github://nexu-io/nexu");
+    expect(url).toBe("github://coder-zkl1988/tabby");
     expect(url).not.toMatch(/^https?:\/\//);
   });
 
