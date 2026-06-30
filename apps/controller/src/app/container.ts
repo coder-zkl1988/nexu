@@ -41,6 +41,7 @@ import {
   installExpert,
   updateExpertSkills,
 } from "../services/experthub/install-flow.js";
+import { ensureExpertPersonaFolds } from "../services/experthub/persona-fold-migration.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
@@ -270,6 +271,25 @@ export async function createContainer(): Promise<ControllerContainer> {
       );
     },
   });
+
+  // Back-fill the SOUL.md -> AGENTS.md persona fold for experts installed before
+  // in-chat delegation existed, so they keep their persona when delegated to.
+  // Idempotent + fire-and-forget so startup isn't blocked by disk I/O.
+  void ensureExpertPersonaFolds({
+    readLedger: () => experthubCatalogManager.readLedger(),
+    agentsDir: path.join(env.openclawStateDir, "agents"),
+  })
+    .then((updated) => {
+      if (updated > 0) {
+        logger.info({ updated }, "expert persona fold migration applied");
+      }
+    })
+    .catch((error) => {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "expert persona fold migration failed",
+      );
+    });
 
   // AgentService is used by both the return block and the experthub install
   // flow. Construct it once so both paths share the same cache/syncAll semantics.
