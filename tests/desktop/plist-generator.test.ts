@@ -311,15 +311,15 @@ describe("generatePlist", () => {
     );
   });
 
-  it("both plists have RunAtLoad=false (explicit start only)", async () => {
+  it("both plists have RunAtLoad=true (auto-start at login so reboot attaches)", async () => {
     const { generatePlist } = await import(
       "../../apps/desktop/main/services/plist-generator"
     );
     const controller = generatePlist("controller", mockEnv);
     const openclaw = generatePlist("openclaw", mockEnv);
 
-    expect(controller).toMatch(/<key>RunAtLoad<\/key>\s*<false\/>/);
-    expect(openclaw).toMatch(/<key>RunAtLoad<\/key>\s*<false\/>/);
+    expect(controller).toMatch(/<key>RunAtLoad<\/key>\s*<true\/>/);
+    expect(openclaw).toMatch(/<key>RunAtLoad<\/key>\s*<true\/>/);
   });
 
   // -----------------------------------------------------------------------

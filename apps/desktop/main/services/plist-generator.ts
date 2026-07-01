@@ -269,8 +269,12 @@ function generateControllerPlist(label: string, env: PlistEnv): string {
     <key>ThrottleInterval</key>
     <integer>5</integer>
 
+    <!-- Auto-start at login so a machine reboot attaches to the already-running
+         services instead of falling back to the full cold-start ("preparing
+         workspace") flow. Teardown only boots services out (keeps the plist), so
+         launchd re-runs them on the next login. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 </dict>
 </plist>
 `;
@@ -387,8 +391,12 @@ function generateOpenclawPlist(label: string, env: PlistEnv): string {
     <key>ThrottleInterval</key>
     <integer>5</integer>
 
+    <!-- Auto-start at login so a machine reboot attaches to the already-running
+         services instead of falling back to the full cold-start ("preparing
+         workspace") flow. Teardown only boots services out (keeps the plist), so
+         launchd re-runs them on the next login. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
 </dict>
 </plist>
 `;
