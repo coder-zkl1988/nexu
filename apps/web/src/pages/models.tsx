@@ -284,6 +284,7 @@ type DesktopShellPreferences = {
   showInDock: boolean;
   supportsLaunchAtLogin: boolean;
   supportsShowInDock: boolean;
+  crashReportsEnabled: boolean;
 };
 
 function getModelsHostInvokeBridge(): ModelsHostInvokeBridge | null {
@@ -684,7 +685,6 @@ function _GeneralSettings() {
   const [accountDisconnecting, setAccountDisconnecting] = useState(false);
   const [showAccountLogoutConfirm, setShowAccountLogoutConfirm] =
     useState(false);
-  const [crashReportsEnabled, setCrashReportsEnabled] = useState(true);
   const hostBridge = getModelsHostInvokeBridge();
   const { data: desktopCloudStatus, refetch: refetchDesktopCloudStatus } =
     useDesktopCloudStatus();
@@ -709,10 +709,13 @@ function _GeneralSettings() {
     },
   });
 
+  const crashReportsEnabled = shellPreferences?.crashReportsEnabled ?? true;
+
   const updateShellPreferences = useMutation({
     mutationFn: async (input: {
       launchAtLogin?: boolean;
       showInDock?: boolean;
+      crashReportsEnabled?: boolean;
     }) => {
       if (!hostBridge) {
         throw new Error("Desktop host bridge is unavailable.");
@@ -1173,7 +1176,9 @@ function _GeneralSettings() {
             </div>
             <Switch
               checked={crashReportsEnabled}
-              onCheckedChange={setCrashReportsEnabled}
+              onCheckedChange={(value) =>
+                updateShellPreferences.mutate({ crashReportsEnabled: value })
+              }
             />
           </div>
         </div>

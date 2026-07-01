@@ -32,6 +32,7 @@ import {
   type QuitHandlerOptions,
   runTeardownAndExit,
 } from "./services/quit-handler";
+import { applyCrashReportsConsent } from "./services/telemetry";
 import type { ComponentUpdater } from "./updater/component-updater";
 import type { UpdateManager } from "./updater/update-manager";
 
@@ -685,7 +686,12 @@ export function registerIpcHandlers(
         case "desktop:update-shell-preferences": {
           const typedPayload =
             payload as HostInvokePayloadMap["desktop:update-shell-preferences"];
-          return updateDesktopShellPreferences(typedPayload);
+          const updated = updateDesktopShellPreferences(typedPayload);
+          // Start/stop crash reporting immediately when the toggle changes.
+          if (typeof typedPayload.crashReportsEnabled === "boolean") {
+            applyCrashReportsConsent(typedPayload.crashReportsEnabled);
+          }
+          return updated;
         }
 
         case "desktop:get-rewards-status": {

@@ -143,6 +143,7 @@ export type HostInvokePayloadMap = {
   "desktop:update-shell-preferences": {
     launchAtLogin?: boolean;
     showInDock?: boolean;
+    crashReportsEnabled?: boolean;
   };
   "desktop:get-rewards-status": undefined;
   "desktop:set-reward-balance": {
@@ -425,12 +426,14 @@ export type HostInvokeResultMap = {
     showInDock: boolean;
     supportsLaunchAtLogin: boolean;
     supportsShowInDock: boolean;
+    crashReportsEnabled: boolean;
   };
   "desktop:update-shell-preferences": {
     launchAtLogin: boolean;
     showInDock: boolean;
     supportsLaunchAtLogin: boolean;
     supportsShowInDock: boolean;
+    crashReportsEnabled: boolean;
   };
   "desktop:get-rewards-status": {
     cloudBalance?: {

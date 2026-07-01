@@ -76,6 +76,7 @@ import {
   type DesktopShellPreferences,
   applyDesktopShellPreferencesOnStartup,
   getDesktopShellPreferences,
+  readCrashReportsConsent,
   setDesktopShellPreferencesRuntimeHandler,
 } from "./services/desktop-shell-preferences";
 import {
@@ -84,6 +85,11 @@ import {
 } from "./services/dev-inspect-server";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
+import {
+  isTelemetryActive,
+  setCrashReportsConsentApplier,
+  setTelemetryActive,
+} from "./services/telemetry";
 import { flushV8CoverageIfEnabled } from "./services/v8-coverage";
 import { readPendingWindowsUserDataMigration } from "./services/windows-user-data-migration";
 import { SleepGuard, type SleepGuardLogEntry } from "./sleep-guard";
@@ -338,7 +344,10 @@ function readNativeCrashTestKind(event: Sentry.Event): string | null {
   return typeof crashpadKind === "string" ? crashpadKind : null;
 }
 
-if (sentryDsn) {
+function startSentry(): void {
+  if (!sentryDsn) {
+    return;
+  }
   const sentryBuildMetadata = getDesktopSentryBuildMetadata(
     runtimeConfig.buildInfo,
   );
@@ -393,6 +402,24 @@ if (sentryDsn) {
   });
 
   Sentry.setContext("build", sentryBuildMetadata.buildContext);
+  setTelemetryActive(true);
+}
+
+// The "崩溃报告 / Crash reports" toggle (default on) starts/stops reporting at
+// runtime; index.ts owns the Sentry lifecycle, so it registers the applier here.
+setCrashReportsConsentApplier((enabled) => {
+  if (enabled) {
+    if (!isTelemetryActive()) {
+      startSentry();
+    }
+  } else {
+    setTelemetryActive(false);
+    void Sentry.close();
+  }
+});
+
+if (sentryDsn && readCrashReportsConsent()) {
+  startSentry();
 } else {
   crashReporter.start({
     companyName: "nexu",

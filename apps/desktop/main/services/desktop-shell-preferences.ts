@@ -7,6 +7,8 @@ export type DesktopShellPreferences = {
   showInDock: boolean;
   supportsLaunchAtLogin: boolean;
   supportsShowInDock: boolean;
+  /** Crash/error reporting consent (default on). Gates Sentry in the main process. */
+  crashReportsEnabled: boolean;
 };
 
 let runtimeApplyHandler:
@@ -16,11 +18,13 @@ let runtimeApplyHandler:
 type StoredDesktopShellPreferences = {
   launchAtLogin: boolean;
   showInDock: boolean;
+  crashReportsEnabled: boolean;
 };
 
 const DEFAULT_PREFERENCES: StoredDesktopShellPreferences = {
   launchAtLogin: true,
   showInDock: true,
+  crashReportsEnabled: true,
 };
 
 type StoredPreferencesState = {
@@ -68,6 +72,10 @@ function readStoredPreferencesState(): StoredPreferencesState {
           typeof candidate?.showInDock === "boolean"
             ? candidate.showInDock
             : DEFAULT_PREFERENCES.showInDock,
+        crashReportsEnabled:
+          typeof candidate?.crashReportsEnabled === "boolean"
+            ? candidate.crashReportsEnabled
+            : DEFAULT_PREFERENCES.crashReportsEnabled,
       },
     };
   } catch {
@@ -111,6 +119,7 @@ function resolvePreferencesForRead(): StoredDesktopShellPreferences {
   return {
     launchAtLogin: osLaunchAtLogin || DEFAULT_PREFERENCES.launchAtLogin,
     showInDock: DEFAULT_PREFERENCES.showInDock,
+    crashReportsEnabled: DEFAULT_PREFERENCES.crashReportsEnabled,
   };
 }
 
@@ -122,7 +131,16 @@ export function getDesktopShellPreferences(): DesktopShellPreferences {
     showInDock: supportsShowInDock() ? storedPreferences.showInDock : true,
     supportsLaunchAtLogin: supportsLaunchAtLogin(),
     supportsShowInDock: supportsShowInDock(),
+    crashReportsEnabled: storedPreferences.crashReportsEnabled,
   };
+}
+
+/**
+ * Read the persisted crash-reports consent (default on) synchronously, for the
+ * main process to gate Sentry at startup before the renderer/controller exist.
+ */
+export function readCrashReportsConsent(): boolean {
+  return resolvePreferencesForRead().crashReportsEnabled;
 }
 
 function applyStoredPreferences(
@@ -166,6 +184,7 @@ export function applyDesktopShellPreferencesOnStartup(): void {
 export function updateDesktopShellPreferences(input: {
   launchAtLogin?: boolean;
   showInDock?: boolean;
+  crashReportsEnabled?: boolean;
 }): DesktopShellPreferences {
   const storedPreferences = resolvePreferencesForRead();
   const nextPreferences: StoredDesktopShellPreferences = {
@@ -177,6 +196,10 @@ export function updateDesktopShellPreferences(input: {
       typeof input.showInDock === "boolean"
         ? input.showInDock
         : storedPreferences.showInDock,
+    crashReportsEnabled:
+      typeof input.crashReportsEnabled === "boolean"
+        ? input.crashReportsEnabled
+        : storedPreferences.crashReportsEnabled,
   };
 
   writeStoredPreferences(nextPreferences);
