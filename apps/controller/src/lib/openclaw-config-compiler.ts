@@ -66,12 +66,17 @@ const MODEL_CAPABILITIES: Record<
   // error; undershooting only triggers compaction a little earlier, which is
   // safe). Values for unknown upstreams (stepfun) and the auto router are set
   // conservatively so they never overflow; raise once confirmed.
-  "tabby-ultra": { contextWindow: 1048576, maxTokens: 128000 }, // gpt-5.5 — API docs: 1,050,000 ctx / 128,000 max output
-  "tabby-pro": { contextWindow: 1048576, maxTokens: 128000 }, // gpt-5.4 — API docs: 1,050,000 ctx / 128,000 max output
-  "tabby-mini": { contextWindow: 384000, maxTokens: 32768 }, // gpt-5.4-mini — API docs: 400,000 ctx (was wrongly 1,048,576, the real overflow source)
+  // gpt-5.5/5.4/5.4-mini are accessed through the Codex subscription (see the
+  // `openai: "openai-codex"` OAuth mapping below), NOT the raw pay-per-token
+  // API — Codex enforces its own product-level context window, which is
+  // smaller than the API's published 1,050,000. Use the Codex window, not the
+  // API one, or these overflow exactly like tabby-mini did before.
+  "tabby-ultra": { contextWindow: 384000, maxTokens: 128000 }, // gpt-5.5 via Codex — Codex window is 400,000, not the API's 1,050,000
+  "tabby-pro": { contextWindow: 384000, maxTokens: 128000 }, // gpt-5.4 via Codex — same 400,000 Codex window assumed (same subscription/product path as 5.5)
+  "tabby-mini": { contextWindow: 384000, maxTokens: 32768 }, // gpt-5.4-mini via Codex — API cap (400,000) and assumed Codex cap coincide
   "tabby-fast": { contextWindow: 983040, maxTokens: 384000 }, // deepseek-v4-pro — official docs: 1,000,000 ctx (was wrongly 1,048,576, slightly over cap)
   "tabby-free": { contextWindow: 240000, maxTokens: 8192 }, // agnes-2.0-flash — docs conflict (512K vs 256K); using the more conservative 256K with margin
-  "tabby-phone": { contextWindow: 131072, maxTokens: 8192 }, // stepfun-3.7-flash (unconfirmed — conservative placeholder)
+  "tabby-phone": { contextWindow: 245760, maxTokens: 8192 }, // stepfun-3.7-flash — confirmed 256,000 ctx, with margin
   "tabby-auto": { contextWindow: 131072, maxTokens: 8192 }, // auto router → smallest routable window (unconfirmed — conservative placeholder)
 };
 
