@@ -57,6 +57,22 @@ const MODEL_CAPABILITIES: Record<
     contextWindow: 1048576,
     maxTokens: 8192,
   },
+
+  // Tabby Official aliases → underlying-model limits. Without these the aliases
+  // fall back to the compiler default (contextWindow 200000), which mismatches
+  // the real window and causes context-overflow errors. Comment = the gateway's
+  // underlying model and source. contextWindow is set at or just under the
+  // documented cap (never above it — overshooting is what causes the overflow
+  // error; undershooting only triggers compaction a little earlier, which is
+  // safe). Values for unknown upstreams (stepfun) and the auto router are set
+  // conservatively so they never overflow; raise once confirmed.
+  "tabby-ultra": { contextWindow: 1048576, maxTokens: 128000 }, // gpt-5.5 — API docs: 1,050,000 ctx / 128,000 max output
+  "tabby-pro": { contextWindow: 1048576, maxTokens: 128000 }, // gpt-5.4 — API docs: 1,050,000 ctx / 128,000 max output
+  "tabby-mini": { contextWindow: 384000, maxTokens: 32768 }, // gpt-5.4-mini — API docs: 400,000 ctx (was wrongly 1,048,576, the real overflow source)
+  "tabby-fast": { contextWindow: 983040, maxTokens: 384000 }, // deepseek-v4-pro — official docs: 1,000,000 ctx (was wrongly 1,048,576, slightly over cap)
+  "tabby-free": { contextWindow: 240000, maxTokens: 8192 }, // agnes-2.0-flash — docs conflict (512K vs 256K); using the more conservative 256K with margin
+  "tabby-phone": { contextWindow: 131072, maxTokens: 8192 }, // stepfun-3.7-flash (unconfirmed — conservative placeholder)
+  "tabby-auto": { contextWindow: 131072, maxTokens: 8192 }, // auto router → smallest routable window (unconfirmed — conservative placeholder)
 };
 
 /** Look up known model capabilities by ID (case-insensitive, stripped of provider prefix). */

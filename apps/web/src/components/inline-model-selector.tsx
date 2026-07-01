@@ -1,3 +1,4 @@
+import { getSpecialModelLabelKey } from "@/lib/special-models";
 import { track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -156,26 +157,34 @@ export function InlineModelSelector(props: InlineModelSelectorProps) {
                   >
                     {provider}
                   </div>
-                  {providerModels.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => handleSelect(m.id ?? "")}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
-                          {m.name}
+                  {providerModels.map((m) => {
+                    const specialLabelKey = getSpecialModelLabelKey(m.id ?? "");
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        disabled={specialLabelKey !== null}
+                        onClick={() => handleSelect(m.id ?? "")}
+                        className={cn(
+                          "flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors",
+                          specialLabelKey && "opacity-45 pointer-events-none",
+                        )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
+                            {m.name}
+                            {specialLabelKey && ` (${t(specialLabelKey)})`}
+                          </div>
                         </div>
-                      </div>
-                      {currentModelId === m.id && (
-                        <Check
-                          size={14}
-                          className="text-[var(--color-tabby-orange)] shrink-0"
-                        />
-                      )}
-                    </button>
-                  ))}
+                        {currentModelId === m.id && (
+                          <Check
+                            size={14}
+                            className="text-[var(--color-tabby-orange)] shrink-0"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               ),
             );
