@@ -32,7 +32,7 @@ import {
   type QuitHandlerOptions,
   runTeardownAndExit,
 } from "./services/quit-handler";
-import { applyCrashReportsConsent } from "./services/telemetry";
+import { applyCrashReportsConsent, reportError } from "./services/telemetry";
 import type { ComponentUpdater } from "./updater/component-updater";
 import type { UpdateManager } from "./updater/update-manager";
 
@@ -692,6 +692,20 @@ export function registerIpcHandlers(
             applyCrashReportsConsent(typedPayload.crashReportsEnabled);
           }
           return updated;
+        }
+
+        case "desktop:report-error": {
+          const errorPayload =
+            payload as HostInvokePayloadMap["desktop:report-error"];
+          // Bridge for renderer-surfaced / relayed failures (e.g. device faults
+          // forwarded from the controller SSE stream) into the main-process
+          // Sentry gate. reportError itself is consent-gated and redacts.
+          reportError(new Error(errorPayload.message), {
+            area: errorPayload.area,
+            reasonCode: errorPayload.reasonCode,
+            extra: errorPayload.extra,
+          });
+          return { reported: true };
         }
 
         case "desktop:get-rewards-status": {

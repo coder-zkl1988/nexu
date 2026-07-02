@@ -29,6 +29,7 @@ export const hostInvokeChannels = [
   "desktop:cancel-minimax-oauth",
   "desktop:get-shell-preferences",
   "desktop:update-shell-preferences",
+  "desktop:report-error",
   "desktop:get-rewards-status",
   "desktop:set-reward-balance",
   "desktop:rewards-updated",
@@ -144,6 +145,12 @@ export type HostInvokePayloadMap = {
     launchAtLogin?: boolean;
     showInDock?: boolean;
     crashReportsEnabled?: boolean;
+  };
+  "desktop:report-error": {
+    area: string;
+    reasonCode?: string;
+    message: string;
+    extra?: Record<string, unknown>;
   };
   "desktop:get-rewards-status": undefined;
   "desktop:set-reward-balance": {
@@ -435,6 +442,7 @@ export type HostInvokeResultMap = {
     supportsShowInDock: boolean;
     crashReportsEnabled: boolean;
   };
+  "desktop:report-error": { reported: boolean };
   "desktop:get-rewards-status": {
     cloudBalance?: {
       totalBalance?: number | null;
