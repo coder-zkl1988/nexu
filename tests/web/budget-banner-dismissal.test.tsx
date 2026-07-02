@@ -140,6 +140,7 @@ function renderWorkspaceLayout(
         id: "sess-1",
         title: "Design sync thread",
         channelType: "slack",
+        sessionKey: "sess-1",
         lastTime: "2026-03-20T08:57:00.000Z",
         status: "active",
       },

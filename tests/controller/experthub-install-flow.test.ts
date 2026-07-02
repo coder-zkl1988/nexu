@@ -30,6 +30,7 @@ type Overrides = Partial<{
   fs: Partial<InstallExpertDeps["fs"]>;
   agentsDir: string;
   genBotSlug: InstallExpertDeps["genBotSlug"];
+  defaultModelId: InstallExpertDeps["defaultModelId"];
 }>;
 
 function buildDeps(overrides: Overrides = {}): InstallExpertDeps {
@@ -79,6 +80,7 @@ function buildDeps(overrides: Overrides = {}): InstallExpertDeps {
     },
     agentsDir: overrides.agentsDir ?? "/state/agents",
     genBotSlug: overrides.genBotSlug ?? genBotSlug,
+    defaultModelId: overrides.defaultModelId ?? "openai/gpt-5",
   };
 }
 
@@ -92,7 +94,7 @@ describe("installExpert", () => {
         name: "Code Reviewer",
         slug: "code-reviewer-abc",
         systemPrompt: "You review code.",
-        modelId: "gpt-4o",
+        modelId: "openai/gpt-5",
         expertSlug: "code-reviewer",
       }),
     );

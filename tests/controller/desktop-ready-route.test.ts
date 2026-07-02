@@ -18,7 +18,7 @@ function createContainer(
     },
     runtimeState,
     controlPlaneHealth: {
-      probe: vi.fn(async () => ({
+      bootstrapProbe: vi.fn(async () => ({
         ok: true,
         phase: "ready",
         checkedAt: new Date().toISOString(),

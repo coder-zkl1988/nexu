@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -73,17 +73,17 @@ describe("OpenClawAuthProfilesWriter", () => {
 
   it("writes provider api keys into each agent auth-profiles store", async () => {
     const env = createEnv(tempDir);
-    const writer = new OpenClawAuthProfilesWriter(
-      new OpenClawAuthProfilesStore(env),
-    );
+    const store = new OpenClawAuthProfilesStore(env);
+    const writer = new OpenClawAuthProfilesWriter(store);
 
+    const workspace = resolve(env.openclawStateDir, "agents", "bot_1");
     await writer.writeForAgents({
       agents: {
         list: [
           {
             id: "bot_1",
             name: "Bot One",
-            workspace: resolve(env.openclawStateDir, "agents", "bot_1"),
+            workspace,
           },
         ],
       },
@@ -106,25 +106,17 @@ describe("OpenClawAuthProfilesWriter", () => {
       },
     } as never);
 
-    const authProfilesPath = resolve(
-      env.openclawStateDir,
-      "agents",
-      "bot_1",
-      "agent",
-      "auth-profiles.json",
+    const parsed = await store.readAuthProfiles(
+      store.authProfilesPathForWorkspace(workspace),
     );
-    const parsed = JSON.parse(readFileSync(authProfilesPath, "utf8")) as {
-      version: number;
-      profiles: Record<string, { type: string; provider: string; key: string }>;
-    };
 
-    expect(parsed.version).toBe(1);
-    expect(parsed.profiles["custom_abc:default"]).toEqual({
+    expect(parsed?.version).toBe(1);
+    expect(parsed?.profiles["custom_abc:default"]).toEqual({
       type: "api_key",
       provider: "custom_abc",
       key: "test-api-key",
     });
-    expect(parsed.profiles["anthropic:default"]).toEqual({
+    expect(parsed?.profiles["anthropic:default"]).toEqual({
       type: "api_key",
       provider: "anthropic",
       key: "anthropic-key",
@@ -133,10 +125,10 @@ describe("OpenClawAuthProfilesWriter", () => {
 
   it("writes canonical model-provider credentials into auth-profiles", async () => {
     const env = createEnv(tempDir);
-    const writer = new OpenClawAuthProfilesWriter(
-      new OpenClawAuthProfilesStore(env),
-    );
+    const store = new OpenClawAuthProfilesStore(env);
+    const writer = new OpenClawAuthProfilesWriter(store);
 
+    const workspace = resolve(env.openclawStateDir, "agents", "bot_1");
     await writer.writeForAgents(
       {
         agents: {
@@ -144,7 +136,7 @@ describe("OpenClawAuthProfilesWriter", () => {
             {
               id: "bot_1",
               name: "Bot One",
-              workspace: resolve(env.openclawStateDir, "agents", "bot_1"),
+              workspace,
             },
           ],
         },
@@ -178,19 +170,11 @@ describe("OpenClawAuthProfilesWriter", () => {
       },
     );
 
-    const authProfilesPath = resolve(
-      env.openclawStateDir,
-      "agents",
-      "bot_1",
-      "agent",
-      "auth-profiles.json",
+    const parsed = await store.readAuthProfiles(
+      store.authProfilesPathForWorkspace(workspace),
     );
-    const parsed = JSON.parse(readFileSync(authProfilesPath, "utf8")) as {
-      version: number;
-      profiles: Record<string, { type: string; provider: string; key: string }>;
-    };
 
-    expect(parsed.profiles["custom-openai/team-gateway:default"]).toEqual({
+    expect(parsed?.profiles["custom-openai/team-gateway:default"]).toEqual({
       type: "api_key",
       provider: "custom-openai/team-gateway",
       key: "canonical-custom-key",
@@ -205,7 +189,7 @@ describe("OpenClawAuthProfilesWriter", () => {
     const newWorkspace = resolve(env.openclawStateDir, "agents", "bot_2");
 
     await store.updateAuthProfiles(
-      resolve(existingWorkspace, "agent", "auth-profiles.json"),
+      store.authProfilesPathForWorkspace(existingWorkspace),
       async () => ({
         version: 1,
         profiles: {
@@ -264,26 +248,11 @@ describe("OpenClawAuthProfilesWriter", () => {
       },
     );
 
-    const newAuthProfilesPath = resolve(
-      newWorkspace,
-      "agent",
-      "auth-profiles.json",
+    const parsed = await store.readAuthProfiles(
+      store.authProfilesPathForWorkspace(newWorkspace),
     );
-    const parsed = JSON.parse(readFileSync(newAuthProfilesPath, "utf8")) as {
-      version: number;
-      profiles: Record<
-        string,
-        {
-          type: string;
-          provider: string;
-          access: string;
-          refresh?: string;
-          expires?: number;
-        }
-      >;
-    };
 
-    expect(parsed.profiles["openai-codex:default"]).toEqual({
+    expect(parsed?.profiles["openai-codex:default"]).toEqual({
       type: "oauth",
       provider: "openai-codex",
       access: "oauth-access-token",
@@ -294,10 +263,10 @@ describe("OpenClawAuthProfilesWriter", () => {
 
   it("merges compiled link credentials even when provider-source entries already exist", async () => {
     const env = createEnv(tempDir);
-    const writer = new OpenClawAuthProfilesWriter(
-      new OpenClawAuthProfilesStore(env),
-    );
+    const store = new OpenClawAuthProfilesStore(env);
+    const writer = new OpenClawAuthProfilesWriter(store);
 
+    const workspace = resolve(env.openclawStateDir, "agents", "bot_1");
     await writer.writeForAgents(
       {
         agents: {
@@ -305,7 +274,7 @@ describe("OpenClawAuthProfilesWriter", () => {
             {
               id: "bot_1",
               name: "Bot One",
-              workspace: resolve(env.openclawStateDir, "agents", "bot_1"),
+              workspace,
             },
           ],
         },
@@ -354,24 +323,16 @@ describe("OpenClawAuthProfilesWriter", () => {
       },
     );
 
-    const authProfilesPath = resolve(
-      env.openclawStateDir,
-      "agents",
-      "bot_1",
-      "agent",
-      "auth-profiles.json",
+    const parsed = await store.readAuthProfiles(
+      store.authProfilesPathForWorkspace(workspace),
     );
-    const parsed = JSON.parse(readFileSync(authProfilesPath, "utf8")) as {
-      version: number;
-      profiles: Record<string, { type: string; provider: string; key: string }>;
-    };
 
-    expect(parsed.profiles["openai:default"]).toEqual({
+    expect(parsed?.profiles["openai:default"]).toEqual({
       type: "api_key",
       provider: "openai",
       key: "openai-key",
     });
-    expect(parsed.profiles["link:default"]).toEqual({
+    expect(parsed?.profiles["link:default"]).toEqual({
       type: "api_key",
       provider: "link",
       key: "link-key",

@@ -8,6 +8,7 @@ export default defineConfig({
     fileParallelism: false,
     include: ["tests/**/*.test.{ts,tsx}"],
     exclude: ["tests/api/**"],
+    setupFiles: ["./tests/setup/mock-sentry.ts"],
   },
   resolve: {
     alias: {
