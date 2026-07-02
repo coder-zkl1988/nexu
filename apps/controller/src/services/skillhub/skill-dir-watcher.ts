@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, watch } from "node:fs";
+import { existsSync, readdirSync, realpathSync, watch } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { resolve } from "node:path";
 import type { SkillDb } from "./skill-db.js";
@@ -220,6 +220,25 @@ export class SkillDirWatcher {
     return changed;
   }
 
+  /**
+   * Expand a directory to its OS-canonical long form before watching.
+   *
+   * On Windows, env-provided paths can arrive in 8.3 short form
+   * (C:\Users\RUNNER~1\...). Recursive fs.watch on a short-path root
+   * crashes the whole process with a libuv assertion (src/win/fs-event.c:
+   * !_wcsnicmp(filename, dir, dirlen)) because ReadDirectoryChangesW
+   * reports long-form filenames. realpathSync.native expands short names
+   * (plain realpathSync does not); fall back to the original path if
+   * resolution fails, e.g. the directory vanished since the exists check.
+   */
+  private resolveWatchRoot(dir: string): string {
+    try {
+      return realpathSync.native(dir);
+    } catch {
+      return dir;
+    }
+  }
+
   start(): void {
     if (this.sharedWatcher !== null || this.workspaceWatcher !== null) {
       return;
@@ -233,9 +252,13 @@ export class SkillDirWatcher {
       return;
     }
 
-    this.sharedWatcher = watch(this.skillsDir, { recursive: true }, () => {
-      this.scheduleSync();
-    });
+    this.sharedWatcher = watch(
+      this.resolveWatchRoot(this.skillsDir),
+      { recursive: true },
+      () => {
+        this.scheduleSync();
+      },
+    );
 
     this.sharedWatcher.on("error", (err: unknown) => {
       this.log(
@@ -247,9 +270,13 @@ export class SkillDirWatcher {
     this.log("info", `Watching skills directory: ${this.skillsDir}`);
 
     if (this.userSkillsDir && existsSync(this.userSkillsDir)) {
-      this.userWatcher = watch(this.userSkillsDir, { recursive: true }, () => {
-        this.scheduleSync();
-      });
+      this.userWatcher = watch(
+        this.resolveWatchRoot(this.userSkillsDir),
+        { recursive: true },
+        () => {
+          this.scheduleSync();
+        },
+      );
 
       this.userWatcher.on("error", (err: unknown) => {
         this.log(
@@ -265,7 +292,7 @@ export class SkillDirWatcher {
       this.startWorkspaceSkillWatchers();
 
       this.workspaceWatcher = watch(
-        this.openclawStateDir,
+        this.resolveWatchRoot(this.openclawStateDir),
         { recursive: true },
         (_eventType, fileName) => {
           if (fileName !== null) {
@@ -381,9 +408,13 @@ export class SkillDirWatcher {
 
     let watcher: FSWatcher;
     try {
-      watcher = watch(wsSkillsDir, { recursive: true }, () => {
-        this.scheduleSync();
-      });
+      watcher = watch(
+        this.resolveWatchRoot(wsSkillsDir),
+        { recursive: true },
+        () => {
+          this.scheduleSync();
+        },
+      );
     } catch (err) {
       this.log(
         "warn",
