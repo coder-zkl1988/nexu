@@ -22,7 +22,7 @@ import {
 } from "../shared/host";
 import type { DesktopRuntimeConfig } from "../shared/runtime-config";
 import type { DesktopDiagnosticsReporter } from "./desktop-diagnostics";
-import { exportDiagnostics } from "./diagnostics-export";
+import { exportDiagnostics, uploadDiagnostics } from "./diagnostics-export";
 import type { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
 import {
   getDesktopShellPreferences,
@@ -471,6 +471,10 @@ export function registerIpcHandlers(
           });
         }
 
+        case "diagnostics:upload": {
+          return uploadDiagnostics({ orchestrator, runtimeConfig });
+        }
+
         case "env:get-controller-base-url": {
           const result: HostInvokeResultMap["env:get-controller-base-url"] = {
             controllerBaseUrl: runtimeConfig.urls.controllerBase,
@@ -690,6 +694,22 @@ export function registerIpcHandlers(
           // Start/stop crash reporting immediately when the toggle changes.
           if (typeof typedPayload.crashReportsEnabled === "boolean") {
             applyCrashReportsConsent(typedPayload.crashReportsEnabled);
+            // Mirror the consent to the controller so it reaches phones (via
+            // tabby-control) and survives controller restarts. Best-effort:
+            // the desktop shell-preferences file stays the source of truth.
+            void fetchControllerJson(
+              `${runtimeConfig.urls.controllerBase}/api/internal/desktop/preferences`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  crashReportsEnabled: typedPayload.crashReportsEnabled,
+                }),
+              },
+            ).catch(() => {
+              // Controller unreachable — phones keep their cached consent
+              // until the next successful push.
+            });
           }
           return updated;
         }

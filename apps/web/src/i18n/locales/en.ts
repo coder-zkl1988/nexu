@@ -483,6 +483,9 @@ const en = {
   "settings.data.crashReports": "Crash reports",
   "settings.data.crashReportsHint":
     "Send crash reports automatically to help fix bugs",
+  "settings.data.sessionReplay": "Session replay on errors",
+  "settings.data.sessionReplayHint":
+    "When an error occurs, upload a fully masked UI replay (no text or input content). Takes effect after restart",
   "settings.general.saveTitle": "Save changes",
   "settings.general.saveHint": "Profile changes are applied after save",
   "settings.general.save": "Save",

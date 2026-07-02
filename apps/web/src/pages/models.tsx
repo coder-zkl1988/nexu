@@ -285,6 +285,7 @@ type DesktopShellPreferences = {
   supportsLaunchAtLogin: boolean;
   supportsShowInDock: boolean;
   crashReportsEnabled: boolean;
+  sessionReplayEnabled: boolean;
 };
 
 function getModelsHostInvokeBridge(): ModelsHostInvokeBridge | null {
@@ -710,12 +711,14 @@ function _GeneralSettings() {
   });
 
   const crashReportsEnabled = shellPreferences?.crashReportsEnabled ?? true;
+  const sessionReplayEnabled = shellPreferences?.sessionReplayEnabled ?? false;
 
   const updateShellPreferences = useMutation({
     mutationFn: async (input: {
       launchAtLogin?: boolean;
       showInDock?: boolean;
       crashReportsEnabled?: boolean;
+      sessionReplayEnabled?: boolean;
     }) => {
       if (!hostBridge) {
         throw new Error("Desktop host bridge is unavailable.");
@@ -1178,6 +1181,23 @@ function _GeneralSettings() {
               checked={crashReportsEnabled}
               onCheckedChange={(value) =>
                 updateShellPreferences.mutate({ crashReportsEnabled: value })
+              }
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] font-medium text-text-primary">
+                {t("settings.data.sessionReplay")}
+              </div>
+              <div className="mt-0.5 text-[11px] text-text-tertiary">
+                {t("settings.data.sessionReplayHint")}
+              </div>
+            </div>
+            <Switch
+              checked={sessionReplayEnabled}
+              onCheckedChange={(value) =>
+                updateShellPreferences.mutate({ sessionReplayEnabled: value })
               }
             />
           </div>

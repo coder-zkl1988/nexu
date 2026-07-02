@@ -34,7 +34,7 @@ import {
 } from "../shared/update-policy";
 import { getDesktopAppRoot, getWorkspaceRoot } from "../shared/workspace-paths";
 import { DesktopDiagnosticsReporter } from "./desktop-diagnostics";
-import { exportDiagnostics } from "./diagnostics-export";
+import { exportDiagnostics, uploadDiagnostics } from "./diagnostics-export";
 import {
   registerIpcHandlers,
   setComponentUpdater,
@@ -779,6 +779,42 @@ function installApplicationMenu(): void {
           runtimeConfig,
           source: "help-menu",
         }).catch(() => undefined);
+      },
+    },
+    {
+      label: "Send Diagnostics to Support…",
+      click: () => {
+        void (async () => {
+          const confirm = await dialog.showMessageBox({
+            type: "question",
+            buttons: ["Send", "Cancel"],
+            defaultId: 0,
+            cancelId: 1,
+            message: "Send diagnostics to Tabby support?",
+            detail:
+              "Uploads a redacted diagnostics archive (logs, runtime state, config with credentials removed) so support can investigate your issue. You'll get a reference ID to share.",
+          });
+          if (confirm.response !== 0) {
+            return;
+          }
+          const result = await uploadDiagnostics({
+            orchestrator,
+            runtimeConfig,
+          });
+          if (result.status === "success") {
+            await dialog.showMessageBox({
+              type: "info",
+              message: "Diagnostics sent",
+              detail: `Reference ID: ${result.referenceId}\n\nShare this ID with support so they can find your upload.`,
+            });
+          } else {
+            await dialog.showMessageBox({
+              type: "error",
+              message: "Diagnostics upload failed",
+              detail: result.errorMessage ?? "Unknown error.",
+            });
+          }
+        })().catch(() => undefined);
       },
     },
   ];

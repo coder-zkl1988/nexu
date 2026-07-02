@@ -4,6 +4,7 @@ import type {
   DesktopUpdateCapability,
   DiagnosticsExportResult,
   DiagnosticsInfo,
+  DiagnosticsUploadResult,
   HostDesktopCommand,
   RuntimeEvent,
   RuntimeEventQuery,
@@ -34,6 +35,10 @@ export async function exportDiagnostics(
   source: "diagnostics-page" | "help-menu" = "diagnostics-page",
 ): Promise<DiagnosticsExportResult> {
   return getHostBridge().invoke("diagnostics:export", { source });
+}
+
+export async function uploadDiagnostics(): Promise<DiagnosticsUploadResult> {
+  return getHostBridge().invoke("diagnostics:upload", undefined);
 }
 
 export function reportStartupProbe(payload: StartupProbePayload): void {

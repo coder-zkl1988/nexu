@@ -432,6 +432,9 @@ const zhCN = {
   "settings.data.analyticsHint": "发送匿名使用数据以帮助改进 Tabby",
   "settings.data.crashReports": "崩溃报告",
   "settings.data.crashReportsHint": "自动发送崩溃报告以帮助修复问题",
+  "settings.data.sessionReplay": "出错时回放录制",
+  "settings.data.sessionReplayHint":
+    "发生错误时上传全遮罩的界面回放（不含文字与输入内容），重启后生效",
   "settings.general.saveTitle": "保存修改",
   "settings.general.saveHint": "保存后立即应用资料变更",
   "settings.general.save": "保存",

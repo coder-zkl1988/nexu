@@ -2415,6 +2415,32 @@ export class NexuConfigStore {
     return enabled;
   }
 
+  /**
+   * Desktop "crash reports" consent mirror. Source of truth lives in the
+   * desktop shell preferences; this copy lets the controller re-push the
+   * consent to phones (via tabby-control) after cold starts and OpenClaw
+   * restarts without waiting for the desktop. Defaults to true, matching the
+   * desktop default.
+   */
+  async getDesktopCrashReportsEnabled(): Promise<boolean> {
+    const config = await this.getConfig();
+    return typeof config.desktop.crashReportsEnabled === "boolean"
+      ? config.desktop.crashReportsEnabled
+      : true;
+  }
+
+  async setDesktopCrashReportsEnabled(enabled: boolean): Promise<boolean> {
+    await this.store.update((config) => ({
+      ...config,
+      desktop: {
+        ...config.desktop,
+        crashReportsEnabled: enabled,
+      },
+    }));
+
+    return enabled;
+  }
+
   async refreshDesktopCloudModels() {
     await this.hydrateDesktopCloudModels(true);
     return this.getDesktopCloudStatus();

@@ -7,6 +7,7 @@ export const hostInvokeChannels = [
   "diagnostics:crash-main",
   "diagnostics:crash-renderer",
   "diagnostics:export",
+  "diagnostics:upload",
   "env:get-controller-base-url",
   "env:get-runtime-config",
   "runtime:get-state",
@@ -70,6 +71,15 @@ export type DiagnosticsExportResult = {
   errorMessage?: string;
 };
 
+export type DiagnosticsUploadResult = {
+  status: "success" | "failed";
+  /** Sentry event id — the reference the user reads back to support. */
+  referenceId?: string;
+  sizeBytes?: number;
+  warnings?: string[];
+  errorMessage?: string;
+};
+
 export type StartupProbeStatus = "ok" | "error";
 
 export type StartupProbePayload = {
@@ -85,6 +95,7 @@ export type HostInvokePayloadMap = {
   "diagnostics:crash-main": undefined;
   "diagnostics:crash-renderer": undefined;
   "diagnostics:export": { source: "diagnostics-page" | "help-menu" };
+  "diagnostics:upload": undefined;
   "env:get-controller-base-url": undefined;
   "env:get-runtime-config": undefined;
   "runtime:get-state": undefined;
@@ -145,6 +156,7 @@ export type HostInvokePayloadMap = {
     launchAtLogin?: boolean;
     showInDock?: boolean;
     crashReportsEnabled?: boolean;
+    sessionReplayEnabled?: boolean;
   };
   "desktop:report-error": {
     area: string;
@@ -180,6 +192,7 @@ export type HostInvokeResultMap = {
   "diagnostics:crash-main": undefined;
   "diagnostics:crash-renderer": undefined;
   "diagnostics:export": DiagnosticsExportResult;
+  "diagnostics:upload": DiagnosticsUploadResult;
   "env:get-controller-base-url": {
     controllerBaseUrl: string;
   };
@@ -434,6 +447,7 @@ export type HostInvokeResultMap = {
     supportsLaunchAtLogin: boolean;
     supportsShowInDock: boolean;
     crashReportsEnabled: boolean;
+    sessionReplayEnabled: boolean;
   };
   "desktop:update-shell-preferences": {
     launchAtLogin: boolean;
@@ -441,6 +455,7 @@ export type HostInvokeResultMap = {
     supportsLaunchAtLogin: boolean;
     supportsShowInDock: boolean;
     crashReportsEnabled: boolean;
+    sessionReplayEnabled: boolean;
   };
   "desktop:report-error": { reported: boolean };
   "desktop:get-rewards-status": {

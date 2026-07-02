@@ -61,21 +61,27 @@
 
 - **A4 — 验收**：DSN 生效的包里，断网触发更新失败 → Sentry 有事件且带 `area/reasonCode/版本` 上下文；关开关后不再上报。
 
-### 阶段 B：手机端故障回传
+### 阶段 B：手机端故障回传（TabbyApp 直连 Sentry）
 
-**目标**：把手机侧故障通过已有的 phone → tabby-control → controller 通道汇总到同一后端。
+**目标**：手机侧故障（崩溃 / ANR / 黑屏 / 无障碍丢失 / 任务失败）直接上报 Sentry，不依赖 ws 链路与桌面在线。
 
-- **B1 — TabbyApp 侧检测并上报**（结构化 `device_fault`：`{deviceId, faultType, detail, appVersion, model}`）
+> **2026-07-02 选型翻案**：原 relay 方案（TabbyApp → tabby-control → controller → SSE → 渲染 → IPC → 桌面 `reportError`）废弃，改为 TabbyApp 直连 Sentry Android SDK。原因：
+> 1. relay 用被观测的链路传观测数据——App 崩溃 / 手机掉线时恰恰发不出去，覆盖面天然残缺；
+> 2. Sentry Android SDK 自带崩溃/ANR/native crash 捕获 + 磁盘离线缓存补发，relay 结构上给不了；
+> 3. relay 需要跨 3 个代码库的 5 跳链路，工程量大一个数量级。
+>
+> 原「统一后端 / 复用同意」两个理由的化解：同一 Sentry org 下新建 android 项目（按事件量计费，多项目零成本），跨端用 `deviceId` tag 关联；同意态沿 `device_set_vlm_credential` 既有 RPC 模式从桌面下发到手机。B1 已做的 `desktop:report-error` IPC 保留——桌面渲染进程自身错误仍走它，device_fault 不再借道。
+
+- **B2 — TabbyApp 接 Sentry Android SDK**
+  - `io.sentry:sentry-android` 依赖；DSN 经 BuildConfig 注入（DSN 可公开，直接进 APK；为空则不启动，与桌面 `sentryDsn=null` 行为一致）。
+  - init 时打 tag：`deviceId`、`appVersion`、`model`；`beforeSend` 强制脱敏（VLM 凭证等绝不出设备）+ 同意门控。
+- **B3 — 同意态下发**：桌面 `crashReportsEnabled` 变更/设备连接时，沿 `device_set_vlm_credential` 模式经 tabby-control 推给 TabbyApp；App 本地缓存，断线用最后已知值；默认与桌面一致（默认开）。
+- **B4 — 检测点上报**（结构化 `faultType` tag）
   - 投屏黑屏：采集到持续全黑帧 / MediaProjection 失效。
   - 无障碍丢失：`AccessibilityService.onServiceDisconnected` / 权限自检失败。
-  - 任务失败：复用现有 task-failure cause（tabby-control 已「surface real task-failure cause」），扩展为结构化上报。
-  - 走现有 ws 上行通道发 `device_fault` 事件。
-
-- **B2 — tabby-control 接收 → 转发 controller**：新增 `device_fault` 上行（或扩展现有 status 通道），经 RPC 交给 controller。
-- **B3 — controller 上报**：收到后调用 A 的 `reportError`（带 device 上下文），复用同一 Sentry 管道与同意开关。
-- **B4 — 验收**：手机关掉无障碍 → 后端/Sentry 收到 `device_fault` 且带 `deviceId`。
-
-> 备选：给 TabbyApp 直接接 Sentry Android SDK。权衡——relay 方案统一后端 + 复用桌面端同意；独立 SDK 更省事但多一个后端、同意态难统一。**推荐 relay。**
+  - 任务失败：复用现有 task-failure cause，作为结构化事件上报。
+  - 崩溃 / ANR：SDK 自动捕获，无需手写。
+- **B5 — 真机验收**：手机关掉无障碍 → Sentry android 项目收到事件且带 `deviceId`；断网触发故障 → 恢复网络后补发到达；关桌面同意开关 → 手机不再上报。
 
 ### 阶段 C：一键诊断上传
 
@@ -99,9 +105,12 @@
 ## 进度与依赖
 
 - **阶段 A：✅ 已落地并验证**（v0.5.11 — DSN 注入、同意开关接真、`reportError` 已接自动更新失败点；Sentry 实测收到了更新失败事件）。
+- **阶段 B：代码已落地（2026-07-02，直连方案），待真机验收**。TabbyApp 接 `io.sentry:sentry-android:8.46.0`（`TabbyTelemetry` 统一入口，DSN 已填 gradle.properties，android 项目 `4511663459598336`）；检测点：`accessibility_lost`（onUnbind）/ `task_failure`（无障碍不可用、凭证缺失、error/stuck 结果）/ `black_screen`（连续 3 帧全黑抽样 + 连续 3 次帧超时）。同意态链路：desktop `ipc.ts` PATCH → controller `/api/internal/desktop/preferences`（configStore 持久化镜像 + `pushTelemetryConsent`）→ tabby-control `device_set_telemetry_consent` RPC（`connected` envelope 广播 + 握手补推）→ TabbyApp SharedPreferences 缓存 + `beforeSend` 门控。
+- **阶段 C：✅ 代码已落地**。`uploadDiagnostics()`（diagnostics-export.ts）复用脱敏归档 → Sentry event 附件（≤19MB），Help 菜单「Send Diagnostics to Support…」返回 referenceId。
+- **阶段 D：✅ 代码已落地**。渲染进程 Sentry init（原已存在）按 `sessionReplayEnabled` shell preference（默认关）挂 `replayIntegration`（maskAllText + maskAllInputs + blockAllMedia，session 采样 0 / onError 1.0）；设置页「出错时回放录制」开关，重启后生效。
 - 顺序：`A ──▶ B ──▶ C ──▶ D`。B/C/D 全部复用 A 的 `reportError` / 同意开关 / 脱敏。
 - **选型决定**：
-  - **B = relay**：TabbyApp → tabby-control → controller → 桌面主进程 `reportError`。
+  - **B = TabbyApp 直连 Sentry Android SDK**（2026-07-02 翻案，原 relay 方案废弃，理由见阶段 B）；同意态经 tabby-control RPC 下发。
   - **C = Sentry event 附件**：复用现有 DSN，不新建后端。
   - **D = 隐私优先**：渲染进程 init + 全 mask + 仅出错时录 + 独立同意（默认关）。
 
@@ -121,5 +130,5 @@
 
 1. ✅ Sentry 项目 `o4508902319325184`；运行时 DSN 存 GitHub secret `NEXU_DESKTOP_SENTRY_DSN`，发版 CI 注入 mac+win build。
 2. ✅ C 用 **Sentry event 附件**（复用现有 DSN，不新建后端）。
-3. ✅ B 用 **relay**（不给 TabbyApp 接独立 SDK）。
+3. ✅ B 用 **TabbyApp 直连 Sentry Android SDK**（2026-07-02 推翻原 relay 决定：relay 用被观测链路传观测数据，覆盖不了崩溃/掉线；SDK 自带崩溃捕获 + 离线缓存）。同 org 新建 android 项目，`deviceId` tag 跨端关联，同意态经 RPC 下发。
 4. ✅ 错误/崩溃默认开；诊断上传（C）+ Session Replay（D）默认关且需显式同意。

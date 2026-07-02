@@ -9,6 +9,12 @@ export type DesktopShellPreferences = {
   supportsShowInDock: boolean;
   /** Crash/error reporting consent (default on). Gates Sentry in the main process. */
   crashReportsEnabled: boolean;
+  /**
+   * Session Replay consent (default OFF — records masked UI on errors, so it
+   * needs its own explicit opt-in). Read by the renderer at Sentry init;
+   * toggling takes effect on next launch.
+   */
+  sessionReplayEnabled: boolean;
 };
 
 let runtimeApplyHandler:
@@ -19,12 +25,14 @@ type StoredDesktopShellPreferences = {
   launchAtLogin: boolean;
   showInDock: boolean;
   crashReportsEnabled: boolean;
+  sessionReplayEnabled: boolean;
 };
 
 const DEFAULT_PREFERENCES: StoredDesktopShellPreferences = {
   launchAtLogin: true,
   showInDock: true,
   crashReportsEnabled: true,
+  sessionReplayEnabled: false,
 };
 
 type StoredPreferencesState = {
@@ -76,6 +84,10 @@ function readStoredPreferencesState(): StoredPreferencesState {
           typeof candidate?.crashReportsEnabled === "boolean"
             ? candidate.crashReportsEnabled
             : DEFAULT_PREFERENCES.crashReportsEnabled,
+        sessionReplayEnabled:
+          typeof candidate?.sessionReplayEnabled === "boolean"
+            ? candidate.sessionReplayEnabled
+            : DEFAULT_PREFERENCES.sessionReplayEnabled,
       },
     };
   } catch {
@@ -120,6 +132,7 @@ function resolvePreferencesForRead(): StoredDesktopShellPreferences {
     launchAtLogin: osLaunchAtLogin || DEFAULT_PREFERENCES.launchAtLogin,
     showInDock: DEFAULT_PREFERENCES.showInDock,
     crashReportsEnabled: DEFAULT_PREFERENCES.crashReportsEnabled,
+    sessionReplayEnabled: DEFAULT_PREFERENCES.sessionReplayEnabled,
   };
 }
 
@@ -132,6 +145,7 @@ export function getDesktopShellPreferences(): DesktopShellPreferences {
     supportsLaunchAtLogin: supportsLaunchAtLogin(),
     supportsShowInDock: supportsShowInDock(),
     crashReportsEnabled: storedPreferences.crashReportsEnabled,
+    sessionReplayEnabled: storedPreferences.sessionReplayEnabled,
   };
 }
 
@@ -185,6 +199,7 @@ export function updateDesktopShellPreferences(input: {
   launchAtLogin?: boolean;
   showInDock?: boolean;
   crashReportsEnabled?: boolean;
+  sessionReplayEnabled?: boolean;
 }): DesktopShellPreferences {
   const storedPreferences = resolvePreferencesForRead();
   const nextPreferences: StoredDesktopShellPreferences = {
@@ -200,6 +215,10 @@ export function updateDesktopShellPreferences(input: {
       typeof input.crashReportsEnabled === "boolean"
         ? input.crashReportsEnabled
         : storedPreferences.crashReportsEnabled,
+    sessionReplayEnabled:
+      typeof input.sessionReplayEnabled === "boolean"
+        ? input.sessionReplayEnabled
+        : storedPreferences.sessionReplayEnabled,
   };
 
   writeStoredPreferences(nextPreferences);

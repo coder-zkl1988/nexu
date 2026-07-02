@@ -228,7 +228,7 @@ export async function createContainer(): Promise<ControllerContainer> {
   // OpenClaw (re)start, so re-push it once the plugin RPC is reachable after
   // any restart (provider change, watchdog, skills nudge, cloud login, ...).
   openclawProcess.setVlmCredentialRepush(() =>
-    deviceControlService.pushVlmCredentialWhenReady(),
+    deviceControlService.pushDesktopStateWhenReady(),
   );
   const deviceMirrorProxy = new DeviceMirrorProxy(configStore);
   const devicePollingService = new DevicePollingService(deviceControlService);
@@ -584,7 +584,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       // On cold start, push the signed-in user's VLM gateway credential to the
       // device-control plugin once its RPC is up, so phones connecting before
       // any login change still run the model on the user's cloud account.
-      void deviceControlService.pushVlmCredentialWhenReady();
+      void deviceControlService.pushDesktopStateWhenReady();
 
       return () => {
         stopHealthLoop();
