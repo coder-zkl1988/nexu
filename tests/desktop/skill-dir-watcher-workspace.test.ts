@@ -1,4 +1,10 @@
-import { mkdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,7 +20,13 @@ describe("SkillDirWatcher workspace reconciliation", () => {
   let dbPath: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(path.join(tmpdir(), "watcher-ws-"));
+    // realpathSync.native expands Windows 8.3 short paths (C:\Users\RUNNER~1\...)
+    // to their long form. Recursive fs.watch on a short-path dir trips a libuv
+    // assertion (src/win/fs-event.c: !_wcsnicmp(filename, dir, dirlen)) because
+    // ReadDirectoryChangesW reports long-form filenames.
+    tmpDir = realpathSync.native(
+      await mkdtemp(path.join(tmpdir(), "watcher-ws-")),
+    );
     skillsDir = path.join(tmpDir, "skills");
     stateDir = tmpDir;
     mkdirSync(skillsDir, { recursive: true });

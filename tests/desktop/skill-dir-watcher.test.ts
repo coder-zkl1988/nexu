@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -7,7 +7,13 @@ import { SkillDb } from "#controller/services/skillhub/skill-db";
 import { SkillDirWatcher } from "#controller/services/skillhub/skill-dir-watcher";
 
 function makeTempDir(): string {
-  return mkdtempSync(resolve(tmpdir(), "skill-dir-watcher-test-"));
+  // realpathSync.native expands Windows 8.3 short paths (C:\Users\RUNNER~1\...)
+  // to their long form. Recursive fs.watch on a short-path dir trips a libuv
+  // assertion (src/win/fs-event.c: !_wcsnicmp(filename, dir, dirlen)) because
+  // ReadDirectoryChangesW reports long-form filenames.
+  return realpathSync.native(
+    mkdtempSync(resolve(tmpdir(), "skill-dir-watcher-test-")),
+  );
 }
 
 function writeSkill(skillsDir: string, slug: string): void {
