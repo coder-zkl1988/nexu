@@ -533,7 +533,7 @@ async function clickQuitDialog() {
           try {
             await execFileAsync("osascript", [
               "-e",
-              `tell application "System Events" to tell process "Nexu" to click button "${label}" of window ${winIdx}`,
+              `tell application "System Events" to tell process "Tabby" to click button "${label}" of window ${winIdx}`,
             ]);
             log(`Clicked "${label}" on window ${winIdx}`);
             return true;
@@ -546,7 +546,7 @@ async function clickQuitDialog() {
           try {
             await execFileAsync("osascript", [
               "-e",
-              `tell application "System Events" to tell process "Nexu" to click button "${label}" of sheet 1 of window ${winIdx}`,
+              `tell application "System Events" to tell process "Tabby" to click button "${label}" of sheet 1 of window ${winIdx}`,
             ]);
             log(`Clicked "${label}" on sheet of window ${winIdx}`);
             return true;
@@ -783,7 +783,7 @@ async function runUpdateScenario({ appPath, zipPath, captureDir }) {
   let coverageCollector;
   try {
     ({ app, page, coverageCollector } = await launchPackagedApp({
-      executablePath: path.join(appPath, "Contents", "MacOS", "Nexu"),
+      executablePath: path.join(appPath, "Contents", "MacOS", "Tabby"),
       env: {
         ...process.env,
         NEXU_UPDATE_FEED_URL: updateFeed.feedUrl,

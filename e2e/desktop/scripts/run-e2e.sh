@@ -178,7 +178,7 @@ install_from_dmg() {
   local dmg_path="$1"
   local mount_dir="$RUN_ROOT/dmg-mount"
   local install_root="$RUN_ROOT/Applications"
-  local installed_app="$install_root/Nexu.app"
+  local installed_app="$install_root/Tabby.app"
 
   rm -rf "$mount_dir" "$install_root"
   mkdir -p "$mount_dir" "$install_root"
@@ -186,14 +186,14 @@ install_from_dmg() {
   log "Mounting DMG: $(basename "$dmg_path")"
   hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_dir" >/dev/null
 
-  if [ ! -d "$mount_dir/Nexu.app" ]; then
+  if [ ! -d "$mount_dir/Tabby.app" ]; then
     hdiutil detach "$mount_dir" -force >/dev/null 2>&1 || true
-    log "ERROR: Nexu.app not found in DMG"
+    log "ERROR: Tabby.app not found in DMG"
     return 1
   fi
 
   log "Copying app from DMG"
-  ditto "$mount_dir/Nexu.app" "$installed_app"
+  ditto "$mount_dir/Tabby.app" "$installed_app"
 
   if [ "$SKIP_CODESIGN" = "true" ]; then
     log "Skipping codesign/spctl (unsigned local build)"
@@ -214,7 +214,7 @@ install_from_dmg() {
 # -----------------------------------------------------------------------
 launch_and_wait() {
   local app_path="$1"
-  local executable="$app_path/Contents/MacOS/Nexu"
+  local executable="$app_path/Contents/MacOS/Tabby"
   local home_dir="$PERSISTENT_HOME"
   local user_data_dir="$home_dir/Library/Application Support/@nexu/desktop"
   local logs_dir="$user_data_dir/logs"
@@ -278,7 +278,7 @@ quit_app() {
     local attempts=0
     while kill -0 "$app_pid" 2>/dev/null && [ "$attempts" -lt 20 ]; do
       for label in "完全退出" "Quit Completely"; do
-        osascript -e "tell application \"System Events\" to tell process \"Nexu\" to click button \"$label\" of window 1" 2>/dev/null && exit 0 || true
+        osascript -e "tell application \"System Events\" to tell process \"Tabby\" to click button \"$label\" of window 1" 2>/dev/null && exit 0 || true
       done
       sleep 0.5
       attempts=$((attempts + 1))
@@ -368,7 +368,7 @@ capture_logs() {
   {
     echo "=== Timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
     echo "=== Processes ==="
-    ps aux | grep -E "Nexu|openclaw|controller|clawhub" | grep -v grep || echo "(none)"
+    ps aux | grep -E "Tabby|openclaw|controller|clawhub" | grep -v grep || echo "(none)"
     echo "=== Launchd ==="
     launchctl list 2>/dev/null | grep nexu || echo "(none)"
     echo "=== Ports ==="
@@ -498,7 +498,7 @@ resilience_reset() {
 # Helper: launch app in background and wait for health, return PID
 resilience_launch() {
   local app_path="$1"
-  local executable="$app_path/Contents/MacOS/Nexu"
+  local executable="$app_path/Contents/MacOS/Tabby"
   local home_dir="$PERSISTENT_HOME"
   local user_data_dir="$home_dir/Library/Application Support/@nexu/desktop"
   local log_path="$CAPTURE_DIR/resilience-app.log"
@@ -636,7 +636,7 @@ while True:
   fi
 
   # Launch app — it should detect port conflict and handle it
-  local executable="$1/Contents/MacOS/Nexu"
+  local executable="$1/Contents/MacOS/Tabby"
   local home_dir="$PERSISTENT_HOME"
   local user_data_dir="$home_dir/Library/Application Support/@nexu/desktop"
   local log_path="$CAPTURE_DIR/resilience-port-conflict.log"
@@ -942,7 +942,7 @@ resilience_double_launch() {
   log "First instance running: pid=$first_pid"
 
   # Try to launch a second instance
-  local executable="$1/Contents/MacOS/Nexu"
+  local executable="$1/Contents/MacOS/Tabby"
   local home_dir="$PERSISTENT_HOME"
   local user_data_dir="$home_dir/Library/Application Support/@nexu/desktop"
   local second_log="$CAPTURE_DIR/resilience-double-launch.log"
@@ -1139,7 +1139,7 @@ fi
 log "Running Playwright E2E scenarios: $MODE"
 node "$REPO_ROOT/tests/packaged-e2e.mjs" "$MODE" \
   --app "$app_path" \
-  --exe "$app_path/Contents/MacOS/Nexu" \
+  --exe "$app_path/Contents/MacOS/Tabby" \
   --zip "$zip_path" \
   --user-data "$PERSISTENT_HOME/Library/Application Support/@nexu/desktop" \
   --capture-dir "$CAPTURE_DIR"
