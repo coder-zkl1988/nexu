@@ -121,6 +121,32 @@ async function buildSlimclaw() {
   ]);
 }
 
+async function installElectronBinary() {
+  // Electron >=43 removed its bundled `postinstall` script from package.json,
+  // so pnpm's `onlyBuiltDependencies` no longer downloads the runtime binary.
+  // Run install.js explicitly so the binary and path.txt are present for tests
+  // and packaging. This is idempotent — @electron/get caches downloads under
+  // ~/.cache/electron — and runs even when NEXU_SKIP_RUNTIME_POSTINSTALL is set,
+  // because unit tests (which transitively import electron) and packaging both
+  // need the binary regardless of the heavier runtime-prep steps skipped below.
+  const electronDir = resolve(repoRoot, "node_modules", "electron");
+  const pathTxt = resolve(electronDir, "path.txt");
+  if (await pathExists(pathTxt)) {
+    return;
+  }
+  const installScript = resolve(electronDir, "install.js");
+  if (!(await pathExists(installScript))) {
+    return;
+  }
+  console.log("Installing Electron binary (electron >=43 has no postinstall)…");
+  await run(process.execPath, [installScript]);
+}
+
+// Electron binary must be present before any test or build step, so install it
+// before the NEXU_SKIP_RUNTIME_POSTINSTALL early-exit (CI sets that flag to
+// skip the heavier weixin/slimclaw/dev-utils prep, not the electron binary).
+await installElectronBinary();
+
 if (isTruthy(process.env.NEXU_SKIP_RUNTIME_POSTINSTALL)) {
   console.log(
     "Skipping runtime postinstall via NEXU_SKIP_RUNTIME_POSTINSTALL.",
