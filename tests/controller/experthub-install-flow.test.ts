@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { ExpertManifest } from "@nexu/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -103,11 +104,16 @@ describe("installExpert", () => {
       agentId: "bot_1",
       source: "workspace",
     });
-    expect(deps.fs.mkdir).toHaveBeenCalledWith("/state/agents/bot_1", {
-      recursive: true,
-    });
+    // install-flow builds paths with path.join, so expectations must use
+    // platform-native separators (backslashes on Windows).
+    expect(deps.fs.mkdir).toHaveBeenCalledWith(
+      path.join("/state/agents", "bot_1"),
+      {
+        recursive: true,
+      },
+    );
     expect(deps.fs.writeFile).toHaveBeenCalledWith(
-      "/state/agents/bot_1/AGENTS.md",
+      path.join("/state/agents", "bot_1", "AGENTS.md"),
       "# Reviewer",
     );
     expect(deps.catalog.writeLedger).toHaveBeenCalledWith(
@@ -197,11 +203,14 @@ describe("installExpert", () => {
       },
     });
     await installExpert({ slug: "code-reviewer", deps });
-    expect(deps.fs.mkdir).toHaveBeenCalledWith("/state/agents/bot_1/docs", {
-      recursive: true,
-    });
+    expect(deps.fs.mkdir).toHaveBeenCalledWith(
+      path.join("/state/agents", "bot_1", "docs"),
+      {
+        recursive: true,
+      },
+    );
     expect(deps.fs.writeFile).toHaveBeenCalledWith(
-      "/state/agents/bot_1/docs/guide.md",
+      path.join("/state/agents", "bot_1", "docs", "guide.md"),
       "content",
     );
   });
