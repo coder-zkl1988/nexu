@@ -86,14 +86,24 @@
 - **C3 — 脱敏（硬性）**：上传前必须去除 bot token / apiKey / gateway token（AGENTS.md：never log credentials）。核查现有 export 是否已脱敏，缺则补。
 - **C4 — 验收**：点「发送诊断」→ 后端收到 → 据引用 ID 可下载。
 
-## 依赖与顺序
+### 阶段 D：Session Replay（隐私优先，默认关）
 
-```
-A（Sentry 后端 + 同意管道）──▶ B（手机故障复用 A 的上报）──▶ C（诊断上传复用 A 的同意/脱敏）
-```
+**目标**：错误发生前后回放桌面 UI，直观看到用户操作路径（如「点检查更新 → 弹窗 → 报错」）。**仅桌面渲染进程，录不到手机**（手机故障仍靠 B）。
 
-- **必须 A 先行**：A 建立了 DSN、同意开关、`reportError` 与脱敏，B/C 全部复用。
-- B、C 相对独立，A 完成后可并行，但建议仍按 B → C（先把「自动能收到的故障」补齐，再做「用户主动发日志」）。
+- **D1 — 渲染进程初始化 Sentry**：现有 Sentry 只在主进程；Session Replay 需在渲染进程（`@sentry/electron/renderer`）`init` + `replayIntegration()`。
+- **D2 — 严格脱敏（硬性）**：`maskAllText` + `maskAllInputs` + block 敏感区块（BYOK apiKey / 云 token / 邮箱）。凭证绝不进回放。
+- **D3 — 仅出错时录**：`replaysSessionSampleRate: 0` + `replaysOnErrorSampleRate: 1.0`（不随机录普通会话，对处理凭证的 app 更稳）。
+- **D4 — 独立显式同意、默认关**：单独开关（不挂在崩溃报告下），属「含 PII」档。
+- **D5 — 验收**：触发错误 → Sentry 有回放且敏感字段全被 mask。
+
+## 进度与依赖
+
+- **阶段 A：✅ 已落地并验证**（v0.5.11 — DSN 注入、同意开关接真、`reportError` 已接自动更新失败点；Sentry 实测收到了更新失败事件）。
+- 顺序：`A ──▶ B ──▶ C ──▶ D`。B/C/D 全部复用 A 的 `reportError` / 同意开关 / 脱敏。
+- **选型决定**：
+  - **B = relay**：TabbyApp → tabby-control → controller → 桌面主进程 `reportError`。
+  - **C = Sentry event 附件**：复用现有 DSN，不新建后端。
+  - **D = 隐私优先**：渲染进程 init + 全 mask + 仅出错时录 + 独立同意（默认关）。
 
 ## 隐私与合规
 
@@ -107,9 +117,9 @@ A（Sentry 后端 + 同意管道）──▶ B（手机故障复用 A 的上报�
 - 手机端：黑屏 / 无障碍丢失能在后端按 `deviceId` 聚合查看。
 - 支持链路：用户反馈问题 → 5 分钟内我方能据引用 ID 拿到该用户的完整日志包。
 
-## 开放问题（落地前需确认）
+## 已决定（原开放问题）
 
-1. 用哪个 Sentry 项目/组织？运行时 DSN 从哪取？
-2. C 的诊断上传后端用什么承载（自建端点 / Sentry attachment / R2 直传）？
-3. B 用 relay（推荐）还是给 TabbyApp 接独立 Sentry SDK？
-4. 遥测默认态：错误上报默认开还是默认关？（建议错误/崩溃默认开、诊断日志上传默认关且需显式同意。）
+1. ✅ Sentry 项目 `o4508902319325184`；运行时 DSN 存 GitHub secret `NEXU_DESKTOP_SENTRY_DSN`，发版 CI 注入 mac+win build。
+2. ✅ C 用 **Sentry event 附件**（复用现有 DSN，不新建后端）。
+3. ✅ B 用 **relay**（不给 TabbyApp 接独立 SDK）。
+4. ✅ 错误/崩溃默认开；诊断上传（C）+ Session Replay（D）默认关且需显式同意。
