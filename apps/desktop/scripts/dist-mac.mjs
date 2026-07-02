@@ -489,10 +489,29 @@ const requiredBundledPluginArtifacts = [
     pluginId: "tabby-control",
     requiredPath: ["openclaw.plugin.json"],
     label: "plugin-manifest",
+    // tabby-control lives in a sibling repo, not an npm package. Only the
+    // release pipeline checks that repo out (via TABBY_CONTROL_DIR); regular
+    // dev/PR builds don't, and bundle-runtime-plugins.mjs already skips it
+    // gracefully in that case. Mirror that here instead of hard-failing.
+    optionalWhenSourceMissing: true,
   },
 ];
 
+async function isTabbyControlSourceAvailable() {
+  const tabbyControlDir =
+    process.env.TABBY_CONTROL_DIR || resolve(repoRoot, "..", "tabby-control");
+  return pathExists(
+    resolve(
+      tabbyControlDir,
+      "dist-nexu",
+      "tabby-control",
+      "openclaw.plugin.json",
+    ),
+  );
+}
+
 async function validatePackagedBundledPluginDependencies(releaseRoot) {
+  const tabbyControlSourceAvailable = await isTabbyControlSourceAvailable();
   const appBundleDirs = await readdir(releaseRoot, { withFileTypes: true });
   const packagedMacBundles = appBundleDirs.filter(
     (entry) =>
@@ -509,6 +528,9 @@ async function validatePackagedBundledPluginDependencies(releaseRoot) {
   for (const entry of packagedMacBundles) {
     const appRoot = resolve(releaseRoot, entry.name, "Tabby.app");
     for (const artifact of requiredBundledPluginArtifacts) {
+      if (artifact.optionalWhenSourceMissing && !tabbyControlSourceAvailable) {
+        continue;
+      }
       const pluginRoot = resolve(
         appRoot,
         "Contents",

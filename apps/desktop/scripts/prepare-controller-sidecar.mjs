@@ -47,6 +47,11 @@ const requiredBundledPluginArtifacts = [
     pluginId: "tabby-control",
     requiredPath: join("openclaw.plugin.json"),
     label: "plugin-manifest",
+    // tabby-control lives in a sibling repo, not an npm package. Only the
+    // release pipeline checks that repo out (via TABBY_CONTROL_DIR); regular
+    // dev/PR builds don't, and bundle-runtime-plugins.mjs already skips it
+    // gracefully in that case. Mirror that here instead of hard-failing.
+    optionalWhenSourceMissing: true,
   },
 ];
 
@@ -54,10 +59,27 @@ function formatDurationMs(durationMs) {
   return `${(durationMs / 1000).toFixed(3)}s`;
 }
 
+async function isTabbyControlSourceAvailable() {
+  const tabbyControlDir =
+    process.env.TABBY_CONTROL_DIR || resolve(nexuRoot, "..", "tabby-control");
+  return pathExists(
+    resolve(
+      tabbyControlDir,
+      "dist-nexu",
+      "tabby-control",
+      "openclaw.plugin.json",
+    ),
+  );
+}
+
 async function ensureBundledPluginDependencyTree(rootDir, label) {
   const missing = [];
+  const tabbyControlSourceAvailable = await isTabbyControlSourceAvailable();
 
   for (const artifact of requiredBundledPluginArtifacts) {
+    if (artifact.optionalWhenSourceMissing && !tabbyControlSourceAvailable) {
+      continue;
+    }
     const pluginDir = resolve(rootDir, artifact.pluginId);
     const requiredPath = resolve(
       rootDir,
