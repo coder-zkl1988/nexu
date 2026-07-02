@@ -129,7 +129,7 @@ export async function startDesktopDevInspectServer(
     return;
   }
 
-  desktopDevInspectServer = createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     if (request.headers["x-nexu-dev-inspect-token"] !== options.token) {
       writeJson(response, 401, {
         error: "Unauthorized desktop dev inspect request.",
@@ -145,14 +145,23 @@ export async function startDesktopDevInspectServer(
       writeJson(response, 400, { error: message });
     }
   });
+  desktopDevInspectServer = server;
 
-  await new Promise<void>((resolve, reject) => {
-    desktopDevInspectServer?.once("error", reject);
-    desktopDevInspectServer?.listen(options.port, options.host, () => {
-      desktopDevInspectServer?.off("error", reject);
-      resolve();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(options.port, options.host, () => {
+        server.off("error", reject);
+        resolve();
+      });
     });
-  });
+  } catch (error) {
+    // listen() failed (e.g. EADDRINUSE) - the server never actually bound,
+    // so clear the module state or stopDesktopDevInspectServer() would later
+    // call close() on a non-listening server and reject with ERR_SERVER_NOT_RUNNING.
+    desktopDevInspectServer = null;
+    throw error;
+  }
 }
 
 export async function stopDesktopDevInspectServer(): Promise<void> {

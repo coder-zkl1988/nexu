@@ -1459,7 +1459,15 @@ app.on("second-instance", () => {
 });
 
 app.on("before-quit", () => {
-  void stopDesktopDevInspectServer();
+  stopDesktopDevInspectServer().catch((error) => {
+    writeDesktopMainLog({
+      source: "dev-inspect",
+      stream: "stderr",
+      kind: "app",
+      message: `desktop dev inspect server failed to stop error=${error instanceof Error ? error.message : String(error)}`,
+      logFilePath: null,
+    });
+  });
 });
 
 function createMainWindow(): BrowserWindow {
@@ -1515,20 +1523,15 @@ function createMainWindow(): BrowserWindow {
     window.setVibrancy("sidebar");
   }
 
-  window.webContents.on(
-    "console-message",
-    (_event, level, message, line, sourceId) => {
-      const levelLabel =
-        ["verbose", "info", "warning", "error"][level] ?? String(level);
-      logRendererEvent({
-        source: `renderer:${levelLabel}`,
-        stream: level >= 3 ? "stderr" : "stdout",
-        kind: "app",
-        message: `${message} (${sourceId}:${line})`,
-        windowId: window.webContents.id,
-      });
-    },
-  );
+  window.webContents.on("console-message", (details) => {
+    logRendererEvent({
+      source: `renderer:${details.level}`,
+      stream: details.level === "error" ? "stderr" : "stdout",
+      kind: "app",
+      message: `${details.message} (${details.sourceId}:${details.lineNumber})`,
+      windowId: window.webContents.id,
+    });
+  });
 
   window.webContents.on(
     "did-fail-load",
@@ -1753,14 +1756,12 @@ app.on("web-contents-created", (_event, contents) => {
     return;
   }
 
-  contents.on("console-message", (_event, level, message, line, sourceId) => {
-    const levelLabel =
-      ["verbose", "info", "warning", "error"][level] ?? String(level);
+  contents.on("console-message", (details) => {
     logRendererEvent({
-      source: `embedded:${contentType}:${levelLabel}`,
-      stream: level >= 3 ? "stderr" : "stdout",
+      source: `embedded:${contentType}:${details.level}`,
+      stream: details.level === "error" ? "stderr" : "stdout",
       kind: "app",
-      message: `${message} (${sourceId}:${line})`,
+      message: `${details.message} (${details.sourceId}:${details.lineNumber})`,
       windowId: contents.id,
     });
   });
