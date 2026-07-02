@@ -57,8 +57,12 @@ describe("SkillDirWatcher", () => {
     db = await SkillDb.create(dbPath);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     watcher?.stop();
+    // Windows' recursive fs.watch() can still have in-flight native events
+    // when close() returns; deleting the watched dir before they drain
+    // crashes the process (libuv fs-event.c assertion). Give it a tick.
+    await wait(50);
     db?.close();
     rmSync(tempDir, { recursive: true, force: true });
   });

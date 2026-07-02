@@ -23,6 +23,10 @@ describe("SkillDirWatcher workspace reconciliation", () => {
   });
 
   afterEach(async () => {
+    // Windows' recursive fs.watch() can still have in-flight native events
+    // when a test's watcher.stop() returns; deleting the watched dir before
+    // they drain crashes the process (libuv fs-event.c assertion). Give it a tick.
+    await new Promise((resolve) => setTimeout(resolve, 50));
     db.close();
     await rm(tmpDir, { recursive: true, force: true });
   });
