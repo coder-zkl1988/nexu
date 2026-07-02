@@ -199,7 +199,7 @@ jobs:
           default_user_data_dir="$runner_home/Library/Application Support/@nexu/desktop"
           default_logs_dir="$default_user_data_dir/logs"
           default_runtime_logs_dir="$default_logs_dir/runtime-units"
-          packaged_apps=(apps/desktop/release/mac*/Nexu.app)
+          packaged_apps=(apps/desktop/release/mac*/Tabby.app)
 
           if [ "${#packaged_apps[@]}" -eq 0 ]; then
             echo "No packaged app bundle found under apps/desktop/release/mac*" >&2
@@ -207,7 +207,7 @@ jobs:
           fi
 
           packaged_app="${packaged_apps[0]}"
-          packaged_executable="$packaged_app/Contents/MacOS/Nexu"
+          packaged_executable="$packaged_app/Contents/MacOS/Tabby"
 
           mkdir -p "$RUNNER_TEMP/desktop-ci" "$packaged_home" "$RUNNER_TEMP/desktop-tmp"
 
@@ -374,7 +374,7 @@ jobs:
             Write-Error "No Windows installer artifact was produced"
           }
 
-          $unpackedExecutable = Join-Path $releaseDir "win-unpacked/Nexu.exe"
+          $unpackedExecutable = Join-Path $releaseDir "win-unpacked/Tabby.exe"
           if (-not (Test-Path $unpackedExecutable)) {
             Write-Error "Missing unpacked Windows app executable: $unpackedExecutable"
           }

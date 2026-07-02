@@ -111,15 +111,15 @@ async function resolvePackagedExecutable() {
   }
 
   if (process.platform === "win32") {
-    return resolve(releaseDir, "win-unpacked", "Nexu.exe");
+    return resolve(releaseDir, "win-unpacked", "Tabby.exe");
   }
 
   const defaultMacExecutable = resolve(
     releaseDir,
-    "Nexu.app",
+    "Tabby.app",
     "Contents",
     "MacOS",
-    "Nexu",
+    "Tabby",
   );
 
   if (await fileExists(defaultMacExecutable)) {
@@ -136,10 +136,10 @@ async function resolvePackagedExecutable() {
     const macExecutable = resolve(
       releaseDir,
       entry.name,
-      "Nexu.app",
+      "Tabby.app",
       "Contents",
       "MacOS",
-      "Nexu",
+      "Tabby",
     );
 
     if (await fileExists(macExecutable)) {

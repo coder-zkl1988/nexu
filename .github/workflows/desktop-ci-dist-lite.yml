@@ -117,8 +117,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path $captureDir, $packagedHome, $tmpDir | Out-Null
 
           $packagedUserDataDir = Join-Path $packagedHome "Library/Application Support/@nexu/desktop"
-          $packagedApp = "apps/desktop/release/mac-arm64/Nexu.app"
-          $packagedExecutable = "$packagedApp/Contents/MacOS/Nexu"
+          $packagedApp = "apps/desktop/release/mac-arm64/Tabby.app"
+          $packagedExecutable = "$packagedApp/Contents/MacOS/Tabby"
 
           $packagedLogsDir = Join-Path $packagedUserDataDir "logs"
           $packagedRuntimeLogsDir = Join-Path $packagedLogsDir "runtime-units"
@@ -139,7 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packaged_apps=(apps/desktop/release/mac*/Nexu.app)
+          packaged_apps=(apps/desktop/release/mac*/Tabby.app)
 
           if [ "${#packaged_apps[@]}" -eq 0 ]; then
             echo "No packaged desktop app bundle was produced" >&2
