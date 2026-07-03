@@ -90,25 +90,16 @@ function createBaseConfig(): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
-  it("prewarms Feishu plugin and a disabled internal account before first connect", () => {
+  it("does not emit Feishu/weixin plugin entries or channel accounts before first connect", () => {
     const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
 
-    expect(compiled.plugins?.entries?.feishu).toEqual({ enabled: true });
-    expect(compiled.plugins?.entries?.["openclaw-weixin"]).toEqual({
-      enabled: true,
-    });
-    // Prewarm allowlist: prevents first-connect SIGUSR1 + drain window.
-    expect(compiled.plugins?.allow).toContain("openclaw-weixin");
+    // Prewarm was removed: without a connected channel, no Feishu/lark/weixin
+    // plugin entries or channel accounts are emitted.
+    expect(compiled.plugins?.entries?.feishu).toBeUndefined();
+    expect(compiled.plugins?.entries?.["openclaw-lark"]).toBeUndefined();
+    expect(compiled.plugins?.entries?.["openclaw-weixin"]).toBeUndefined();
     expect(compiled.plugins?.allow).toContain("langfuse-tracer");
-    expect(compiled.channels?.feishu?.enabled).toBe(true);
-    expect(compiled.channels?.feishu?.accounts).toEqual({
-      __nexu_internal_feishu_prewarm__: {
-        enabled: false,
-        appId: "nexu-feishu-prewarm",
-        appSecret: "nexu-feishu-prewarm",
-        connectionMode: "websocket",
-      },
-    });
+    expect(compiled.channels?.feishu).toBeUndefined();
     expect(compiled.bindings).toEqual([]);
   });
 
@@ -162,7 +153,9 @@ describe("compileOpenClawConfig", () => {
 
     const compiled = compileOpenClawConfig(config, createEnv());
 
-    expect(compiled.plugins?.entries?.feishu).toEqual({ enabled: true });
+    expect(compiled.plugins?.entries?.["openclaw-lark"]).toEqual({
+      enabled: true,
+    });
     expect(compiled.channels?.feishu?.accounts).toEqual({
       cli_real_account: {
         enabled: true,
@@ -185,7 +178,7 @@ describe("compileOpenClawConfig", () => {
     ]);
   });
 
-  it("keeps the real Feishu account disabled after disconnect and clears bindings", () => {
+  it("drops the Feishu channel entirely after disconnect and clears bindings", () => {
     const config = createBaseConfig();
     config.channels = [
       {
@@ -209,17 +202,9 @@ describe("compileOpenClawConfig", () => {
 
     const compiled = compileOpenClawConfig(config, createEnv());
 
-    expect(compiled.channels?.feishu?.accounts).toEqual({
-      cli_real_account: {
-        enabled: false,
-        appId: "cli_app_id",
-        appSecret: "cli_app_secret",
-        connectionMode: "websocket",
-        dmPolicy: "open",
-        groupPolicy: "open",
-        allowFrom: ["*"],
-      },
-    });
+    // Disconnected channels are dropped entirely (prewarm removal in
+    // commit 80e68d98a); the account is no longer kept in a disabled state.
+    expect(compiled.channels?.feishu).toBeUndefined();
     expect(compiled.bindings).toEqual([]);
   });
 

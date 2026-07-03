@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ControllerEnv } from "#controller/app/env.js";
+import {
+  readAgentAuthStore,
+  writeAgentAuthStore,
+} from "#controller/runtime/openclaw-agent-auth-db.js";
 import { OpenClawAuthService } from "#controller/services/openclaw-auth-service.js";
 
 // ── Test helpers ─────────────────────────────────────────────────
@@ -63,11 +67,12 @@ async function writeAuthProfiles(
   agentDir: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  await writeFile(
-    path.join(agentDir, "auth-profiles.json"),
-    JSON.stringify(data, null, 2),
-    "utf8",
-  );
+  // Per-agent auth profiles live in openclaw-agent.sqlite (OpenClaw ≥2026.6.5);
+  // the legacy auth-profiles.json is no longer read at runtime.
+  writeAgentAuthStore(path.join(agentDir, "openclaw-agent.sqlite"), {
+    version: typeof data.version === "number" ? data.version : 1,
+    profiles: (data.profiles as Record<string, unknown> | undefined) ?? {},
+  });
 }
 
 async function writeSharedAuthProfiles(
@@ -84,11 +89,13 @@ async function writeSharedAuthProfiles(
 async function readAuthProfilesFile(
   agentDir: string,
 ): Promise<Record<string, unknown>> {
-  const content = await readFile(
-    path.join(agentDir, "auth-profiles.json"),
-    "utf8",
+  const cell = readAgentAuthStore(path.join(agentDir, "openclaw-agent.sqlite"));
+  return (
+    (cell as Record<string, unknown> | null) ?? {
+      version: 1,
+      profiles: {},
+    }
   );
-  return JSON.parse(content) as Record<string, unknown>;
 }
 
 // ── Tests ────────────────────────────────────────────────────────

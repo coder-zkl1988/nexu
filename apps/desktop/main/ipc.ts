@@ -8,7 +8,6 @@ import {
   webContents,
 } from "electron";
 import {
-  type DesktopDevDiagnosticsLogLevel,
   type DesktopDevDomSnapshotResult,
   type DesktopDevEvalResult,
   type DesktopDevEvalSerializableValue,
@@ -80,21 +79,6 @@ function appendDesktopDevRendererLog(
   }
 }
 
-function mapConsoleMessageLevel(level: number): DesktopDevDiagnosticsLogLevel {
-  switch (level) {
-    case 0:
-      return "info";
-    case 1:
-      return "warning";
-    case 2:
-      return "error";
-    case 3:
-      return "debug";
-    default:
-      return "info";
-  }
-}
-
 function trackDesktopDevRendererLogs(contents: Electron.WebContents): void {
   if (desktopDevTrackedContents.has(contents.id)) {
     return;
@@ -102,14 +86,14 @@ function trackDesktopDevRendererLogs(contents: Electron.WebContents): void {
 
   desktopDevTrackedContents.add(contents.id);
 
-  contents.on("console-message", (_event, level, message, line, sourceId) => {
+  contents.on("console-message", (details) => {
     appendDesktopDevRendererLog({
       source: "console",
-      level: mapConsoleMessageLevel(level),
-      message,
+      level: details.level,
+      message: details.message,
       url: contents.getURL() || null,
-      sourceId: sourceId || null,
-      line,
+      sourceId: details.sourceId || null,
+      line: details.lineNumber,
     });
   });
 
