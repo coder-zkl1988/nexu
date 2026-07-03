@@ -3,7 +3,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
-import { WorkspaceTemplateWriter } from "../src/runtime/workspace-template-writer.js";
+import {
+  WorkspaceTemplateWriter,
+  injectTimezone,
+} from "../src/runtime/workspace-template-writer.js";
+
+const USER_MD_ZH_TEMPLATE = [
+  "# USER.md - 关于你的人类",
+  "",
+  "- **姓名：**",
+  "- **时区：**",
+  "",
+].join("\n");
 
 describe("WorkspaceTemplateWriter", () => {
   let rootDir = "";
@@ -212,5 +223,67 @@ describe("WorkspaceTemplateWriter", () => {
     await expect(
       readFile(workspacePathFor("bot-paused", "AGENTS.md"), "utf8"),
     ).rejects.toThrow();
+  });
+
+  it("seeds a freshly-created bot's USER.md with the system timezone instead of leaving it blank", async () => {
+    await writeFile(
+      path.join(sourceDir, "USER.md"),
+      USER_MD_ZH_TEMPLATE,
+      "utf8",
+    );
+    const writer = new WorkspaceTemplateWriter(env);
+
+    await writer.write([{ id: "bot-tz", status: "active" }]);
+
+    const content = await readFile(
+      workspacePathFor("bot-tz", "USER.md"),
+      "utf8",
+    );
+    const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(content).toContain(`- **时区：** ${systemTimezone}`);
+  });
+
+  it("never touches a pre-existing USER.md, timezone included", async () => {
+    await writeFile(
+      path.join(sourceDir, "USER.md"),
+      USER_MD_ZH_TEMPLATE,
+      "utf8",
+    );
+    const botId = "bot-tz-preserved";
+    const workspaceDir = path.join(stateDir, "agents", botId);
+    await mkdir(workspaceDir, { recursive: true });
+    const alreadyFilled = "# USER.md\n\n- **姓名：** 张三\n- **时区：** UTC\n";
+    await writeFile(path.join(workspaceDir, "USER.md"), alreadyFilled, "utf8");
+
+    const writer = new WorkspaceTemplateWriter(env);
+    await writer.write([{ id: botId, status: "active" }]);
+
+    expect(await readFile(workspacePathFor(botId, "USER.md"), "utf8")).toBe(
+      alreadyFilled,
+    );
+  });
+});
+
+describe("injectTimezone", () => {
+  it("fills the empty 时区 (zh-CN) placeholder", () => {
+    const result = injectTimezone(USER_MD_ZH_TEMPLATE, "Asia/Shanghai");
+    expect(result).toContain("- **时区：** Asia/Shanghai");
+  });
+
+  it("fills the empty Timezone (en) placeholder", () => {
+    const template = "# USER.md\n\n- **Name:**\n- **Timezone:**\n";
+    const result = injectTimezone(template, "America/New_York");
+    expect(result).toContain("- **Timezone:** America/New_York");
+  });
+
+  it("leaves an already-filled timezone untouched", () => {
+    const template = "# USER.md\n\n- **时区：** UTC\n";
+    const result = injectTimezone(template, "Asia/Shanghai");
+    expect(result).toBe(template);
+  });
+
+  it("is a no-op when there is no timezone placeholder at all", () => {
+    const template = "# USER.md\n\n- **姓名：**\n";
+    expect(injectTimezone(template, "Asia/Shanghai")).toBe(template);
   });
 });

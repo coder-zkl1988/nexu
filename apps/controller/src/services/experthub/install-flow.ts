@@ -40,7 +40,8 @@ export type InstallExpertDeps = {
   };
   agentsDir: string;
   genBotSlug: (expertSlug: string) => string;
-  defaultModelId: string;
+  /** Resolve the current global default model (config.runtime.defaultModelId). */
+  getGlobalModelId: () => Promise<string>;
 };
 
 export type InstallExpertResult = {
@@ -94,11 +95,12 @@ export async function installExpert(args: {
     assertSafeWorkspacePath(relPath);
   }
 
-  // Use global default model when expert doesn't specify a real model
+  // When the expert manifest doesn't pin a real model, use the *current* global
+  // default model (config.runtime.defaultModelId) — not the static env fallback.
   const modelId =
     manifest.modelId && manifest.modelId !== "gpt-4o"
       ? manifest.modelId
-      : deps.defaultModelId;
+      : await deps.getGlobalModelId();
 
   const bot = await deps.botService.createBot({
     name: manifest.name,

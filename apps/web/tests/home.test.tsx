@@ -135,15 +135,6 @@ describe("HomePage", () => {
     expect(markup).not.toContain("home.rewardsTeaser.cta");
   });
 
-  it("renders the development budget debug panel", () => {
-    const markup = renderHomePage();
-
-    expect(markup).toContain("Budget Debug");
-    expect(markup).toContain("真实状态");
-    expect(markup).toContain("预警");
-    expect(markup).toContain("耗尽");
-  });
-
   it("does not show a budget banner after switching away from managed models", () => {
     const markup = renderHomePage({
       viewer: {
@@ -168,18 +159,9 @@ describe("HomePage", () => {
     expect(markup).not.toContain("budget.banner.warningTitle");
   });
 
-  it("renders the alpha hero as a looping muted autoplay video", () => {
-    const markup = renderHomePage();
-
-    expect(markup).toContain('src="/nexu-alpha.mp4"');
-    expect(markup).toContain('poster="/nexu-alpha-poster.jpg"');
-    expect(markup).toContain('autoPlay=""');
-    expect(markup).toContain('playsInline=""');
-    expect(markup).toContain('muted=""');
-    expect(markup).toContain('loop=""');
-  });
-
-  it("renders the budget banner below the hero block on the home page", () => {
+  it("does not render an inline budget banner on the redesigned home page", () => {
+    // The budget banner is now owned by the workspace layout (globally, and
+    // suppressed on home) — the home page itself must not render one inline.
     const markup = renderHomePage({
       viewer: {
         cloudConnected: true,
@@ -199,13 +181,7 @@ describe("HomePage", () => {
       },
     });
 
-    expect(markup).toContain('data-budget-banner-status="warning"');
-    expect(markup.indexOf("nexu alpha")).toBeLessThan(
-      markup.indexOf('data-budget-banner-status="warning"'),
-    );
-    expect(markup.indexOf('data-budget-banner-status="warning"')).toBeLessThan(
-      markup.indexOf("Channels"),
-    );
+    expect(markup).not.toContain("data-budget-banner-status");
   });
 });
 
@@ -264,7 +240,7 @@ describe("RewardsPage", () => {
     });
 
     expect(markup).toContain("budget.viral.rules");
-    expect(markup).toContain("https://docs.nexu.io/guide/rewards");
+    expect(markup).toContain("https://tabby.picaso.studio/docs/guide/rewards");
   });
 
   it("uses the积分 copy and hides the redundant cloud balance summary card", () => {
@@ -287,9 +263,9 @@ describe("RewardsPage", () => {
       cloudBalance: null,
     });
 
-    expect(zhCN["rewards.title"]).toBe("分享 nexu，获取额外积分");
+    expect(zhCN["rewards.title"]).toBe("分享 Tabby，获取额外积分");
     expect(zhCN["rewards.desc"]).toBe(
-      "把 nexu 分享给你的社区，完成任务获取额外积分。",
+      "把 Tabby 分享给你的社区，完成任务获取额外积分。",
     );
     expect(markup).toContain("layout.sidebar.balanceUnit");
     expect(markup).not.toContain("rewards.cloudBalance");
@@ -359,9 +335,9 @@ describe("RewardsPage", () => {
 
 describe("Rewards locale parity", () => {
   it("keeps the source Chinese rewards copy for the header and task labels", () => {
-    expect(zhCN["rewards.title"]).toBe("分享 nexu，获取额外积分");
+    expect(zhCN["rewards.title"]).toBe("分享 Tabby，获取额外积分");
     expect(zhCN["rewards.desc"]).toBe(
-      "把 nexu 分享给你的社区，完成任务获取额外积分。",
+      "把 Tabby 分享给你的社区，完成任务获取额外积分。",
     );
     expect(zhCN["reward.github_star.name"]).toBe("Star us");
     expect(zhCN["reward.reddit.name"]).toBe("发帖到 Reddit");
