@@ -152,6 +152,10 @@ export interface WorkboardCard {
   status: string;
   agentId?: string | null;
   notes?: string;
+  metadata?: {
+    /** Workflow step replies are recorded as comments (newest last). */
+    comments?: Array<{ body?: string }>;
+  };
 }
 
 export interface WorkboardDispatchStarted {
@@ -265,6 +269,48 @@ export class OpenClawGatewayService {
     board?: string;
   }): Promise<WorkboardDispatchResult> {
     return this.wsClient.request("workboard.cards.dispatch", params ?? {});
+  }
+
+  /**
+   * Sibling dependency: the child card stays gated (not promotable to ready)
+   * until the parent card reaches `done`. Verified live 2026-07-01 (spike S1,
+   * design doc §10.1).
+   */
+  async workboardCardLinkDependency(params: {
+    parentId: string;
+    childId: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.linkDependency", params);
+  }
+
+  async workboardCardUpdate(params: {
+    id: string;
+    notes?: string;
+    title?: string;
+  }): Promise<{ card: WorkboardCard }> {
+    return this.wsClient.request("workboard.cards.update", params);
+  }
+
+  async workboardCardComment(params: {
+    id: string;
+    body: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.comment", params);
+  }
+
+  /** Operator-scoped completion — no worker claim token needed (spike S1). */
+  async workboardCardComplete(params: {
+    id: string;
+    summary?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.complete", params);
+  }
+
+  async workboardCardBlock(params: {
+    id: string;
+    reason?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.block", params);
   }
 
   async getGatewayStatusSummary(opts?: {

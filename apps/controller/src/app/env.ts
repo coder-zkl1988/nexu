@@ -192,6 +192,7 @@ export const env = {
   experthubCacheDir: path.join(nexuHomeDir, "experthub-cache"),
   expertDbPath: path.join(nexuHomeDir, "expert-ledger.json"),
   teamDbPath: path.join(nexuHomeDir, "team-ledger.json"),
+  teamWorkflowDbPath: path.join(nexuHomeDir, "team-workflow-ledger.json"),
   experthubVersionUrl: parsed.EXPERTHUB_VERSION_URL,
   experthubDownloadUrl: parsed.EXPERTHUB_DOWNLOAD_URL,
   analyticsStatePath: path.join(nexuHomeDir, "analytics-state.json"),
