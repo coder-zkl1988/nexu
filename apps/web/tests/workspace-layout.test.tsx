@@ -149,6 +149,7 @@ function renderWorkspaceLayout(
         channelType: "slack",
         lastTime: "2026-03-20T08:57:00.000Z",
         status: "active",
+        sessionKey: "agent:bot-1:slack:channel:C123",
       },
     ],
   );
@@ -252,7 +253,7 @@ describe("WorkspaceLayout", () => {
 
     expect(markup).not.toContain("layout.nav.rewards");
     expect(markup).toContain("Rewards body");
-    expect(markup).toContain("layout.sidebar.rewardsTitle");
+    expect(markup).toContain("layout.sidebar.balanceLabel");
   });
 
   it("renders the logged-out sidebar growth card", () => {
@@ -280,7 +281,7 @@ describe("WorkspaceLayout", () => {
     expect(markup).toContain("layout.sidebar.loginTitle");
     expect(markup).toContain("layout.sidebar.loginSubtitle");
     expect(markup).toContain('data-sidebar-growth-card="login"');
-    expect(markup).not.toContain("layout.sidebar.rewardsTitle");
+    expect(markup).not.toContain('data-sidebar-rewards-balance="true"');
   });
 
   it("renders a loading shell instead of a fake zero-state card before rewards resolve", () => {
@@ -288,7 +289,7 @@ describe("WorkspaceLayout", () => {
 
     expect(markup).toContain('data-rewards-card-loading="true"');
     expect(markup).not.toContain("layout.sidebar.loginTitle");
-    expect(markup).not.toContain("layout.sidebar.rewardsTitle");
+    expect(markup).not.toContain("layout.sidebar.balanceLabel");
   });
 
   it("renders the connected rewards shell immediately while balance data is still syncing", () => {
@@ -301,10 +302,10 @@ describe("WorkspaceLayout", () => {
     );
 
     expect(markup).not.toContain('data-rewards-card-loading="true"');
-    expect(markup).toContain('data-sidebar-growth-card="rewards"');
-    expect(markup).toContain("layout.sidebar.rewardsTitle");
+    expect(markup).toContain('data-sidebar-rewards-balance="true"');
+    expect(markup).toContain("layout.sidebar.balanceLabel");
     expect(markup).toContain("layout.sidebar.balancePlaceholder");
-    expect(markup).not.toContain("0 layout.sidebar.balanceUnit");
+    expect(markup).not.toContain("$0.00");
   });
 
   it("renders a global warning banner on non-remediation pages", () => {
@@ -449,12 +450,11 @@ describe("WorkspaceLayout", () => {
       },
     );
 
-    expect(markup).toContain('data-sidebar-growth-card="rewards"');
-    expect(markup).toContain("layout.sidebar.rewardsTitle");
     expect(markup).not.toContain("4/10");
     expect(markup).toContain('data-sidebar-rewards-balance="true"');
     expect(markup).toContain("layout.sidebar.balanceLabel");
-    expect(markup).toContain("200 layout.sidebar.balanceUnit");
+    // 200 cents rendered as exact USD.
+    expect(markup).toContain("$2.00");
     expect(markup).not.toContain("layout.sidebar.loginTitle");
   });
 
@@ -485,7 +485,7 @@ describe("WorkspaceLayout", () => {
       },
     );
 
-    expect(markup).toContain('data-sidebar-growth-card="rewards"');
+    expect(markup).toContain('data-sidebar-rewards-balance="true"');
     expect(markup).toContain("layout.sidebar.balanceLabel");
   });
 
@@ -511,7 +511,7 @@ describe("WorkspaceLayout", () => {
       },
     );
 
-    expect(markup).toContain("0 layout.sidebar.balanceUnit");
+    expect(markup).toContain("$0.00");
   });
 
   it("derives the popup breakdown from current gifted and plan balances", () => {
@@ -585,7 +585,7 @@ describe("WorkspaceLayout", () => {
     );
 
     expect(markup).toContain("layout.sidebar.loginTitle");
-    expect(markup).not.toContain("layout.sidebar.rewardsTitle");
+    expect(markup).not.toContain('data-sidebar-rewards-balance="true"');
   });
 
   it("prefers desktop cloud status over stale rewards state when the user has logged in", () => {
@@ -610,7 +610,7 @@ describe("WorkspaceLayout", () => {
       },
     );
 
-    expect(markup).toContain("layout.sidebar.rewardsTitle");
+    expect(markup).toContain('data-sidebar-rewards-balance="true"');
     expect(markup).not.toContain("layout.sidebar.loginTitle");
   });
 
@@ -640,8 +640,8 @@ describe("WorkspaceLayout", () => {
       },
     );
 
-    expect(markup).toContain('data-sidebar-growth-card="rewards"');
-    expect(markup).toContain("layout.sidebar.rewardsTitle");
+    expect(markup).toContain('data-sidebar-rewards-balance="true"');
+    expect(markup).toContain("layout.sidebar.balanceLabel");
     expect(markup).not.toContain("0/12");
   });
 
@@ -663,6 +663,7 @@ describe("WorkspaceLayout", () => {
           channelType: "whatsapp",
           lastTime: "2026-03-20T08:57:00.000Z",
           status: "active",
+          sessionKey: "agent:bot-1:whatsapp:dm:12345",
         },
       ],
     );
