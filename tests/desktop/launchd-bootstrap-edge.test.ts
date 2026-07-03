@@ -298,7 +298,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
     // Should NOT be process.execPath (which points inside .app)
     expect(paths.nodePath).not.toBe(process.execPath);
     expect(normalizePath(paths.nodePath)).toContain(
-      "nexu-runner.app/Contents/MacOS/Nexu",
+      "nexu-runner.app/Contents/MacOS/Tabby",
     );
   });
 
@@ -358,7 +358,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
     existsSync.mockImplementation((target: string) => {
       const normalizedTarget = normalizePath(target);
       if (normalizedTarget.endsWith(".nexu-runner-version")) return true;
-      if (normalizedTarget.includes("nexu-runner.app/Contents/MacOS/Nexu"))
+      if (normalizedTarget.includes("nexu-runner.app/Contents/MacOS/Tabby"))
         return true;
       return normalizedTarget.endsWith("Info.plist");
     });
@@ -383,7 +383,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
     );
 
     expect(normalizePath(runnerPath)).toBe(
-      "/Users/testuser/.nexu/runtime/nexu-runner.app/Contents/MacOS/Nexu",
+      "/Users/testuser/.nexu/runtime/nexu-runner.app/Contents/MacOS/Tabby",
     );
     expect(mockExecFile).not.toHaveBeenCalled();
   });
@@ -416,7 +416,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
       if (normalizedTarget.endsWith("nexu-runner.app.staging")) return true;
       if (
         normalizedTarget.endsWith(
-          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Nexu",
+          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Tabby",
         )
       ) {
         return true;
@@ -460,7 +460,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
       if (normalizedTarget.endsWith(".nexu-runner-version")) return false;
       if (
         normalizedTarget.endsWith(
-          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Nexu",
+          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Tabby",
         )
       ) {
         return true;
@@ -510,7 +510,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
       if (normalizedTarget.endsWith(".nexu-runner-version")) return false;
       if (
         normalizedTarget.endsWith(
-          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Nexu",
+          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Tabby",
         )
       ) {
         return true;
@@ -568,7 +568,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
       if (normalizedTarget.endsWith(".nexu-runner-version")) return false;
       if (
         normalizedTarget.endsWith(
-          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Nexu",
+          "/Users/testuser/.nexu/runtime/nexu-runner.app.staging/Contents/MacOS/Tabby",
         )
       ) {
         return true;
@@ -677,7 +677,7 @@ describe("checkCriticalPathsLocked", () => {
 
         if (cmd === "lsof") {
           callback?.(null, {
-            stdout: `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nElectron ${process.pid} me txt REG 1,4 0 0 /Users/testuser/.nexu/runtime/nexu-runner.app/Contents/MacOS/Nexu\n`,
+            stdout: `COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nElectron ${process.pid} me txt REG 1,4 0 0 /Users/testuser/.nexu/runtime/nexu-runner.app/Contents/MacOS/Tabby\n`,
             stderr: "",
           });
           return { stdout: "", stderr: "" };
@@ -718,7 +718,7 @@ describe("external runner — path stability and edge cases", () => {
     existsSync.mockImplementation((target: string) => {
       const normalizedTarget = normalizePath(target);
       if (normalizedTarget.endsWith(".nexu-runner-version")) return true;
-      if (normalizedTarget.includes("MacOS/Nexu")) return true;
+      if (normalizedTarget.includes("MacOS/Tabby")) return true;
       if (normalizedTarget.endsWith("Info.plist")) return true;
       return false;
     });
@@ -822,9 +822,9 @@ describe("external runner — path stability and edge cases", () => {
       "1.0.0",
     );
 
-    // Should use the name from Info.plist, not hardcoded "Nexu"
+    // Should use the name from Info.plist, not the hardcoded fallback
     expect(normalizePath(result)).toContain("MacOS/MyCustomApp");
-    expect(normalizePath(result)).not.toContain("MacOS/Nexu");
+    expect(normalizePath(result)).not.toContain("MacOS/Tabby");
   });
 
   it("assertSafeRmTarget rejects shallow paths", async () => {

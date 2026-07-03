@@ -1,4 +1,5 @@
 import { ModelLogo, ProviderLogo } from "@/components/provider-logo";
+import { getSpecialModelLabelKey } from "@/lib/special-models";
 import { track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { Check, ChevronDown, Cpu, Search, Settings } from "lucide-react";
@@ -367,11 +368,16 @@ export function ModelPickerDropdown({
                       {isExpanded &&
                         provider.models.map((model) => {
                           const isSelected = model.id === currentModelId;
+                          const specialLabelKey = getSpecialModelLabelKey(
+                            model.id,
+                          );
+                          const isSpecial = specialLabelKey !== null;
                           return (
                             <button
                               key={model.id}
                               ref={isSelected ? currentItemRef : null}
                               type="button"
+                              disabled={isSpecial}
                               onClick={() => {
                                 onSelectModel(model.id);
                                 closePicker();
@@ -385,6 +391,7 @@ export function ModelPickerDropdown({
                                   : compact
                                     ? undefined
                                     : "hover:bg-surface-2",
+                                isSpecial && "opacity-45 pointer-events-none",
                               )}
                             >
                               {compact ? (
@@ -425,6 +432,8 @@ export function ModelPickerDropdown({
                                   )}
                                 >
                                   {model.name}
+                                  {specialLabelKey &&
+                                    ` (${t(specialLabelKey)})`}
                                 </div>
                                 {!compact && (
                                   <div className="text-[10px] text-text-tertiary">

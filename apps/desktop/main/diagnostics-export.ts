@@ -4,12 +4,15 @@ import { access, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, resolve } from "node:path";
 import { deflateRawSync } from "node:zlib";
+import * as Sentry from "@sentry/electron/main";
 import { app, dialog } from "electron";
+import type { DiagnosticsUploadResult } from "../shared/host";
 import type { DesktopRuntimeConfig } from "../shared/runtime-config";
 import { getDesktopDiagnosticsFilePath } from "./desktop-diagnostics";
 import { resolveRuntimePlatform } from "./platforms/platform-resolver";
 import { redactJsonValue, scrubUrlTokens } from "./redaction";
 import type { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
+import { isTelemetryActive } from "./services/telemetry";
 
 export type DiagnosticsExportResult = {
   status: "success" | "cancelled" | "failed";
@@ -79,6 +82,10 @@ async function writeZip(
   entries: ZipFileEntry[],
   outputPath: string,
 ): Promise<void> {
+  await writeFile(outputPath, buildZipBuffer(entries));
+}
+
+function buildZipBuffer(entries: ZipFileEntry[]): Buffer {
   const chunks: Buffer[] = [];
   const centralDirEntries: Buffer[] = [];
   let offset = 0;
@@ -148,8 +155,7 @@ async function writeZip(
   writeUint32LE(eocd, 16, centralDirOffset);
   writeUint16LE(eocd, 20, 0); // comment length
 
-  const zipData = Buffer.concat([...chunks, centralDirBuffer, eocd]);
-  await writeFile(outputPath, zipData);
+  return Buffer.concat([...chunks, centralDirBuffer, eocd]);
 }
 
 function scrubTextBuffer(raw: Buffer): Buffer {
@@ -717,7 +723,7 @@ export async function exportDiagnostics({
   runtimeConfig: DesktopRuntimeConfig;
   source: "diagnostics-page" | "help-menu";
 }): Promise<DiagnosticsExportResult> {
-  const defaultFilename = `nexu-diagnostics-${getTimestampSlug()}.zip`;
+  const defaultFilename = `tabby-diagnostics-${getTimestampSlug()}.zip`;
   const defaultArchiveRoot = defaultFilename.replace(/\.zip$/i, "");
 
   let filePath: string | undefined;
@@ -760,6 +766,74 @@ export async function exportDiagnostics({
     return {
       status: "failed",
       errorMessage: error instanceof Error ? error.message : "Export failed.",
+    };
+  }
+}
+
+// Sentry rejects attachments beyond ~20MB per event envelope; stay below with
+// margin. The archive is already log-tail-limited, so hitting this is rare.
+const MAX_UPLOAD_BYTES = 19 * 1024 * 1024;
+
+/**
+ * One-click diagnostics upload: build the same (already redacted) archive as
+ * exportDiagnostics, but attach it to a Sentry event instead of saving to
+ * disk. Returns the Sentry event id as the reference the user reads back to
+ * support. Requires crash reporting to be configured and consented — the
+ * upload itself is an explicit user action on top of that.
+ */
+export async function uploadDiagnostics({
+  orchestrator,
+  runtimeConfig,
+}: {
+  orchestrator: RuntimeOrchestrator;
+  runtimeConfig: DesktopRuntimeConfig;
+}): Promise<DiagnosticsUploadResult> {
+  if (!isTelemetryActive()) {
+    return {
+      status: "failed",
+      errorMessage:
+        "Crash reporting is disabled or not configured. Enable it in Settings → Data & Privacy first.",
+    };
+  }
+
+  try {
+    const archiveRoot = `tabby-diagnostics-${getTimestampSlug()}`;
+    const { entries, warnings } = await collectArtifacts(
+      orchestrator,
+      runtimeConfig,
+      archiveRoot,
+    );
+    const zipData = buildZipBuffer(entries);
+
+    if (zipData.length > MAX_UPLOAD_BYTES) {
+      return {
+        status: "failed",
+        sizeBytes: zipData.length,
+        errorMessage: `Diagnostics archive is too large to upload (${Math.round(zipData.length / 1024 / 1024)}MB). Use "Export Diagnostics" and share the file instead.`,
+      };
+    }
+
+    let referenceId = "";
+    Sentry.withScope((scope) => {
+      scope.addAttachment({
+        filename: `${archiveRoot}.zip`,
+        data: new Uint8Array(zipData),
+        contentType: "application/zip",
+      });
+      scope.setTag("area", "diagnostics");
+      referenceId = Sentry.captureMessage("diagnostics-upload", "info");
+    });
+
+    return {
+      status: "success",
+      referenceId,
+      sizeBytes: zipData.length,
+      warnings,
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      errorMessage: error instanceof Error ? error.message : "Upload failed.",
     };
   }
 }

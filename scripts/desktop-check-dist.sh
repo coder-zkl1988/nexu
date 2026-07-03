@@ -16,11 +16,11 @@ default_runtime_logs_dir="${DEFAULT_RUNTIME_LOGS_DIR:-$default_logs_dir/runtime-
 
 if [ -n "${PACKAGED_APP:-}" ]; then
   packaged_app="$PACKAGED_APP"
-elif [ -d "$release_dir/Nexu.app" ]; then
-  packaged_app="$release_dir/Nexu.app"
+elif [ -d "$release_dir/Tabby.app" ]; then
+  packaged_app="$release_dir/Tabby.app"
 else
   shopt -s nullglob
-  app_candidates=("$release_dir"/*/Nexu.app)
+  app_candidates=("$release_dir"/*/Tabby.app)
   shopt -u nullglob
 
   if [ "${#app_candidates[@]}" -eq 0 ]; then
@@ -31,7 +31,7 @@ else
   packaged_app="${app_candidates[0]}"
 fi
 
-packaged_executable="${PACKAGED_EXECUTABLE:-$packaged_app/Contents/MacOS/Nexu}"
+packaged_executable="${PACKAGED_EXECUTABLE:-$packaged_app/Contents/MacOS/Tabby}"
 
 packaged_log_path="$capture_dir/packaged-app.log"
 pid_path="$capture_dir/packaged-app.pid"

@@ -117,3 +117,38 @@ describe("NexuConfigStore desktop analytics defaults", () => {
     expect(rawConfig.desktop?.analyticsEnabled).toBe(true);
   });
 });
+
+describe("NexuConfigStore desktop crash reports consent mirror", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("defaults to true when the key is absent, matching the desktop default", async () => {
+    const env = createEnv(tempDir);
+    const store = new NexuConfigStore(env);
+
+    expect(await store.getDesktopCrashReportsEnabled()).toBe(true);
+  });
+
+  it("persists and returns an explicit opt-out", async () => {
+    const env = createEnv(tempDir);
+    const store = new NexuConfigStore(env);
+
+    expect(await store.setDesktopCrashReportsEnabled(false)).toBe(false);
+    expect(await store.getDesktopCrashReportsEnabled()).toBe(false);
+
+    const rawConfig = JSON.parse(readFileSync(env.nexuConfigPath, "utf8")) as {
+      desktop?: { crashReportsEnabled?: boolean };
+    };
+    expect(rawConfig.desktop?.crashReportsEnabled).toBe(false);
+
+    expect(await store.setDesktopCrashReportsEnabled(true)).toBe(true);
+    expect(await store.getDesktopCrashReportsEnabled()).toBe(true);
+  });
+});

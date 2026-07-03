@@ -8,7 +8,6 @@ import {
   webContents,
 } from "electron";
 import {
-  type DesktopDevDiagnosticsLogLevel,
   type DesktopDevDomSnapshotResult,
   type DesktopDevEvalResult,
   type DesktopDevEvalSerializableValue,
@@ -22,7 +21,7 @@ import {
 } from "../shared/host";
 import type { DesktopRuntimeConfig } from "../shared/runtime-config";
 import type { DesktopDiagnosticsReporter } from "./desktop-diagnostics";
-import { exportDiagnostics } from "./diagnostics-export";
+import { exportDiagnostics, uploadDiagnostics } from "./diagnostics-export";
 import type { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
 import {
   getDesktopShellPreferences,
@@ -32,6 +31,7 @@ import {
   type QuitHandlerOptions,
   runTeardownAndExit,
 } from "./services/quit-handler";
+import { applyCrashReportsConsent, reportError } from "./services/telemetry";
 import type { ComponentUpdater } from "./updater/component-updater";
 import type { UpdateManager } from "./updater/update-manager";
 
@@ -79,21 +79,6 @@ function appendDesktopDevRendererLog(
   }
 }
 
-function mapConsoleMessageLevel(level: number): DesktopDevDiagnosticsLogLevel {
-  switch (level) {
-    case 0:
-      return "info";
-    case 1:
-      return "warning";
-    case 2:
-      return "error";
-    case 3:
-      return "debug";
-    default:
-      return "info";
-  }
-}
-
 function trackDesktopDevRendererLogs(contents: Electron.WebContents): void {
   if (desktopDevTrackedContents.has(contents.id)) {
     return;
@@ -101,14 +86,14 @@ function trackDesktopDevRendererLogs(contents: Electron.WebContents): void {
 
   desktopDevTrackedContents.add(contents.id);
 
-  contents.on("console-message", (_event, level, message, line, sourceId) => {
+  contents.on("console-message", (details) => {
     appendDesktopDevRendererLog({
       source: "console",
-      level: mapConsoleMessageLevel(level),
-      message,
+      level: details.level,
+      message: details.message,
       url: contents.getURL() || null,
-      sourceId: sourceId || null,
-      line,
+      sourceId: details.sourceId || null,
+      line: details.lineNumber,
     });
   });
 
@@ -470,6 +455,10 @@ export function registerIpcHandlers(
           });
         }
 
+        case "diagnostics:upload": {
+          return uploadDiagnostics({ orchestrator, runtimeConfig });
+        }
+
         case "env:get-controller-base-url": {
           const result: HostInvokeResultMap["env:get-controller-base-url"] = {
             controllerBaseUrl: runtimeConfig.urls.controllerBase,
@@ -685,7 +674,42 @@ export function registerIpcHandlers(
         case "desktop:update-shell-preferences": {
           const typedPayload =
             payload as HostInvokePayloadMap["desktop:update-shell-preferences"];
-          return updateDesktopShellPreferences(typedPayload);
+          const updated = updateDesktopShellPreferences(typedPayload);
+          // Start/stop crash reporting immediately when the toggle changes.
+          if (typeof typedPayload.crashReportsEnabled === "boolean") {
+            applyCrashReportsConsent(typedPayload.crashReportsEnabled);
+            // Mirror the consent to the controller so it reaches phones (via
+            // tabby-control) and survives controller restarts. Best-effort:
+            // the desktop shell-preferences file stays the source of truth.
+            void fetchControllerJson(
+              `${runtimeConfig.urls.controllerBase}/api/internal/desktop/preferences`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  crashReportsEnabled: typedPayload.crashReportsEnabled,
+                }),
+              },
+            ).catch(() => {
+              // Controller unreachable — phones keep their cached consent
+              // until the next successful push.
+            });
+          }
+          return updated;
+        }
+
+        case "desktop:report-error": {
+          const errorPayload =
+            payload as HostInvokePayloadMap["desktop:report-error"];
+          // Bridge for renderer-surfaced / relayed failures (e.g. device faults
+          // forwarded from the controller SSE stream) into the main-process
+          // Sentry gate. reportError itself is consent-gated and redacts.
+          reportError(new Error(errorPayload.message), {
+            area: errorPayload.area,
+            reasonCode: errorPayload.reasonCode,
+            extra: errorPayload.extra,
+          });
+          return { reported: true };
         }
 
         case "desktop:get-rewards-status": {

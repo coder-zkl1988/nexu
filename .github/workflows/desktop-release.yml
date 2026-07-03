@@ -141,7 +141,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: coder-zkl1988/tabby-control
-          ref: nexu-desktop
+          ref: main
           path: .release-worktrees/tabby-control
 
       - name: Build tabby-control plugin
@@ -151,6 +151,7 @@ jobs:
           npm --prefix .release-worktrees/tabby-control install --no-package-lock
           npm --prefix .release-worktrees/tabby-control run build:nexu
           test -d .release-worktrees/tabby-control/dist-nexu/tabby-control
+          node apps/desktop/scripts/validate-tabby-control-bundle.mjs .release-worktrees/tabby-control/dist-nexu/tabby-control
 
       - name: Import Apple Developer ID certificate
         shell: bash
@@ -199,6 +200,7 @@ jobs:
           NEXU_DESKTOP_BUILD_SOURCE: "release"
           TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          NEXU_DESKTOP_SENTRY_DSN: ${{ secrets.NEXU_DESKTOP_SENTRY_DSN }}
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: pnpm --filter @nexu/desktop dist:mac:production
@@ -208,17 +210,31 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
+          CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
         run: |
           set -euo pipefail
           dmg="apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg"
+          zip="apps/desktop/release/tabby-${VERSION}-${ARCH}.zip"
           app="apps/desktop/release/mac-${ARCH}/Tabby.app"
           if [ ! -d "$app" ]; then
             app="apps/desktop/release/mac/Tabby.app"
           fi
 
           test -f "$dmg"
+          test -f "$zip"
           test -d "$app"
+          app_update_yml="$app/Contents/Resources/app-update.yml"
+          test -f "$app_update_yml"
+          grep -Fxq "provider: generic" "$app_update_yml"
+          grep -Fxq "url: https://downloads.picaso.studio/updates/${CHANNEL}/${ARCH}" "$app_update_yml"
+          grep -Fxq "updaterCacheDirName: tabby-updater" "$app_update_yml"
+          grep -q "url: tabby-${VERSION}-${ARCH}.zip" "apps/desktop/release/latest-mac.yml"
+          if grep -q "url: tabby-${VERSION}-${ARCH}.dmg" "apps/desktop/release/latest-mac.yml"; then
+            echo "latest-mac.yml must reference the update zip, not the DMG" >&2
+            exit 1
+          fi
           codesign --verify --deep --strict --verbose=2 "$app"
+          xcrun stapler validate "$app"
           xcrun stapler validate "$dmg"
           spctl -a -vv --type exec "$app"
           spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg"
@@ -230,6 +246,7 @@ jobs:
           name: tabby-${{ needs.prepare-release.outputs.desktop_version }}-mac-${{ matrix.arch }}
           path: |
             apps/desktop/release/tabby-${{ needs.prepare-release.outputs.desktop_version }}-${{ matrix.arch }}.dmg
+            apps/desktop/release/tabby-${{ needs.prepare-release.outputs.desktop_version }}-${{ matrix.arch }}.zip
             apps/desktop/release/latest-mac.yml
             apps/desktop/release/tabby-${{ needs.prepare-release.outputs.desktop_version }}-mac-${{ matrix.arch }}-sha256.txt
           if-no-files-found: error
@@ -246,6 +263,7 @@ jobs:
 
           gh release upload "$TAG_NAME" \
             "apps/desktop/release/tabby-${VERSION}-${ARCH}.dmg" \
+            "apps/desktop/release/tabby-${VERSION}-${ARCH}.zip" \
             "apps/desktop/release/tabby-${VERSION}-mac-${ARCH}-sha256.txt" \
             --clobber
 
@@ -283,21 +301,21 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           VERSION: ${{ needs.prepare-release.outputs.desktop_version }}
           ARCH: ${{ matrix.arch }}
+          CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
         run: |
           set -euo pipefail
-          # The mac production build writes latest-mac.yml referencing the DMG
-          # (not a zip), so publish the DMG alongside it to this per-arch feed
-          # dir, matching R2_BASE_URL/stable/<arch> in the app.
+          # The update feed must publish the ZIP referenced by latest-mac.yml.
+          # The DMG remains available through the releases/ path for manual installs.
           rel="apps/desktop/release"
-          dest="s3://${R2_BUCKET}/updates/stable/${ARCH}"
+          dest="s3://${R2_BUCKET}/updates/${CHANNEL}/${ARCH}"
           aws s3 cp "$rel/latest-mac.yml" "$dest/latest-mac.yml" \
             --endpoint-url "$R2_ENDPOINT" --content-type text/yaml \
             --cache-control "no-cache, must-revalidate" --no-progress
-          aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.dmg" "$dest/tabby-${VERSION}-${ARCH}.dmg" \
-            --endpoint-url "$R2_ENDPOINT" --content-type application/x-apple-diskimage --no-progress
-          if [ -f "$rel/tabby-${VERSION}-${ARCH}.dmg.blockmap" ]; then
-            aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.dmg.blockmap" \
-              "$dest/tabby-${VERSION}-${ARCH}.dmg.blockmap" \
+          aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.zip" "$dest/tabby-${VERSION}-${ARCH}.zip" \
+            --endpoint-url "$R2_ENDPOINT" --content-type application/zip --no-progress
+          if [ -f "$rel/tabby-${VERSION}-${ARCH}.zip.blockmap" ]; then
+            aws s3 cp "$rel/tabby-${VERSION}-${ARCH}.zip.blockmap" \
+              "$dest/tabby-${VERSION}-${ARCH}.zip.blockmap" \
               --endpoint-url "$R2_ENDPOINT" --content-type application/octet-stream --no-progress
           fi
 
@@ -335,7 +353,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: coder-zkl1988/tabby-control
-          ref: nexu-desktop
+          ref: main
           path: .release-worktrees/tabby-control
 
       - name: Build tabby-control plugin
@@ -346,6 +364,7 @@ jobs:
           if (-not (Test-Path .release-worktrees/tabby-control/dist-nexu/tabby-control)) {
             throw "Missing tabby-control dist-nexu output"
           }
+          node apps/desktop/scripts/validate-tabby-control-bundle.mjs .release-worktrees/tabby-control/dist-nexu/tabby-control
 
       - name: Install packaging tools
         shell: pwsh
@@ -364,6 +383,7 @@ jobs:
           NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
           NEXU_DESKTOP_AUTO_UPDATE_ENABLED: "true"
           TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
+          NEXU_DESKTOP_SENTRY_DSN: ${{ secrets.NEXU_DESKTOP_SENTRY_DSN }}
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         run: |

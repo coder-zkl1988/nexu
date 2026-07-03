@@ -1,5 +1,5 @@
 const DEFAULT_WHATSAPP_WA_ME_URL =
-  "https://wa.me/15551846745?text=Hello%20Nexu";
+  "https://wa.me/15551846745?text=Hello%20Tabby";
 
 export const whatsappWaMeUrl =
   import.meta.env.VITE_WHATSAPP_WA_ME_URL?.trim() || DEFAULT_WHATSAPP_WA_ME_URL;

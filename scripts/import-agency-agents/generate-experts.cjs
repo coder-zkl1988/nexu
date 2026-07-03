@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate expert.json manifests for all 215 agency experts.
+ * Generate expert.json manifests for all agency experts.
  *
  * Steps:
  * 1. Compress extracted PNGs to 256x256 WebP (~8-13KB)
@@ -45,6 +45,7 @@ const DEPT_MAP = {
   engineering: "工程部",
   finance: "金融部",
   "game-development": "游戏开发部",
+  gis: "地理信息部",
   hr: "人力资源部",
   legal: "法务部",
   marketing: "营销部",
@@ -52,6 +53,7 @@ const DEPT_MAP = {
   product: "产品部",
   "project-management": "项目管理部",
   sales: "销售部",
+  security: "安全部",
   "spatial-computing": "空间计算部",
   specialized: "专项部",
   "supply-chain": "供应链部",

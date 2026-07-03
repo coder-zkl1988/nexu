@@ -20,7 +20,7 @@ describe("desktop update feed resolution", () => {
         feedUrl: null,
         arch: "arm64",
       }),
-    ).toBe("https://desktop-releases.nexu.io/nightly/arm64");
+    ).toBe("https://downloads.picaso.studio/updates/nightly/arm64");
   });
 
   it("uses the x64 R2 feed for Intel mac builds", () => {
@@ -31,7 +31,7 @@ describe("desktop update feed resolution", () => {
         feedUrl: null,
         arch: "x64",
       }),
-    ).toBe("https://desktop-releases.nexu.io/stable/x64");
+    ).toBe("https://downloads.picaso.studio/updates/stable/x64");
   });
 
   it("throws for unsupported mac architectures", () => {
@@ -77,6 +77,6 @@ describe("desktop update feed resolution", () => {
         channel: "stable",
         feedUrl: null,
       }),
-    ).toBe("github://nexu-io/nexu");
+    ).toBe("github://coder-zkl1988/tabby");
   });
 });

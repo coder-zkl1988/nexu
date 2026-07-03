@@ -766,9 +766,12 @@ function WorkspaceLayoutContent() {
   const desktopGlassTint = isWindowsDesktopClient
     ? "#ffffff"
     : "rgba(255, 255, 255, 0.08)";
-  const updateFloatWidth = 288;
   const updateFloatLeft = 10;
-  const updateFloatBottom = 52;
+  // Match the sidebar width (with a 10px gutter on each side) so the update card
+  // sits inside the rail instead of overflowing into the main content area, and
+  // tracks the sidebar when the user resizes it.
+  const updateFloatWidth = sidebarWidth - updateFloatLeft * 2;
+  const updateFloatBottom = 80;
 
   return (
     <div
@@ -1506,7 +1509,7 @@ function WorkspaceLayoutContent() {
                         {t("layout.help.docs")}
                       </a>
                       <a
-                        href="mailto:hi@nexu.ai"
+                        href="mailto:work4zkl@gmail.com"
                         onClick={() =>
                           track("workspace_docs_click", { type: "contact" })
                         }

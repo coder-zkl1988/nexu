@@ -61,16 +61,20 @@ const fallbackEventsQuerySchema = z.object({
 const desktopPreferencesResponseSchema = z.object({
   locale: z.enum(["en", "zh-CN"]).nullable(),
   analyticsEnabled: z.boolean(),
+  crashReportsEnabled: z.boolean(),
 });
 
 const desktopPreferencesUpdateSchema = z
   .object({
     locale: z.enum(["en", "zh-CN"]).optional(),
     analyticsEnabled: z.boolean().optional(),
+    crashReportsEnabled: z.boolean().optional(),
   })
   .refine(
     (value) =>
-      value.locale !== undefined || value.analyticsEnabled !== undefined,
+      value.locale !== undefined ||
+      value.analyticsEnabled !== undefined ||
+      value.crashReportsEnabled !== undefined,
     {
       message: "At least one desktop preference must be provided",
     },
@@ -255,6 +259,8 @@ export function registerDesktopRoutes(
           locale: await container.configStore.getStoredDesktopLocale(),
           analyticsEnabled:
             await container.configStore.getDesktopAnalyticsEnabled(),
+          crashReportsEnabled:
+            await container.configStore.getDesktopCrashReportsEnabled(),
         },
         200,
       );
@@ -295,8 +301,19 @@ export function registerDesktopRoutes(
               body.analyticsEnabled,
             )
           : await container.configStore.getDesktopAnalyticsEnabled();
+      const crashReportsEnabled =
+        body.crashReportsEnabled !== undefined
+          ? await container.configStore.setDesktopCrashReportsEnabled(
+              body.crashReportsEnabled,
+            )
+          : await container.configStore.getDesktopCrashReportsEnabled();
       await container.openclawSyncService.syncAll();
-      return c.json({ locale, analyticsEnabled }, 200);
+      if (body.crashReportsEnabled !== undefined) {
+        // Hand the consent to phones via tabby-control (gates their Sentry
+        // reporting). Best-effort inside pushTelemetryConsent.
+        void container.deviceControlService.pushTelemetryConsent();
+      }
+      return c.json({ locale, analyticsEnabled, crashReportsEnabled }, 200);
     },
   );
 

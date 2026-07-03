@@ -14,6 +14,7 @@ import {
   teardownLaunchdServices,
 } from "../services/launchd-bootstrap";
 import type { LaunchdManager } from "../services/launchd-manager";
+import { reportError } from "../services/telemetry";
 import {
   MacUpdateDriver,
   resolveMacUpdateFeedUrlForTests,
@@ -339,6 +340,14 @@ export class UpdateManager {
       onError: (error) => {
         const diagnostic = this.getDiagnostic();
         this.logCheck(`update error: ${error.message}`, diagnostic);
+        reportError(error, {
+          area: "updater",
+          reasonCode: "update_failed",
+          extra: {
+            downloadMode: this.downloadMode,
+            userInitiatedCheck: this.userInitiatedCheck,
+          },
+        });
 
         if (this.downloadMode === "background" && !this.userInitiatedCheck) {
           // Suppress error UI during background-only download

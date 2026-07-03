@@ -157,7 +157,10 @@ window.addEventListener("unhandledrejection", (event) => {
   }
 });
 
-function initializeRendererSentry(dsn: string): void {
+function initializeRendererSentry(
+  dsn: string,
+  sessionReplayEnabled: boolean,
+): void {
   if (rendererSentryInitialized) {
     return;
   }
@@ -171,6 +174,22 @@ function initializeRendererSentry(dsn: string): void {
     environment: import.meta.env.MODE,
     release: sentryBuildMetadata.release,
     ...(sentryBuildMetadata.dist ? { dist: sentryBuildMetadata.dist } : {}),
+    // Session Replay: separate explicit opt-in (default off), fully masked,
+    // and only recorded when an error actually happens — never on normal
+    // sessions. Credentials must not be recoverable from replays.
+    ...(sessionReplayEnabled
+      ? {
+          integrations: [
+            Sentry.replayIntegration({
+              maskAllText: true,
+              maskAllInputs: true,
+              blockAllMedia: true,
+            }),
+          ],
+          replaysSessionSampleRate: 0,
+          replaysOnErrorSampleRate: 1.0,
+        }
+      : {}),
   });
 
   Sentry.setContext("build", sentryBuildMetadata.buildContext);
@@ -1607,19 +1626,33 @@ function RendererTelemetryBootstrap() {
   useEffect(() => {
     if (rendererSentryDsn && !rendererSentryInitialized) {
       sendRendererStartupProbe("renderer:sentry-init:start", "ok");
-      try {
-        initializeRendererSentry(rendererSentryDsn);
-        sendRendererStartupProbe("renderer:sentry-init:success", "ok");
-      } catch (error) {
-        sendRendererStartupProbe(
-          "renderer:sentry-init:error",
-          "error",
-          error instanceof Error
-            ? (error.stack ?? error.message)
-            : String(error),
-        );
-        console.error("[desktop] renderer Sentry init failed", error);
-      }
+      void (async () => {
+        // Session Replay is a separate opt-in preference; read it before init
+        // (toggling takes effect on the next launch).
+        let sessionReplayEnabled = false;
+        try {
+          const prefs = await window.nexuHost.invoke(
+            "desktop:get-shell-preferences",
+            undefined,
+          );
+          sessionReplayEnabled = prefs.sessionReplayEnabled;
+        } catch {
+          sessionReplayEnabled = false;
+        }
+        try {
+          initializeRendererSentry(rendererSentryDsn, sessionReplayEnabled);
+          sendRendererStartupProbe("renderer:sentry-init:success", "ok");
+        } catch (error) {
+          sendRendererStartupProbe(
+            "renderer:sentry-init:error",
+            "error",
+            error instanceof Error
+              ? (error.stack ?? error.message)
+              : String(error),
+          );
+          console.error("[desktop] renderer Sentry init failed", error);
+        }
+      })();
     }
 
     if (!posthogApiKey || posthogTelemetryInitialized) {

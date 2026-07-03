@@ -179,7 +179,12 @@ function isBrowserControlRequired() {
   const value = process.env.NEXU_DESKTOP_CHECK_REQUIRE_BROWSER_CONTROL;
 
   if (value === undefined) {
-    return true;
+    // Current OpenClaw does not open the browser-control port (18791) by
+    // default, and Nexu's compiled config never enables the browser feature,
+    // so a healthy stack legitimately has nothing listening there. Opt back
+    // in with NEXU_DESKTOP_CHECK_REQUIRE_BROWSER_CONTROL=1 if the feature
+    // gets enabled.
+    return false;
   }
 
   return value === "1" || value.toLowerCase() === "true";

@@ -1388,11 +1388,15 @@
                     },
                     "analyticsEnabled": {
                       "type": "boolean"
+                    },
+                    "crashReportsEnabled": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
                     "locale",
-                    "analyticsEnabled"
+                    "analyticsEnabled",
+                    "crashReportsEnabled"
                   ]
                 }
               }
@@ -1420,6 +1424,9 @@
                   },
                   "analyticsEnabled": {
                     "type": "boolean"
+                  },
+                  "crashReportsEnabled": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -1444,11 +1451,15 @@
                     },
                     "analyticsEnabled": {
                       "type": "boolean"
+                    },
+                    "crashReportsEnabled": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
                     "locale",
-                    "analyticsEnabled"
+                    "analyticsEnabled",
+                    "crashReportsEnabled"
                   ]
                 }
               }

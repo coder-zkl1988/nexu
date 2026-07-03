@@ -34,7 +34,7 @@ import {
 } from "../shared/update-policy";
 import { getDesktopAppRoot, getWorkspaceRoot } from "../shared/workspace-paths";
 import { DesktopDiagnosticsReporter } from "./desktop-diagnostics";
-import { exportDiagnostics } from "./diagnostics-export";
+import { exportDiagnostics, uploadDiagnostics } from "./diagnostics-export";
 import {
   registerIpcHandlers,
   setComponentUpdater,
@@ -76,6 +76,7 @@ import {
   type DesktopShellPreferences,
   applyDesktopShellPreferencesOnStartup,
   getDesktopShellPreferences,
+  readCrashReportsConsent,
   setDesktopShellPreferencesRuntimeHandler,
 } from "./services/desktop-shell-preferences";
 import {
@@ -84,6 +85,11 @@ import {
 } from "./services/dev-inspect-server";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
+import {
+  isTelemetryActive,
+  setCrashReportsConsentApplier,
+  setTelemetryActive,
+} from "./services/telemetry";
 import { flushV8CoverageIfEnabled } from "./services/v8-coverage";
 import { readPendingWindowsUserDataMigration } from "./services/windows-user-data-migration";
 import { SleepGuard, type SleepGuardLogEntry } from "./sleep-guard";
@@ -338,7 +344,10 @@ function readNativeCrashTestKind(event: Sentry.Event): string | null {
   return typeof crashpadKind === "string" ? crashpadKind : null;
 }
 
-if (sentryDsn) {
+function startSentry(): void {
+  if (!sentryDsn) {
+    return;
+  }
   const sentryBuildMetadata = getDesktopSentryBuildMetadata(
     runtimeConfig.buildInfo,
   );
@@ -393,6 +402,24 @@ if (sentryDsn) {
   });
 
   Sentry.setContext("build", sentryBuildMetadata.buildContext);
+  setTelemetryActive(true);
+}
+
+// The "崩溃报告 / Crash reports" toggle (default on) starts/stops reporting at
+// runtime; index.ts owns the Sentry lifecycle, so it registers the applier here.
+setCrashReportsConsentApplier((enabled) => {
+  if (enabled) {
+    if (!isTelemetryActive()) {
+      startSentry();
+    }
+  } else {
+    setTelemetryActive(false);
+    void Sentry.close();
+  }
+});
+
+if (sentryDsn && readCrashReportsConsent()) {
+  startSentry();
 } else {
   crashReporter.start({
     companyName: "nexu",
@@ -429,16 +456,16 @@ function getWindowsTrayStrings(): {
 } {
   if (isZhLocale()) {
     return {
-      show: "显示 Nexu",
-      hide: "隐藏 Nexu",
-      quit: "退出 Nexu",
+      show: "显示 Tabby",
+      hide: "隐藏 Tabby",
+      quit: "退出 Tabby",
     };
   }
 
   return {
-    show: "Show Nexu",
-    hide: "Hide Nexu",
-    quit: "Quit Nexu",
+    show: "Show Tabby",
+    hide: "Hide Tabby",
+    quit: "Quit Tabby",
   };
 }
 
@@ -528,7 +555,7 @@ async function warnIfRunningUnderRosetta(): Promise<void> {
   const messageBox = isZh
     ? {
         title: "检测到架构不匹配",
-        message: "正在 Apple Silicon Mac 上运行 Intel 版 Nexu",
+        message: "正在 Apple Silicon Mac 上运行 Intel 版 Tabby",
         detail:
           "macOS 通过 Rosetta 2 翻译运行 Intel 版本，会导致：\n• 启动比正常慢 3-5 倍\n• 界面卡顿、CPU 占用过高\n• 部分原生模块可能加载失败\n\n请下载 Apple Silicon (arm64) 版本以获得最佳体验。",
         // Trailing space on the default-button label is a workaround for
@@ -541,7 +568,7 @@ async function warnIfRunningUnderRosetta(): Promise<void> {
       }
     : {
         title: "Architecture mismatch detected",
-        message: "Running the Intel build of Nexu on an Apple Silicon Mac",
+        message: "Running the Intel build of Tabby on an Apple Silicon Mac",
         detail:
           "macOS is running this build through Rosetta 2 translation, which causes:\n• 3-5x slower startup\n• Laggy UI and high CPU usage\n• Possible native module load failures\n\nPlease download the Apple Silicon (arm64) build for the best experience.",
         downloadButton: "Download arm64 build (recommended) ",
@@ -582,7 +609,7 @@ async function refreshProxyDiagnostics(): Promise<void> {
   const targets = [
     { label: "controller", url: runtimeConfig.urls.controllerBase },
     { label: "openclaw", url: runtimeConfig.urls.openclawBase },
-    { label: "external", url: "https://nexu.io" },
+    { label: "external", url: "https://tabby.picaso.studio" },
   ];
   const snapshot = await proxyManager.collectDiagnostics(
     runtimeConfig.proxy,
@@ -754,6 +781,42 @@ function installApplicationMenu(): void {
         }).catch(() => undefined);
       },
     },
+    {
+      label: "Send Diagnostics to Support…",
+      click: () => {
+        void (async () => {
+          const confirm = await dialog.showMessageBox({
+            type: "question",
+            buttons: ["Send", "Cancel"],
+            defaultId: 0,
+            cancelId: 1,
+            message: "Send diagnostics to Tabby support?",
+            detail:
+              "Uploads a redacted diagnostics archive (logs, runtime state, config with credentials removed) so support can investigate your issue. You'll get a reference ID to share.",
+          });
+          if (confirm.response !== 0) {
+            return;
+          }
+          const result = await uploadDiagnostics({
+            orchestrator,
+            runtimeConfig,
+          });
+          if (result.status === "success") {
+            await dialog.showMessageBox({
+              type: "info",
+              message: "Diagnostics sent",
+              detail: `Reference ID: ${result.referenceId}\n\nShare this ID with support so they can find your upload.`,
+            });
+          } else {
+            await dialog.showMessageBox({
+              type: "error",
+              message: "Diagnostics upload failed",
+              detail: result.errorMessage ?? "Unknown error.",
+            });
+          }
+        })().catch(() => undefined);
+      },
+    },
   ];
 
   // On macOS About/Check-for-Updates live in the application menu by
@@ -764,7 +827,7 @@ function installApplicationMenu(): void {
       { type: "separator" },
       {
         id: "about-nexu",
-        label: `About Nexu (v${app.getVersion()})`,
+        label: `About Tabby (v${app.getVersion()})`,
         click: () => showAboutDialog(),
       },
     );
@@ -781,15 +844,18 @@ function installApplicationMenu(): void {
           {
             role: "appMenu",
             submenu: [
-              { role: "about" },
+              // Explicit labels: the macOS app menu auto-names About/Hide/Quit
+              // from app.getName() which is "nexu" (kept for internal paths), so
+              // without these the menu bar would read "About nexu" etc.
+              { role: "about", label: "About Tabby" },
               { type: "separator" },
               { role: "services" },
               { type: "separator" },
-              { role: "hide" },
+              { role: "hide", label: "Hide Tabby" },
               { role: "hideOthers" },
               { role: "unhide" },
               { type: "separator" },
-              { role: "quit" },
+              { role: "quit", label: "Quit Tabby" },
             ],
           },
         ] satisfies MenuItemConstructorOptions[])
@@ -1281,7 +1347,7 @@ function ensureResidentTray(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
-        label: "Open nexu",
+        label: "Open Tabby",
         click: () => {
           showMainWindowFromResidentEntry();
         },
@@ -1393,7 +1459,15 @@ app.on("second-instance", () => {
 });
 
 app.on("before-quit", () => {
-  void stopDesktopDevInspectServer();
+  stopDesktopDevInspectServer().catch((error) => {
+    writeDesktopMainLog({
+      source: "dev-inspect",
+      stream: "stderr",
+      kind: "app",
+      message: `desktop dev inspect server failed to stop error=${error instanceof Error ? error.message : String(error)}`,
+      logFilePath: null,
+    });
+  });
 });
 
 function createMainWindow(): BrowserWindow {
@@ -1449,20 +1523,15 @@ function createMainWindow(): BrowserWindow {
     window.setVibrancy("sidebar");
   }
 
-  window.webContents.on(
-    "console-message",
-    (_event, level, message, line, sourceId) => {
-      const levelLabel =
-        ["verbose", "info", "warning", "error"][level] ?? String(level);
-      logRendererEvent({
-        source: `renderer:${levelLabel}`,
-        stream: level >= 3 ? "stderr" : "stdout",
-        kind: "app",
-        message: `${message} (${sourceId}:${line})`,
-        windowId: window.webContents.id,
-      });
-    },
-  );
+  window.webContents.on("console-message", (details) => {
+    logRendererEvent({
+      source: `renderer:${details.level}`,
+      stream: details.level === "error" ? "stderr" : "stdout",
+      kind: "app",
+      message: `${details.message} (${details.sourceId}:${details.lineNumber})`,
+      windowId: window.webContents.id,
+    });
+  });
 
   window.webContents.on(
     "did-fail-load",
@@ -1687,14 +1756,12 @@ app.on("web-contents-created", (_event, contents) => {
     return;
   }
 
-  contents.on("console-message", (_event, level, message, line, sourceId) => {
-    const levelLabel =
-      ["verbose", "info", "warning", "error"][level] ?? String(level);
+  contents.on("console-message", (details) => {
     logRendererEvent({
-      source: `embedded:${contentType}:${levelLabel}`,
-      stream: level >= 3 ? "stderr" : "stdout",
+      source: `embedded:${contentType}:${details.level}`,
+      stream: details.level === "error" ? "stderr" : "stdout",
       kind: "app",
-      message: `${message} (${sourceId}:${line})`,
+      message: `${details.message} (${details.sourceId}:${details.lineNumber})`,
       windowId: contents.id,
     });
   });

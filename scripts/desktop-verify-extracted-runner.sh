@@ -20,11 +20,11 @@ tmp_dir="$(absolutize_path "$tmp_dir")"
 
 if [ -n "${PACKAGED_APP:-}" ]; then
   packaged_app="$PACKAGED_APP"
-elif [ -d "$release_dir/Nexu.app" ]; then
-  packaged_app="$release_dir/Nexu.app"
+elif [ -d "$release_dir/Tabby.app" ]; then
+  packaged_app="$release_dir/Tabby.app"
 else
   shopt -s nullglob
-  app_candidates=("$release_dir"/*/Nexu.app)
+  app_candidates=("$release_dir"/*/Tabby.app)
   shopt -u nullglob
 
   if [ "${#app_candidates[@]}" -eq 0 ]; then
@@ -36,9 +36,9 @@ else
 fi
 
 packaged_app="$(absolutize_path "$packaged_app")"
-packaged_executable="${PACKAGED_EXECUTABLE:-$packaged_app/Contents/MacOS/Nexu}"
+packaged_executable="${PACKAGED_EXECUTABLE:-$packaged_app/Contents/MacOS/Tabby}"
 runner_app="${NEXU_DESKTOP_EXTRACTED_RUNNER_APP:-$packaged_home/.nexu/runtime/nexu-runner.app}"
-runner_executable="${NEXU_DESKTOP_EXTRACTED_RUNNER_EXECUTABLE:-$runner_app/Contents/MacOS/Nexu}"
+runner_executable="${NEXU_DESKTOP_EXTRACTED_RUNNER_EXECUTABLE:-$runner_app/Contents/MacOS/Tabby}"
 
 runner_app="$(absolutize_path "$runner_app")"
 runner_executable="$(absolutize_path "$runner_executable")"

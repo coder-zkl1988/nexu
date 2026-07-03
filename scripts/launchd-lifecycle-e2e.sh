@@ -37,7 +37,9 @@ CONTROLLER_ENTRY="$REPO_ROOT/apps/controller/dist/index.js"
 SLIMCLAW_RUNTIME_ROOT="$REPO_ROOT/packages/slimclaw/.dist-runtime/openclaw"
 OPENCLAW_ENTRY="$SLIMCLAW_RUNTIME_ROOT/node_modules/openclaw/openclaw.mjs"
 OPENCLAW_BIN="$SLIMCLAW_RUNTIME_ROOT/bin/openclaw"
-OPENCLAW_EXTENSIONS_DIR="$SLIMCLAW_RUNTIME_ROOT/node_modules/openclaw/extensions"
+# Modern openclaw packages ship extensions under dist/ (see
+# packages/slimclaw/src/runtime-paths.ts builtinExtensionsDir).
+OPENCLAW_EXTENSIONS_DIR="$SLIMCLAW_RUNTIME_ROOT/node_modules/openclaw/dist/extensions"
 
 # Use high ports to avoid conflicts
 CONTROLLER_PORT=51800

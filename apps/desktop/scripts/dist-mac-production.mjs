@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   access,
   copyFile,
@@ -10,13 +9,15 @@ import {
   readFile,
   readdir,
   rm,
-  stat,
   symlink,
-  writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  writeAppUpdateYml,
+  writeLatestMacYml,
+} from "./mac-update-metadata.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const electronRoot = resolve(scriptDir, "..");
@@ -260,6 +261,11 @@ async function isDmgNotarized(dmgPath) {
   return out.includes("The validate action worked");
 }
 
+async function isAppNotarized(appPath) {
+  const out = capture("xcrun", ["stapler", "validate", appPath]);
+  return out.includes("The validate action worked");
+}
+
 async function cleanOldReleaseMetadata(releaseRoot) {
   for (const entry of await readdir(releaseRoot).catch(() => [])) {
     if (
@@ -269,25 +275,6 @@ async function cleanOldReleaseMetadata(releaseRoot) {
       await rm(resolve(releaseRoot, entry), { force: true }).catch(() => {});
     }
   }
-}
-
-async function writeLatestMacYml({ releaseRoot, dmgPath, version }) {
-  const bytes = await readFile(dmgPath);
-  const fileStat = await stat(dmgPath);
-  const sha512 = createHash("sha512").update(bytes).digest("base64");
-  const dmgName = basename(dmgPath);
-  const latestMacYml = [
-    `version: ${version}`,
-    "files:",
-    `  - url: ${dmgName}`,
-    `    sha512: ${sha512}`,
-    `    size: ${fileStat.size}`,
-    `path: ${dmgName}`,
-    `sha512: ${sha512}`,
-    `releaseDate: '${new Date().toISOString()}'`,
-    "",
-  ].join("\n");
-  await writeFile(resolve(releaseRoot, "latest-mac.yml"), latestMacYml);
 }
 
 async function copyAppBundleForDmg(appPath, dmgRoot) {
@@ -330,6 +317,7 @@ async function main() {
   if (!["arm64", "x64"].includes(targetArch)) {
     throw new Error(`Unsupported NEXU_DESKTOP_TARGET_ARCH: ${targetArch}`);
   }
+  const updateChannel = process.env.NEXU_DESKTOP_UPDATE_CHANNEL ?? "stable";
   const buildSource = "stable";
 
   const desktopPkg = JSON.parse(
@@ -345,6 +333,7 @@ async function main() {
   }
   const artifactBaseName = `tabby-${version}-${targetArch}`;
   const dmgPath = resolve(releaseRoot, `${artifactBaseName}.dmg`);
+  const updateZipPath = resolve(releaseRoot, `${artifactBaseName}.zip`);
   const entitlements = resolve(electronRoot, "build", "entitlements.mac.plist");
   const inheritEntitlements = resolve(
     electronRoot,
@@ -352,7 +341,7 @@ async function main() {
     "entitlements.mac.inherit.plist",
   );
 
-  await step("1/7 构建 production unsigned .app", async () => {
+  await step("1/9 构建 production unsigned .app", async () => {
     try {
       await run("node", [resolve(scriptDir, "dist-mac.mjs"), "--unsigned"], {
         cwd: electronRoot,
@@ -384,7 +373,15 @@ async function main() {
     "payload.tar.gz",
   );
 
-  await step("2/7 签名 OpenClaw sidecar 归档内原生二进制", async () => {
+  await step("2/9 写入 macOS 自动更新配置", async () => {
+    await writeAppUpdateYml({
+      appPath,
+      channel: updateChannel,
+      arch: targetArch,
+    });
+  });
+
+  await step("3/9 签名 OpenClaw sidecar 归档内原生二进制", async () => {
     try {
       await access(openclawArchive);
     } catch {
@@ -428,7 +425,7 @@ async function main() {
     }
   });
 
-  await step("3/7 签名 .app 内全部 Mach-O 文件和应用包", async () => {
+  await step("4/9 签名 .app 内全部 Mach-O 文件和应用包", async () => {
     const rootExecutable = resolve(appPath, "Contents", "MacOS", productName);
     const allMachO = sortCodeSignTargets(
       findMachOFiles(appPath).filter((filePath) => filePath !== rootExecutable),
@@ -483,7 +480,37 @@ async function main() {
     ]);
   });
 
-  await step("4/7 清理旧发布包并创建 DMG", async () => {
+  await step("5/9 公证并 stapling .app", async () => {
+    if (await isAppNotarized(appPath)) {
+      console.log("    app already has a stapled notarization ticket");
+      return;
+    }
+
+    const notaryZipPath = resolve(
+      tmpdir(),
+      `${artifactBaseName}-notary-${Date.now()}.zip`,
+    );
+    try {
+      await run("ditto", [
+        "-c",
+        "-k",
+        "--sequesterRsrc",
+        "--keepParent",
+        appPath,
+        notaryZipPath,
+      ]);
+      await run(
+        "xcrun",
+        getNotarySubmitArgs(notaryZipPath, authArgs, process.env),
+      );
+      await run("xcrun", ["stapler", "staple", appPath]);
+      await run("xcrun", ["stapler", "validate", appPath]);
+    } finally {
+      await rm(notaryZipPath, { force: true }).catch(() => {});
+    }
+  });
+
+  await step("6/9 清理旧发布包并创建 DMG + 更新 ZIP", async () => {
     await mkdir(releaseRoot, { recursive: true });
     await cleanOldReleaseMetadata(releaseRoot);
 
@@ -507,9 +534,18 @@ async function main() {
     } finally {
       await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
     }
+
+    await run("ditto", [
+      "-c",
+      "-k",
+      "--sequesterRsrc",
+      "--keepParent",
+      appPath,
+      updateZipPath,
+    ]);
   });
 
-  await step("5/7 签名并公证 DMG", async () => {
+  await step("7/9 签名并公证 DMG", async () => {
     await run("codesign", [
       "--force",
       "--sign",
@@ -523,11 +559,11 @@ async function main() {
     }
   });
 
-  await step("6/7 生成 GitHub Release 更新元数据", async () => {
-    await writeLatestMacYml({ releaseRoot, dmgPath, version });
+  await step("8/9 生成自动更新元数据", async () => {
+    await writeLatestMacYml({ releaseRoot, updateZipPath, version });
   });
 
-  await step("7/7 最终验证", async () => {
+  await step("9/9 最终验证", async () => {
     await run("codesign", [
       "--verify",
       "--deep",
@@ -535,6 +571,7 @@ async function main() {
       "--verbose=2",
       appPath,
     ]);
+    await run("xcrun", ["stapler", "validate", appPath]);
     await run("xcrun", ["stapler", "validate", dmgPath]);
     const appAssess = capture("spctl", [
       "-a",
@@ -558,11 +595,13 @@ async function main() {
 
   await run("xattr", ["-cr", appPath]).catch(() => {});
   await run("xattr", ["-cr", dmgPath]).catch(() => {});
+  await run("xattr", ["-cr", updateZipPath]).catch(() => {});
 
   console.log("\n========================================");
   console.log(" Tabby macOS production artifact ready");
   console.log("========================================");
   console.log(`DMG: ${dmgPath}`);
+  console.log(`Update ZIP: ${updateZipPath}`);
   console.log(`Update metadata: ${resolve(releaseRoot, "latest-mac.yml")}`);
   console.log(`Repo root: ${repoRoot}`);
 }

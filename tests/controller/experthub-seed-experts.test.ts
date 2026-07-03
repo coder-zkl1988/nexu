@@ -14,7 +14,7 @@ const SEED_DIR = path.resolve(
 describe("bundled seed experts", () => {
   it("all seed manifests parse via expertManifestSchema", async () => {
     const slugs = await readdir(SEED_DIR);
-    expect(slugs.length).toBeGreaterThanOrEqual(6);
+    expect(slugs.length).toBe(266);
     for (const slug of slugs) {
       const raw = await readFile(
         path.join(SEED_DIR, slug, "expert.json"),
@@ -31,15 +31,14 @@ describe("bundled seed experts", () => {
     }
   });
 
-  it("includes the 6 expected slugs", async () => {
+  it("includes agency imported experts and renamed security slugs", async () => {
     const slugs = (await readdir(SEED_DIR)).sort();
-    expect(slugs).toEqual([
-      "code-reviewer",
-      "generic-assistant",
-      "meeting-notes",
-      "research-summarizer",
-      "support-triage",
-      "translator-zh-en",
-    ]);
+    expect(slugs).toContain("engineering-code-reviewer");
+    expect(slugs).toContain("marketing-xiaohongshu-operator");
+    expect(slugs).toContain("gis-web-gis-developer");
+    expect(slugs).toContain("security-blockchain-security-auditor");
+    expect(slugs).toContain("security-compliance-auditor");
+    expect(slugs).not.toContain("blockchain-security-auditor");
+    expect(slugs).not.toContain("compliance-auditor");
   });
 });

@@ -22,7 +22,7 @@ LAUNCHD_LABELS=(
 )
 
 PROCESS_PATTERNS=(
-  "Nexu"
+  "Tabby"
   "Electron.*apps/desktop"
   "controller/dist/index.js"
   "openclaw.mjs gateway"
@@ -36,15 +36,15 @@ KNOWN_PORTS=(50800 50810 18789)
 echo "=== Nexu Kill All ==="
 echo ""
 
-# 0. Dismiss any lingering quit dialogs (only if Nexu is running)
+# 0. Dismiss any lingering quit dialogs (only if Tabby is running)
 echo "--- Quit dialog ---"
-if pgrep -q "Nexu" 2>/dev/null; then
+if pgrep -q "Tabby" 2>/dev/null; then
   for label in "完全退出" "Quit Completely" "取消" "Cancel"; do
-    osascript -e "tell application \"System Events\" to tell process \"Nexu\" to click button \"$label\" of window 1" 2>/dev/null && echo "  Clicked: $label" && break || true
+    osascript -e "tell application \"System Events\" to tell process \"Tabby\" to click button \"$label\" of window 1" 2>/dev/null && echo "  Clicked: $label" && break || true
   done
   sleep 1
 else
-  echo "  No Nexu process, skipping"
+  echo "  No Tabby process, skipping"
 fi
 
 # 1. Bootout launchd services

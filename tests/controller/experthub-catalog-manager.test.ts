@@ -3,10 +3,44 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { gzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExperthubCatalogManager } from "../../apps/controller/src/services/experthub/catalog-manager.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Build a gzipped ustar tarball whose single entry name is written verbatim
+ * (no path normalization). System `tar` normalizes `../` prefixes on some
+ * platforms (e.g. GNU tar on Linux), which would make a traversal archive
+ * non-malicious; constructing the archive by hand keeps the literal `..`
+ * entry so traversal guards are exercised consistently.
+ */
+function buildTraversalTarball(entryName: string, content: string): Buffer {
+  const body = Buffer.from(content, "utf8");
+  const header = Buffer.alloc(512, 0);
+  header.write(entryName.slice(0, 100), 0);
+  header.write("0000644\0", 100);
+  header.write("0000000\0", 108);
+  header.write("0000000\0", 116);
+  header.write(`${body.length.toString(8).padStart(11, "0")}\0`, 124);
+  header.write("00000000000\0", 136);
+  header.write("        ", 148);
+  header[156] = 0x30; // typeflag '0' = regular file
+  header.write("ustar\0", 257);
+  header.write("00", 263);
+  let checksum = 0;
+  for (let i = 0; i < 512; i++) {
+    checksum += header[i];
+  }
+  header.write(checksum.toString(8).padStart(6, "0"), 148);
+  header[154] = 0;
+  header[155] = 0x20;
+  const contentBlocks = Buffer.alloc(Math.ceil(body.length / 512) * 512, 0);
+  body.copy(contentBlocks);
+  const eof = Buffer.alloc(1024, 0);
+  return gzipSync(Buffer.concat([header, contentBlocks, eof]));
+}
 
 type ExpertManifestFixture = {
   schemaVersion: 1;
@@ -332,23 +366,13 @@ describe("ExperthubCatalogManager", () => {
   });
 
   it("refresh() rejects tarball with parent-directory traversal", async () => {
-    // Build a malicious tarball that contains "../escape.txt" so extraction
-    // would, without guardrails, write outside the staging directory. We
-    // build this by creating the escape file in a tmp root and telling tar
-    // to archive it via a relative path that starts with "..".
-    const tarRoot = path.join(dir, "evil-root");
-    const innerDir = path.join(tarRoot, "inner");
-    await mkdir(innerDir, { recursive: true });
-    await writeFile(path.join(tarRoot, "escape.txt"), "pwned", "utf8");
-    const tarPath = path.join(dir, "evil.tar.gz");
-    await execFileAsync("tar", [
-      "-czf",
-      tarPath,
-      "-C",
-      innerDir,
-      "../escape.txt",
-    ]);
-    const tarballBytes = await readFile(tarPath);
+    // Build a malicious tarball whose entry literally starts with "../".
+    // We construct the archive by hand because system `tar` normalizes
+    // `../escape.txt` to `escape.txt` on GNU tar (Linux), which would make the
+    // archive non-malicious and defeat the test. A literal `../escape.txt`
+    // entry is rejected by the catalog manager's traversal guard on every
+    // platform.
+    const tarballBytes = buildTraversalTarball("../escape.txt", "pwned");
 
     const fetchMock = vi
       .fn()

@@ -484,6 +484,9 @@ const en = {
   "settings.data.crashReports": "Crash reports",
   "settings.data.crashReportsHint":
     "Send crash reports automatically to help fix bugs",
+  "settings.data.sessionReplay": "Session replay on errors",
+  "settings.data.sessionReplayHint":
+    "When an error occurs, upload a fully masked UI replay (no text or input content). Takes effect after restart",
   "settings.general.saveTitle": "Save changes",
   "settings.general.saveHint": "Profile changes are applied after save",
   "settings.general.save": "Save",
@@ -534,6 +537,9 @@ const en = {
   "models.noModelConfigured": "No model configured",
   "models.configureProviderHint": "Configure a provider below first",
   "models.searchModels": "Search models...",
+  "models.special.phone": "Phone control only",
+  "models.special.image": "Image generation only",
+  "models.special.video": "Video generation only",
   "models.modelSwitched": "Model switched",
   "models.autoSwitched": "Auto-switched to {{model}}",
   "models.modelSwitchedAndSynced": "Model switched & synced to bot",

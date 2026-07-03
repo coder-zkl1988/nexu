@@ -96,12 +96,34 @@ export class DeviceControlService {
   }
 
   /**
-   * Push the VLM credential once the tabby-control RPC is reachable. The plugin
-   * comes up with no credential after every OpenClaw (re)start, so this polls
-   * `isAvailable()` and pushes on first success. Best-effort: gives up silently
-   * after `maxAttempts`. Used by cold start and after every gateway restart.
+   * Push the desktop "crash reports" consent to the tabby-control plugin so
+   * it's handed to phones (gating their Sentry reporting). Called on startup
+   * and whenever the toggle changes. Best-effort: if the plugin isn't up,
+   * ignore — phones keep their cached consent until the next push succeeds.
    */
-  async pushVlmCredentialWhenReady(
+  async pushTelemetryConsent(): Promise<void> {
+    let enabled = true;
+    try {
+      enabled = await this.configStore.getDesktopCrashReportsEnabled();
+    } catch {
+      enabled = true;
+    }
+    try {
+      await this.rpc("device_set_telemetry_consent", { enabled });
+    } catch {
+      // Plugin not running / RPC unavailable — phones keep their cached
+      // consent until the next push succeeds.
+    }
+  }
+
+  /**
+   * Push the desktop-owned state (VLM credential + telemetry consent) once the
+   * tabby-control RPC is reachable. The plugin comes up with no state after
+   * every OpenClaw (re)start, so this polls `isAvailable()` and pushes on first
+   * success. Best-effort: gives up silently after `maxAttempts`. Used by cold
+   * start and after every gateway restart.
+   */
+  async pushDesktopStateWhenReady(
     maxAttempts = 10,
     intervalMs = 2000,
   ): Promise<void> {
@@ -109,6 +131,7 @@ export class DeviceControlService {
       const up = await this.isAvailable().catch(() => false);
       if (up) {
         await this.pushVlmCredential();
+        await this.pushTelemetryConsent();
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
