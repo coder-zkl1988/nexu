@@ -65,6 +65,8 @@ export type TeamServiceDeps = {
     | "workboardCardComment"
     | "workboardCardComplete"
     | "workboardCardBlock"
+    | "workboardCardDelete"
+    | "workboardBoardDelete"
   >;
   /** Resolve a member expert's persona text (SOUL.md, falling back to systemPrompt). */
   resolveExpertPersona: (slug: string) => Promise<string | null>;
@@ -186,7 +188,7 @@ export class TeamService {
     const memberByBotId = new Map(team.members.map((m) => [m.botId, m]));
     try {
       const { cards } = await this.deps.gateway.workboardCardsList({
-        board: team.boardId,
+        boardId: team.boardId,
       });
       return {
         boardId: team.boardId,
@@ -338,6 +340,28 @@ export class TeamService {
     if (removed) {
       // Workflows are meaningless without their team — cascade them.
       await this.deps.removeTeamWorkflows(teamId).catch(() => 0);
+      // Cascade the team's Workboard namespace: the store refuses to delete
+      // a board while cards remain, so clear cards first. Best-effort — a
+      // transiently offline gateway must not block team deletion.
+      try {
+        const { cards } = await this.deps.gateway.workboardCardsList({
+          boardId: team.boardId,
+        });
+        for (const card of cards) {
+          await this.deps.gateway
+            .workboardCardDelete({ id: card.id })
+            .catch(() => undefined);
+        }
+        await this.deps.gateway.workboardBoardDelete({ id: team.boardId });
+      } catch (error) {
+        logger.debug(
+          {
+            teamId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "team board cascade cleanup skipped",
+        );
+      }
       await this.deps.syncAll();
     }
     return removed;
@@ -487,7 +511,7 @@ export class TeamService {
 
     const { card: parentCard } = await this.deps.gateway.workboardCardCreate({
       title: task,
-      board: team.boardId,
+      boardId: team.boardId,
       agentId: team.leadBotId,
       priority: "high",
     });
@@ -499,6 +523,7 @@ export class TeamService {
         const member = memberBySlug.get(subtask.assigneeSlug)!;
         return {
           title: subtask.title,
+          boardId: team.boardId,
           agentId: member.botId,
           notes: this.buildCardNotes(
             personaBySlug.get(subtask.assigneeSlug) ?? "",

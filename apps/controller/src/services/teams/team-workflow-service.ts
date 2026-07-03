@@ -331,7 +331,7 @@ export class TeamWorkflowService {
     });
     const { card: parentCard } = await this.deps.gateway.workboardCardCreate({
       title: workflow.name,
-      board: team.boardId,
+      boardId: team.boardId,
       agentId: team.leadBotId,
       priority: "high",
     });
@@ -339,6 +339,7 @@ export class TeamWorkflowService {
       id: parentCard.id,
       children: workflow.steps.map((step) => ({
         title: step.name ?? step.id,
+        boardId: team.boardId,
         // biome-ignore lint/style/noNonNullAssertion: validated against team members
         agentId: memberBySlug.get(step.assigneeSlug)!.botId,
         notes: "(waiting for upstream steps)",

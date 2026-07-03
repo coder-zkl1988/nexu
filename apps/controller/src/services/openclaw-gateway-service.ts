@@ -237,7 +237,8 @@ export class OpenClawGatewayService {
 
   async workboardCardCreate(params: {
     title: string;
-    board: string;
+    /** Workboard store field is `boardId` — `board` is silently ignored. */
+    boardId: string;
     agentId?: string;
     notes?: string;
     priority?: "low" | "normal" | "high" | "urgent";
@@ -247,7 +248,12 @@ export class OpenClawGatewayService {
 
   async workboardCardDecompose(params: {
     id: string;
-    children: Array<{ title: string; agentId?: string; notes?: string }>;
+    children: Array<{
+      title: string;
+      boardId?: string;
+      agentId?: string;
+      notes?: string;
+    }>;
   }): Promise<{ children: WorkboardCard[] }> {
     return this.wsClient.request("workboard.cards.decompose", params);
   }
@@ -260,15 +266,29 @@ export class OpenClawGatewayService {
   }
 
   async workboardCardsList(params?: {
-    board?: string;
+    /** Filter field is `boardId` — `board` is silently ignored (returns ALL cards). */
+    boardId?: string;
   }): Promise<{ cards: WorkboardCard[] }> {
     return this.wsClient.request("workboard.cards.list", params ?? {});
   }
 
   async workboardDispatch(params?: {
-    board?: string;
+    boardId?: string;
   }): Promise<WorkboardDispatchResult> {
     return this.wsClient.request("workboard.cards.dispatch", params ?? {});
+  }
+
+  /** Delete one card (used for board-scoped cleanup on team delete). */
+  async workboardCardDelete(params: { id: string }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.delete", params);
+  }
+
+  /**
+   * Delete a board namespace. The store refuses while cards remain — callers
+   * must delete the board's cards first (see TeamService.deleteTeam).
+   */
+  async workboardBoardDelete(params: { id: string }): Promise<unknown> {
+    return this.wsClient.request("workboard.boards.delete", params);
   }
 
   /**

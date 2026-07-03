@@ -47,6 +47,8 @@ describe("TeamService", () => {
     workboardCardComment: ReturnType<typeof vi.fn>;
     workboardCardComplete: ReturnType<typeof vi.fn>;
     workboardCardBlock: ReturnType<typeof vi.fn>;
+    workboardCardDelete: ReturnType<typeof vi.fn>;
+    workboardBoardDelete: ReturnType<typeof vi.fn>;
   };
   let syncAll: ReturnType<typeof vi.fn>;
   let createBot: ReturnType<typeof vi.fn>;
@@ -133,6 +135,8 @@ describe("TeamService", () => {
       workboardCardComment: vi.fn(async () => ({})),
       workboardCardComplete: vi.fn(async () => ({})),
       workboardCardBlock: vi.fn(async () => ({})),
+      workboardCardDelete: vi.fn(async () => ({})),
+      workboardBoardDelete: vi.fn(async () => ({})),
     };
     syncAll = vi.fn(async () => undefined);
     createBot = vi.fn(async () => ({ id: "bot-lead" }));
@@ -299,7 +303,7 @@ describe("TeamService", () => {
     });
     expect(gateway.workboardCardCreate).toHaveBeenCalledWith({
       title: "Ship the release notes",
-      board: team.boardId,
+      boardId: team.boardId,
       agentId: "bot-lead",
       priority: "high",
     });
@@ -533,7 +537,7 @@ describe("TeamService", () => {
     const board = await service.getBoard(team.id);
 
     expect(gateway.workboardCardsList).toHaveBeenCalledWith({
-      board: team.boardId,
+      boardId: team.boardId,
     });
     expect(board.boardId).toBe(team.boardId);
     expect(board.cards).toEqual([
@@ -574,6 +578,31 @@ describe("TeamService", () => {
 
     const board = await service.getBoard(team.id);
     expect(board).toEqual({ boardId: team.boardId, cards: [] });
+  });
+
+  it("deleteTeam cascades the team's board cards and the board itself", async () => {
+    gateway.workboardCardsList.mockResolvedValueOnce({
+      cards: [
+        { id: "c1", title: "a", status: "done" },
+        { id: "c2", title: "b", status: "blocked" },
+      ],
+    });
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    await service.deleteTeam(team.id);
+
+    expect(gateway.workboardCardsList).toHaveBeenCalledWith({
+      boardId: team.boardId,
+    });
+    expect(gateway.workboardCardDelete).toHaveBeenCalledWith({ id: "c1" });
+    expect(gateway.workboardCardDelete).toHaveBeenCalledWith({ id: "c2" });
+    expect(gateway.workboardBoardDelete).toHaveBeenCalledWith({
+      id: team.boardId,
+    });
   });
 
   it("ensureDefaultTeam creates once and reuses on subsequent calls", async () => {
