@@ -46,6 +46,7 @@ import { ensureExpertPersonaFolds } from "../services/experthub/persona-fold-mig
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
+import { MediaGenerationService } from "../services/media-generation-service.js";
 import { ModelProviderService } from "../services/model-provider-service.js";
 import { OpenClawAuthService } from "../services/openclaw-auth-service.js";
 import { OpenClawCronGateway } from "../services/openclaw-cron-gateway.js";
@@ -99,6 +100,7 @@ export interface ControllerContainer {
   templateService: TemplateService;
   skillhubService: SkillhubService;
   teamService: TeamService;
+  mediaGenerationService: MediaGenerationService;
   teamWorkflowService: TeamWorkflowService;
   experthubCatalogManager: ExperthubCatalogManager;
   installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
@@ -396,6 +398,24 @@ export async function createContainer(): Promise<ControllerContainer> {
     // Teamless dispatch shortlists candidates from the WHOLE catalog.
     recallExperts: async (task) =>
       recallExperts(await experthubCatalogManager.listExperts(), task),
+  });
+
+  const mediaGenerationService = new MediaGenerationService({
+    // Any active bot can run the utility lane; prefer the default agent
+    // (first active bot, mirroring compileAgentList ordering).
+    pickUtilityBotId: async () => {
+      const config = await configStore.getConfig();
+      const bot = config.bots
+        .filter((candidate) => candidate.status === "active")
+        .sort((left, right) => left.slug.localeCompare(right.slug))[0];
+      return bot?.id ?? null;
+    },
+    sendChat: (input) => gatewayService.sendToMainSession(input),
+    readSessionEntry: (botId, sessionKey) =>
+      readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
+    readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
+    openclawStateDir: env.openclawStateDir,
+    genId: () => randomUUID(),
   });
 
   const teamWorkflowService = new TeamWorkflowService({
@@ -709,6 +729,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     templateService: new TemplateService(configStore, openclawSyncService),
     skillhubService,
     teamService,
+    mediaGenerationService,
     teamWorkflowService,
     experthubCatalogManager,
     installExpertFn,

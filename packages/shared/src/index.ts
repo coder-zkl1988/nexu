@@ -1,5 +1,6 @@
 export * from "./schemas/bot.js";
 export * from "./schemas/expert.js";
+export * from "./schemas/media-generation.js";
 export * from "./schemas/team.js";
 export * from "./schemas/team-workflow.js";
 export * from "./schemas/channel.js";

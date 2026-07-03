@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import {
+  generateImageRequestSchema,
+  generateImageResponseSchema,
+} from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
 import { mediaCacheDir, mediaCachePathFor } from "../lib/media-cache.js";
+import { ImageGenerationFailedError } from "../services/media-generation-service.js";
 import type { ControllerBindings } from "../types.js";
 
 const MEDIA_EXTENSION_MIME: Record<string, string> = {
@@ -17,6 +22,51 @@ export function registerMediaRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
+  // POST /api/v1/media/generate-image — prompt-to-image for the canvas
+  // workbench (S7). Drives the OpenClaw image_generate agent tool over a
+  // utility subagent lane; the result is served by /media/state-file below.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/media/generate-image",
+      tags: ["Media"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: generateImageRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: generateImageResponseSchema },
+          },
+          description: "Image generated and servable via /media/state-file",
+        },
+        502: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "Generation failed or timed out",
+        },
+      },
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      try {
+        const result = await container.mediaGenerationService.generateImage({
+          prompt: input.prompt,
+        });
+        return c.json(result, 200);
+      } catch (error) {
+        if (error instanceof ImageGenerationFailedError) {
+          return c.json({ message: error.message }, 502);
+        }
+        throw error;
+      }
+    },
+  );
   // Serves media files referenced by chat transcripts (user uploads under
   // media/inbound, generated images under media/tool-image-generation, …).
   // Plain app.get like the screenshots route below: the response is binary

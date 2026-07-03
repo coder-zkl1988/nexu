@@ -90,3 +90,11 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 4. **图片 → 小红书连线喂图**：`connection-effects.ts` —— 连线不只是视觉，携带数据流。image 节点（有内容）连入 XHS 编辑器 a2ui 节点时，从目标 surface 的 `XHSEditor` 组件 props 读取 batchId/postId，将图片推入 `xhs-batch-store` 对应帖子的 images（去重）。**生图节点（prompt→出图）需要 controller 新开生图 REST 通道（对接 openclaw image_generate），列为 S7 后端项**；届时生成节点复用同一 connection-effects 钩子。
 
 测试：web 全套 115 通过（新增 pinTeamRunToCanvas 幂等/连线/布局断言 + 连线喂图去重断言）。
+
+## 7. S7 —— 生图通道（2026-07-03 落地）
+
+- **选型**：gateway 无直接图像 API（排除）；复用 §10.3 执行原语——`MediaGenerationService` 向 utility 子代理 lane（`agent:<botId>:subagent:imagegen-<uuid>`，botId=默认 agent）发一条严格合同消息（调 `image_generate` 一次、只回文件绝对路径、工具不可用则只回 `UNAVAILABLE`、禁 UI/技能/shell 变通），轮询 session 完成后提取路径。
+- **安全**：路径必须落在 `<stateDir>/media` 内（防逃逸/防幻觉路径）+ 文件存在性校验；产物经既有 `GET /api/v1/media/state-file` 服务。
+- **端点**：`POST /api/v1/media/generate-image {prompt} → {url, path}`（502 = 失败/超时/未配置后端）。
+- **前端**：画布空图片节点新增「描述要生成的图片… + 生成」（与上传并列），成功后 `metadata.content = url`，可直接连线喂给 XHS 编辑器（复用 connection-effects）。
+- **环境依赖（实测发现）**：本地 dev 机未配置任何图像后端——`image_generate` 工具未注册（需要图像模型 provider），`liblib-ai-gen` skill 缺 API key。通道行为正确（请求→lane→轮询→502 优雅失败，单测 5 例覆盖提取/防逃逸/UNAVAILABLE 快速失败/超时），**生图成功路径需先配置图像后端**（图像模型 provider 或给 liblib skill 配 key）。弱模型可能无视 UNAVAILABLE 合同而空转至超时（120s 上限兜底）。

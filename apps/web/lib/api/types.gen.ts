@@ -6318,6 +6318,38 @@ export type GetApiV1SchedulesByScheduleIdRunsResponses = {
 
 export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesByScheduleIdRunsResponses[keyof GetApiV1SchedulesByScheduleIdRunsResponses];
 
+export type PostApiV1MediaGenerateImageData = {
+    body?: {
+        prompt: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-image';
+};
+
+export type PostApiV1MediaGenerateImageErrors = {
+    /**
+     * Generation failed or timed out
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateImageError = PostApiV1MediaGenerateImageErrors[keyof PostApiV1MediaGenerateImageErrors];
+
+export type PostApiV1MediaGenerateImageResponses = {
+    /**
+     * Image generated and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+    };
+};
+
+export type PostApiV1MediaGenerateImageResponse = PostApiV1MediaGenerateImageResponses[keyof PostApiV1MediaGenerateImageResponses];
+
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };

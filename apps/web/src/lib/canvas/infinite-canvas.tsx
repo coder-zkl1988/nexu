@@ -19,6 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { postApiV1MediaGenerateImage } from "../../../lib/api/sdk.gen";
 import {
   type CanvasNode,
   type CanvasViewport,
@@ -605,28 +606,80 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
       />
     );
   }
+  return <EmptyImageNode node={node} />;
+}
+
+/**
+ * Empty image node: upload a file OR generate one from a prompt via the S7
+ * controller channel (POST /api/v1/media/generate-image).
+ */
+function EmptyImageNode({ node }: { node: CanvasNode }) {
+  const [prompt, setPrompt] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   return (
-    <label className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-2 rounded border border-dashed border-border text-xs text-text-tertiary hover:bg-surface-2/50">
-      <ImagePlus size={20} />
-      选择图片
-      <input
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            updateNode(node.id, {
-              title: file.name,
-              metadata: { content: String(reader.result) },
-            });
-          };
-          reader.readAsDataURL(file);
-        }}
-      />
-    </label>
+    <div className="flex h-full w-full flex-col gap-2">
+      <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded border border-dashed border-border text-xs text-text-tertiary hover:bg-surface-2/50">
+        <ImagePlus size={18} />
+        选择图片
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              updateNode(node.id, {
+                title: file.name,
+                metadata: { content: String(reader.result) },
+              });
+            };
+            reader.readAsDataURL(file);
+          }}
+        />
+      </label>
+      <div className="flex shrink-0 items-center gap-1">
+        <input
+          value={prompt}
+          disabled={generating}
+          placeholder="描述要生成的图片…"
+          onChange={(event) => setPrompt(event.target.value)}
+          className="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+        />
+        <button
+          type="button"
+          disabled={generating || !prompt.trim()}
+          data-canvas-generate-image={node.id}
+          onClick={() => {
+            setError(null);
+            setGenerating(true);
+            void postApiV1MediaGenerateImage({
+              body: { prompt: prompt.trim() },
+            })
+              .then(({ data, error: requestError }) => {
+                if (requestError || !data) {
+                  throw new Error("generate failed");
+                }
+                updateNode(node.id, {
+                  title: prompt.trim().slice(0, 30),
+                  metadata: { content: data.url },
+                });
+              })
+              .catch(() => setError("生成失败，请重试"))
+              .finally(() => setGenerating(false));
+          }}
+          className="shrink-0 rounded border border-[var(--color-accent)] bg-[var(--color-accent)] px-2 py-1 text-xs font-bold text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50"
+        >
+          {generating ? "生成中…" : "生成"}
+        </button>
+      </div>
+      {error ? (
+        <p className="shrink-0 text-[11px] text-danger">{error}</p>
+      ) : null}
+    </div>
   );
 }
 
