@@ -28,6 +28,12 @@ export const teamResponseSchema = z.object({
   members: z.array(teamMemberSchema),
   /** Workboard board id owned by this team. */
   boardId: z.string(),
+  /**
+   * The system-managed default team: lazily created the first time a plain
+   * (non-lead) bot dispatches work via expert_run_auto. Its member set grows
+   * automatically as planners enroll experts from the catalog.
+   */
+  isDefault: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -103,6 +109,18 @@ export const autoRunTeamTaskResponseSchema = runTeamTaskResponseSchema.extend({
 });
 
 /**
+ * Teamless entry point: dispatch a task without pre-creating a team. The
+ * controller lazily creates (or reuses) the system default team, plans
+ * against the whole expert catalog, auto-enrolls (and auto-installs) the
+ * experts the plan assigns, then dispatches as a normal auto run.
+ */
+export const runDefaultTeamTaskResponseSchema =
+  autoRunTeamTaskResponseSchema.extend({
+    /** The default team the run landed on (lazily created). */
+    teamId: z.string(),
+  });
+
+/**
  * Phase 3: a live snapshot of the team's Workboard for the Kanban view.
  * `status` mirrors the Workboard lifecycle (triage/backlog/todo/scheduled/
  * ready/running/review/blocked/done) and is kept as a string so new runtime
@@ -116,6 +134,8 @@ export const teamBoardCardSchema = z.object({
   agentId: z.string().nullable(),
   /** Display name of the assigned member, when resolvable. */
   assigneeName: z.string().nullable(),
+  /** Latest recorded output (workflow step reply), when any. */
+  output: z.string().nullable(),
 });
 
 export const teamBoardResponseSchema = z.object({
@@ -139,6 +159,9 @@ export type AutoRunTeamTaskRequest = z.infer<
 >;
 export type AutoRunTeamTaskResponse = z.infer<
   typeof autoRunTeamTaskResponseSchema
+>;
+export type RunDefaultTeamTaskResponse = z.infer<
+  typeof runDefaultTeamTaskResponseSchema
 >;
 export type TeamBoardCard = z.infer<typeof teamBoardCardSchema>;
 export type TeamBoardResponse = z.infer<typeof teamBoardResponseSchema>;
