@@ -97,4 +97,4 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 - **安全**：路径必须落在 `<stateDir>/media` 内（防逃逸/防幻觉路径）+ 文件存在性校验；产物经既有 `GET /api/v1/media/state-file` 服务。
 - **端点**：`POST /api/v1/media/generate-image {prompt} → {url, path}`（502 = 失败/超时/未配置后端）。
 - **前端**：画布空图片节点新增「描述要生成的图片… + 生成」（与上传并列），成功后 `metadata.content = url`，可直接连线喂给 XHS 编辑器（复用 connection-effects）。
-- **环境依赖（实测发现）**：本地 dev 机未配置任何图像后端——`image_generate` 工具未注册（需要图像模型 provider），`liblib-ai-gen` skill 缺 API key。通道行为正确（请求→lane→轮询→502 优雅失败，单测 5 例覆盖提取/防逃逸/UNAVAILABLE 快速失败/超时），**生图成功路径需先配置图像后端**（图像模型 provider 或给 liblib skill 配 key）。弱模型可能无视 UNAVAILABLE 合同而空转至超时（120s 上限兜底）。
+- **环境依赖与实测**：`image_generate` 工具需图像模型 provider 才注册；合入 main 的 **tabby-image 官方 skill**（走已登录 Tabby 云账号，零配置）后，生成合同更新为「优先 image_generate 工具 → 其次 tabby-image skill → 都不可用只回 UNAVAILABLE」。**真机全通**：POST 生图 108s 返回 200，产物 1536×1024 PNG 落 `media/outbound/<botId>/tabby-image/`，servable URL 直接可取（2.1MB）。超时上限 240s（skill 链路叠加 agent 开销：读 SKILL→起脚本→轮询）。弱模型可能无视 UNAVAILABLE 合同而空转至超时兜底。

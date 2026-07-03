@@ -74,6 +74,7 @@ describe("MediaGenerationService", () => {
       .message;
     expect(message).toContain("a cat");
     expect(message).toContain("image_generate");
+    expect(message).toContain("tabby-image");
     expect(message).toContain("ONLY the generated file's absolute path");
   });
 

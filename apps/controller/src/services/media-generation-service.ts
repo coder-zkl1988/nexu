@@ -41,7 +41,8 @@ export type MediaGenerationServiceDeps = {
 
 export type MediaGenerationServiceOptions = {
   pollIntervalMs?: number;
-  /** Image models are slow — allow a few minutes end to end. */
+  /** Skill-driven generation stacks agent overhead (read SKILL.md, spawn the
+   * script, poll it) on top of model time — allow several minutes. */
   timeoutMs?: number;
 };
 
@@ -63,7 +64,7 @@ export class MediaGenerationService {
     options: MediaGenerationServiceOptions = {},
   ) {
     this.pollIntervalMs = options.pollIntervalMs ?? 2_000;
-    this.timeoutMs = options.timeoutMs ?? 120_000;
+    this.timeoutMs = options.timeoutMs ?? 240_000;
   }
 
   async generateImage(input: { prompt: string }): Promise<{
@@ -78,15 +79,16 @@ export class MediaGenerationService {
     }
     const sessionKey = `agent:${botId}:subagent:imagegen-${this.deps.genId()}`;
     const message = [
-      "[TASK] Generate one image with the image_generate tool.",
+      "[TASK] Generate one image.",
       `Prompt: ${input.prompt}`,
       "",
-      "Rules:",
-      "- Call the image_generate tool exactly once with this prompt.",
-      "- If the image_generate tool is NOT in your toolset (or no image",
-      '  backend is configured), reply with ONLY the word "UNAVAILABLE" —',
-      "  do NOT try skills, shell commands, or any other workaround.",
-      "- The tool writes the file into the media directory.",
+      "Rules (in order):",
+      "1. If the image_generate tool is in your toolset, call it exactly",
+      "   once with this prompt.",
+      "2. Otherwise use the official tabby-image skill (its script prints a",
+      "   MEDIA: <absolute-path> line; the file lands under the media dir).",
+      '3. If neither works, reply with ONLY the word "UNAVAILABLE" — no',
+      "   other workarounds.",
       "- Reply with ONLY the generated file's absolute path — one line, no",
       "  other words, no markdown, and do NOT render UI (no render_a2ui).",
     ].join("\n");
