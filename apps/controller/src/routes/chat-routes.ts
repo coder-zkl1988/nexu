@@ -78,6 +78,11 @@ export function registerChatRoutes(
   const chatService = new ChatService(
     container.gatewayService,
     container.attachmentStore,
+    // Team leads get the team-engine hint instead of the expert-routing one.
+    (botId) =>
+      container.teamService
+        .listTeams()
+        .some((team) => team.leadBotId === botId),
   );
 
   // GET /api/v1/chat/session - Resolve a named sessionKey to a real session

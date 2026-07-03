@@ -5,6 +5,7 @@ import {
   createTeamRequestSchema,
   createTeamResponseSchema,
   deleteTeamResponseSchema,
+  runDefaultTeamTaskResponseSchema,
   runTeamTaskRequestSchema,
   runTeamTaskResponseSchema,
   teamBoardResponseSchema,
@@ -32,6 +33,7 @@ export type TeamRoutesDeps = {
     | "deleteTeam"
     | "runTask"
     | "runTaskAuto"
+    | "runTaskAutoDefault"
   >;
 };
 
@@ -93,6 +95,52 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
         return c.json(team, 200);
       } catch (error) {
         if (error instanceof TeamMemberNotInstalledError) {
+          return c.json({ message: error.message }, 400);
+        }
+        throw error;
+      }
+    },
+  );
+
+  // POST /teams/default/run-auto — teamless dispatch onto the lazily-created
+  // default team, planning against the whole expert catalog. Registered
+  // before the /{id} routes so the static segment wins the match.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/default/run-auto",
+      tags: ["Teams"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: autoRunTeamTaskRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: runDefaultTeamTaskResponseSchema },
+          },
+          description:
+            "Task planned against the expert catalog and dispatched on the default team",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "No usable plan could be produced",
+        },
+      },
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      try {
+        const result = await deps.teamService.runTaskAutoDefault(input);
+        return c.json(result, 200);
+      } catch (error) {
+        if (
+          error instanceof TeamPlanFailedError ||
+          error instanceof TeamMemberNotInstalledError
+        ) {
           return c.json({ message: error.message }, 400);
         }
         throw error;

@@ -332,6 +332,21 @@ const SUBAGENT_DELEGATION_TOOLS = [
   "subagents",
 ];
 
+/**
+ * Workboard's worker-completion protocol tools. Without these, a Workboard
+ * dispatch worker's LLM turn finishes correctly but has no way to signal it —
+ * the card sits in "running" forever even though the model already answered.
+ * Verified live 2026-07-01: a worker without these tools replied correctly in
+ * plain text instead of calling workboard_complete, per buildWorkerPrompt's
+ * "Heartbeat with workboard_heartbeat ... call workboard_complete ... If
+ * blocked, call workboard_block" instructions.
+ */
+const WORKBOARD_WORKER_TOOLS = [
+  "workboard_heartbeat",
+  "workboard_complete",
+  "workboard_block",
+];
+
 function compileAgentList(
   config: NexuConfig,
   env: ControllerEnv,
@@ -368,7 +383,9 @@ function compileAgentList(
           ? { primary: resolveModelId(config, env, bot.modelId, oauthState) }
           : undefined,
         ...(merged.length > 0 ? { skills: merged } : {}),
-        tools: { alsoAllow: SUBAGENT_DELEGATION_TOOLS },
+        tools: {
+          alsoAllow: [...SUBAGENT_DELEGATION_TOOLS, ...WORKBOARD_WORKER_TOOLS],
+        },
         subagents: { allowAgents: ["*"] },
       };
     });
@@ -415,6 +432,7 @@ function compilePlugins(
     "nexu-a2ui",
     "nexu-toolcall-guard",
     "find-expert",
+    "nexu-team",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -504,6 +522,14 @@ function compilePlugins(
         config: {
           // The plugin runs in the OpenClaw process and reaches the controller
           // on loopback to read the expert catalog + trigger installs.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+      },
+      "nexu-team": {
+        enabled: true,
+        config: {
+          // Same loopback pattern as find-expert: the plugin resolves the
+          // caller's team by leadBotId and drives the team board engine.
           controllerUrl: `http://127.0.0.1:${env.port}`,
         },
       },

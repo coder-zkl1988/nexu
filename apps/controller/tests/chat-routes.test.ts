@@ -20,6 +20,9 @@ function createChatRoutesApp({
       sendToMainSession,
     },
     attachmentStore: {},
+    teamService: {
+      listTeams: () => [],
+    },
     sessionService: {
       getSessionBySessionKey,
     },

@@ -4519,6 +4519,7 @@ export type GetApiV1TeamsResponses = {
                 name?: string;
             }>;
             boardId: string;
+            isDefault?: boolean;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -4563,12 +4564,56 @@ export type PostApiV1TeamsResponses = {
             name?: string;
         }>;
         boardId: string;
+        isDefault?: boolean;
         createdAt: string;
         updatedAt: string;
     };
 };
 
 export type PostApiV1TeamsResponse = PostApiV1TeamsResponses[keyof PostApiV1TeamsResponses];
+
+export type PostApiV1TeamsDefaultRunAutoData = {
+    body?: {
+        task: string;
+        maxSubtasks?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/teams/default/run-auto';
+};
+
+export type PostApiV1TeamsDefaultRunAutoErrors = {
+    /**
+     * No usable plan could be produced
+     */
+    400: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsDefaultRunAutoError = PostApiV1TeamsDefaultRunAutoErrors[keyof PostApiV1TeamsDefaultRunAutoErrors];
+
+export type PostApiV1TeamsDefaultRunAutoResponses = {
+    /**
+     * Task planned against the expert catalog and dispatched on the default team
+     */
+    200: {
+        boardId: string;
+        parentCardId: string;
+        started: Array<{
+            cardId: string;
+            sessionKey: string;
+        }>;
+        plan: Array<{
+            title: string;
+            assigneeSlug: string;
+            notes?: string;
+        }>;
+        teamId: string;
+    };
+};
+
+export type PostApiV1TeamsDefaultRunAutoResponse = PostApiV1TeamsDefaultRunAutoResponses[keyof PostApiV1TeamsDefaultRunAutoResponses];
 
 export type DeleteApiV1TeamsByIdData = {
     body?: never;
@@ -4635,6 +4680,7 @@ export type GetApiV1TeamsByIdResponses = {
             name?: string;
         }>;
         boardId: string;
+        isDefault?: boolean;
         createdAt: string;
         updatedAt: string;
     };
@@ -4685,6 +4731,7 @@ export type PatchApiV1TeamsByIdResponses = {
             name?: string;
         }>;
         boardId: string;
+        isDefault?: boolean;
         createdAt: string;
         updatedAt: string;
     };
@@ -4724,6 +4771,7 @@ export type GetApiV1TeamsByIdBoardResponses = {
             status: string;
             agentId: string;
             assigneeName: string;
+            output: string;
         }>;
     };
 };
@@ -4828,6 +4876,574 @@ export type PostApiV1TeamsByIdRunAutoResponses = {
 };
 
 export type PostApiV1TeamsByIdRunAutoResponse = PostApiV1TeamsByIdRunAutoResponses[keyof PostApiV1TeamsByIdRunAutoResponses];
+
+export type GetApiV1TeamsByIdWorkflowsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows';
+};
+
+export type GetApiV1TeamsByIdWorkflowsErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsError = GetApiV1TeamsByIdWorkflowsErrors[keyof GetApiV1TeamsByIdWorkflowsErrors];
+
+export type GetApiV1TeamsByIdWorkflowsResponses = {
+    /**
+     * Workflows owned by the team
+     */
+    200: {
+        workflows: Array<{
+            id: string;
+            teamId: string;
+            name: string;
+            description?: string;
+            inputs?: Array<{
+                name: string;
+                description?: string;
+                required?: boolean;
+                default?: string;
+            }>;
+            steps: Array<{
+                id: string;
+                type?: 'task' | 'approval';
+                assigneeSlug: string;
+                name?: string;
+                task: string;
+                output?: string;
+                dependsOn?: Array<string>;
+            }>;
+            source?: 'builtin' | 'user';
+            createdAt: string;
+            updatedAt: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsResponse = GetApiV1TeamsByIdWorkflowsResponses[keyof GetApiV1TeamsByIdWorkflowsResponses];
+
+export type PostApiV1TeamsByIdWorkflowsData = {
+    body?: {
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows';
+};
+
+export type PostApiV1TeamsByIdWorkflowsErrors = {
+    /**
+     * Invalid workflow definition
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsError = PostApiV1TeamsByIdWorkflowsErrors[keyof PostApiV1TeamsByIdWorkflowsErrors];
+
+export type PostApiV1TeamsByIdWorkflowsResponses = {
+    /**
+     * Workflow created
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsResponse = PostApiV1TeamsByIdWorkflowsResponses[keyof PostApiV1TeamsByIdWorkflowsResponses];
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdData = {
+    body?: never;
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}';
+};
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdErrors = {
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdError = DeleteApiV1TeamsByIdWorkflowsByWorkflowIdErrors[keyof DeleteApiV1TeamsByIdWorkflowsByWorkflowIdErrors];
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponses = {
+    /**
+     * Workflow deleted
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponse = DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponses[keyof DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponses];
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdData = {
+    body?: never;
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}';
+};
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdErrors = {
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdError = GetApiV1TeamsByIdWorkflowsByWorkflowIdErrors[keyof GetApiV1TeamsByIdWorkflowsByWorkflowIdErrors];
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdResponses = {
+    /**
+     * Workflow detail
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdResponse = GetApiV1TeamsByIdWorkflowsByWorkflowIdResponses[keyof GetApiV1TeamsByIdWorkflowsByWorkflowIdResponses];
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdData = {
+    body?: {
+        name?: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps?: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+    };
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}';
+};
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdErrors = {
+    /**
+     * Invalid workflow definition
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdError = PatchApiV1TeamsByIdWorkflowsByWorkflowIdErrors[keyof PatchApiV1TeamsByIdWorkflowsByWorkflowIdErrors];
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponses = {
+    /**
+     * Workflow updated
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponse = PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponses[keyof PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponses];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunData = {
+    body?: {
+        inputs?: {
+            [key: string]: string;
+        };
+    };
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}/run';
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors = {
+    /**
+     * Invalid inputs or stale workflow definition
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunError = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponses = {
+    /**
+     * Run materialized; execution continues in background
+     */
+    200: {
+        runId: string;
+        boardId: string;
+        parentCardId: string;
+        cards: Array<{
+            stepId: string;
+            cardId: string;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponse = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponses[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponses];
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateData = {
+    body?: {
+        templateId: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/from-template';
+};
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateErrors = {
+    /**
+     * Template invalid for this team
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team or template not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateError = PostApiV1TeamsByIdWorkflowsFromTemplateErrors[keyof PostApiV1TeamsByIdWorkflowsFromTemplateErrors];
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateResponses = {
+    /**
+     * Template instantiated as a team workflow
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateResponse = PostApiV1TeamsByIdWorkflowsFromTemplateResponses[keyof PostApiV1TeamsByIdWorkflowsFromTemplateResponses];
+
+export type PostApiV1TeamsByIdWorkflowsComposeData = {
+    body?: {
+        description: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/compose';
+};
+
+export type PostApiV1TeamsByIdWorkflowsComposeErrors = {
+    /**
+     * The model could not produce a sound workflow
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsComposeError = PostApiV1TeamsByIdWorkflowsComposeErrors[keyof PostApiV1TeamsByIdWorkflowsComposeErrors];
+
+export type PostApiV1TeamsByIdWorkflowsComposeResponses = {
+    /**
+     * Composed draft workflow (not persisted)
+     */
+    200: {
+        draft: {
+            name: string;
+            description?: string;
+            inputs?: Array<{
+                name: string;
+                description?: string;
+                required?: boolean;
+                default?: string;
+            }>;
+            steps: Array<{
+                id: string;
+                type?: 'task' | 'approval';
+                assigneeSlug: string;
+                name?: string;
+                task: string;
+                output?: string;
+                dependsOn?: Array<string>;
+            }>;
+        };
+        warnings: Array<string>;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsComposeResponse = PostApiV1TeamsByIdWorkflowsComposeResponses[keyof PostApiV1TeamsByIdWorkflowsComposeResponses];
+
+export type GetApiV1TeamsByIdWorkflowApprovalsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflow-approvals';
+};
+
+export type GetApiV1TeamsByIdWorkflowApprovalsErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowApprovalsError = GetApiV1TeamsByIdWorkflowApprovalsErrors[keyof GetApiV1TeamsByIdWorkflowApprovalsErrors];
+
+export type GetApiV1TeamsByIdWorkflowApprovalsResponses = {
+    /**
+     * Pending workflow approvals for the team
+     */
+    200: {
+        approvals: Array<{
+            teamId: string;
+            workflowId: string;
+            runId: string;
+            stepId: string;
+            cardId: string;
+            prompt: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowApprovalsResponse = GetApiV1TeamsByIdWorkflowApprovalsResponses[keyof GetApiV1TeamsByIdWorkflowApprovalsResponses];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveData = {
+    body?: never;
+    path: {
+        id: string;
+        workflowId: string;
+        runId: string;
+        stepId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}/runs/{runId}/steps/{stepId}/approve';
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveErrors = {
+    /**
+     * No pending approval for this run step
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveError = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveErrors[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveErrors];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponses = {
+    /**
+     * Run released past the approval step
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponse = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponses[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponses];
+
+export type GetApiV1TeamWorkflowTemplatesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/team-workflow-templates';
+};
+
+export type GetApiV1TeamWorkflowTemplatesResponses = {
+    /**
+     * Shipped starter SOP templates
+     */
+    200: {
+        templates: Array<{
+            id: string;
+            name: string;
+            description: string;
+            inputs: Array<{
+                name: string;
+                description?: string;
+                required?: boolean;
+                default?: string;
+            }>;
+            steps: Array<{
+                id: string;
+                type?: 'task' | 'approval';
+                assigneeSlug: string;
+                name?: string;
+                task: string;
+                output?: string;
+                dependsOn?: Array<string>;
+            }>;
+            requiredExperts: Array<string>;
+        }>;
+    };
+};
+
+export type GetApiV1TeamWorkflowTemplatesResponse = GetApiV1TeamWorkflowTemplatesResponses[keyof GetApiV1TeamWorkflowTemplatesResponses];
 
 export type GetApiV1MeData = {
     body?: never;

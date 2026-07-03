@@ -44,37 +44,54 @@ describe("TeamService", () => {
     workboardCardDecompose: ReturnType<typeof vi.fn>;
     workboardCardMove: ReturnType<typeof vi.fn>;
     workboardCardsList: ReturnType<typeof vi.fn>;
-    workboardDispatch: ReturnType<typeof vi.fn>;
+    workboardCardComment: ReturnType<typeof vi.fn>;
+    workboardCardComplete: ReturnType<typeof vi.fn>;
+    workboardCardBlock: ReturnType<typeof vi.fn>;
   };
   let syncAll: ReturnType<typeof vi.fn>;
   let createBot: ReturnType<typeof vi.fn>;
+  let updateBotSystemPrompt: ReturnType<typeof vi.fn>;
+  let applyLeadPersona: ReturnType<typeof vi.fn>;
   let planSubtasks: ReturnType<typeof vi.fn>;
   let installExpert: ReturnType<typeof vi.fn>;
+  let sendChat: ReturnType<typeof vi.fn>;
+  let readSessionEntry: ReturnType<typeof vi.fn>;
+  let readAssistantReply: ReturnType<typeof vi.fn>;
+  let recallExperts: ReturnType<typeof vi.fn>;
   let mockExpertLedger: ExpertLedger;
 
   function buildService(overrides: Partial<TeamServiceDeps> = {}): TeamService {
-    return new TeamService({
-      ledger,
-      gateway,
-      resolveExpertPersona: async (slug) =>
-        slug === "reviewer" ? "You are the Code Sentinel." : "I write docs.",
-      resolveExpertName: async (slug) =>
-        mockExpertLedger.entries[slug]?.name ?? null,
-      readExpertLedger: async () => mockExpertLedger,
-      installExpert,
-      botService: {
-        createBot,
-        deleteBot: vi.fn(async () => true),
+    return new TeamService(
+      {
+        ledger,
+        gateway,
+        resolveExpertPersona: async (slug) =>
+          slug === "reviewer" ? "You are the Code Sentinel." : "I write docs.",
+        resolveExpertName: async (slug) =>
+          mockExpertLedger.entries[slug]?.name ?? null,
+        readExpertLedger: async () => mockExpertLedger,
+        installExpert,
+        botService: {
+          createBot,
+          updateBotSystemPrompt,
+          deleteBot: vi.fn(async () => true),
+        },
+        applyLeadPersona,
+        syncAll,
+        getGlobalModelId: async () => "link/default",
+        genId: () => "team-id-1",
+        genBotSlug: (base) => `${base}-slug`,
+        planner: { planSubtasks },
+        resolveExpertDescription: async (slug) => `desc of ${slug}`,
+        removeTeamWorkflows: vi.fn(async () => 0),
+        sendChat,
+        readSessionEntry,
+        readAssistantReply,
+        recallExperts,
+        ...overrides,
       },
-      syncAll,
-      defaultModelId: "link/default",
-      genId: () => "team-id-1",
-      genBotSlug: (base) => `${base}-slug`,
-      planner: { planSubtasks },
-      getBotModel: async () => "link/lead-model",
-      resolveExpertDescription: async (slug) => `desc of ${slug}`,
-      ...overrides,
-    });
+      { pollIntervalMs: 1, stepTimeoutMs: 500, emptyDoneTimeoutMs: 50 },
+    );
   }
 
   beforeEach(() => {
@@ -113,21 +130,27 @@ describe("TeamService", () => {
         card: { id: "x", title: "t", status: "ready" },
       })),
       workboardCardsList: vi.fn(async () => ({ cards: [] })),
-      workboardDispatch: vi.fn(async () => ({
-        started: [
-          {
-            cardId: "child-0",
-            sessionKey:
-              "agent:bot-reviewer:subagent:workboard-team-id-1-child-0",
-            runId: "run-1",
-          },
-        ],
-      })),
+      workboardCardComment: vi.fn(async () => ({})),
+      workboardCardComplete: vi.fn(async () => ({})),
+      workboardCardBlock: vi.fn(async () => ({})),
     };
     syncAll = vi.fn(async () => undefined);
     createBot = vi.fn(async () => ({ id: "bot-lead" }));
+    updateBotSystemPrompt = vi.fn(async () => undefined);
+    applyLeadPersona = vi.fn(async () => undefined);
     planSubtasks = vi.fn(async () => [
       { title: "Review the diff", assigneeSlug: "reviewer" },
+    ]);
+    sendChat = vi.fn(async () => ({ status: "started" }));
+    // Every lane is "done" on the first poll by default (fast, deterministic tests).
+    readSessionEntry = vi.fn(async () => ({
+      status: "done",
+      sessionFile: "/fake/session.jsonl",
+    }));
+    readAssistantReply = vi.fn(async () => "the deliverable");
+    recallExperts = vi.fn(async () => [
+      { slug: "reviewer", name: "Code Reviewer", description: "reviews" },
+      { slug: "writer", name: "Tech Writer", description: "writes" },
     ]);
   });
 
@@ -151,6 +174,26 @@ describe("TeamService", () => {
     expect(ledger.get(team.id)).not.toBeNull();
     expect(createBot).toHaveBeenCalledTimes(1);
     expect(syncAll).toHaveBeenCalledTimes(1);
+
+    // The lead must be told its role + roster, or it defaults to a generic
+    // assistant persona with no awareness it's a team coordinator.
+    const leadPrompt = createBot.mock.calls[0][0].systemPrompt as string;
+    expect(leadPrompt).toContain("Docs Squad");
+    expect(leadPrompt).toContain("Code Reviewer：desc of reviewer");
+    expect(leadPrompt).toContain("Tech Writer：desc of writer");
+    // The lead's persona must steer collaborative tasks to the structured
+    // team engine, keeping sessions_spawn for lightweight consults only.
+    expect(leadPrompt).toContain("team_run_auto");
+    expect(leadPrompt).toContain("team_run_workflow");
+    expect(leadPrompt).toContain("sessions_spawn");
+    // Must override AGENTS.md's generic "list installed skills" first-contact
+    // step, or the lead recites the platform-wide tool list instead of its team.
+    expect(leadPrompt).toContain("不要");
+    expect(leadPrompt).toContain("首次接触");
+
+    // bot.systemPrompt alone never reaches a live conversation (the compiler
+    // never reads it) — the persona must also be folded into AGENTS.md.
+    expect(applyLeadPersona).toHaveBeenCalledWith("bot-lead", leadPrompt);
   });
 
   it("createTeam auto-installs an uninstalled member", async () => {
@@ -198,9 +241,39 @@ describe("TeamService", () => {
     expect(updated.leadBotId).toBe(team.leadBotId);
     expect(ledger.get(team.id)?.name).toBe("Renamed Squad");
     expect(syncAll).toHaveBeenCalledTimes(1);
+
+    // Renaming/re-rostering must refresh the lead's persona, not just the ledger
+    // record, or the bot keeps introducing itself as the old team.
+    expect(updateBotSystemPrompt).toHaveBeenCalledTimes(1);
+    const [leadBotId, leadPrompt] = updateBotSystemPrompt.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(leadBotId).toBe(team.leadBotId);
+    expect(leadPrompt).toContain("Renamed Squad");
+    expect(leadPrompt).toContain("Tech Writer：desc of writer");
+    expect(leadPrompt).not.toContain("Code Reviewer");
+
+    // AGENTS.md is what a live conversation actually reads — must refresh too.
+    expect(applyLeadPersona).toHaveBeenCalledWith(team.leadBotId, leadPrompt);
   });
 
-  it("runTask decomposes into member cards with persona injected into notes, then dispatches", async () => {
+  it("updateTeam leaves the lead's persona untouched on a no-op patch", async () => {
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+    updateBotSystemPrompt.mockClear();
+    applyLeadPersona.mockClear();
+
+    await service.updateTeam(team.id, {});
+
+    expect(updateBotSystemPrompt).not.toHaveBeenCalled();
+    expect(applyLeadPersona).not.toHaveBeenCalled();
+  });
+
+  it("runTask decomposes into member cards with persona injected into notes, then dispatches over chat.send", async () => {
     const service = buildService();
     const team = await service.createTeam({
       name: "Docs Squad",
@@ -241,18 +314,136 @@ describe("TeamService", () => {
     expect(decomposeArg.children[1].agentId).toBe("bot-writer");
     expect(decomposeArg.children[1].notes).toContain("keep it short");
 
-    // Children promoted to ready, then dispatched.
-    expect(gateway.workboardCardMove).toHaveBeenCalledTimes(2);
-    expect(gateway.workboardDispatch).toHaveBeenCalledWith({
-      board: team.boardId,
-    });
+    // The endpoint returns immediately, one entry per started lane — it does
+    // NOT depend on a dispatcher batch (design doc §10.4: the controller, not
+    // the worker's tool-call compliance, decides completion).
     expect(result.parentCardId).toBe("parent-1");
     expect(result.started).toEqual([
       {
         cardId: "child-0",
-        sessionKey: "agent:bot-reviewer:subagent:workboard-team-id-1-child-0",
+        sessionKey: "agent:bot-reviewer:subagent:task-child-0",
+      },
+      {
+        cardId: "child-1",
+        sessionKey: "agent:bot-writer:subagent:task-child-1",
       },
     ]);
+
+    // Completion is driven in the background: chat.send fires per card, the
+    // controller polls the lane to done, then comments + completes the card.
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardComplete).toHaveBeenCalledTimes(2);
+    });
+    expect(sendChat).toHaveBeenCalledWith({
+      botId: "bot-reviewer",
+      sessionKey: "agent:bot-reviewer:subagent:task-child-0",
+      message: expect.stringContaining("Code Sentinel"),
+    });
+    // The subtask title is the primary task text — omitting it left the
+    // worker with nothing to do but ask "what's the task?" (caught live).
+    const [reviewerCall, writerCall] = sendChat.mock.calls as Array<
+      [{ message: string }]
+    >;
+    expect(reviewerCall[0].message).toContain("Review the diff");
+    expect(writerCall[0].message).toContain("Draft the notes");
+    expect(writerCall[0].message).toContain("keep it short");
+    expect(gateway.workboardCardMove).toHaveBeenCalledWith({
+      id: "child-0",
+      status: "running",
+    });
+    expect(gateway.workboardCardComment).toHaveBeenCalledWith({
+      id: "child-0",
+      body: "the deliverable",
+    });
+  });
+
+  it("runTask survives a turn that ends done-with-no-text when a follow-up turn delivers", async () => {
+    // Live failure mode: the worker pours the deliverable into a UI tool and
+    // ends the turn with no reply text; OpenClaw then replays the queued
+    // message as a second turn which DOES produce text. The grace window must
+    // keep polling across the empty `done` instead of blocking the card.
+    let polls = 0;
+    readSessionEntry.mockImplementation(async () => {
+      polls += 1;
+      return { status: "done", sessionFile: "/fake/session.jsonl" };
+    });
+    readAssistantReply.mockImplementation(async () =>
+      polls >= 3 ? "second-turn deliverable" : null,
+    );
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    await service.runTask(team.id, {
+      task: "ship",
+      subtasks: [{ title: "a", assigneeSlug: "reviewer" }],
+    });
+
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardComplete).toHaveBeenCalledWith({
+        id: "child-0",
+        summary: "done",
+      });
+    });
+    expect(gateway.workboardCardComment).toHaveBeenCalledWith({
+      id: "child-0",
+      body: "second-turn deliverable",
+    });
+    expect(gateway.workboardCardBlock).not.toHaveBeenCalled();
+  });
+
+  it("runTask blocks a card that stays done-with-no-text past the grace window", async () => {
+    readSessionEntry.mockResolvedValue({
+      status: "done",
+      sessionFile: "/fake/session.jsonl",
+    });
+    readAssistantReply.mockResolvedValue(null);
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    await service.runTask(team.id, {
+      task: "ship",
+      subtasks: [{ title: "a", assigneeSlug: "reviewer" }],
+    });
+
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardBlock).toHaveBeenCalledWith({
+        id: "child-0",
+        reason: expect.stringContaining("finished without a reply"),
+      });
+    });
+    expect(gateway.workboardCardComplete).not.toHaveBeenCalled();
+  });
+
+  it("runTask blocks a card whose lane never completes", async () => {
+    readSessionEntry.mockImplementation(async (_botId: string, key: string) =>
+      key.includes("child-0")
+        ? { status: "running" }
+        : { status: "done", sessionFile: "/fake/session.jsonl" },
+    );
+    const service = buildService();
+    const team = await service.createTeam({
+      name: "Docs Squad",
+      memberSlugs: ["reviewer"],
+    });
+
+    await service.runTask(team.id, {
+      task: "ship",
+      subtasks: [{ title: "a", assigneeSlug: "reviewer" }],
+    });
+
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardBlock).toHaveBeenCalledWith({
+        id: "child-0",
+        reason: expect.stringContaining("timed out"),
+      });
+    });
+    expect(gateway.workboardCardComplete).not.toHaveBeenCalled();
   });
 
   it("runTask rejects a subtask assigned to a non-member", async () => {
@@ -271,38 +462,7 @@ describe("TeamService", () => {
     expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
   });
 
-  it("runTask dispatches across multiple passes until all cards start", async () => {
-    // The dispatcher starts a capped batch per pass; the service loops to start
-    // the rest. Mock distinct started cards per pass for the two subtasks.
-    gateway.workboardDispatch
-      .mockResolvedValueOnce({
-        started: [{ cardId: "child-0", sessionKey: "k0" }],
-      })
-      .mockResolvedValueOnce({
-        started: [{ cardId: "child-1", sessionKey: "k1" }],
-      });
-    const service = buildService();
-    const team = await service.createTeam({
-      name: "Docs Squad",
-      memberSlugs: ["reviewer", "writer"],
-    });
-
-    const result = await service.runTask(team.id, {
-      task: "ship",
-      subtasks: [
-        { title: "a", assigneeSlug: "reviewer" },
-        { title: "b", assigneeSlug: "writer" },
-      ],
-    });
-
-    expect(gateway.workboardDispatch).toHaveBeenCalledTimes(2);
-    expect(result.started).toEqual([
-      { cardId: "child-0", sessionKey: "k0" },
-      { cardId: "child-1", sessionKey: "k1" },
-    ]);
-  });
-
-  it("runTaskAuto plans via the lead model then dispatches the plan", async () => {
+  it("runTaskAuto plans via the lead agent then dispatches the plan", async () => {
     const service = buildService();
     const team = await service.createTeam({
       name: "Docs Squad",
@@ -313,11 +473,11 @@ describe("TeamService", () => {
       task: "Ship the release notes",
     });
 
-    // The planner is called with the team roster and the lead model.
+    // The planner is called with the team roster, running as the lead agent.
     expect(planSubtasks).toHaveBeenCalledTimes(1);
     const plannerArg = planSubtasks.mock.calls[0][0];
     expect(plannerArg.task).toBe("Ship the release notes");
-    expect(plannerArg.model).toBe("link/lead-model");
+    expect(plannerArg.agentId).toBe("bot-lead");
     expect(plannerArg.members.map((m: { slug: string }) => m.slug)).toEqual([
       "reviewer",
       "writer",
@@ -356,6 +516,10 @@ describe("TeamService", () => {
           title: "Review",
           status: "running",
           agentId: "bot-reviewer",
+          metadata: {
+            // The deliverable is the longest comment; short summaries lose.
+            comments: [{ body: "LONG DELIVERABLE OUTPUT" }, { body: "done" }],
+          },
         },
         { id: "c2", title: "Orphan", status: "ready", agentId: "bot-unknown" },
       ],
@@ -379,6 +543,7 @@ describe("TeamService", () => {
         status: "todo",
         agentId: "bot-lead",
         assigneeName: null,
+        output: null,
       },
       {
         id: "c1",
@@ -386,6 +551,7 @@ describe("TeamService", () => {
         status: "running",
         agentId: "bot-reviewer",
         assigneeName: "Code Reviewer",
+        output: "LONG DELIVERABLE OUTPUT",
       },
       {
         id: "c2",
@@ -393,6 +559,7 @@ describe("TeamService", () => {
         status: "ready",
         agentId: "bot-unknown",
         assigneeName: null,
+        output: null,
       },
     ]);
   });
@@ -407,5 +574,56 @@ describe("TeamService", () => {
 
     const board = await service.getBoard(team.id);
     expect(board).toEqual({ boardId: team.boardId, cards: [] });
+  });
+
+  it("ensureDefaultTeam creates once and reuses on subsequent calls", async () => {
+    let nextId = 0;
+    const service = buildService({
+      genId: () => `team-id-${++nextId}`,
+    });
+
+    const first = await service.ensureDefaultTeam();
+    const second = await service.ensureDefaultTeam();
+
+    expect(first.isDefault).toBe(true);
+    expect(first.members).toEqual([]);
+    expect(second.id).toBe(first.id);
+    expect(createBot).toHaveBeenCalledTimes(1); // one lead, not two
+    expect(ledger.list().filter((team) => team.isDefault)).toHaveLength(1);
+  });
+
+  it("runTaskAutoDefault plans on catalog candidates and auto-enrolls assigned experts", async () => {
+    // The planner picks `writer`, which is NOT a member yet (default team
+    // starts empty) — it must be enrolled (auto-installed) before dispatch.
+    planSubtasks.mockResolvedValueOnce([
+      { title: "Draft the notes", assigneeSlug: "writer" },
+    ]);
+    let nextId = 0;
+    const service = buildService({ genId: () => `team-id-${++nextId}` });
+
+    const result = await service.runTaskAutoDefault({
+      task: "Ship the release notes",
+    });
+
+    // Planner received the CATALOG shortlist, not team members (empty team).
+    const plannerArg = planSubtasks.mock.calls[0][0];
+    expect(recallExperts).toHaveBeenCalledWith("Ship the release notes");
+    expect(plannerArg.members.map((m: { slug: string }) => m.slug)).toEqual([
+      "reviewer",
+      "writer",
+    ]);
+
+    // The assigned expert was enrolled into the default team before dispatch.
+    const team = service.getTeam(result.teamId);
+    expect(team?.isDefault).toBe(true);
+    expect(team?.members.map((m) => m.expertSlug)).toEqual(["writer"]);
+
+    // Dispatch went to the member bot on the default team's board.
+    const decomposeArg = gateway.workboardCardDecompose.mock.calls[0][0];
+    expect(decomposeArg.children[0].agentId).toBe("bot-writer");
+    expect(result.plan).toEqual([
+      { title: "Draft the notes", assigneeSlug: "writer" },
+    ]);
+    expect(result.boardId).toBe(team?.boardId);
   });
 });

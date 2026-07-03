@@ -22,6 +22,10 @@ import { registerScheduleRoutes } from "../routes/schedule-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillhubRoutes } from "../routes/skillhub-routes.js";
 import { buildTeamRoutes } from "../routes/team-routes.js";
+import {
+  buildTeamWorkflowRoutes,
+  buildTeamWorkflowTemplateRoutes,
+} from "../routes/team-workflow-routes.js";
 import { registerUserRoutes } from "../routes/user-routes.js";
 import { registerWorkspaceTemplateRoutes } from "../routes/workspace-template-routes.js";
 import type { ControllerBindings } from "../types.js";
@@ -70,6 +74,18 @@ export function createApp(container: ControllerContainer) {
   app.route(
     "/api/v1/teams",
     buildTeamRoutes({ teamService: container.teamService }),
+  );
+  app.route(
+    "/api/v1/teams",
+    buildTeamWorkflowRoutes({
+      teamWorkflowService: container.teamWorkflowService,
+    }),
+  );
+  app.route(
+    "/api/v1/team-workflow-templates",
+    buildTeamWorkflowTemplateRoutes({
+      teamWorkflowService: container.teamWorkflowService,
+    }),
   );
   registerUserRoutes(app, container);
   registerRuntimeConfigRoutes(app, container);

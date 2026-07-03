@@ -17,7 +17,7 @@ export type TeamPlannerDeps = {
 /** A planning agent turn should be quick; abort if the gateway wedges. */
 const PLAN_TIMEOUT_MS = 60_000;
 
-const SYSTEM_PROMPT = [
+const PLAN_INSTRUCTIONS = [
   "You are the orchestrator of a team of expert AI agents.",
   "Given a task and the team roster, break the task into focused subtasks,",
   "each assigned to exactly one member who is best suited for it.",
@@ -32,9 +32,11 @@ const SYSTEM_PROMPT = [
 
 /**
  * Produces an agentic task decomposition by calling the gateway's
- * OpenAI-compatible chat-completions endpoint with the lead's model. The
- * controller stays in charge of the deterministic board ops (and persona
- * injection); only the WHO/WHAT decision is delegated to the model.
+ * OpenAI-compatible chat-completions endpoint AS the lead agent
+ * (`model: openclaw/<agentId>` — the endpoint runs a full agent turn and
+ * rejects raw model refs with 400; verified live 2026-07-02). The controller
+ * stays in charge of the deterministic board ops (and persona injection);
+ * only the WHO/WHAT decision is delegated to the model.
  */
 export class TeamPlanner {
   constructor(private readonly deps: TeamPlannerDeps) {}
@@ -42,7 +44,8 @@ export class TeamPlanner {
   async planSubtasks(args: {
     task: string;
     members: readonly TeamPlannerMember[];
-    model: string;
+    /** Lead bot id — the agent that runs the planning turn with its own model. */
+    agentId: string;
     maxSubtasks?: number;
   }): Promise<TeamSubtaskInput[]> {
     const limit = args.maxSubtasks ?? Math.min(args.members.length, 6);
@@ -52,7 +55,12 @@ export class TeamPlanner {
           `- slug: ${m.slug} | name: ${m.name} | specialty: ${m.description || "(no description)"}`,
       )
       .join("\n");
+    // Agent turns dilute `system` messages with the agent's own persona, so
+    // the instructions ride in the user message (same finding as the
+    // workflow composer).
     const userPrompt = [
+      PLAN_INSTRUCTIONS,
+      "",
       "Team members:",
       roster,
       "",
@@ -62,7 +70,7 @@ export class TeamPlanner {
       `Return at most ${limit} subtasks as a JSON array.`,
     ].join("\n");
 
-    const content = await this.complete(args.model, userPrompt);
+    const content = await this.complete(`openclaw/${args.agentId}`, userPrompt);
     const validSlugs = new Set(args.members.map((m) => m.slug));
     return parsePlan(content, validSlugs, limit);
   }
@@ -86,10 +94,7 @@ export class TeamPlanner {
           model,
           stream: false,
           temperature: 0.2,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
+          messages: [{ role: "user", content: userPrompt }],
         }),
       },
     );

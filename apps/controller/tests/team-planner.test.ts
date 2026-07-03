@@ -38,7 +38,7 @@ describe("TeamPlanner", () => {
     const plan = await planner.planSubtasks({
       task: "ship it",
       members: MEMBERS,
-      model: "link/x",
+      agentId: "bot-lead",
     });
 
     expect(plan).toEqual([
@@ -55,6 +55,17 @@ describe("TeamPlanner", () => {
     expect(
       (init as RequestInit).headers as Record<string, string>,
     ).toMatchObject({ Authorization: "Bearer tok" });
+    // runs AS the lead agent (the endpoint rejects raw model refs) and
+    // carries the instructions inside the single user message
+    const body = JSON.parse(String((init as RequestInit).body)) as {
+      model: string;
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.model).toBe("openclaw/bot-lead");
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].role).toBe("user");
+    expect(body.messages[0].content).toContain("Output ONLY a JSON array");
+    expect(body.messages[0].content).toContain("ship it");
   });
 
   it("extracts the JSON array from fenced / prose-wrapped output", async () => {
@@ -64,7 +75,7 @@ describe("TeamPlanner", () => {
     const plan = await planner.planSubtasks({
       task: "t",
       members: MEMBERS,
-      model: "m",
+      agentId: "bot-lead",
     });
     expect(plan).toEqual([{ title: "Do it", assigneeSlug: "reviewer" }]);
   });
@@ -74,7 +85,7 @@ describe("TeamPlanner", () => {
     const plan = await planner.planSubtasks({
       task: "t",
       members: MEMBERS,
-      model: "m",
+      agentId: "bot-lead",
     });
     expect(plan).toEqual([]);
   });
@@ -90,7 +101,7 @@ describe("TeamPlanner", () => {
     const plan = await planner.planSubtasks({
       task: "t",
       members: MEMBERS,
-      model: "m",
+      agentId: "bot-lead",
       maxSubtasks: 2,
     });
     expect(plan).toHaveLength(2);
@@ -99,7 +110,11 @@ describe("TeamPlanner", () => {
   it("throws when the completion endpoint returns a non-2xx response", async () => {
     const { planner } = plannerWithResponse("", false);
     await expect(
-      planner.planSubtasks({ task: "t", members: MEMBERS, model: "m" }),
+      planner.planSubtasks({
+        task: "t",
+        members: MEMBERS,
+        agentId: "bot-lead",
+      }),
     ).rejects.toThrow(/team planner completion failed/);
   });
 });
