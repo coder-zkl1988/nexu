@@ -1,4 +1,5 @@
 import { TeamBoard } from "@/components/teams/team-board";
+import { TeamWorkflows } from "@/components/teams/team-workflows";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -284,6 +285,8 @@ export function TeamDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <TeamWorkflows team={team} />
 
       {id ? (
         <Card>

@@ -58,9 +58,18 @@ const USER_AVATAR = "/images/tabby-avatar.png";
  * directive text back is noise. */
 const SKILL_DIRECTIVE_PATTERN = /^\[请使用「[^」]*」技能完成本次请求\]\s*/u;
 
+/** Controller-injected routing nudge (chat-service.ts: EXPERT_ROUTING_HINT /
+ * TEAM_LEAD_HINT). Hidden from the user's own bubble — it's an instruction
+ * for the model, not something the user typed or should see. Matched by the
+ * shared `[路由提示：…]` prefix so hint copy can evolve controller-side without
+ * a frontend release. */
+const EXPERT_ROUTING_HINT_PATTERN = /^\[路由提示：[^\]]+\]\s*/u;
+
 function stripMetadata(rawInput: string): string {
-  // Drop the controller-injected skill directive before any other parsing.
-  const raw = rawInput.replace(SKILL_DIRECTIVE_PATTERN, "");
+  // Drop controller-injected directives before any other parsing.
+  const raw = rawInput
+    .replace(SKILL_DIRECTIVE_PATTERN, "")
+    .replace(EXPERT_ROUTING_HINT_PATTERN, "");
   const withoutConversationMeta = raw.replace(
     /Conversation info \(untrusted metadata\):\s*```json\s*[\s\S]*?```\s*/g,
     "",
@@ -199,6 +208,9 @@ const A2UI_TOOL_NAMES = new Set([
   "render_a2ui",
   "render_skill_confirmation",
   "propose_expert_install",
+  "team_run_auto",
+  "team_run_workflow",
+  "expert_run_auto",
 ]);
 
 /** Complex editor components — their surfaces always open in the side panel. */
