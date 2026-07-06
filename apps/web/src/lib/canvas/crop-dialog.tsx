@@ -101,6 +101,9 @@ function CropDialog({
     scale: number;
   } | null>(null);
 
+  // Preview container ref for pointer capture
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
   // Resolve the media URL for this node
   const node = getCanvasState().nodes.find((n) => n.id === nodeId);
   const srcUrl = node?.metadata.content as string | undefined;
@@ -168,8 +171,10 @@ function CropDialog({
     (e: React.PointerEvent<HTMLDivElement>, handle: CropHandle) => {
       e.preventDefault();
       e.stopPropagation();
+      // Capture on the preview container so subsequent move/up events keep
+      // firing there even when the pointer leaves the tiny handle dot.
       try {
-        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+        previewContainerRef.current?.setPointerCapture(e.pointerId);
       } catch {
         // pointer capture is best-effort
       }
@@ -218,7 +223,7 @@ function CropDialog({
     offscreen.height = Math.round(box.height);
     const ctx = offscreen.getContext("2d");
     if (!ctx) {
-      toast.error("图片加载失败");
+      toast.error("裁剪失败");
       return;
     }
     ctx.drawImage(
@@ -233,10 +238,12 @@ function CropDialog({
       Math.round(box.height),
     );
     const dataUrl = offscreen.toDataURL("image/png");
+    // Read node live so a title rename between dialog-open and confirm is reflected.
     const src = getCanvasState().nodes.find((n) => n.id === nodeId);
+    const liveTitle = src?.title ?? "图片";
     addNode({
       type: "image",
-      title: `${srcTitle} 裁剪`,
+      title: `${liveTitle} 裁剪`,
       position: src
         ? { x: src.position.x + src.size.width + 40, y: src.position.y }
         : undefined,
@@ -244,7 +251,7 @@ function CropDialog({
     });
     closeCanvasDialog();
     toast.success("已生成裁剪节点");
-  }, [bitmap, box, nodeId, srcTitle]);
+  }, [bitmap, box, nodeId]);
 
   // ── Overlay mask: four shaded divs around the crop box ──────────
 
@@ -384,6 +391,7 @@ function CropDialog({
             <div className="flex flex-col gap-4">
               {/* Preview area */}
               <div
+                ref={previewContainerRef}
                 className="relative mx-auto overflow-hidden rounded-lg bg-surface-2"
                 style={{ width: displayW, height: displayH }}
                 onPointerMove={onPointerMove}

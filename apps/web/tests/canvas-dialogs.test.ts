@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetCanvasDialogsForTests,
+  __subscribeForTests,
   closeCanvasDialog,
   getCanvasDialog,
   openCanvasDialog,
@@ -36,5 +37,25 @@ describe("canvas-dialogs module store", () => {
     openCanvasDialog({ kind: "crop", nodeId: "node-1" });
     openCanvasDialog({ kind: "crop", nodeId: "node-2" });
     expect(getCanvasDialog()).toEqual({ kind: "crop", nodeId: "node-2" });
+  });
+
+  it("subscription mechanism: spy is called on open and close, not after unsubscribe", () => {
+    const spy = vi.fn();
+    const unsubscribe = __subscribeForTests(spy);
+
+    // open → spy fires, state is set
+    openCanvasDialog({ kind: "crop", nodeId: "sub-node" });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(getCanvasDialog()).toEqual({ kind: "crop", nodeId: "sub-node" });
+
+    // close → spy fires again, state is null
+    closeCanvasDialog();
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(getCanvasDialog()).toBeNull();
+
+    // unsubscribe → further opens do not call spy
+    unsubscribe();
+    openCanvasDialog({ kind: "crop", nodeId: "sub-node-2" });
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

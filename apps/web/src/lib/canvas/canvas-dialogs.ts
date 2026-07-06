@@ -53,9 +53,14 @@ export function useCanvasDialog(): CanvasDialogState {
   );
 }
 
-// ── Test helper ────────────────────────────────────────────────────────────
+// ── Test helpers ───────────────────────────────────────────────────────────
 
 export function __resetCanvasDialogsForTests(): void {
   state = null;
-  emit();
+  listeners.clear();
+}
+
+export function __subscribeForTests(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
