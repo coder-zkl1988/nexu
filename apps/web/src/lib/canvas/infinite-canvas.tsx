@@ -21,6 +21,7 @@ import {
   useState,
 } from "react";
 import { postApiV1MediaGenerateImage } from "../../../lib/api/sdk.gen";
+import { ingestFilesAsNodes, ingestTextAsNode } from "./canvas-ingest";
 import {
   type CanvasNode,
   type CanvasViewport,
@@ -440,8 +441,8 @@ export function CanvasSurface({ className }: { className?: string }) {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Keyboard shortcuts (active while the canvas is mounted; skipped when
-  // typing into inputs/textareas so node editors keep native behavior).
+  // Keyboard shortcuts + paste (active while the canvas is mounted; skipped
+  // when typing into inputs/textareas so node editors keep native behavior).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditableTarget(event.target)) return;
@@ -462,9 +463,68 @@ export function CanvasSurface({ className }: { className?: string }) {
         clearSelection();
       }
     };
+
+    const onPaste = (event: ClipboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const data = event.clipboardData;
+      if (!data) return;
+
+      // Center of the current view in world coordinates.
+      const rect = containerRef.current?.getBoundingClientRect();
+      const centerClient = {
+        x: (rect?.left ?? 0) + (rect?.width ?? 0) / 2,
+        y: (rect?.top ?? 0) + (rect?.height ?? 0) / 2,
+      };
+      const centerWorld = toWorld(centerClient.x, centerClient.y);
+
+      // Collect image files from items (DataTransferItem with image files).
+      const imageFiles: Array<{ file: File }> = [];
+      for (const item of Array.from(data.items)) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push({ file });
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        event.preventDefault();
+        void Promise.all(
+          imageFiles.map(
+            ({ file }) =>
+              new Promise<{ name: string; type: string; dataUrl: string }>(
+                (resolve) => {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    resolve({
+                      name: file.name,
+                      type: file.type,
+                      dataUrl: String(reader.result),
+                    });
+                  };
+                  reader.readAsDataURL(file);
+                },
+              ),
+          ),
+        ).then((inputs) => {
+          ingestFilesAsNodes(inputs, centerWorld);
+        });
+        return;
+      }
+
+      const text = data.getData("text/plain");
+      if (text) {
+        event.preventDefault();
+        ingestTextAsNode(text, centerWorld);
+      }
+    };
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("paste", onPaste);
+    };
+  }, [toWorld]);
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const connectSource =
@@ -487,6 +547,33 @@ export function CanvasSurface({ className }: { className?: string }) {
           "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
         backgroundSize: `${gridSize}px ${gridSize}px`,
         backgroundPosition: `${viewport.x % gridSize}px ${viewport.y % gridSize}px`,
+      }}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        if (files.length === 0) return;
+        const dropWorld = toWorld(event.clientX, event.clientY);
+        void Promise.all(
+          files.map(
+            (file) =>
+              new Promise<{ name: string; type: string; dataUrl: string }>(
+                (resolve) => {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    resolve({
+                      name: file.name,
+                      type: file.type,
+                      dataUrl: String(reader.result),
+                    });
+                  };
+                  reader.readAsDataURL(file);
+                },
+              ),
+          ),
+        ).then((inputs) => {
+          ingestFilesAsNodes(inputs, dropWorld);
+        });
       }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
