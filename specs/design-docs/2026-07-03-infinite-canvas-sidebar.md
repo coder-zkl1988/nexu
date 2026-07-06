@@ -150,3 +150,20 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 **入档 Minor(不阻塞)**:hasUpstream 死导出、count 去重可能低于请求数、batch 双 emit 依赖历史去抖窗口、面板/Config 每帧 BFS(画布变大再上 Map 索引)、400/502 同一 toast。
 
 **W3 前置移交**:`infinite-canvas.tsx` 已 1610 行——悬停工具栏动工前先做机械拆分(节点体 → `canvas-node-views/`)。
+
+## 11. Wave 3 —— 图片编辑套件 + 悬停工具栏（2026-07-06 落地，SDD 流程）
+
+执行计划 Wave 3（拆分前置 + 3.1–3.7）七任务全部落地,16 个 commit,web 测试 286→**409**、controller 437→**448**。终审(opus)裁决 Ready:契约 1–7 全 Held、零 Critical/Important。
+
+**能力清单**:
+1. **前置拆分**:`infinite-canvas.tsx` 1610→1182 行,抽出 node-views/canvas-toolbar(纯搬移,比较器逐字节保留)。
+2. **悬停工具栏**(3.1):节点上方浮动操作条,13 个按类型门控的动作(信息/下载/替换/锁比例迁入/删除 + 后续任务扩展);替换自动清除失败任务态。
+3. **裁剪**(3.2):8 把手交互裁剪框(容器指针捕获,快速拖不脱手)、比例锁、实时尺寸,产出新节点;fetch→blob→createImageBitmap 规避跨域 canvas 污染。
+4. **网格拆分 + 插值放大**(3.3/3.6a):整数精确瓦片(末行/列吸收余数,预览线与真实切割对齐)、R×C≤12 子节点网格排布;1K/2K/4K 三档三算法纯 canvas 放大。
+5. **文本节点强化**(3.4):静态展示/双击编辑、字号 ±(10–48)、**转图片**(文本作提示词建连线生成节点)。
+6. **AI 通道**(3.5/3.6b/3.7 后端+前端):生图通道扩 sourceImage+maskDataUrl(蒙版写入 media/inbound,入库前校验);enhance 通道(超分/多角度,独立 480s 超时键);describe 通道(反推提示词,120s,自由文本回复);蒙版画刷编辑器(双画布:显示层红笔/全分辨率黑底白笔)、视角对话框(CSS 3D 实时预览)、AI 超分模式、反推按钮(剪贴板+toast)。四项 AI 功能统一以「可服务源」门控(上传的 dataURL 图不可服务端编辑,如实禁用)。
+7. **真机闸门**:**反推提示词 200/26s 真通**(视觉模型连图内文字都读出);**AI 超分 200/26s 真通**(1024×1536→1365×2048,agent 用系统工具自行完成——UNAVAILABLE-first 合同设计的直接兑现);坏蒙版 400 即时;蒙版重绘/多角度等生成式编辑仍走 UNAVAILABLE 兜底待技能落地。
+
+**入档 Minor**:crop 对话框沿用内联加载器(策略同、函数未收敛)、mask drawingRef.scale 死字段、inpaint 成功覆盖对话框预设标题、describe 两类失败同一 toast。
+
+**W4 前置移交**:crop 收敛到共享 loadImageBitmap;`CanvasDialogs` 挂载开关从 crop-dialog.tsx 提为独立文件(W4 新增对话框前)。

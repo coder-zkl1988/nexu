@@ -115,3 +115,9 @@
 七任务(卫生前置+2.1–2.7)全部落地并过 SDD 双层评审;终审 Ready(契约 1–6 全 Held)。13 commit(a57b3f4a8..dc3399cf8),web 286 / controller 437 测试,真机闸门:生图 200/46s、视频/音频 UNAVAILABLE→502 语义正确。细节见设计文档 §10。
 
 **W3 新增前置任务(终审移交)**:动工 3.1 悬停工具栏前,先把 `infinite-canvas.tsx`(1610 行)的节点体做机械拆分(NodeContent 各类型 → `canvas-node-views/` 目录),否则 W3 的裁剪/拆分 UI 会再堆几百行进同一文件。
+
+## W3 完成记录（2026-07-06）
+
+七任务(拆分前置+3.1–3.7)全部落地并过 SDD 双层评审;终审 Ready(契约 1–7 全 Held)。16 commit(b4f880406..25ec5ecdf),web 409 / controller 448 测试。真机:裁剪/拆分/放大/文本工具全活(桌面验收);**反推提示词与 AI 超分真机 200 全通**;蒙版/多角度 UNAVAILABLE 兜底。细节见设计文档 §11。
+
+**W4 新增前置(终审移交)**:crop-dialog 收敛共享 loadImageBitmap;CanvasDialogs 挂载开关提为独立文件。
