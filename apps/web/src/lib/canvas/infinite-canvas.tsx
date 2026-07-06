@@ -4,11 +4,13 @@ import {
   AudioLines,
   Clapperboard,
   ImagePlus,
+  Lock,
   Maximize2,
   Redo2,
   Trash2,
   Type,
   Undo2,
+  Unlock,
   Upload,
   X,
 } from "lucide-react";
@@ -27,6 +29,7 @@ import {
   duplicateNodes,
   pasteClipboard,
 } from "./canvas-clipboard";
+import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import { ingestFilesAsNodes, ingestTextAsNode } from "./canvas-ingest";
 import {
   type CanvasNode,
@@ -165,9 +168,11 @@ type GestureState =
   | {
       kind: "resize";
       id: string;
+      corner: ResizeCorner;
       startX: number;
       startY: number;
-      origin: { width: number; height: number };
+      origin: { x: number; y: number; width: number; height: number };
+      lockRatio: boolean;
     }
   | { kind: "connect"; fromId: string }
   | { kind: "marquee"; additive: boolean };
@@ -258,10 +263,20 @@ export function CanvasSurface({ className }: { className?: string }) {
         );
       } else if (gesture.kind === "resize") {
         const scale = getCanvasState().viewport.scale;
-        resizeNode(gesture.id, {
-          width: gesture.origin.width + (clientX - gesture.startX) / scale,
-          height: gesture.origin.height + (clientY - gesture.startY) / scale,
+        const dx = (clientX - gesture.startX) / scale;
+        const dy = (clientY - gesture.startY) / scale;
+        const result = computeResizeGeometry({
+          corner: gesture.corner,
+          origin: gesture.origin,
+          dx,
+          dy,
+          lockRatio: gesture.lockRatio,
         });
+        resizeNode(
+          gesture.id,
+          { width: result.width, height: result.height },
+          { x: result.x, y: result.y },
+        );
       } else if (gesture.kind === "connect") {
         setConnectPreview(toWorld(clientX, clientY));
       } else if (gesture.kind === "marquee") {
@@ -413,17 +428,28 @@ export function CanvasSurface({ className }: { className?: string }) {
   );
 
   const beginResize = useCallback(
-    (event: React.PointerEvent, nodeId: string) => {
+    (event: React.PointerEvent, nodeId: string, corner: ResizeCorner) => {
       if (event.button !== 0) return;
       event.stopPropagation();
       const node = getCanvasState().nodes.find((n) => n.id === nodeId);
       if (!node) return;
+      const lockRatio =
+        (node.type === "image" || node.type === "video") &&
+        Boolean(node.metadata.content) &&
+        node.metadata.freeResize !== true;
       beginGesture(event, {
         kind: "resize",
         id: nodeId,
+        corner,
         startX: event.clientX,
         startY: event.clientY,
-        origin: node.size,
+        origin: {
+          x: node.position.x,
+          y: node.position.y,
+          width: node.size.width,
+          height: node.size.height,
+        },
+        lockRatio,
       });
     },
     [beginGesture],
@@ -815,6 +841,11 @@ export function CanvasSurface({ className }: { className?: string }) {
 // ── Node view (memoized frame + geometry-insensitive body) ─────
 
 type NodeGestureHandler = (event: React.PointerEvent, nodeId: string) => void;
+type ResizeGestureHandler = (
+  event: React.PointerEvent,
+  nodeId: string,
+  corner: ResizeCorner,
+) => void;
 
 const CanvasNodeView = memo(function CanvasNodeView({
   node,
@@ -826,7 +857,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
   node: CanvasNode;
   selected: boolean;
   onHeaderDown: NodeGestureHandler;
-  onResizeDown: NodeGestureHandler;
+  onResizeDown: ResizeGestureHandler;
   onConnectDown: NodeGestureHandler;
 }) {
   // Media with content renders full-bleed like the reference cards.
@@ -863,15 +894,38 @@ const CanvasNodeView = memo(function CanvasNodeView({
         <span className="min-w-0 truncate text-xs font-medium text-text-secondary">
           {node.title}
         </span>
-        <button
-          type="button"
-          aria-label="close node"
-          onClick={() => removeNodes([node.id])}
-          onPointerDown={(event) => event.stopPropagation()}
-          className="shrink-0 rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
-        >
-          <X size={12} />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {(node.type === "image" || node.type === "video") &&
+          Boolean(node.metadata.content) ? (
+            <button
+              type="button"
+              aria-label="toggle aspect ratio lock"
+              data-canvas-lock-toggle={node.id}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() =>
+                updateNode(node.id, {
+                  metadata: { freeResize: !node.metadata.freeResize },
+                })
+              }
+              className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+            >
+              {node.metadata.freeResize ? (
+                <Unlock size={12} />
+              ) : (
+                <Lock size={12} />
+              )}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label="close node"
+            onClick={() => removeNodes([node.id])}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+          >
+            <X size={12} />
+          </button>
+        </div>
       </div>
       <div
         className={cn(
@@ -900,11 +954,30 @@ const CanvasNodeView = memo(function CanvasNodeView({
       >
         <span className="size-3 rounded-full border-2 border-sky-500 bg-surface-1 transition-transform hover:scale-125" />
       </button>
-      {/* Resize: invisible 28px corner zone (cursor is the affordance). */}
+      {/* Resize: four invisible 28px corner zones (cursor is the affordance). */}
       <div
         data-canvas-resize-handle={node.id}
+        data-resize-corner="nw"
+        className="absolute -left-3.5 -top-3.5 z-40 size-7 cursor-nwse-resize"
+        onPointerDown={(event) => onResizeDown(event, node.id, "nw")}
+      />
+      <div
+        data-canvas-resize-handle={node.id}
+        data-resize-corner="ne"
+        className="absolute -right-3.5 -top-3.5 z-40 size-7 cursor-nesw-resize"
+        onPointerDown={(event) => onResizeDown(event, node.id, "ne")}
+      />
+      <div
+        data-canvas-resize-handle={node.id}
+        data-resize-corner="sw"
+        className="absolute -bottom-3.5 -left-3.5 z-40 size-7 cursor-nesw-resize"
+        onPointerDown={(event) => onResizeDown(event, node.id, "sw")}
+      />
+      <div
+        data-canvas-resize-handle={node.id}
+        data-resize-corner="se"
         className="absolute -bottom-3.5 -right-3.5 z-40 size-7 cursor-nwse-resize"
-        onPointerDown={(event) => onResizeDown(event, node.id)}
+        onPointerDown={(event) => onResizeDown(event, node.id, "se")}
       />
     </div>
   );

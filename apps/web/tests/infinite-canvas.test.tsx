@@ -231,6 +231,41 @@ describe("CanvasSurface", () => {
     // The menu should only appear after a right-click — absent in static render.
     expect(markup).not.toContain("data-canvas-context-menu");
   });
+
+  it("renders all four corner resize handles for a node", () => {
+    addNode({ type: "text", title: "节点" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-resize-corner="nw"');
+    expect(markup).toContain('data-resize-corner="ne"');
+    expect(markup).toContain('data-resize-corner="sw"');
+    expect(markup).toContain('data-resize-corner="se"');
+  });
+
+  it("renders lock toggle button for image node with content, absent for text node", () => {
+    addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    addNode({ type: "text", title: "note" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // Lock toggle only on the image node (it has content)
+    expect(markup).toContain("data-canvas-lock-toggle");
+    // aria-label present
+    expect(markup).toContain("toggle aspect ratio lock");
+  });
+
+  it("lock toggle absent for text node", () => {
+    addNode({ type: "text", title: "only text" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-lock-toggle");
+  });
+
+  it("lock toggle absent for image node without content", () => {
+    addNode({ type: "image", title: "empty image" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-lock-toggle");
+  });
 });
 
 describe("connection effects", () => {

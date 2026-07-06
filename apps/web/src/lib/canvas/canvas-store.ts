@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
 import type { A2UIMessage } from "../a2ui/a2ui-types";
+import { NODE_MIN_HEIGHT, NODE_MIN_WIDTH } from "./canvas-geometry";
 import type { PersistedCanvas } from "./canvas-persistence";
 import { getActiveStorage } from "./canvas-persistence";
+export { NODE_MIN_HEIGHT, NODE_MIN_WIDTH } from "./canvas-geometry";
 
 /**
  * Canvas v2 store — the workbench's single source of truth (design doc
@@ -37,6 +39,11 @@ export type CanvasNodeMetadata = {
   content?: string;
   mimeType?: string;
   fontSize?: number;
+  /**
+   * Image/video nodes with content keep aspect ratio by default.
+   * Set true to opt out of ratio lock (free resize).
+   */
+  freeResize?: boolean;
   /** team-step: one step of a live team run (board card is the truth). */
   step?: {
     teamId: string;
@@ -330,13 +337,20 @@ export function moveNodes(
 export function resizeNode(
   id: string,
   size: { width: number; height: number },
+  position?: { x: number; y: number },
 ): void {
   recordHistory();
-  const width = Math.max(160, size.width);
-  const height = Math.max(80, size.height);
+  const width = Math.max(NODE_MIN_WIDTH, size.width);
+  const height = Math.max(NODE_MIN_HEIGHT, size.height);
   setState({
     nodes: state.nodes.map((node) =>
-      node.id === id ? { ...node, size: { width, height } } : node,
+      node.id === id
+        ? {
+            ...node,
+            size: { width, height },
+            ...(position !== undefined ? { position } : {}),
+          }
+        : node,
     ),
   });
 }
