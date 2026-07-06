@@ -9,8 +9,17 @@
  * Later W3 tasks (crop/split/upscale/mask/angle) extend this component.
  */
 
-import { Download, Info, Lock, RefreshCw, Trash2, Unlock } from "lucide-react";
+import {
+  Crop,
+  Download,
+  Info,
+  Lock,
+  RefreshCw,
+  Trash2,
+  Unlock,
+} from "lucide-react";
 import { toast } from "sonner";
+import { openCanvasDialog } from "./canvas-dialogs";
 import { readFilesAsDataUrls } from "./canvas-ingest";
 import {
   type CanvasNode,
@@ -114,6 +123,20 @@ export function HoverToolbar({
           }}
         >
           {metadata.freeResize ? <Unlock size={13} /> : <Lock size={13} />}
+        </ToolbarButton>
+      ) : null}
+
+      {/* crop — image WITH content only */}
+      {type === "image" && hasContent ? (
+        <ToolbarButton
+          actionKey="crop"
+          label="裁剪图片"
+          title="裁剪图片"
+          onClick={() => {
+            openCanvasDialog({ kind: "crop", nodeId: id });
+          }}
+        >
+          <Crop size={13} />
         </ToolbarButton>
       ) : null}
 

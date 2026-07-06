@@ -57,6 +57,7 @@ import {
 } from "./canvas-store";
 import { CanvasToolbar } from "./canvas-toolbar";
 import { applyConnectionEffects } from "./connection-effects";
+import { CanvasDialogs } from "./crop-dialog";
 import { HoverToolbar } from "./hover-toolbar";
 import { NodeBody } from "./node-views";
 import { PromptPanel } from "./prompt-panel";
@@ -966,6 +967,9 @@ export function CanvasSurface({ className }: { className?: string }) {
           ))}
         </FloatingMenu>
       ) : null}
+
+      {/* Canvas overlay dialogs (crop, etc.) — screen-space, mounted once */}
+      <CanvasDialogs />
     </div>
   );
 }

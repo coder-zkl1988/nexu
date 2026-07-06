@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetCanvasDialogsForTests } from "../src/lib/canvas/canvas-dialogs";
 import {
   __resetCanvasForTests,
   addNode,
@@ -52,6 +53,7 @@ function renderWithClient(ui: React.ReactElement): string {
 
 beforeEach(() => {
   __resetCanvasForTests();
+  __resetCanvasDialogsForTests();
 });
 
 describe("HoverToolbar", () => {
@@ -144,6 +146,47 @@ describe("HoverToolbar", () => {
     });
     const markup = renderWithClient(<CanvasSurface />);
     expect(markup).not.toContain("data-canvas-hover-toolbar=");
+  });
+
+  it("image WITH content → crop action present", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-hover-action="crop"');
+  });
+
+  it("image WITHOUT content → crop action absent", () => {
+    addNode({
+      type: "image",
+      title: "empty-img",
+      metadata: {},
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="crop"');
+  });
+
+  it("text node → crop action absent", () => {
+    addNode({
+      type: "text",
+      title: "note",
+      metadata: { content: "hello" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="crop"');
+  });
+
+  it("canvas-crop-dialog absent from default markup", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // Dialog is only rendered when canvas dialog store has state
+    expect(markup).not.toContain("data-canvas-crop-dialog");
   });
 
   it("ReplaceButton clears error task when updating node content", () => {
