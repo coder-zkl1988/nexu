@@ -235,7 +235,6 @@ export function CanvasSurface({ className }: { className?: string }) {
     current: { x: number; y: number };
   } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [spaceHeld, setSpaceHeld] = useState(false);
   const spaceRef = useRef(false);
   const selected = new Set(selectedNodeIds);
 
@@ -604,24 +603,20 @@ export function CanvasSurface({ className }: { className?: string }) {
     };
   }, [toWorld]);
 
-  // Space-key pan mode: track via ref for capture-phase handler (zero re-render
-  // cost per keypress); mirror into state only for cursor class changes.
+  // Space-key pan mode: track via ref for capture-phase handler (zero re-render cost).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
       if (isEditableTarget(event.target)) return;
       if (event.repeat) return;
       spaceRef.current = true;
-      setSpaceHeld(true);
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
       spaceRef.current = false;
-      setSpaceHeld(false);
     };
     const onBlur = () => {
       spaceRef.current = false;
-      setSpaceHeld(false);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -646,11 +641,7 @@ export function CanvasSurface({ className }: { className?: string }) {
       data-infinite-canvas="true"
       className={cn(
         "relative h-full w-full select-none overflow-hidden",
-        gestureActive
-          ? "cursor-grabbing"
-          : spaceHeld
-            ? "cursor-grab"
-            : "cursor-grab",
+        gestureActive ? "cursor-grabbing" : "cursor-grab",
         className,
       )}
       style={
