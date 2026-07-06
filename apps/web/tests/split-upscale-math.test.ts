@@ -157,6 +157,41 @@ describe("gridPieceRects", () => {
     const totalW = rects.reduce((s, r) => s + r.width, 0);
     expect(totalW).toBe(7);
   });
+
+  it("100×90 into 2×3 (rows=2, cols=3) — widths sum to 100, heights to 90 per col/row", () => {
+    // rows=2 → baseH=floor(90/2)=45; last row=90-45=45
+    // cols=3 → baseW=floor(100/3)=33; last col=100-33*2=34
+    const rects = gridPieceRects(100, 90, 2, 3);
+    expect(rects).toHaveLength(6);
+
+    // Non-last cols have width 33
+    for (const r of rects.filter((r) => r.col < 2)) {
+      expect(r.width).toBe(33);
+    }
+    // Last col (col=2) has width 34
+    for (const r of rects.filter((r) => r.col === 2)) {
+      expect(r.width).toBe(34);
+    }
+
+    // All rows should have height 45
+    for (const r of rects) {
+      expect(r.height).toBe(45);
+    }
+
+    // Per-row widths sum to 100
+    for (let row = 0; row < 2; row++) {
+      const rowRects = rects.filter((r) => r.row === row);
+      const totalW = rowRects.reduce((sum, r) => sum + r.width, 0);
+      expect(totalW).toBe(100);
+    }
+
+    // Per-col heights sum to 90
+    for (let col = 0; col < 3; col++) {
+      const colRects = rects.filter((r) => r.col === col);
+      const totalH = colRects.reduce((sum, r) => sum + r.height, 0);
+      expect(totalH).toBe(90);
+    }
+  });
 });
 
 // ── splitChildLayout ────────────────────────────────────────────────────────

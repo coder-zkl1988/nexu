@@ -30,7 +30,6 @@ import {
 import { Crop } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { client } from "../../../lib/api/client.gen";
 import {
   type CanvasDialogState,
   closeCanvasDialog,
@@ -43,6 +42,7 @@ import {
   applyCropDrag,
   fitScale,
 } from "./crop-geometry";
+import { resolveMediaUrl } from "./load-image-bitmap";
 import { SplitDialog } from "./split-dialog";
 import { UpscaleDialog } from "./upscale-dialog";
 
@@ -51,24 +51,6 @@ import { UpscaleDialog } from "./upscale-dialog";
 const PREVIEW_MAX_W = 640;
 const PREVIEW_MAX_H = 400;
 const HANDLE_SIZE = 10; // px, visual dot
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Resolve relative servable URLs against the SDK client's configured baseUrl.
- * Absolute http(s) URLs and data: URLs pass through unchanged.
- * Module-level so it has a stable identity and is never a useEffect dependency.
- */
-function resolveMediaUrl(url: string): string {
-  if (!url || url.startsWith("data:")) return url;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  const cfg = client.getConfig() as { baseUrl?: string };
-  const base = cfg.baseUrl ?? "";
-  if (!base) return url;
-  const cleanBase = base.replace(/\/$/, "");
-  const cleanPath = url.startsWith("/") ? url : `/${url}`;
-  return `${cleanBase}${cleanPath}`;
-}
 
 // ── CanvasDialogs — the single mount point ─────────────────────────────────
 

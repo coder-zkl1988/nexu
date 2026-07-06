@@ -174,22 +174,36 @@ export function SplitDialog({
     toast.success(`已拆分为 ${totalPieces} 个节点`);
   }, [bitmap, rows, cols, nodeId, totalPieces]);
 
-  // Grid line overlay divs (positioned using scaled coordinates)
+  // Grid line overlay divs (positioned using actual cut boundaries from gridPieceRects)
   function renderGridLines() {
     if (!bitmap || !displayW || !displayH) return null;
 
-    const lines: React.ReactNode[] = [];
-    const baseW = Math.floor(bitmap.width / cols);
-    const baseH = Math.floor(bitmap.height / rows);
+    const rects = gridPieceRects(bitmap.width, bitmap.height, rows, cols);
 
-    // Vertical lines (between columns)
-    let xAcc = 0;
-    for (let c = 0; c < cols - 1; c++) {
-      xAcc += baseW;
-      const xPx = Math.round(xAcc * scale);
+    // Collect unique x positions where col > 0 (vertical lines between columns)
+    const verticalXs = new Set<number>();
+    for (const rect of rects) {
+      if (rect.col > 0) {
+        verticalXs.add(Math.round(rect.x * scale));
+      }
+    }
+
+    // Collect unique y positions where row > 0 (horizontal lines between rows)
+    const horizontalYs = new Set<number>();
+    for (const rect of rects) {
+      if (rect.row > 0) {
+        horizontalYs.add(Math.round(rect.y * scale));
+      }
+    }
+
+    const lines: React.ReactNode[] = [];
+
+    // Vertical lines
+    let vLineIdx = 0;
+    for (const xPx of verticalXs) {
       lines.push(
         <div
-          key={`v-${c}`}
+          key={`v-${vLineIdx++}`}
           style={{
             position: "absolute",
             left: xPx,
@@ -203,14 +217,12 @@ export function SplitDialog({
       );
     }
 
-    // Horizontal lines (between rows)
-    let yAcc = 0;
-    for (let r = 0; r < rows - 1; r++) {
-      yAcc += baseH;
-      const yPx = Math.round(yAcc * scale);
+    // Horizontal lines
+    let hLineIdx = 0;
+    for (const yPx of horizontalYs) {
       lines.push(
         <div
-          key={`h-${r}`}
+          key={`h-${hLineIdx++}`}
           style={{
             position: "absolute",
             left: 0,
