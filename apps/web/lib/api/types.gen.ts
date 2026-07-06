@@ -6326,6 +6326,8 @@ export type PostApiV1MediaGenerateImageData = {
         prompt: string;
         referenceImages?: Array<string>;
         count?: number;
+        sourceImage?: string;
+        maskDataUrl?: string;
     };
     path?: never;
     query?: never;
@@ -6440,6 +6442,92 @@ export type PostApiV1MediaGenerateAudioResponses = {
 };
 
 export type PostApiV1MediaGenerateAudioResponse = PostApiV1MediaGenerateAudioResponses[keyof PostApiV1MediaGenerateAudioResponses];
+
+export type PostApiV1MediaEnhanceImageData = {
+    body?: {
+        sourceImage: string;
+        operation: 'super-resolve' | 'multi-angle';
+        targetLongEdge?: 1024 | 2048 | 4096;
+        horizontalDeg?: number;
+        pitchDeg?: number;
+        distance?: number;
+        wideAngle?: boolean;
+        prompt?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/enhance-image';
+};
+
+export type PostApiV1MediaEnhanceImageErrors = {
+    /**
+     * Invalid source image path
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Enhancement failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaEnhanceImageError = PostApiV1MediaEnhanceImageErrors[keyof PostApiV1MediaEnhanceImageErrors];
+
+export type PostApiV1MediaEnhanceImageResponses = {
+    /**
+     * Image enhanced and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaEnhanceImageResponse = PostApiV1MediaEnhanceImageResponses[keyof PostApiV1MediaEnhanceImageResponses];
+
+export type PostApiV1MediaDescribeImageData = {
+    body?: {
+        sourceImage: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/describe-image';
+};
+
+export type PostApiV1MediaDescribeImageErrors = {
+    /**
+     * Invalid source image path
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Description failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaDescribeImageError = PostApiV1MediaDescribeImageErrors[keyof PostApiV1MediaDescribeImageErrors];
+
+export type PostApiV1MediaDescribeImageResponses = {
+    /**
+     * Image described — returns a text-to-image prompt
+     */
+    200: {
+        prompt: string;
+    };
+};
+
+export type PostApiV1MediaDescribeImageResponse = PostApiV1MediaDescribeImageResponses[keyof PostApiV1MediaDescribeImageResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

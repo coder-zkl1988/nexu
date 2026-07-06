@@ -332,4 +332,181 @@ describe("MediaGenerationService", () => {
     const call = sendChat.mock.calls[0]?.[0] as { sessionKey: string };
     expect(call.sessionKey).toContain("audiogen");
   });
+
+  // -----------------------------------------------------------------------
+  // generateImage + sourceImage (inpaint/img2img) — Test group (a) & (b)
+  // -----------------------------------------------------------------------
+  it("(a) sourceImage outside media root → InvalidMediaReferenceError before sendChat", async () => {
+    await expect(
+      buildService().generateImage({
+        prompt: "make it blue",
+        sourceImage: "/etc/passwd",
+      }),
+    ).rejects.toBeInstanceOf(InvalidMediaReferenceError);
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
+  it("(a) valid sourceImage → contract contains the source block", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+    const out = makeMediaFile("tool-image-generation/out.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().generateImage({
+      prompt: "make it blue",
+      sourceImage: srcFile,
+    });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("Source image");
+    expect(message).toContain(srcFile);
+    expect(message).toContain("edit/transform");
+  });
+
+  it("(b) maskDataUrl with valid sourceImage → mask file exists under media/inbound and contract contains its path", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+    const out = makeMediaFile("tool-image-generation/out.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    // A minimal 1x1 white PNG encoded as base64
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg==";
+    const maskDataUrl = `data:image/png;base64,${pngBase64}`;
+
+    await buildService().generateImage({
+      prompt: "remove the background",
+      sourceImage: srcFile,
+      maskDataUrl,
+    });
+
+    // Check the contract message
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("mask file");
+    expect(message).toContain("white = editable");
+    // Check that the mask file exists under media/inbound
+    const { readdirSync } = await import("node:fs");
+    const inboundDir = join(tmpDir, "media", "inbound");
+    const maskFiles = readdirSync(inboundDir).filter(
+      (f) => f.startsWith("mask-") && f.endsWith(".png"),
+    );
+    expect(maskFiles.length).toBeGreaterThan(0);
+  });
+
+  it("(b) invalid base64 in maskDataUrl → InvalidMediaReferenceError, no sendChat", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+
+    await expect(
+      buildService().generateImage({
+        prompt: "remove bg",
+        sourceImage: srcFile,
+        maskDataUrl: "data:image/png;base64,!!!not-valid-base64!!!",
+      }),
+    ).rejects.toBeInstanceOf(InvalidMediaReferenceError);
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
+  // -----------------------------------------------------------------------
+  // enhanceImage — Test group (c) & (d)
+  // -----------------------------------------------------------------------
+  it("(c) super-resolve: contract contains path + default 2048 target", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+    const out = makeMediaFile("tool-image-generation/enhanced.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().enhanceImage({
+      sourceImage: srcFile,
+      operation: "super-resolve",
+    });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain(srcFile);
+    expect(message).toContain("2048");
+    expect(message).toContain("super-resol");
+  });
+
+  it("(c) super-resolve UNAVAILABLE → error /not configured/", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+    readAssistantReply.mockResolvedValue("UNAVAILABLE");
+
+    await expect(
+      buildService().enhanceImage({
+        sourceImage: srcFile,
+        operation: "super-resolve",
+      }),
+    ).rejects.toThrow(/not configured/);
+  });
+
+  it("(c) super-resolve happy path .png → url/path returned", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+    const out = makeMediaFile("tool-image-generation/enhanced.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    const result = await buildService().enhanceImage({
+      sourceImage: srcFile,
+      operation: "super-resolve",
+    });
+
+    expect(result.path).toBe(out);
+    expect(result.url).toContain("/api/v1/media/state-file");
+    expect(result.items).toHaveLength(1);
+  });
+
+  it("(d) multi-angle: contract contains all numeric params + wide-angle when set", async () => {
+    const srcFile = makeMediaFile("inbound/source.png");
+    const out = makeMediaFile("tool-image-generation/angle.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().enhanceImage({
+      sourceImage: srcFile,
+      operation: "multi-angle",
+      horizontalDeg: 30,
+      pitchDeg: -15,
+      distance: 7,
+      wideAngle: true,
+    });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain(srcFile);
+    expect(message).toContain("30");
+    expect(message).toContain("-15");
+    expect(message).toContain("7");
+    expect(message).toContain("wide-angle");
+  });
+
+  // -----------------------------------------------------------------------
+  // describeImage — Test group (e)
+  // -----------------------------------------------------------------------
+  it("(e) describe happy reply → trimmed prompt returned", async () => {
+    const srcFile = makeMediaFile("inbound/photo.png");
+    readAssistantReply.mockResolvedValue(
+      "  A cat sitting on a windowsill, warm afternoon light, bokeh background  ",
+    );
+
+    const result = await buildService().describeImage({ sourceImage: srcFile });
+
+    expect(result.prompt).toBe(
+      "A cat sitting on a windowsill, warm afternoon light, bokeh background",
+    );
+  });
+
+  it("(e) describe UNAVAILABLE → ImageGenerationFailedError /not configured/", async () => {
+    const srcFile = makeMediaFile("inbound/photo.png");
+    readAssistantReply.mockResolvedValue("UNAVAILABLE");
+
+    await expect(
+      buildService().describeImage({ sourceImage: srcFile }),
+    ).rejects.toThrow(/not configured/);
+  });
+
+  it("(e) describe whitespace-only reply → failure", async () => {
+    const srcFile = makeMediaFile("inbound/photo.png");
+    readAssistantReply.mockResolvedValue("   ");
+
+    await expect(
+      buildService().describeImage({ sourceImage: srcFile }),
+    ).rejects.toBeInstanceOf(ImageGenerationFailedError);
+  });
 });

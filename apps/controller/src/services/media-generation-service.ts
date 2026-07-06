@@ -1,4 +1,4 @@
-import { access } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { logger } from "../lib/logger.js";
 
@@ -102,6 +102,14 @@ export type GenerateMediaResult = {
   items: GeneratedMediaItem[];
 };
 
+export type EnhanceMediaResult = {
+  url: string;
+  path: string;
+  items: GeneratedMediaItem[];
+};
+
+export type DescribeMediaResult = { prompt: string };
+
 export class MediaGenerationService {
   private readonly pollIntervalMs: number;
   private readonly timeoutMsByKind: Record<MediaKind, number>;
@@ -130,6 +138,8 @@ export class MediaGenerationService {
     prompt: string;
     referenceImages?: string[];
     count?: number;
+    sourceImage?: string;
+    maskDataUrl?: string;
   }): Promise<GenerateMediaResult> {
     const mediaRoot = path.resolve(this.deps.openclawStateDir, "media");
 
@@ -138,6 +148,17 @@ export class MediaGenerationService {
       for (const ref of input.referenceImages) {
         await this.validateMediaReference(ref, mediaRoot);
       }
+    }
+
+    // Validate sourceImage (inpaint/img2img source).
+    if (input.sourceImage !== undefined) {
+      await this.validateMediaReference(input.sourceImage, mediaRoot);
+    }
+
+    // Decode and write mask file BEFORE sendChat.
+    let maskPath: string | undefined;
+    if (input.maskDataUrl !== undefined && input.sourceImage !== undefined) {
+      maskPath = await this.writeMaskFile(input.maskDataUrl);
     }
 
     const botId = await this.deps.pickUtilityBotId();
@@ -165,6 +186,21 @@ export class MediaGenerationService {
       );
     }
 
+    // Source image block (inpaint / img2img).
+    if (input.sourceImage !== undefined) {
+      if (maskPath !== undefined) {
+        lines.push(
+          "",
+          `Edit the source image ${input.sourceImage} ONLY inside the masked region (mask file ${maskPath}, white = editable, black = keep). Requested change: ${input.prompt}.`,
+        );
+      } else {
+        lines.push(
+          "",
+          `Source image (edit/transform it rather than generating from scratch): ${input.sourceImage}`,
+        );
+      }
+    }
+
     lines.push(
       "",
       "Rules (in order):",
@@ -178,9 +214,13 @@ export class MediaGenerationService {
     lines.push(
       "2. Otherwise use the official tabby-image skill (its script prints a",
       "   MEDIA: <absolute-path> line; the file lands under the media dir).",
-      '3. If neither works, reply with ONLY the word "UNAVAILABLE" — no',
-      "   other workarounds.",
+      maskPath !== undefined
+        ? "3. If no available tool or skill can edit images (with masks when given), reply ONLY UNAVAILABLE."
+        : '3. If neither works, reply with ONLY the word "UNAVAILABLE" — no',
     );
+    if (maskPath === undefined) {
+      lines.push("   other workarounds.");
+    }
 
     if (count === 1) {
       lines.push(
@@ -212,6 +252,131 @@ export class MediaGenerationService {
       count,
       "image",
     );
+  }
+
+  async enhanceImage(input: {
+    sourceImage: string;
+    operation: "super-resolve" | "multi-angle";
+    targetLongEdge?: 1024 | 2048 | 4096;
+    horizontalDeg?: number;
+    pitchDeg?: number;
+    distance?: number;
+    wideAngle?: boolean;
+    prompt?: string;
+  }): Promise<GenerateMediaResult> {
+    const mediaRoot = path.resolve(this.deps.openclawStateDir, "media");
+    await this.validateMediaReference(input.sourceImage, mediaRoot);
+
+    const botId = await this.deps.pickUtilityBotId();
+    if (!botId) {
+      throw new ImageGenerationFailedError(
+        "no active bot available to run image enhancement",
+      );
+    }
+
+    const sessionKey = `agent:${botId}:subagent:imgenhance-${this.deps.genId()}`;
+
+    const lines: string[] = [];
+    if (input.operation === "super-resolve") {
+      const longEdge = input.targetLongEdge ?? 2048;
+      lines.push(
+        `Upscale/enhance the image at ${input.sourceImage} to a long edge of ${longEdge} px using a super-resolution tool or skill`,
+      );
+    } else {
+      const h = input.horizontalDeg ?? 0;
+      const p = input.pitchDeg ?? 0;
+      const d = input.distance ?? 5;
+      const wideStr = input.wideAngle ? ", wide-angle lens" : "";
+      lines.push(
+        `Re-render the image at ${input.sourceImage} from a different camera angle: horizontal ${h}°, pitch ${p}°, distance ${d}/10${wideStr}`,
+      );
+    }
+
+    lines.push(
+      "",
+      "Reply with ONLY the output file's absolute path (under the media dir), one line, no markdown, and do NOT render UI.",
+      'If no available tool or skill can perform this operation, reply ONLY the word "UNAVAILABLE".',
+    );
+
+    if (input.prompt) {
+      lines.push("", `Extra guidance: ${input.prompt}`);
+    }
+
+    const message = lines.join("\n");
+    await this.deps.sendChat({ botId, sessionKey, message });
+
+    // Enhance can be slow; use the video timeout (480_000 default) as it is
+    // sized for long-running generation-class tasks.
+    const enhanceTimeoutMs = this.timeoutMsByKind.video;
+    const reply = await this.awaitLaneReplyWithTimeout(
+      botId,
+      sessionKey,
+      enhanceTimeoutMs,
+    );
+
+    if (/\bUNAVAILABLE\b/.test(reply)) {
+      throw new ImageGenerationFailedError(
+        "image enhancement backend is not configured",
+      );
+    }
+
+    return this.validateAndBuildResult(
+      reply,
+      "image",
+      mediaRoot,
+      undefined,
+      "imgenhance",
+    );
+  }
+
+  async describeImage(input: {
+    sourceImage: string;
+  }): Promise<DescribeMediaResult> {
+    const mediaRoot = path.resolve(this.deps.openclawStateDir, "media");
+    await this.validateMediaReference(input.sourceImage, mediaRoot);
+
+    const botId = await this.deps.pickUtilityBotId();
+    if (!botId) {
+      throw new ImageGenerationFailedError(
+        "no active bot available to run image description",
+      );
+    }
+
+    const sessionKey = `agent:${botId}:subagent:imgdescribe-${this.deps.genId()}`;
+
+    const message = [
+      `Look at the image file at ${input.sourceImage}. Reply with ONLY a text-to-image generation prompt (one paragraph) that would recreate this image — no preamble, no quotes. If you cannot view or analyze images, reply ONLY UNAVAILABLE.`,
+    ].join("\n");
+
+    await this.deps.sendChat({ botId, sessionKey, message });
+
+    // Use min(configured image timeout, 120_000) for describe.
+    const describeTimeoutMs = Math.min(this.timeoutMsByKind.image, 120_000);
+    const reply = await this.awaitLaneReplyWithTimeout(
+      botId,
+      sessionKey,
+      describeTimeoutMs,
+      true,
+    );
+
+    if (/\bUNAVAILABLE\b/.test(reply)) {
+      throw new ImageGenerationFailedError(
+        "image description backend is not configured",
+      );
+    }
+
+    const trimmed = reply.trim().slice(0, 2_000);
+    if (!trimmed) {
+      throw new ImageGenerationFailedError(
+        "image description finished but returned an empty prompt",
+      );
+    }
+
+    logger.info(
+      { path: input.sourceImage },
+      "media generation: describe ready",
+    );
+    return { prompt: trimmed };
   }
 
   async generateVideo(input: {
@@ -330,6 +495,46 @@ export class MediaGenerationService {
     );
   }
 
+  /** Decode maskDataUrl, write to media/inbound/mask-<genId>.png, return path. */
+  private async writeMaskFile(maskDataUrl: string): Promise<string> {
+    // Strip the data URL prefix: data:image/png;base64,<payload>
+    const commaIdx = maskDataUrl.indexOf(",");
+    if (commaIdx === -1) {
+      throw new InvalidMediaReferenceError("invalid mask data");
+    }
+    const b64 = maskDataUrl.slice(commaIdx + 1);
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(b64, "base64");
+      // Validate: a valid base64 round-trip should not produce an empty buffer
+      // and re-encoding should match the input (modulo padding).
+      if (buf.length === 0) {
+        throw new InvalidMediaReferenceError("invalid mask data");
+      }
+      // Strict check: base64 decode then re-encode must reproduce input (ignoring whitespace).
+      const re = buf.toString("base64");
+      const normalised = b64.replace(/\s/g, "");
+      // Allow padding differences only
+      if (re.replace(/=+$/, "") !== normalised.replace(/=+$/, "")) {
+        throw new InvalidMediaReferenceError("invalid mask data");
+      }
+    } catch (err) {
+      if (err instanceof InvalidMediaReferenceError) {
+        throw err;
+      }
+      throw new InvalidMediaReferenceError("invalid mask data");
+    }
+    const inboundDir = path.resolve(
+      this.deps.openclawStateDir,
+      "media",
+      "inbound",
+    );
+    await mkdir(inboundDir, { recursive: true });
+    const maskPath = path.join(inboundDir, `mask-${this.deps.genId()}.png`);
+    await writeFile(maskPath, buf);
+    return maskPath;
+  }
+
   private async validateMediaReference(
     ref: string,
     mediaRoot: string,
@@ -416,7 +621,20 @@ export class MediaGenerationService {
     sessionKey: string,
     kind: MediaKind,
   ): Promise<string> {
-    const timeoutMs = this.timeoutMsByKind[kind];
+    return this.awaitLaneReplyWithTimeout(
+      botId,
+      sessionKey,
+      this.timeoutMsByKind[kind],
+    );
+  }
+
+  private async awaitLaneReplyWithTimeout(
+    botId: string,
+    sessionKey: string,
+    timeoutMs: number,
+    /** When true, return the reply even if empty (caller checks for empty). */
+    allowEmptyReply = false,
+  ): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const entry = await this.deps.readSessionEntry(botId, sessionKey);
@@ -424,6 +642,10 @@ export class MediaGenerationService {
         const reply = entry.sessionFile
           ? await this.deps.readAssistantReply(entry.sessionFile)
           : null;
+        if (allowEmptyReply) {
+          // Return whatever the agent replied (including empty/whitespace).
+          return reply ?? "";
+        }
         if (reply?.trim()) {
           return reply.trim();
         }
