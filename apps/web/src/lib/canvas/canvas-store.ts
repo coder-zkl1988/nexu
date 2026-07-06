@@ -54,6 +54,21 @@ export type CanvasNodeMetadata = {
     assigneeName: string;
     isApproval?: boolean;
   };
+  /**
+   * Transient generation task. Absence = idle; content presence = success.
+   *
+   * Deliberate refinement of the idle/generating/success/error model: idle and
+   * success are represented by ABSENCE of this key — no stale success states in
+   * persistence. A reloaded app must never show an eternal spinner; hydration
+   * normalizes any persisted `generating` task to `error` with an interrupted
+   * message.
+   */
+  task?: {
+    status: "generating" | "error";
+    error?: string;
+    /** Params to re-run the generation (retry). */
+    retry?: { kind: "image"; prompt: string };
+  };
 };
 
 export interface CanvasNode {
@@ -313,6 +328,28 @@ export function updateNode(
           }
         : node,
     ),
+  });
+}
+
+/**
+ * Set or clear the transient generation task for a node.
+ * Passing `null` removes the `task` key entirely (metadata has no `task`
+ * property, not `task: undefined`) — absence represents idle/success.
+ */
+export function setNodeTask(
+  id: string,
+  task: CanvasNodeMetadata["task"] | null,
+): void {
+  setState({
+    nodes: state.nodes.map((node) => {
+      if (node.id !== id) return node;
+      if (task === null) {
+        // Remove the key entirely — do not leave task: undefined in metadata.
+        const { task: _removed, ...rest } = node.metadata;
+        return { ...node, metadata: rest };
+      }
+      return { ...node, metadata: { ...node.metadata, task } };
+    }),
   });
 }
 
@@ -661,7 +698,24 @@ export async function hydrateCanvasFromStorage(): Promise<boolean> {
   const existingNodeIds = new Set(state.nodes.map((n) => n.id));
   const existingConnIds = new Set(state.connections.map((c) => c.id));
 
-  const newNodes = saved.nodes.filter((n) => !existingNodeIds.has(n.id));
+  // Normalize any persisted `generating` task to `error` — a reloaded app must
+  // never show an eternal spinner.
+  const newNodes = saved.nodes
+    .filter((n) => !existingNodeIds.has(n.id))
+    .map((n) => {
+      if (n.metadata.task?.status !== "generating") return n;
+      return {
+        ...n,
+        metadata: {
+          ...n.metadata,
+          task: {
+            status: "error" as const,
+            error: "生成已中断（应用重启）",
+            ...(n.metadata.task.retry ? { retry: n.metadata.task.retry } : {}),
+          },
+        },
+      };
+    });
 
   // Build the full set of node ids after the merge to validate connections
   const mergedNodeIds = new Set([

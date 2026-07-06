@@ -233,6 +233,79 @@ describe("canvas persistence", () => {
     expect(fake.getSaveCallCount()).toBe(0);
   });
 
+  it("g. hydration normalizes a persisted `generating` task to error with interrupted message", async () => {
+    const fake = makeFakeStorage();
+
+    const snapshot: PersistedCanvas = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      nodes: [
+        {
+          id: "node-gen",
+          type: "image",
+          title: "图片",
+          position: { x: 0, y: 0 },
+          size: { width: 340, height: 240 },
+          metadata: {
+            task: {
+              status: "generating",
+              retry: { kind: "image", prompt: "a cat" },
+            },
+          },
+        },
+        {
+          id: "node-err",
+          type: "image",
+          title: "已错误",
+          position: { x: 100, y: 0 },
+          size: { width: 340, height: 240 },
+          metadata: {
+            task: {
+              status: "error",
+              error: "原错误",
+              retry: { kind: "image", prompt: "a dog" },
+            },
+          },
+        },
+        {
+          id: "node-ok",
+          type: "image",
+          title: "成功",
+          position: { x: 200, y: 0 },
+          size: { width: 340, height: 240 },
+          metadata: {
+            content: "http://localhost/img/x.png",
+          },
+        },
+      ],
+      connections: [],
+    };
+    await fake.storage.save("sidebar", snapshot);
+    __setCanvasStorageForTests(fake.storage);
+    await hydrateCanvasFromStorage();
+
+    const state = getCanvasState();
+
+    // Node with generating task → normalized to error
+    const genNode = state.nodes.find((n) => n.id === "node-gen");
+    expect(genNode?.metadata.task?.status).toBe("error");
+    expect(genNode?.metadata.task?.error).toBe("生成已中断（应用重启）");
+    expect(genNode?.metadata.task?.retry).toEqual({
+      kind: "image",
+      prompt: "a cat",
+    });
+
+    // Node with error task → unchanged
+    const errNode = state.nodes.find((n) => n.id === "node-err");
+    expect(errNode?.metadata.task?.status).toBe("error");
+    expect(errNode?.metadata.task?.error).toBe("原错误");
+
+    // Node without task → unchanged, no task key
+    const okNode = state.nodes.find((n) => n.id === "node-ok");
+    expect(okNode?.metadata).not.toHaveProperty("task");
+    expect(okNode?.metadata.content).toBe("http://localhost/img/x.png");
+  });
+
   it("f. default storage in node env (no indexedDB global): load → null, save resolves, nothing throws", async () => {
     // __setCanvasStorageForTests(null) restores the default IDB storage
     // In Node env there's no indexedDB global → should degrade gracefully

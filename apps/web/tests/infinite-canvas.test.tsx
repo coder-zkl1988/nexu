@@ -386,6 +386,34 @@ describe("CanvasSurface", () => {
     expect(markup).toContain("导出画布");
     expect(markup).toContain("导入画布");
   });
+
+  it("a node with task.status=generating renders data-canvas-node-generating", () => {
+    addNode({
+      type: "image",
+      title: "生成中",
+      metadata: {
+        task: { status: "generating", retry: { kind: "image", prompt: "sky" } },
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-node-generating");
+  });
+
+  it("a node with task.status=error renders data-canvas-node-retry", () => {
+    addNode({
+      type: "image",
+      title: "错误节点",
+      metadata: {
+        task: {
+          status: "error",
+          error: "生成失败，请重试",
+          retry: { kind: "image", prompt: "sunset" },
+        },
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-node-retry");
+  });
 });
 
 describe("connection effects", () => {

@@ -24,7 +24,6 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { postApiV1MediaGenerateImage } from "../../../lib/api/sdk.gen";
 import {
   clipboardHasContent,
   copySelection,
@@ -33,6 +32,7 @@ import {
 } from "./canvas-clipboard";
 import { createConnectedNode } from "./canvas-create";
 import { FloatingMenu, clampMenuPosition } from "./canvas-floating-menu";
+import { generateImageIntoNode, retryNodeTask } from "./canvas-generation";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import {
   ingestFilesAsNodes,
@@ -1119,6 +1119,43 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   if (node.type === "team-step") {
     return <TeamStepNodeContent node={node} />;
   }
+
+  // Task status overlay: applies before per-type media rendering for image/video/audio.
+  if (node.metadata.task?.status === "generating") {
+    return (
+      <div
+        data-canvas-node-generating={node.id}
+        className="flex h-full w-full flex-col items-center justify-center gap-3"
+      >
+        <div className="size-10 animate-spin rounded-full border-2 border-border border-t-sky-500" />
+        <span className="text-[11px] tracking-[0.18em] text-text-tertiary">
+          生成中
+        </span>
+      </div>
+    );
+  }
+  if (node.metadata.task?.status === "error") {
+    return (
+      <div
+        data-canvas-node-error={node.id}
+        className="flex h-full w-full flex-col items-center justify-center gap-2"
+      >
+        <p className="text-[11px] text-danger">
+          {node.metadata.task.error ?? "生成失败，请重试"}
+        </p>
+        <button
+          type="button"
+          data-canvas-node-retry={node.id}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => retryNodeTask(node.id)}
+          className="rounded-full border border-border px-3 py-1 text-[11px] text-text-secondary hover:bg-surface-2"
+        >
+          重试
+        </button>
+      </div>
+    );
+  }
+
   if (node.type === "video") {
     return node.metadata.content ? (
       // biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions
@@ -1186,11 +1223,13 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
 /**
  * Empty image node: upload a file OR generate one from a prompt via the S7
  * controller channel (POST /api/v1/media/generate-image).
+ *
+ * Generating/error state lives in node.metadata.task (store-level); this
+ * component holds only the local prompt input state.
  */
 function EmptyImageNode({ node }: { node: CanvasNode }) {
   const [prompt, setPrompt] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const isGenerating = node.metadata.task?.status === "generating";
 
   return (
     <div className="flex h-full w-full flex-col gap-2">
@@ -1222,41 +1261,23 @@ function EmptyImageNode({ node }: { node: CanvasNode }) {
       <div className="flex shrink-0 items-center gap-1">
         <input
           value={prompt}
-          disabled={generating}
+          disabled={isGenerating}
           placeholder="描述要生成的图片…"
           onChange={(event) => setPrompt(event.target.value)}
           className="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
         />
         <button
           type="button"
-          disabled={generating || !prompt.trim()}
+          disabled={isGenerating || !prompt.trim()}
           data-canvas-generate-image={node.id}
           onClick={() => {
-            setError(null);
-            setGenerating(true);
-            void postApiV1MediaGenerateImage({
-              body: { prompt: prompt.trim() },
-            })
-              .then(({ data, error: requestError }) => {
-                if (requestError || !data) {
-                  throw new Error("generate failed");
-                }
-                updateNode(node.id, {
-                  title: prompt.trim().slice(0, 30),
-                  metadata: { content: data.url },
-                });
-              })
-              .catch(() => setError("生成失败，请重试"))
-              .finally(() => setGenerating(false));
+            void generateImageIntoNode(node.id, prompt.trim());
           }}
           className="shrink-0 rounded border border-[var(--color-accent)] bg-[var(--color-accent)] px-2 py-1 text-xs font-bold text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50"
         >
-          {generating ? "生成中…" : "生成"}
+          生成
         </button>
       </div>
-      {error ? (
-        <p className="shrink-0 text-[11px] text-danger">{error}</p>
-      ) : null}
     </div>
   );
 }
