@@ -13,7 +13,7 @@
  * @see connection-effects.ts for push-on-connect effects (a different concern).
  */
 
-import { getCanvasState } from "./canvas-store";
+import { type CanvasNode, getCanvasState } from "./canvas-store";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -94,6 +94,48 @@ export function collectUpstream(nodeId: string): UpstreamResources {
     // a2ui and team-step: contribute nothing, but their parents are still queued below
 
     // Enqueue unvisited parents (incoming edges to currentId)
+    for (const conn of connections) {
+      if (conn.toNodeId === currentId && !visited.has(conn.fromNodeId)) {
+        visited.add(conn.fromNodeId);
+        queue.push(conn.fromNodeId);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Collect all nodes reachable upstream of `nodeId` via BFS over incoming
+ * edges, in the same BFS order as `collectUpstream`.
+ *
+ * Returns the upstream CanvasNode objects (the starting node is NOT included).
+ * Useful for mention candidates in the prompt panel.
+ */
+export function collectUpstreamNodes(nodeId: string): CanvasNode[] {
+  const { nodes, connections } = getCanvasState();
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const result: CanvasNode[] = [];
+
+  const visited = new Set<string>();
+  visited.add(nodeId);
+
+  const queue: string[] = [];
+  for (const conn of connections) {
+    if (conn.toNodeId === nodeId && !visited.has(conn.fromNodeId)) {
+      visited.add(conn.fromNodeId);
+      queue.push(conn.fromNodeId);
+    }
+  }
+
+  let head = 0;
+  while (head < queue.length) {
+    const currentId = queue[head++] as string;
+    const node = nodeById.get(currentId);
+    if (!node) continue;
+
+    result.push(node);
+
     for (const conn of connections) {
       if (conn.toNodeId === currentId && !visited.has(conn.fromNodeId)) {
         visited.add(conn.fromNodeId);

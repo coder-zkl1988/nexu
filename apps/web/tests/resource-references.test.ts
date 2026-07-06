@@ -28,6 +28,7 @@ import {
 } from "../src/lib/canvas/canvas-store";
 import {
   collectUpstream,
+  collectUpstreamNodes,
   hasUpstream,
 } from "../src/lib/canvas/resource-references";
 
@@ -225,6 +226,61 @@ describe("collectUpstream", () => {
     expect(result.images).toEqual([]);
     expect(result.videos).toEqual([]);
     expect(result.audios).toEqual([]);
+  });
+});
+
+describe("collectUpstreamNodes", () => {
+  it("returns nodes in BFS order (direct first, then transitive)", () => {
+    const A = addNode({
+      type: "text",
+      title: "A",
+      metadata: { content: "hello" },
+    });
+    const B = addNode({
+      type: "image",
+      title: "B",
+      metadata: { content: "img-b" },
+    });
+    const T = addNode({ type: "image", title: "T" });
+    connectNodes(A.id, B.id); // A → B
+    connectNodes(B.id, T.id); // B → T (direct), A is transitive
+
+    const result = collectUpstreamNodes(T.id);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.id).toBe(B.id); // direct first
+    expect(result[1]?.id).toBe(A.id); // transitive second
+  });
+
+  it("returns empty array when there is no upstream", () => {
+    const lone = addNode({ type: "text", title: "Lone" });
+    expect(collectUpstreamNodes(lone.id)).toEqual([]);
+  });
+
+  it("does not include the starting node itself", () => {
+    const A = addNode({ type: "text", title: "A" });
+    const T = addNode({ type: "image", title: "T" });
+    connectNodes(A.id, T.id);
+
+    const result = collectUpstreamNodes(T.id);
+    expect(result.map((n) => n.id)).not.toContain(T.id);
+    expect(result.map((n) => n.id)).toContain(A.id);
+  });
+
+  it("is cycle-safe and deduplicates", () => {
+    const A = addNode({ type: "text", title: "A", metadata: { content: "a" } });
+    const B = addNode({ type: "text", title: "B", metadata: { content: "b" } });
+    const T = addNode({ type: "image", title: "T" });
+    connectNodes(A.id, B.id); // A → B
+    connectNodes(B.id, A.id); // B → A (cycle)
+    connectNodes(B.id, T.id); // B → T
+
+    const result = collectUpstreamNodes(T.id);
+    const ids = result.map((n) => n.id);
+    // Both A and B are reachable, each exactly once
+    expect(ids).toContain(A.id);
+    expect(ids).toContain(B.id);
+    expect(new Set(ids).size).toBe(ids.length); // no duplicates
   });
 });
 

@@ -11,6 +11,7 @@ import {
   moveNodes,
   redo,
   removeNodes,
+  selectNodes,
   undo,
   upsertA2UINode,
 } from "../src/lib/canvas/canvas-store";
@@ -413,6 +414,44 @@ describe("CanvasSurface", () => {
     });
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).toContain("data-canvas-node-retry");
+  });
+});
+
+describe("PromptPanel visibility", () => {
+  it("single selected image node renders data-canvas-prompt-panel with 生成 button", () => {
+    // addNode selects the newest node automatically
+    addNode({ type: "image", title: "图片" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-prompt-panel=");
+    expect(markup).toContain("data-canvas-panel-generate");
+    expect(markup).toContain("生成");
+  });
+
+  it("two nodes selected: prompt panel is absent", () => {
+    const a = addNode({ type: "image", title: "A" });
+    const b = addNode({ type: "image", title: "B" });
+    // Force multi-selection
+    selectNodes([a.id, b.id]);
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-prompt-panel");
+  });
+
+  it("single selected text node: prompt panel is absent", () => {
+    addNode({ type: "text", title: "文本" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-prompt-panel");
+  });
+
+  it("single selected video node renders panel", () => {
+    addNode({ type: "video", title: "视频" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-prompt-panel=");
+  });
+
+  it("single selected audio node renders panel", () => {
+    addNode({ type: "audio", title: "音频" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-prompt-panel=");
   });
 });
 

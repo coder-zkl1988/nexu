@@ -67,6 +67,7 @@ import {
   useCanvas,
 } from "./canvas-store";
 import { applyConnectionEffects } from "./connection-effects";
+import { PromptPanel } from "./prompt-panel";
 import { TeamStepNodeContent } from "./team-step-node";
 
 /**
@@ -825,6 +826,19 @@ export function CanvasSurface({ className }: { className?: string }) {
             onConnectDown={beginConnect}
           />
         ))}
+
+        {/* Per-node prompt panel — world-space, anchored under the selected node.
+            Visible iff exactly ONE node is selected and type ∈ {image, video, audio}. */}
+        {selectedNodeIds.length === 1 &&
+          (() => {
+            const panelNode = nodeById.get(selectedNodeIds[0] as string);
+            return panelNode &&
+              (panelNode.type === "image" ||
+                panelNode.type === "video" ||
+                panelNode.type === "audio") ? (
+              <PromptPanel key={panelNode.id} node={panelNode} />
+            ) : null;
+          })()}
 
         {/* Marquee rectangle */}
         {marqueeBox ? (

@@ -67,7 +67,20 @@ export type CanvasNodeMetadata = {
     status: "generating" | "error";
     error?: string;
     /** Params to re-run the generation (retry). */
-    retry?: { kind: "image"; prompt: string };
+    retry?:
+      | {
+          kind: "image";
+          prompt: string;
+          referenceImages?: string[];
+          count?: number;
+        }
+      | {
+          kind: "video";
+          prompt: string;
+          durationSeconds?: number;
+          resolution?: "720p" | "1080p";
+        }
+      | { kind: "audio"; prompt: string; voice?: string; speed?: number };
   };
 };
 
