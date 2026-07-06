@@ -21,6 +21,7 @@ import {
   clampScale,
   connectionPath,
   fitViewport,
+  gridBackgroundSize,
   zoomAtPoint,
 } from "../src/lib/canvas/infinite-canvas";
 
@@ -59,7 +60,9 @@ describe("viewport math", () => {
     expect(50 * next.scale + next.y).toBeCloseTo(pointer.y);
   });
 
-  it("clamps scale", () => {
+  it("clamps scale to 0.05–5 range", () => {
+    expect(CANVAS_MIN_SCALE).toBe(0.05);
+    expect(CANVAS_MAX_SCALE).toBe(5);
     expect(
       zoomAtPoint({ x: 0, y: 0, scale: 1 }, { x: 0, y: 0 }, 99).scale,
     ).toBe(CANVAS_MAX_SCALE);
@@ -80,6 +83,27 @@ describe("viewport math", () => {
     const path = connectionPath({ x: 0, y: 0 }, { x: 200, y: 100 });
     expect(path).toMatch(/^M 0 0 C /);
     expect(path).toContain("200 100");
+  });
+});
+
+describe("grid LOD", () => {
+  it("gridBackgroundSize returns pixel size at scale 1", () => {
+    expect(gridBackgroundSize(1)).toBe(24);
+  });
+
+  it("gridBackgroundSize returns null at min scale 0.05 (1.2px < 4px threshold)", () => {
+    expect(gridBackgroundSize(0.05)).toBeNull();
+  });
+
+  it("gridBackgroundSize returns value at boundary scale 4/24 (exactly 4px)", () => {
+    const boundaryScale = 4 / 24;
+    expect(gridBackgroundSize(boundaryScale)).toBe(4);
+  });
+
+  it("gridBackgroundSize returns null just below the 4px threshold", () => {
+    // (4/24 - epsilon) * 24 < 4
+    const justBelow = 4 / 24 - 0.001;
+    expect(gridBackgroundSize(justBelow)).toBeNull();
   });
 });
 
@@ -265,6 +289,12 @@ describe("CanvasSurface", () => {
     addNode({ type: "image", title: "empty image" });
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).not.toContain("data-canvas-lock-toggle");
+  });
+
+  it("toolbar contains export and import buttons", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("导出画布");
+    expect(markup).toContain("导入画布");
   });
 });
 

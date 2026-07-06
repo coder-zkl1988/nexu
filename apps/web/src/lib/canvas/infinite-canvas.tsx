@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   AudioLines,
   Clapperboard,
+  Download,
   ImagePlus,
   Lock,
   Maximize2,
@@ -32,6 +33,7 @@ import {
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import { ingestFilesAsNodes, ingestTextAsNode } from "./canvas-ingest";
 import {
+  type CanvasExportFile,
   type CanvasNode,
   type CanvasViewport,
   addNode,
@@ -39,9 +41,11 @@ import {
   clearSelection,
   connectNodes,
   deleteSelection,
+  exportCanvas,
   getA2UIPayload,
   getCanvasState,
   hydrateCanvasFromStorage,
+  importCanvas,
   moveNodes,
   redo,
   removeConnection,
@@ -79,11 +83,20 @@ import { TeamStepNodeContent } from "./team-step-node";
  *   geometry-only changes, so dragging never re-renders A2UI trees.
  */
 
-export const CANVAS_MIN_SCALE = 0.25;
-export const CANVAS_MAX_SCALE = 2;
+export const CANVAS_MIN_SCALE = 0.05;
+export const CANVAS_MAX_SCALE = 5;
 
 export function clampScale(scale: number): number {
   return Math.min(CANVAS_MAX_SCALE, Math.max(CANVAS_MIN_SCALE, scale));
+}
+
+/**
+ * Compute the grid background-size in pixels at the given scale.
+ * Returns null when the dots would be < 4px apart (visual noise at high zoom-out).
+ */
+export function gridBackgroundSize(scale: number): number | null {
+  const size = 24 * scale;
+  return size < 4 ? null : size;
 }
 
 /** Zoom keeping the canvas point under `pointer` (container coords) fixed. */
@@ -222,6 +235,8 @@ export function CanvasSurface({ className }: { className?: string }) {
     current: { x: number; y: number };
   } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const spaceRef = useRef(false);
   const selected = new Set(selectedNodeIds);
 
   // Hydrate canvas content from IndexedDB on mount (once).
@@ -589,12 +604,41 @@ export function CanvasSurface({ className }: { className?: string }) {
     };
   }, [toWorld]);
 
+  // Space-key pan mode: track via ref for capture-phase handler (zero re-render
+  // cost per keypress); mirror into state only for cursor class changes.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      if (isEditableTarget(event.target)) return;
+      if (event.repeat) return;
+      spaceRef.current = true;
+      setSpaceHeld(true);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      spaceRef.current = false;
+      setSpaceHeld(false);
+    };
+    const onBlur = () => {
+      spaceRef.current = false;
+      setSpaceHeld(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const connectSource =
     gestureRef.current?.kind === "connect"
       ? nodeById.get(gestureRef.current.fromId)
       : null;
-  const gridSize = 24 * viewport.scale;
+  const gridSize = gridBackgroundSize(viewport.scale);
 
   return (
     <div
@@ -602,14 +646,36 @@ export function CanvasSurface({ className }: { className?: string }) {
       data-infinite-canvas="true"
       className={cn(
         "relative h-full w-full select-none overflow-hidden",
-        gestureActive ? "cursor-grabbing" : "cursor-grab",
+        gestureActive
+          ? "cursor-grabbing"
+          : spaceHeld
+            ? "cursor-grab"
+            : "cursor-grab",
         className,
       )}
-      style={{
-        backgroundImage:
-          "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
-        backgroundSize: `${gridSize}px ${gridSize}px`,
-        backgroundPosition: `${viewport.x % gridSize}px ${viewport.y % gridSize}px`,
+      style={
+        gridSize !== null
+          ? {
+              backgroundImage:
+                "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
+              backgroundSize: `${gridSize}px ${gridSize}px`,
+              backgroundPosition: `${viewport.x % gridSize}px ${viewport.y % gridSize}px`,
+            }
+          : undefined
+      }
+      onPointerDownCapture={(event) => {
+        // Space+left or middle-click: begin pan from anywhere (including over nodes).
+        if ((spaceRef.current && event.button === 0) || event.button === 1) {
+          setContextMenu(null);
+          event.preventDefault();
+          event.stopPropagation();
+          beginGesture(event, {
+            kind: "pan",
+            startX: event.clientX,
+            startY: event.clientY,
+            origin: getCanvasState().viewport,
+          });
+        }
       }}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
@@ -1239,6 +1305,57 @@ function CanvasToolbar({
               reader.readAsDataURL(file);
             }
             event.target.value = "";
+          }}
+        />
+      </label>
+      <ToolButton
+        label="导出画布"
+        onClick={() => {
+          const file = exportCanvas();
+          const json = JSON.stringify(file, null, 2);
+          const blob = new Blob([json], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const now = new Date();
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const filename = `nexu-canvas-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.json`;
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        }}
+      >
+        <Download size={14} />
+      </ToolButton>
+      <label
+        title="导入画布"
+        className="cursor-pointer rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+      >
+        <Upload size={14} />
+        <input
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const parsed = JSON.parse(
+                  String(reader.result),
+                ) as CanvasExportFile;
+                importCanvas(parsed);
+              } catch {
+                window.alert("导入失败：不是有效的画布文件");
+              }
+              event.target.value = "";
+            };
+            reader.onerror = () => {
+              window.alert("导入失败：不是有效的画布文件");
+              event.target.value = "";
+            };
+            reader.readAsText(file);
           }}
         />
       </label>
