@@ -64,6 +64,8 @@ export type CanvasNodeMetadata = {
     /** audio: playback speed, 0.5–2 */
     speed?: number;
   };
+  /** batch group: root carries childIds+expanded; children carry rootId. */
+  batch?: { childIds?: string[]; expanded?: boolean; rootId?: string };
   /** team-step: one step of a live team run (board card is the truth). */
   step?: {
     teamId: string;
@@ -431,13 +433,45 @@ export function removeNodes(ids: readonly string[]): void {
   if (ids.length === 0) return;
   recordHistory();
   const gone = new Set(ids);
+
+  // Batch cascade: when a root is removed, its children join the removal set.
+  // Root removal wins if both root and child are in the same call.
+  for (const node of state.nodes) {
+    if (gone.has(node.id) && node.metadata.batch?.childIds) {
+      for (const childId of node.metadata.batch.childIds) {
+        gone.add(childId);
+      }
+    }
+  }
+
+  // Cleanup a2ui payloads for deleted nodes
   for (const node of state.nodes) {
     if (gone.has(node.id) && node.metadata.surfaceId) {
       a2uiPayloads.delete(node.metadata.surfaceId);
     }
   }
+
+  // When a batch child is removed (but NOT its root), clean the root's childIds.
+  const survivingNodes = state.nodes
+    .filter((node) => !gone.has(node.id))
+    .map((node) => {
+      const childIds = node.metadata.batch?.childIds;
+      if (!childIds) return node;
+      const remaining = childIds.filter((childId) => !gone.has(childId));
+      if (remaining.length === childIds.length) return node;
+      // Root is surviving but some children were removed — clean childIds
+      const newBatch =
+        remaining.length > 0
+          ? { ...node.metadata.batch, childIds: remaining }
+          : undefined; // no children left → strip batch entirely
+      return {
+        ...node,
+        metadata: { ...node.metadata, batch: newBatch },
+      };
+    });
+
   setState({
-    nodes: state.nodes.filter((node) => !gone.has(node.id)),
+    nodes: survivingNodes,
     connections: state.connections.filter(
       (connection) =>
         !gone.has(connection.fromNodeId) && !gone.has(connection.toNodeId),
@@ -624,12 +658,45 @@ export function importCanvas(file: CanvasExportFile): void {
 
   // 1. Generate fresh ids for every imported node; build oldId→newId map.
   const idMap = new Map<string, string>();
+  // First pass: assign new ids so batch remapping has the full map.
+  for (const node of file.nodes) {
+    idMap.set(node.id, genId(node.type));
+  }
   const importedNodes: CanvasNode[] = file.nodes.map((node) => {
-    const newId = genId(node.type);
-    idMap.set(node.id, newId);
+    const newId = idMap.get(node.id) as string;
     // 2. Strip surfaceId — a2ui payloads are runtime singletons.
-    const { surfaceId: _stripped, ...restMeta } = node.metadata;
-    return { ...node, id: newId, metadata: restMeta };
+    const {
+      surfaceId: _stripped,
+      batch: rawBatch,
+      ...restMeta
+    } = node.metadata;
+
+    // 3. Remap batch fields through the id map; strip orphaned references.
+    let remappedBatch: CanvasNodeMetadata["batch"];
+    if (rawBatch) {
+      if (rawBatch.rootId !== undefined) {
+        // Child node: rootId must map to a node in the import set.
+        const newRootId = idMap.get(rawBatch.rootId);
+        remappedBatch = newRootId
+          ? { ...rawBatch, rootId: newRootId }
+          : undefined; // orphan: root not in file → strip
+      } else if (rawBatch.childIds !== undefined) {
+        // Root node: filter to only children that were imported.
+        const remappedChildIds = rawBatch.childIds
+          .map((cid) => idMap.get(cid))
+          .filter((cid): cid is string => cid !== undefined);
+        remappedBatch =
+          remappedChildIds.length > 0
+            ? { ...rawBatch, childIds: remappedChildIds }
+            : undefined;
+      }
+    }
+
+    const metadata: CanvasNodeMetadata = {
+      ...restMeta,
+      ...(remappedBatch !== undefined ? { batch: remappedBatch } : {}),
+    };
+    return { ...node, id: newId, metadata };
   });
 
   // 3. Remap connections through the map; drop any with unmapped endpoints.

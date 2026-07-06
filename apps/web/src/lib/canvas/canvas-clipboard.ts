@@ -47,7 +47,12 @@ let clipboard: ClipboardEntry | null = null;
 function deepCopyNode(node: CanvasNode): CanvasNode {
   // Omit surfaceId to prevent two nodes sharing the same a2ui payload
   // (a2ui payloads are keyed by surfaceId and deleted on node removal).
-  const { surfaceId: _omitted, ...metadata } = node.metadata;
+  // Omit batch so copied nodes become independent images (no group linkage).
+  const {
+    surfaceId: _omitted,
+    batch: _batchOmitted,
+    ...metadata
+  } = node.metadata;
   return {
     ...node,
     position: { ...node.position },
@@ -184,13 +189,15 @@ export function duplicateNodes(ids: readonly string[]): number {
   for (const src of srcNodes) {
     const newId = genId(src.type);
     idMap.set(src.id, newId);
+    // Strip surfaceId and batch so duplicates become independent nodes.
+    const { surfaceId: _s, batch: _b, ...cleanMeta } = src.metadata;
     const newNode = addNode({
       id: newId,
       type: src.type,
       title: src.title,
       position: { x: src.position.x + 36, y: src.position.y + 36 },
       size: { ...src.size },
-      metadata: { ...src.metadata },
+      metadata: { ...cleanMeta },
     });
     newNodes.push(newNode);
   }

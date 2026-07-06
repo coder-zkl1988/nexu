@@ -9,6 +9,7 @@ import {
   Maximize2,
   Redo2,
   SlidersHorizontal,
+  Star,
   Trash2,
   Type,
   Undo2,
@@ -25,6 +26,11 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import {
+  isHiddenBatchChild,
+  setBatchPrimary,
+  toggleBatchExpanded,
+} from "./canvas-batch";
 import {
   clipboardHasContent,
   copySelection,
@@ -397,6 +403,7 @@ export function CanvasSurface({ className }: { className?: string }) {
           .find(
             (node) =>
               node.id !== gesture.fromId &&
+              !isHiddenBatchChild(node, liveNodes) &&
               point.x >= node.position.x &&
               point.x <= node.position.x + node.size.width &&
               point.y >= node.position.y &&
@@ -444,9 +451,11 @@ export function CanvasSurface({ className }: { className?: string }) {
           const x2 = Math.max(box.start.x, box.current.x);
           const y1 = Math.min(box.start.y, box.current.y);
           const y2 = Math.max(box.start.y, box.current.y);
-          const hit = getCanvasState()
-            .nodes.filter(
+          const liveNodesMarquee = getCanvasState().nodes;
+          const hit = liveNodesMarquee
+            .filter(
               (node) =>
+                !isHiddenBatchChild(node, liveNodesMarquee) &&
                 node.position.x < x2 &&
                 node.position.x + node.size.width > x1 &&
                 node.position.y < y2 &&
@@ -850,24 +859,28 @@ export function CanvasSurface({ className }: { className?: string }) {
           ) : null}
         </svg>
 
-        {/* Nodes */}
-        {nodes.map((node) => (
-          <CanvasNodeView
-            key={node.id}
-            node={node}
-            selected={selected.has(node.id)}
-            onHeaderDown={beginNodeDrag}
-            onResizeDown={beginResize}
-            onConnectDown={beginConnect}
-          />
-        ))}
+        {/* Nodes — hidden batch children are skipped (collapsed group). */}
+        {nodes
+          .filter((node) => !isHiddenBatchChild(node, nodes))
+          .map((node) => (
+            <CanvasNodeView
+              key={node.id}
+              node={node}
+              selected={selected.has(node.id)}
+              onHeaderDown={beginNodeDrag}
+              onResizeDown={beginResize}
+              onConnectDown={beginConnect}
+            />
+          ))}
 
         {/* Per-node prompt panel — world-space, anchored under the selected node.
-            Visible iff exactly ONE node is selected and type ∈ {image, video, audio}. */}
+            Visible iff exactly ONE node is selected, type ∈ {image, video, audio},
+            and the node is not a hidden batch child. */}
         {selectedNodeIds.length === 1 &&
           (() => {
             const panelNode = nodeById.get(selectedNodeIds[0] as string);
             return panelNode &&
+              !isHiddenBatchChild(panelNode, nodes) &&
               (panelNode.type === "image" ||
                 panelNode.type === "video" ||
                 panelNode.type === "audio") ? (
@@ -999,6 +1012,14 @@ const CanvasNodeView = memo(function CanvasNodeView({
   const fullBleed =
     (node.type === "image" || node.type === "video") &&
     Boolean(node.metadata.content);
+
+  // Batch group state
+  const batchChildIds = node.metadata.batch?.childIds;
+  const isBatchRoot = batchChildIds !== undefined && batchChildIds.length > 0;
+  const isCollapsed = isBatchRoot && node.metadata.batch?.expanded === false;
+  const isBatchChild = node.metadata.batch?.rootId !== undefined;
+  const batchTotal = isBatchRoot ? batchChildIds.length + 1 : 0;
+
   return (
     <div
       data-canvas-node={node.id}
@@ -1022,6 +1043,30 @@ const CanvasNodeView = memo(function CanvasNodeView({
         }
       }}
     >
+      {/* Collapsed ghost: two decorative stacked cards behind the root */}
+      {isCollapsed ? (
+        <>
+          <div
+            data-canvas-batch-ghost="2"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-border bg-surface-2"
+            style={{
+              transform: "translate(6px, 6px) rotate(2deg)",
+              zIndex: -1,
+            }}
+          />
+          <div
+            data-canvas-batch-ghost="1"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-border bg-surface-2"
+            style={{
+              transform: "translate(12px, 12px) rotate(4deg)",
+              zIndex: -2,
+            }}
+          />
+        </>
+      ) : null}
+
       <div
         className="flex shrink-0 cursor-move items-center justify-between gap-2 rounded-t-[14px] border-b border-border bg-surface-2/60 px-3 py-1.5"
         onPointerDown={(event) => onHeaderDown(event, node.id)}
@@ -1030,6 +1075,32 @@ const CanvasNodeView = memo(function CanvasNodeView({
           {node.title}
         </span>
         <div className="flex shrink-0 items-center gap-0.5">
+          {/* Batch child: promote-to-primary star */}
+          {isBatchChild ? (
+            <button
+              type="button"
+              aria-label="set as primary"
+              data-canvas-batch-primary={node.id}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setBatchPrimary(node.id)}
+              className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+            >
+              <Star size={12} />
+            </button>
+          ) : null}
+          {/* Batch root: toggle expand/collapse badge */}
+          {isBatchRoot ? (
+            <button
+              type="button"
+              aria-label="toggle batch group"
+              data-canvas-batch-toggle={node.id}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => toggleBatchExpanded(node.id)}
+              className="rounded px-1 py-0.5 text-[10px] font-medium text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+            >
+              ×{batchTotal}
+            </button>
+          ) : null}
           {(node.type === "image" || node.type === "video") &&
           Boolean(node.metadata.content) ? (
             <button

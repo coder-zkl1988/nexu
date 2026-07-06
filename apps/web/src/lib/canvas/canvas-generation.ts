@@ -12,6 +12,7 @@ import {
   postApiV1MediaGenerateImage,
   postApiV1MediaGenerateVideo,
 } from "../../../lib/api/sdk.gen";
+import { attachBatchChildren } from "./canvas-batch";
 import { getCanvasState, setNodeTask, updateNode } from "./canvas-store";
 
 // ── Image ──────────────────────────────────────────────────────
@@ -67,12 +68,14 @@ export async function generateImageIntoNode(
       return false;
     }
 
-    // T6: batch fan-out — when items.length > 1, only the first item is set here;
-    // batch grouping will be handled in task T6.
-    updateNode(nodeId, {
-      title: prompt.slice(0, 30),
-      metadata: { content: data.url },
-    });
+    // T6: batch fan-out — image only. attachBatchChildren owns root content
+    // and child creation for multi-item results; single-item path is preserved.
+    updateNode(nodeId, { title: prompt.slice(0, 30) });
+    if (data.items && data.items.length > 1) {
+      attachBatchChildren(nodeId, data.items);
+    } else {
+      updateNode(nodeId, { metadata: { content: data.url } });
+    }
     setNodeTask(nodeId, null);
     return true;
   } catch {
@@ -137,8 +140,7 @@ export async function generateVideoIntoNode(
       return false;
     }
 
-    // T6: batch fan-out — when items.length > 1, only the first item is set here;
-    // batch grouping will be handled in task T6.
+    // Video and audio stay single-result (no batch fan-out).
     updateNode(nodeId, {
       title: prompt.slice(0, 30),
       metadata: { content: data.url },
@@ -200,8 +202,7 @@ export async function generateAudioIntoNode(
       return false;
     }
 
-    // T6: batch fan-out — when items.length > 1, only the first item is set here;
-    // batch grouping will be handled in task T6.
+    // Audio stays single-result (no batch fan-out).
     updateNode(nodeId, {
       title: prompt.slice(0, 30),
       metadata: { content: data.url },
