@@ -6324,6 +6324,8 @@ export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesBySched
 export type PostApiV1MediaGenerateImageData = {
     body?: {
         prompt: string;
+        referenceImages?: Array<string>;
+        count?: number;
     };
     path?: never;
     query?: never;
@@ -6331,6 +6333,12 @@ export type PostApiV1MediaGenerateImageData = {
 };
 
 export type PostApiV1MediaGenerateImageErrors = {
+    /**
+     * Invalid reference image path
+     */
+    400: {
+        message: string;
+    };
     /**
      * Generation failed or timed out
      */
@@ -6348,10 +6356,90 @@ export type PostApiV1MediaGenerateImageResponses = {
     200: {
         url: string;
         path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
     };
 };
 
 export type PostApiV1MediaGenerateImageResponse = PostApiV1MediaGenerateImageResponses[keyof PostApiV1MediaGenerateImageResponses];
+
+export type PostApiV1MediaGenerateVideoData = {
+    body?: {
+        prompt: string;
+        durationSeconds?: number;
+        resolution?: '720p' | '1080p';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-video';
+};
+
+export type PostApiV1MediaGenerateVideoErrors = {
+    /**
+     * Generation failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateVideoError = PostApiV1MediaGenerateVideoErrors[keyof PostApiV1MediaGenerateVideoErrors];
+
+export type PostApiV1MediaGenerateVideoResponses = {
+    /**
+     * Video generated and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaGenerateVideoResponse = PostApiV1MediaGenerateVideoResponses[keyof PostApiV1MediaGenerateVideoResponses];
+
+export type PostApiV1MediaGenerateAudioData = {
+    body?: {
+        prompt: string;
+        voice?: string;
+        speed?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-audio';
+};
+
+export type PostApiV1MediaGenerateAudioErrors = {
+    /**
+     * Generation failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateAudioError = PostApiV1MediaGenerateAudioErrors[keyof PostApiV1MediaGenerateAudioErrors];
+
+export type PostApiV1MediaGenerateAudioResponses = {
+    /**
+     * Audio generated and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaGenerateAudioResponse = PostApiV1MediaGenerateAudioResponses[keyof PostApiV1MediaGenerateAudioResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

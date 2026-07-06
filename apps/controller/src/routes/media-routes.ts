@@ -2,12 +2,19 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
+  generateAudioRequestSchema,
+  generateAudioResponseSchema,
   generateImageRequestSchema,
   generateImageResponseSchema,
+  generateVideoRequestSchema,
+  generateVideoResponseSchema,
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
 import { mediaCacheDir, mediaCachePathFor } from "../lib/media-cache.js";
-import { ImageGenerationFailedError } from "../services/media-generation-service.js";
+import {
+  ImageGenerationFailedError,
+  InvalidMediaReferenceError,
+} from "../services/media-generation-service.js";
 import type { ControllerBindings } from "../types.js";
 
 const MEDIA_EXTENSION_MIME: Record<string, string> = {
@@ -44,6 +51,12 @@ export function registerMediaRoutes(
           },
           description: "Image generated and servable via /media/state-file",
         },
+        400: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "Invalid reference image path",
+        },
         502: {
           content: {
             "application/json": { schema: z.object({ message: z.string() }) },
@@ -57,6 +70,59 @@ export function registerMediaRoutes(
       try {
         const result = await container.mediaGenerationService.generateImage({
           prompt: input.prompt,
+          referenceImages: input.referenceImages,
+          count: input.count,
+        });
+        return c.json(result, 200);
+      } catch (error) {
+        if (error instanceof InvalidMediaReferenceError) {
+          return c.json({ message: error.message }, 400);
+        }
+        if (error instanceof ImageGenerationFailedError) {
+          return c.json({ message: error.message }, 502);
+        }
+        throw error;
+      }
+    },
+  );
+
+  // POST /api/v1/media/generate-video — UNAVAILABLE-first video generation.
+  // Ships before a video backend skill lands; when an official skill lands
+  // it lights up with zero code change (same contract pattern as image).
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/media/generate-video",
+      tags: ["Media"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: generateVideoRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: generateVideoResponseSchema },
+          },
+          description: "Video generated and servable via /media/state-file",
+        },
+        502: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "Generation failed or timed out (including UNAVAILABLE)",
+        },
+      },
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      try {
+        const result = await container.mediaGenerationService.generateVideo({
+          prompt: input.prompt,
+          durationSeconds: input.durationSeconds,
+          resolution: input.resolution,
         });
         return c.json(result, 200);
       } catch (error) {
@@ -67,6 +133,53 @@ export function registerMediaRoutes(
       }
     },
   );
+
+  // POST /api/v1/media/generate-audio — UNAVAILABLE-first audio/TTS generation.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/media/generate-audio",
+      tags: ["Media"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: generateAudioRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: generateAudioResponseSchema },
+          },
+          description: "Audio generated and servable via /media/state-file",
+        },
+        502: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "Generation failed or timed out (including UNAVAILABLE)",
+        },
+      },
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      try {
+        const result = await container.mediaGenerationService.generateAudio({
+          prompt: input.prompt,
+          voice: input.voice,
+          speed: input.speed,
+        });
+        return c.json(result, 200);
+      } catch (error) {
+        if (error instanceof ImageGenerationFailedError) {
+          return c.json({ message: error.message }, 502);
+        }
+        throw error;
+      }
+    },
+  );
+
   // Serves media files referenced by chat transcripts (user uploads under
   // media/inbound, generated images under media/tool-image-generation, …).
   // Plain app.get like the screenshots route below: the response is binary
