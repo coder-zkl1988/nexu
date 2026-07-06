@@ -439,6 +439,9 @@ function WorkspaceLayoutContent() {
   const SIDEBAR_MAX = 320;
   const SIDEBAR_DEFAULT = 192;
   const MAIN_MIN = 500;
+  // One-click canvas expand leaves the chat column a bit roomier than the
+  // hard drag floor so the composer stays comfortable.
+  const MAIN_MIN_MAXIMIZED = 600;
   const RIGHT_SIDEBAR_MIN = 320;
   // Loose hard cap — the effective limit is keeping the chat area >= MAIN_MIN.
   const RIGHT_SIDEBAR_MAX = 2400;
@@ -461,7 +464,7 @@ function WorkspaceLayoutContent() {
   });
   const isRightResizing = useRef(false);
   // One-click workbench expand: grow the canvas until the chat main area is
-  // exactly MAIN_MIN wide; toggling back restores the previous width.
+  // exactly MAIN_MIN_MAXIMIZED wide; toggling back restores the previous width.
   const [rightSidebarMaximized, setRightSidebarMaximized] = useState(false);
   const preMaximizeWidthRef = useRef(RIGHT_SIDEBAR_DEFAULT);
   const toggleRightSidebarMaximize = useCallback(() => {
@@ -473,7 +476,10 @@ function WorkspaceLayoutContent() {
       preMaximizeWidthRef.current = rightSidebarWidth;
       const leftWidth = collapsed ? 0 : sidebarWidth;
       setRightSidebarWidth(
-        Math.max(RIGHT_SIDEBAR_MIN, window.innerWidth - leftWidth - MAIN_MIN),
+        Math.max(
+          RIGHT_SIDEBAR_MIN,
+          window.innerWidth - leftWidth - MAIN_MIN_MAXIMIZED,
+        ),
       );
       return true;
     });
