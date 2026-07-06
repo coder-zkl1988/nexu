@@ -5,6 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import {
   parseImageResponse,
+  readImageCreditState,
   readOpenclawConfig,
   resolveLinkCredential,
   resolveOutputPath,
@@ -95,6 +96,80 @@ test("resolveLinkCredential falls back to tabby-image-free", () => {
   };
   const result = resolveLinkCredential(config);
   assert.equal(result.model, "tabby-image-free");
+});
+
+test("readImageCreditState defaults to true when the state file is missing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  assert.equal(readImageCreditState(dir), true);
+});
+
+test("readImageCreditState defaults to true on unparsable JSON", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  fs.writeFileSync(
+    path.join(dir, "nexu-account-credit-state.json"),
+    "{not json",
+  );
+  assert.equal(readImageCreditState(dir), true);
+});
+
+test("readImageCreditState returns false when hasBalance is false", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  fs.writeFileSync(
+    path.join(dir, "nexu-account-credit-state.json"),
+    JSON.stringify({ hasBalance: false }),
+  );
+  assert.equal(readImageCreditState(dir), false);
+});
+
+test("readImageCreditState returns true when hasBalance is true", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  fs.writeFileSync(
+    path.join(dir, "nexu-account-credit-state.json"),
+    JSON.stringify({ hasBalance: true }),
+  );
+  assert.equal(readImageCreditState(dir), true);
+});
+
+test("resolveLinkCredential falls back to tabby-image-free when the account has no balance, even though tabby-image is available", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  fs.writeFileSync(
+    path.join(dir, "nexu-account-credit-state.json"),
+    JSON.stringify({ hasBalance: false }),
+  );
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://x/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-image" }, { id: "tabby-image-free" }],
+        },
+      },
+    },
+  };
+  const result = resolveLinkCredential(config, dir);
+  assert.equal(result.model, "tabby-image-free");
+});
+
+test("resolveLinkCredential still uses tabby-image with no balance when tabby-image-free isn't on the account", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  fs.writeFileSync(
+    path.join(dir, "nexu-account-credit-state.json"),
+    JSON.stringify({ hasBalance: false }),
+  );
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://x/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-image" }],
+        },
+      },
+    },
+  };
+  const result = resolveLinkCredential(config, dir);
+  assert.equal(result.model, "tabby-image");
 });
 
 test("parseImageResponse returns a b64 payload when present", () => {

@@ -81,7 +81,7 @@ async function main() {
   let credential;
   try {
     const config = readOpenclawConfig(process.env.OPENCLAW_STATE_DIR);
-    credential = resolveLinkCredential(config);
+    credential = resolveLinkCredential(config, process.env.OPENCLAW_STATE_DIR);
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);

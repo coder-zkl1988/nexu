@@ -28,11 +28,32 @@ export function readOpenclawConfig(stateDir) {
 }
 
 /**
+ * Reads the free-vs-paid routing signal the Nexu controller writes to
+ * `$OPENCLAW_STATE_DIR/nexu-account-credit-state.json` (refreshed on the same
+ * cadence as the account's cloud model list). Defaults to true — prefer the
+ * paid model — when the file is missing or unreadable, so a transient read
+ * failure doesn't force every user onto the free tier.
+ */
+export function readImageCreditState(stateDir) {
+  try {
+    const raw = fs.readFileSync(
+      path.join(stateDir, "nexu-account-credit-state.json"),
+      "utf8",
+    );
+    const parsed = JSON.parse(raw);
+    return parsed?.hasBalance !== false;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Pick the tabby-image credential and model id out of an already-parsed
  * openclaw.json config object. Prefers "tabby-image" over "tabby-image-free"
- * when both are present on the account.
+ * when both are present on the account and the account has credit balance;
+ * falls back to "tabby-image-free" when the balance is exhausted.
  */
-export function resolveLinkCredential(config) {
+export function resolveLinkCredential(config, stateDir) {
   const link = config?.models?.providers?.link;
   if (!link || typeof link.apiKey !== "string" || link.apiKey.length === 0) {
     throw new Error(
@@ -46,7 +67,11 @@ export function resolveLinkCredential(config) {
   }
 
   const availableIds = new Set((link.models || []).map((m) => m.id));
-  const model = IMAGE_MODEL_IDS.find((id) => availableIds.has(id));
+  const hasBalance = readImageCreditState(stateDir);
+  const preferredOrder = hasBalance
+    ? IMAGE_MODEL_IDS
+    : [...IMAGE_MODEL_IDS].reverse();
+  const model = preferredOrder.find((id) => availableIds.has(id));
   if (!model) {
     throw new Error(
       "NO_IMAGE_MODEL: Your Tabby account does not have access to the tabby-image model.",
