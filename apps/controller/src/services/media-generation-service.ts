@@ -55,7 +55,9 @@ export type MediaGenerationServiceOptions = {
    * script, poll it) on top of model time — allow several minutes. */
   timeoutMs?: number;
   /** Per-kind timeout overrides. Takes precedence over timeoutMs for image. */
-  timeoutMsByKind?: Partial<Record<"image" | "video" | "audio", number>>;
+  timeoutMsByKind?: Partial<
+    Record<"image" | "video" | "audio" | "enhance", number>
+  >;
 };
 
 type MediaKind = "image" | "video" | "audio";
@@ -112,7 +114,7 @@ export type DescribeMediaResult = { prompt: string };
 
 export class MediaGenerationService {
   private readonly pollIntervalMs: number;
-  private readonly timeoutMsByKind: Record<MediaKind, number>;
+  private readonly timeoutMsByKind: Record<MediaKind | "enhance", number>;
 
   constructor(
     private readonly deps: MediaGenerationServiceDeps,
@@ -124,6 +126,7 @@ export class MediaGenerationService {
       image: options.timeoutMsByKind?.image ?? base,
       video: options.timeoutMsByKind?.video ?? 480_000,
       audio: options.timeoutMsByKind?.audio ?? 240_000,
+      enhance: options.timeoutMsByKind?.enhance ?? 480_000,
     };
     // Back-compat: if timeoutMs was set, let it override image unless kind-specific set.
     if (
@@ -263,7 +266,7 @@ export class MediaGenerationService {
     distance?: number;
     wideAngle?: boolean;
     prompt?: string;
-  }): Promise<GenerateMediaResult> {
+  }): Promise<EnhanceMediaResult> {
     const mediaRoot = path.resolve(this.deps.openclawStateDir, "media");
     await this.validateMediaReference(input.sourceImage, mediaRoot);
 
@@ -307,7 +310,7 @@ export class MediaGenerationService {
 
     // Enhance can be slow; use the video timeout (480_000 default) as it is
     // sized for long-running generation-class tasks.
-    const enhanceTimeoutMs = this.timeoutMsByKind.video;
+    const enhanceTimeoutMs = this.timeoutMsByKind.enhance;
     const reply = await this.awaitLaneReplyWithTimeout(
       botId,
       sessionKey,
