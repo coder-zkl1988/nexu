@@ -221,6 +221,8 @@ describe("MediaGenerationService", () => {
     const message = (sendChat.mock.calls[0]?.[0] as { message: string })
       .message;
     expect(message).toContain("2");
+    expect(message).toContain("2 times");
+    expect(message).not.toContain("once with this prompt.");
 
     expect(result.items).toHaveLength(2);
     expect(result.url).toBe(result.items[0]?.url);
@@ -231,6 +233,20 @@ describe("MediaGenerationService", () => {
     const out1 = makeMediaFile("tool-image-generation/a.png");
     // second path is not under media dir → gets dropped, but ≥1 remains
     readAssistantReply.mockResolvedValue(`${out1}\n/etc/not-media/b.png`);
+
+    const result = await buildService().generateImage({
+      prompt: "cats",
+      count: 2,
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.path).toBe(out1);
+  });
+
+  it("deduplicates repeated valid paths in reply", async () => {
+    const out1 = makeMediaFile("tool-image-generation/a.png");
+    // Same path repeated twice with count=2 → deduped to 1 item
+    readAssistantReply.mockResolvedValue(`${out1}\n${out1}`);
 
     const result = await buildService().generateImage({
       prompt: "cats",

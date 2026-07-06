@@ -171,7 +171,11 @@ export class MediaGenerationService {
       count === 1
         ? "1. If the image_generate tool is in your toolset, call it exactly"
         : `1. If the image_generate tool is in your toolset, call it exactly ${count} times (or once with count ${count} if the tool supports it)`,
-      "   once with this prompt.",
+    );
+    if (count === 1) {
+      lines.push("   once with this prompt.");
+    }
+    lines.push(
       "2. Otherwise use the official tabby-image skill (its script prints a",
       "   MEDIA: <absolute-path> line; the file lands under the media dir).",
       '3. If neither works, reply with ONLY the word "UNAVAILABLE" — no',
@@ -358,6 +362,7 @@ export class MediaGenerationService {
       count !== undefined ? candidates.slice(0, count) : candidates;
 
     const validItems: GeneratedMediaItem[] = [];
+    const seenPaths = new Set<string>();
     for (const candidate of capped) {
       const resolved = path.resolve(candidate);
       const relative = path.relative(mediaRoot, resolved);
@@ -365,8 +370,13 @@ export class MediaGenerationService {
         // Skip paths outside media dir (don't throw — ≥1 valid path rule).
         continue;
       }
+      if (seenPaths.has(resolved)) {
+        // Skip duplicate path.
+        continue;
+      }
       try {
         await access(resolved);
+        seenPaths.add(resolved);
         validItems.push({
           path: resolved,
           url: `/api/v1/media/state-file?path=${encodeURIComponent(resolved)}`,
