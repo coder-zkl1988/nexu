@@ -1,0 +1,252 @@
+/**
+ * resource-references.test.ts
+ *
+ * W2.1 — Upstream resource collection for generation inputs.
+ * Plain Node env — no jsdom, no DOM events.
+ * All assertions work against canvas-store state directly.
+ *
+ * BFS semantics (exact per brief):
+ *  - Incoming edges (connections whose toNodeId === starting node)
+ *  - Level-by-level (direct parents first, then grandparents, etc.)
+ *  - Within a level: order connections appear in state.connections
+ *  - Dedupe visited node ids; cycle-safe (visited set)
+ *  - Starting node itself is NOT included
+ *
+ * Type mapping:
+ *  - text with non-empty trimmed content → prompts
+ *  - image with non-empty content → images
+ *  - video → videos
+ *  - audio → audios
+ *  - a2ui / team-step → nothing (but their ancestors still traversed)
+ */
+
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  __resetCanvasForTests,
+  addNode,
+  connectNodes,
+} from "../src/lib/canvas/canvas-store";
+import {
+  collectUpstream,
+  hasUpstream,
+} from "../src/lib/canvas/resource-references";
+
+// Minimal localStorage polyfill (matches other canvas tests).
+if (typeof globalThis.localStorage === "undefined") {
+  const store = new Map<string, string>();
+  globalThis.localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => {
+      store.clear();
+    },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
+}
+
+beforeEach(() => {
+  __resetCanvasForTests();
+});
+
+describe("collectUpstream", () => {
+  it("a. chain: text A → image B → target C (transitive)", () => {
+    const A = addNode({
+      type: "text",
+      title: "A",
+      metadata: { content: "hello" },
+    });
+    const B = addNode({
+      type: "image",
+      title: "B",
+      metadata: { content: "data:image/png;base64,abc" },
+    });
+    const C = addNode({ type: "text", title: "C" });
+    connectNodes(A.id, B.id); // A → B
+    connectNodes(B.id, C.id); // B → C
+
+    const result = collectUpstream(C.id);
+
+    // B is direct upstream, A is transitive
+    expect(result.prompts).toEqual(["hello"]);
+    expect(result.images).toEqual(["data:image/png;base64,abc"]);
+    expect(result.videos).toEqual([]);
+    expect(result.audios).toEqual([]);
+  });
+
+  it("b. fork: image X and image Y both → target (both images, connections-array order)", () => {
+    const X = addNode({
+      type: "image",
+      title: "X",
+      metadata: { content: "img-x" },
+    });
+    const Y = addNode({
+      type: "image",
+      title: "Y",
+      metadata: { content: "img-y" },
+    });
+    const T = addNode({ type: "text", title: "T" });
+    connectNodes(X.id, T.id); // X → T  (first in connections array)
+    connectNodes(Y.id, T.id); // Y → T  (second in connections array)
+
+    const result = collectUpstream(T.id);
+
+    expect(result.images).toEqual(["img-x", "img-y"]);
+  });
+
+  it("c. level order: direct first — D direct, E transitive (E→D→target)", () => {
+    const E = addNode({
+      type: "image",
+      title: "E",
+      metadata: { content: "img-e" },
+    });
+    const D = addNode({
+      type: "image",
+      title: "D",
+      metadata: { content: "img-d" },
+    });
+    const T = addNode({ type: "text", title: "T" });
+    connectNodes(E.id, D.id); // E → D
+    connectNodes(D.id, T.id); // D → T (direct)
+
+    const result = collectUpstream(T.id);
+
+    // Direct first: D (level 1), then E (level 2)
+    expect(result.images).toEqual(["img-d", "img-e"]);
+  });
+
+  it("d. cycle: A→B, B→A, B→target — terminates; each counted once", () => {
+    const A = addNode({
+      type: "text",
+      title: "A",
+      metadata: { content: "text-a" },
+    });
+    const B = addNode({
+      type: "text",
+      title: "B",
+      metadata: { content: "text-b" },
+    });
+    const T = addNode({ type: "text", title: "T" });
+    connectNodes(A.id, B.id); // A → B
+    connectNodes(B.id, A.id); // B → A  (creates a cycle)
+    connectNodes(B.id, T.id); // B → T
+
+    // Must not throw/hang, and both A and B counted exactly once
+    const result = collectUpstream(T.id);
+
+    expect(result.prompts).toContain("text-b"); // B is direct
+    expect(result.prompts).toContain("text-a"); // A is transitive
+    expect(result.prompts).toHaveLength(2); // dedupe: each once
+  });
+
+  it("e. empty/whitespace content is skipped; a2ui contributes nothing but its upstream is traversed", () => {
+    const text = addNode({
+      type: "text",
+      title: "Prefix",
+      metadata: { content: "  " }, // whitespace only → skipped
+    });
+    const realText = addNode({
+      type: "text",
+      title: "Real",
+      metadata: { content: "  actual  " }, // non-empty after trim
+    });
+    const a2uiNode = addNode({
+      type: "a2ui",
+      title: "A2UI",
+      metadata: { surfaceId: "s1" },
+    });
+    const T = addNode({ type: "text", title: "T" });
+    connectNodes(text.id, a2uiNode.id); // text → a2ui (whitespace text, skipped)
+    connectNodes(realText.id, a2uiNode.id); // realText → a2ui
+    connectNodes(a2uiNode.id, T.id); // a2ui → T
+
+    const result = collectUpstream(T.id);
+
+    // a2ui itself contributes nothing
+    // whitespace text is skipped
+    // realText's trimmed content is included
+    expect(result.prompts).toEqual(["  actual  "]); // content pushed as-is (not trimmed)
+    expect(result.images).toEqual([]);
+  });
+
+  it("e. team-step node contributes nothing; its upstream is still traversed", () => {
+    const img = addNode({
+      type: "image",
+      title: "Img",
+      metadata: { content: "img-data" },
+    });
+    const step = addNode({ type: "team-step", title: "Step" });
+    const T = addNode({ type: "text", title: "T" });
+    connectNodes(img.id, step.id); // img → team-step
+    connectNodes(step.id, T.id); // team-step → T
+
+    const result = collectUpstream(T.id);
+
+    // team-step contributes nothing, but img (its upstream) is included
+    expect(result.images).toEqual(["img-data"]);
+  });
+
+  it("a. video and audio nodes populate their respective arrays", () => {
+    const vid = addNode({
+      type: "video",
+      title: "V",
+      metadata: { content: "video-url" },
+    });
+    const aud = addNode({
+      type: "audio",
+      title: "A",
+      metadata: { content: "audio-url" },
+    });
+    const T = addNode({ type: "text", title: "T" });
+    connectNodes(vid.id, T.id);
+    connectNodes(aud.id, T.id);
+
+    const result = collectUpstream(T.id);
+
+    expect(result.videos).toEqual(["video-url"]);
+    expect(result.audios).toEqual(["audio-url"]);
+    expect(result.prompts).toEqual([]);
+    expect(result.images).toEqual([]);
+  });
+
+  it("no upstream returns empty buckets", () => {
+    const lone = addNode({ type: "text", title: "Lone" });
+
+    const result = collectUpstream(lone.id);
+
+    expect(result.prompts).toEqual([]);
+    expect(result.images).toEqual([]);
+    expect(result.videos).toEqual([]);
+    expect(result.audios).toEqual([]);
+  });
+});
+
+describe("hasUpstream", () => {
+  it("returns false for a node with no incoming connections", () => {
+    const lone = addNode({ type: "text", title: "Lone" });
+    expect(hasUpstream(lone.id)).toBe(false);
+  });
+
+  it("returns true for a node with an incoming connection", () => {
+    const src = addNode({ type: "image", title: "Src" });
+    const dst = addNode({ type: "text", title: "Dst" });
+    connectNodes(src.id, dst.id);
+
+    expect(hasUpstream(dst.id)).toBe(true);
+  });
+
+  it("returns false for source node (only outgoing connection)", () => {
+    const src = addNode({ type: "image", title: "Src" });
+    const dst = addNode({ type: "text", title: "Dst" });
+    connectNodes(src.id, dst.id);
+
+    expect(hasUpstream(src.id)).toBe(false);
+  });
+});
