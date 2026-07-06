@@ -256,6 +256,13 @@ describe("CanvasSurface", () => {
     expect(markup).not.toContain("data-canvas-context-menu");
   });
 
+  it("connect menu is NOT in default markup (closed-by-default contract)", () => {
+    addNode({ type: "text", title: "节点" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // The connect menu only appears after a connect-drop on empty canvas.
+    expect(markup).not.toContain("data-canvas-connect-menu");
+  });
+
   it("renders all four corner resize handles for a node", () => {
     addNode({ type: "text", title: "节点" });
     const markup = renderToStaticMarkup(<CanvasSurface />);

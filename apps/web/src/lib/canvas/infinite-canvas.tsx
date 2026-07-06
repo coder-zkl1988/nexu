@@ -30,6 +30,7 @@ import {
   duplicateNodes,
   pasteClipboard,
 } from "./canvas-clipboard";
+import { createConnectedNode } from "./canvas-create";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import { ingestFilesAsNodes, ingestTextAsNode } from "./canvas-ingest";
 import {
@@ -200,6 +201,14 @@ type ContextMenuState =
       worldPoint: { x: number; y: number };
     };
 
+type ConnectMenuState = {
+  fromId: string;
+  screenX: number;
+  screenY: number;
+  worldX: number;
+  worldY: number;
+};
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -235,6 +244,7 @@ export function CanvasSurface({ className }: { className?: string }) {
     current: { x: number; y: number };
   } | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [connectMenu, setConnectMenu] = useState<ConnectMenuState | null>(null);
   const spaceRef = useRef(false);
   const selected = new Set(selectedNodeIds);
 
@@ -357,6 +367,29 @@ export function CanvasSurface({ className }: { className?: string }) {
             // Edges carry data: e.g. image → XHS editor feeds the post image.
             applyConnectionEffects(source, target);
           }
+        } else {
+          // No target node hit — open the create-node menu at the drop point.
+          const rect = containerRef.current?.getBoundingClientRect();
+          let screenX = event.clientX - (rect?.left ?? 0);
+          let screenY = event.clientY - (rect?.top ?? 0);
+          const menuWidth = 160;
+          const menuHeight = 170;
+          const minOffset = 8;
+          screenX = Math.max(
+            minOffset,
+            Math.min(screenX, (rect?.width ?? 0) - menuWidth - minOffset),
+          );
+          screenY = Math.max(
+            minOffset,
+            Math.min(screenY, (rect?.height ?? 0) - menuHeight - minOffset),
+          );
+          setConnectMenu({
+            fromId: gesture.fromId,
+            screenX,
+            screenY,
+            worldX: point.x,
+            worldY: point.y,
+          });
         }
         return;
       }
@@ -522,6 +555,7 @@ export function CanvasSurface({ className }: { className?: string }) {
       } else if (event.key === "Escape") {
         clearSelection();
         setContextMenu(null);
+        setConnectMenu(null);
       }
     };
 
@@ -658,6 +692,7 @@ export function CanvasSurface({ className }: { className?: string }) {
         // Space+left or middle-click: begin pan from anywhere (including over nodes).
         if ((spaceRef.current && event.button === 0) || event.button === 1) {
           setContextMenu(null);
+          setConnectMenu(null);
           event.preventDefault();
           event.stopPropagation();
           beginGesture(event, {
@@ -744,8 +779,9 @@ export function CanvasSurface({ className }: { className?: string }) {
         }
       }}
       onPointerDown={(event) => {
-        // Close context menu on any pointerdown on the container background
+        // Close context menu and connect menu on any pointerdown on the container background
         setContextMenu(null);
+        setConnectMenu(null);
         if (event.button !== 0) return;
         if (event.metaKey || event.ctrlKey) {
           const start = toWorld(event.clientX, event.clientY);
@@ -889,6 +925,49 @@ export function CanvasSurface({ className }: { className?: string }) {
               }}
             />
           )}
+        </div>
+      ) : null}
+
+      {/* Connect menu — screen-space, outside the transform layer */}
+      {connectMenu ? (
+        <div
+          data-canvas-connect-menu="true"
+          className="absolute z-50 min-w-[140px] rounded-lg border border-border bg-surface-1/95 py-1 shadow-md"
+          style={{ left: connectMenu.screenX, top: connectMenu.screenY }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {(
+            [
+              { type: "text", icon: <Type size={14} />, label: "文本" },
+              { type: "image", icon: <ImagePlus size={14} />, label: "图片" },
+              {
+                type: "video",
+                icon: <Clapperboard size={14} />,
+                label: "视频",
+              },
+              {
+                type: "audio",
+                icon: <AudioLines size={14} />,
+                label: "音频",
+              },
+            ] as const
+          ).map(({ type, icon, label }) => (
+            <button
+              key={type}
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary hover:bg-surface-2"
+              onClick={() => {
+                createConnectedNode(connectMenu.fromId, type, {
+                  x: connectMenu.worldX,
+                  y: connectMenu.worldY,
+                });
+                setConnectMenu(null);
+              }}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
         </div>
       ) : null}
     </div>
