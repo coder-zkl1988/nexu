@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { A2UIMessage } from "../a2ui/a2ui-types";
+import type { PersistedCanvas } from "./canvas-persistence";
+import { getActiveStorage } from "./canvas-persistence";
 
 /**
  * Canvas v2 store — the workbench's single source of truth (design doc
@@ -88,6 +90,8 @@ export const NODE_DEFAULT_SIZES: Record<
 const HISTORY_LIMIT = 50;
 const HISTORY_DEBOUNCE_MS = 400;
 const GEOMETRY_STORAGE_KEY = "nexu:canvas:sidebar:v2";
+const PERSIST_DEBOUNCE_MS = 600;
+const SIDEBAR_BOARD_ID = "sidebar";
 
 type HistoryEntry = Pick<CanvasState, "nodes" | "connections">;
 
@@ -108,6 +112,12 @@ const history: { past: HistoryEntry[]; future: HistoryEntry[] } = {
 let historyTimer: ReturnType<typeof setTimeout> | null = null;
 let historyBase: HistoryEntry | null = null;
 
+// Persistence state
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let persistResolvers: Array<() => void> = [];
+let isHydrating = false;
+let hydratedOnce = false;
+
 /** A2UI payloads (messages + action closures) — runtime only, never serialized. */
 const a2uiPayloads = new Map<
   string,
@@ -122,8 +132,39 @@ function emit(): void {
 }
 
 function setState(patch: Partial<CanvasState>): void {
+  const prevNodes = state.nodes;
+  const prevConnections = state.connections;
   state = { ...state, ...patch };
   emit();
+  // Schedule a trailing-debounce persist when content changes (not during hydration)
+  if (
+    !isHydrating &&
+    (state.nodes !== prevNodes || state.connections !== prevConnections)
+  ) {
+    schedulePersist();
+  }
+}
+
+function schedulePersist(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+  }
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    const resolvers = persistResolvers;
+    persistResolvers = [];
+    const snapshot: PersistedCanvas = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      nodes: state.nodes,
+      connections: state.connections,
+    };
+    void getActiveStorage()
+      .save(SIDEBAR_BOARD_ID, snapshot)
+      .finally(() => {
+        for (const resolve of resolvers) resolve();
+      });
+  }, PERSIST_DEBOUNCE_MS);
 }
 
 function snapshot(): HistoryEntry {
@@ -524,8 +565,97 @@ export function __resetCanvasForTests(): void {
     clearTimeout(viewportPersistTimer);
     viewportPersistTimer = null;
   }
+  // Reset persistence state
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  persistResolvers = [];
+  isHydrating = false;
+  hydratedOnce = false;
   a2uiPayloads.clear();
   emit();
+}
+
+/**
+ * Flush any pending debounced save immediately (tests only).
+ * Returns a promise that resolves after the save completes.
+ */
+export function __flushCanvasPersistForTests(): Promise<void> {
+  if (!persistTimer) {
+    // No pending timer — either already flushed or nothing changed
+    return Promise.resolve();
+  }
+  clearTimeout(persistTimer);
+  persistTimer = null;
+  return new Promise<void>((resolve) => {
+    persistResolvers.push(resolve);
+    const snapshot: PersistedCanvas = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      nodes: state.nodes,
+      connections: state.connections,
+    };
+    void getActiveStorage()
+      .save(SIDEBAR_BOARD_ID, snapshot)
+      .finally(() => {
+        const resolvers = persistResolvers;
+        persistResolvers = [];
+        for (const r of resolvers) r();
+      });
+  });
+}
+
+/**
+ * Hydrate canvas nodes/connections from storage.
+ * - Module-level guard: only first call does work (React StrictMode double-mount safety).
+ * - Merge semantics: add only nodes whose id is not already present;
+ *   add only connections whose id is not present AND whose both endpoints exist.
+ * - Does NOT record undo history.
+ * - Does NOT schedule a save-back of the loaded data.
+ * - Returns true iff anything was applied.
+ */
+export async function hydrateCanvasFromStorage(): Promise<boolean> {
+  if (hydratedOnce) return false;
+  hydratedOnce = true;
+
+  const saved = await getActiveStorage().load(SIDEBAR_BOARD_ID);
+  if (!saved) return false;
+
+  const existingNodeIds = new Set(state.nodes.map((n) => n.id));
+  const existingConnIds = new Set(state.connections.map((c) => c.id));
+
+  const newNodes = saved.nodes.filter((n) => !existingNodeIds.has(n.id));
+
+  // Build the full set of node ids after the merge to validate connections
+  const mergedNodeIds = new Set([
+    ...existingNodeIds,
+    ...newNodes.map((n) => n.id),
+  ]);
+
+  const newConnections = saved.connections.filter(
+    (c) =>
+      !existingConnIds.has(c.id) &&
+      mergedNodeIds.has(c.fromNodeId) &&
+      mergedNodeIds.has(c.toNodeId),
+  );
+
+  if (newNodes.length === 0 && newConnections.length === 0) return false;
+
+  // Apply without triggering persist or undo history
+  isHydrating = true;
+  try {
+    state = {
+      ...state,
+      nodes: [...state.nodes, ...newNodes],
+      connections: [...state.connections, ...newConnections],
+    };
+    emit();
+  } finally {
+    isHydrating = false;
+  }
+
+  return true;
 }
 
 /** Flush the pending history window (tests need deterministic undo points). */

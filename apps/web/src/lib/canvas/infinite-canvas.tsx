@@ -31,6 +31,7 @@ import {
   deleteSelection,
   getA2UIPayload,
   getCanvasState,
+  hydrateCanvasFromStorage,
   moveNodes,
   redo,
   removeConnection,
@@ -199,6 +200,11 @@ export function CanvasSurface({ className }: { className?: string }) {
     current: { x: number; y: number };
   } | null>(null);
   const selected = new Set(selectedNodeIds);
+
+  // Hydrate canvas content from IndexedDB on mount (once).
+  useEffect(() => {
+    void hydrateCanvasFromStorage();
+  }, []);
 
   // Stable: reads the live viewport from the store, never from a closure.
   const toWorld = useCallback((clientX: number, clientY: number) => {
