@@ -1887,6 +1887,46 @@ describe("SessionsRuntime", () => {
     ]);
   });
 
+  it("extracts MEDIA: markers with a space or full-width colon, as skill scripts and models actually emit them", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    const generatedPath = path.join(
+      rootDir,
+      "media",
+      "tool-image-generation",
+      "asian-girl.png",
+    );
+    await writeWebchatSession(rootDir, "media-marker-variants.jsonl", [
+      {
+        type: "message",
+        id: "msg-assistant-media-variant",
+        timestamp: "2026-06-11T06:33:00.000Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-06-11T06:33:00.000Z"),
+          content: [
+            {
+              type: "text",
+              text: `图像已生成完成！\n\nMEDIA： ${generatedPath}`,
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("media-marker-variants.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "text", text: "图像已生成完成！" },
+      {
+        type: "image",
+        url: `/api/v1/media/state-file?path=${encodeURIComponent(generatedPath)}`,
+        mimeType: "image/png",
+      },
+    ]);
+  });
+
   it("strips inter-session envelopes and re-attributes routed media to the bot", async () => {
     rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
     const runtime = createWebchatRuntime(rootDir);

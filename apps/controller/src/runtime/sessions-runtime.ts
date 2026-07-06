@@ -160,8 +160,12 @@ const MEDIA_ONLY_PLACEHOLDER_TEXT = "[User sent media without caption]";
  */
 const INTER_SESSION_MESSAGE_PREFIX = "[Inter-session message]";
 
-/** Matches `MEDIA:<path>` directive lines OpenClaw appends to assistant replies. */
-const ASSISTANT_MEDIA_MARKER_PATTERN = /^MEDIA:(\S[^\n]*)$/gmu;
+/**
+ * Matches `MEDIA:<path>` directive lines OpenClaw appends to assistant replies.
+ * Tolerates the space the skill scripts actually emit (`MEDIA: <path>`) and a
+ * full-width colon, which models sometimes substitute when replying in Chinese.
+ */
+const ASSISTANT_MEDIA_MARKER_PATTERN = /^MEDIA[:：]\s*(\S[^\n]*)$/gmu;
 
 const IMAGE_EXTENSION_MIME: Record<string, string> = {
   ".png": "image/png",
