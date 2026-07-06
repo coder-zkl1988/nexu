@@ -21,6 +21,12 @@ import {
   useState,
 } from "react";
 import { postApiV1MediaGenerateImage } from "../../../lib/api/sdk.gen";
+import {
+  clipboardHasContent,
+  copySelection,
+  duplicateNodes,
+  pasteClipboard,
+} from "./canvas-clipboard";
 import { ingestFilesAsNodes, ingestTextAsNode } from "./canvas-ingest";
 import {
   type CanvasNode,
@@ -166,6 +172,16 @@ type GestureState =
   | { kind: "connect"; fromId: string }
   | { kind: "marquee"; additive: boolean };
 
+type ContextMenuState =
+  | { kind: "node"; id: string; x: number; y: number }
+  | { kind: "edge"; id: string; x: number; y: number }
+  | {
+      kind: "background";
+      x: number;
+      y: number;
+      worldPoint: { x: number; y: number };
+    };
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -200,6 +216,7 @@ export function CanvasSurface({ className }: { className?: string }) {
     start: { x: number; y: number };
     current: { x: number; y: number };
   } | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const selected = new Set(selectedNodeIds);
 
   // Hydrate canvas content from IndexedDB on mount (once).
@@ -457,15 +474,27 @@ export function CanvasSurface({ className }: { className?: string }) {
       } else if (meta && event.key.toLowerCase() === "a") {
         event.preventDefault();
         selectAll();
+      } else if (meta && event.key.toLowerCase() === "c") {
+        const copied = copySelection();
+        if (copied >= 1) event.preventDefault();
       } else if (event.key === "Delete" || event.key === "Backspace") {
         deleteSelection();
       } else if (event.key === "Escape") {
         clearSelection();
+        setContextMenu(null);
       }
     };
 
     const onPaste = (event: ClipboardEvent) => {
       if (isEditableTarget(event.target)) return;
+
+      // Precedence: internal node clipboard first; OS ingestion as fallback.
+      if (clipboardHasContent()) {
+        event.preventDefault();
+        pasteClipboard();
+        return;
+      }
+
       const data = event.clipboardData;
       if (!data) return;
 
@@ -591,7 +620,37 @@ export function CanvasSurface({ className }: { className?: string }) {
           ingestFilesAsNodes(validInputs, dropWorld);
         });
       }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        const rect = containerRef.current?.getBoundingClientRect();
+        const screenX = event.clientX - (rect?.left ?? 0);
+        const screenY = event.clientY - (rect?.top ?? 0);
+        const target = event.target as Element | null;
+        const nodeEl = target?.closest("[data-canvas-node]");
+        const edgeEl = target?.closest("[data-canvas-edge]");
+        if (nodeEl instanceof HTMLElement) {
+          const id = nodeEl.getAttribute("data-canvas-node") ?? "";
+          // Select the node if it's not already selected
+          if (!getCanvasState().selectedNodeIds.includes(id)) {
+            selectNodes([id]);
+          }
+          setContextMenu({ kind: "node", id, x: screenX, y: screenY });
+        } else if (edgeEl instanceof SVGElement) {
+          const id = edgeEl.getAttribute("data-canvas-edge") ?? "";
+          setContextMenu({ kind: "edge", id, x: screenX, y: screenY });
+        } else {
+          const worldPoint = toWorld(event.clientX, event.clientY);
+          setContextMenu({
+            kind: "background",
+            x: screenX,
+            y: screenY,
+            worldPoint,
+          });
+        }
+      }}
       onPointerDown={(event) => {
+        // Close context menu on any pointerdown on the container background
+        setContextMenu(null);
         if (event.button !== 0) return;
         if (event.metaKey || event.ctrlKey) {
           const start = toWorld(event.clientX, event.clientY);
@@ -690,6 +749,53 @@ export function CanvasSurface({ className }: { className?: string }) {
           height: containerRef.current?.clientHeight ?? 0,
         })}
       />
+
+      {/* Context menu — screen-space, outside the transform layer */}
+      {contextMenu ? (
+        <div
+          data-canvas-context-menu="true"
+          className="absolute z-50 min-w-[140px] rounded-lg border border-border bg-surface-1/95 py-1 shadow-md"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {contextMenu.kind === "node" ? (
+            <>
+              <ContextMenuItem
+                label="复制为副本"
+                onClick={() => {
+                  duplicateNodes([contextMenu.id]);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
+                label="删除"
+                onClick={() => {
+                  removeNodes([contextMenu.id]);
+                  setContextMenu(null);
+                }}
+              />
+            </>
+          ) : contextMenu.kind === "edge" ? (
+            <ContextMenuItem
+              label="删除连线"
+              onClick={() => {
+                removeConnection(contextMenu.id);
+                setContextMenu(null);
+              }}
+            />
+          ) : (
+            <ContextMenuItem
+              label="粘贴到此处"
+              disabled={!clipboardHasContent()}
+              onClick={() => {
+                if (!clipboardHasContent()) return;
+                pasteClipboard(contextMenu.worldPoint);
+                setContextMenu(null);
+              }}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1109,4 +1215,28 @@ function ToolButton({
 
 function Divider() {
   return <div className="mx-0.5 h-4 w-px bg-border" />;
+}
+
+function ContextMenuItem({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-surface-2",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
+      )}
+    >
+      {label}
+    </button>
+  );
 }

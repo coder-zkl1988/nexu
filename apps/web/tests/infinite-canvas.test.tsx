@@ -224,6 +224,13 @@ describe("CanvasSurface", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).toContain("内容已过期");
   });
+
+  it("context menu is NOT in default markup (closed-by-default contract)", () => {
+    addNode({ type: "text", title: "节点" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // The menu should only appear after a right-click — absent in static render.
+    expect(markup).not.toContain("data-canvas-context-menu");
+  });
 });
 
 describe("connection effects", () => {
