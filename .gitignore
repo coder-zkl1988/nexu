@@ -40,4 +40,5 @@ apps/desktop/build-config.json
 .task/
 .opencode/
 docs/superpowers/
+.superpowers/
 package-lock.json

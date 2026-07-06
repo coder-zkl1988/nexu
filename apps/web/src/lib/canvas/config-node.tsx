@@ -29,8 +29,9 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
   const summary = upstreamSummary(upstream, usableImages);
 
   const plan = buildConfigGenerationPlan(node.id);
-  // "no-config" should not happen during normal use (mode always defaults to image)
-  const noPrompt = "error" in plan && plan.error === "no-prompt";
+  // Disable button for any plan error (no-config or no-prompt)
+  const hasPlanError = "error" in plan;
+  const noPrompt = hasPlanError && plan.error === "no-prompt";
 
   function stopProp(e: React.PointerEvent) {
     e.stopPropagation();
@@ -194,7 +195,7 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
       <button
         type="button"
         data-canvas-config-generate={node.id}
-        disabled={noPrompt}
+        disabled={hasPlanError}
         onPointerDown={stopProp}
         onClick={() => {
           void runConfigGeneration(node.id);

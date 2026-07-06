@@ -218,6 +218,39 @@ type ConnectMenuState = {
   worldY: number;
 };
 
+/**
+ * Connect-drop create menu items. The type union is pinned to what
+ * createConnectedNode accepts, so a menu/creator drift fails typecheck;
+ * tests assert the list content so dropped entries fail CI.
+ */
+export const CONNECT_MENU_ITEMS = [
+  { type: "text", label: "文本" },
+  { type: "image", label: "图片" },
+  { type: "video", label: "视频" },
+  { type: "audio", label: "音频" },
+  { type: "config", label: "配置" },
+] as const satisfies ReadonlyArray<{
+  type: Parameters<typeof createConnectedNode>[1];
+  label: string;
+}>;
+
+function connectMenuIcon(
+  type: (typeof CONNECT_MENU_ITEMS)[number]["type"],
+): ReactNode {
+  switch (type) {
+    case "text":
+      return <Type size={14} />;
+    case "image":
+      return <ImagePlus size={14} />;
+    case "video":
+      return <Clapperboard size={14} />;
+    case "audio":
+      return <AudioLines size={14} />;
+    case "config":
+      return <SlidersHorizontal size={14} />;
+  }
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -917,27 +950,7 @@ export function CanvasSurface({ className }: { className?: string }) {
           y={connectMenu.screenY}
           dataAttr={{ name: "data-canvas-connect-menu", value: "true" }}
         >
-          {(
-            [
-              { type: "text", icon: <Type size={14} />, label: "文本" },
-              { type: "image", icon: <ImagePlus size={14} />, label: "图片" },
-              {
-                type: "video",
-                icon: <Clapperboard size={14} />,
-                label: "视频",
-              },
-              {
-                type: "audio",
-                icon: <AudioLines size={14} />,
-                label: "音频",
-              },
-              {
-                type: "config",
-                icon: <SlidersHorizontal size={14} />,
-                label: "配置",
-              },
-            ] as const
-          ).map(({ type, icon, label }) => (
+          {CONNECT_MENU_ITEMS.map(({ type, label }) => (
             <button
               key={type}
               type="button"
@@ -950,7 +963,7 @@ export function CanvasSurface({ className }: { className?: string }) {
                 setConnectMenu(null);
               }}
             >
-              {icon}
+              {connectMenuIcon(type)}
               {label}
             </button>
           ))}

@@ -18,6 +18,7 @@ import {
 import {
   CANVAS_MAX_SCALE,
   CANVAS_MIN_SCALE,
+  CONNECT_MENU_ITEMS,
   CanvasSurface,
   clampScale,
   connectionPath,
@@ -488,11 +489,24 @@ describe("ConfigNode markup", () => {
     expect(markup).toContain("配置节点");
   });
 
-  it("connect menu contains 配置 option when connectMenu is open — connect menu is absent by default", () => {
-    // The connect menu is only shown after a connect-drop gesture; default markup omits it.
-    addNode({ type: "text", title: "文本" });
-    const markup = renderToStaticMarkup(<CanvasSurface />);
-    expect(markup).not.toContain("data-canvas-connect-menu");
+  it("connect menu offers all five creatable types (real menu constant)", () => {
+    // The menu only renders after a connect-drop gesture (unreachable in
+    // static markup), so the contract is pinned on the exported constant
+    // that drives the menu JSX.
+    expect(CONNECT_MENU_ITEMS.map((item) => item.type)).toEqual([
+      "text",
+      "image",
+      "video",
+      "audio",
+      "config",
+    ]);
+    expect(CONNECT_MENU_ITEMS.map((item) => item.label)).toEqual([
+      "文本",
+      "图片",
+      "视频",
+      "音频",
+      "配置",
+    ]);
   });
 });
 
