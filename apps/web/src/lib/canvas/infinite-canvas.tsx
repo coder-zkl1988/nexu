@@ -3,11 +3,9 @@ import {
   AudioLines,
   Clapperboard,
   ImagePlus,
-  Lock,
   SlidersHorizontal,
   Star,
   Type,
-  Unlock,
   X,
 } from "lucide-react";
 import {
@@ -55,11 +53,11 @@ import {
   selectNodes,
   setViewport,
   undo,
-  updateNode,
   useCanvas,
 } from "./canvas-store";
 import { CanvasToolbar } from "./canvas-toolbar";
 import { applyConnectionEffects } from "./connection-effects";
+import { HoverToolbar } from "./hover-toolbar";
 import { NodeBody } from "./node-views";
 import { PromptPanel } from "./prompt-panel";
 
@@ -1029,6 +1027,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
         }
       }}
     >
+      <HoverToolbar node={node} selected={selected} />
       {/* Collapsed ghost: two decorative stacked cards behind the root */}
       {isCollapsed ? (
         <>
@@ -1085,27 +1084,6 @@ const CanvasNodeView = memo(function CanvasNodeView({
               className="rounded px-1 py-0.5 text-[10px] font-medium text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
             >
               ×{batchTotal}
-            </button>
-          ) : null}
-          {(node.type === "image" || node.type === "video") &&
-          Boolean(node.metadata.content) ? (
-            <button
-              type="button"
-              aria-label="toggle aspect ratio lock"
-              data-canvas-lock-toggle={node.id}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() =>
-                updateNode(node.id, {
-                  metadata: { freeResize: !node.metadata.freeResize },
-                })
-              }
-              className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
-            >
-              {node.metadata.freeResize ? (
-                <Unlock size={12} />
-              ) : (
-                <Lock size={12} />
-              )}
             </button>
           ) : null}
           <button
