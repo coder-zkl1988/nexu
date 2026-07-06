@@ -549,9 +549,30 @@ export function importCanvas(file: CanvasExportFile): void {
   }
   recordHistory();
   flushHistory();
+
+  // 1. Generate fresh ids for every imported node; build oldId→newId map.
+  const idMap = new Map<string, string>();
+  const importedNodes: CanvasNode[] = file.nodes.map((node) => {
+    const newId = genId(node.type);
+    idMap.set(node.id, newId);
+    // 2. Strip surfaceId — a2ui payloads are runtime singletons.
+    const { surfaceId: _stripped, ...restMeta } = node.metadata;
+    return { ...node, id: newId, metadata: restMeta };
+  });
+
+  // 3. Remap connections through the map; drop any with unmapped endpoints.
+  const importedConnections: CanvasConnection[] = file.connections
+    .map((conn) => {
+      const fromNodeId = idMap.get(conn.fromNodeId);
+      const toNodeId = idMap.get(conn.toNodeId);
+      if (!fromNodeId || !toNodeId) return null;
+      return { id: genId("conn"), fromNodeId, toNodeId };
+    })
+    .filter((conn): conn is CanvasConnection => conn !== null);
+
   setState({
-    nodes: [...state.nodes, ...file.nodes],
-    connections: [...state.connections, ...file.connections],
+    nodes: [...state.nodes, ...importedNodes],
+    connections: [...state.connections, ...importedConnections],
     panelOpen: true,
   });
 }

@@ -192,6 +192,89 @@ describe("canvas store", () => {
     expect(state.nodes[0]?.metadata.content).toBe("hello");
   });
 
+  it("importCanvas remaps ids, strips surfaceId, and validates connection endpoints", () => {
+    // Live store has one node with a known id.
+    const live = addNode({ type: "text", title: "live" });
+    const liveId = live.id;
+
+    // Craft a file whose two imported nodes reuse the SAME id as the live node
+    // and include a metadata.surfaceId that must be stripped.
+    const importedRawId1 = liveId; // deliberate collision
+    const importedRawId2 = "imported-node-2";
+    const file = {
+      app: "nexu-canvas" as const,
+      version: 1 as const,
+      exportedAt: new Date().toISOString(),
+      nodes: [
+        {
+          id: importedRawId1,
+          type: "text" as const,
+          title: "imported-a",
+          position: { x: 10, y: 10 },
+          size: { width: 300, height: 180 },
+          metadata: { surfaceId: "sneak", content: "keep-me" },
+        },
+        {
+          id: importedRawId2,
+          type: "image" as const,
+          title: "imported-b",
+          position: { x: 20, y: 20 },
+          size: { width: 340, height: 240 },
+          metadata: { surfaceId: "sneak2" },
+        },
+      ],
+      connections: [
+        {
+          id: "old-conn-id",
+          fromNodeId: importedRawId1,
+          toNodeId: importedRawId2,
+        },
+        // This connection references an id not in the import set — must be dropped.
+        {
+          id: "dangling-conn-id",
+          fromNodeId: importedRawId1,
+          toNodeId: "ghost-node",
+        },
+      ],
+    };
+
+    importCanvas(file);
+    const state = getCanvasState();
+
+    // Total nodes = 1 live + 2 imported (no replacement).
+    expect(state.nodes).toHaveLength(3);
+
+    // No duplicate ids in state.
+    const allIds = state.nodes.map((n) => n.id);
+    expect(new Set(allIds).size).toBe(3);
+
+    // Imported nodes got new ids (neither kept the raw collision id).
+    const importedNodes = state.nodes.filter((n) => n.id !== liveId);
+    expect(importedNodes).toHaveLength(2);
+    for (const n of importedNodes) {
+      expect(n.id).not.toBe(importedRawId1);
+      expect(n.id).not.toBe(importedRawId2);
+    }
+
+    // Only the valid connection survived; the dangling one was dropped.
+    // Its endpoints are the NEW remapped ids.
+    expect(state.connections).toHaveLength(1);
+    const conn = state.connections[0];
+    expect(conn).toBeDefined();
+    const importedIds = new Set(importedNodes.map((n) => n.id));
+    expect(importedIds.has(conn?.fromNodeId)).toBe(true);
+    expect(importedIds.has(conn?.toNodeId)).toBe(true);
+
+    // No imported node carries metadata.surfaceId.
+    for (const n of importedNodes) {
+      expect(n.metadata).not.toHaveProperty("surfaceId");
+      // Other metadata is preserved.
+    }
+    // content from first imported node survived.
+    const importedA = importedNodes.find((n) => n.title === "imported-a");
+    expect(importedA?.metadata.content).toBe("keep-me");
+  });
+
   it("upsertA2UINode refreshes in place instead of duplicating", () => {
     upsertA2UINode("sidebar:run-1", "运行", [], () => {});
     upsertA2UINode("sidebar:run-1", "运行", [], () => {});

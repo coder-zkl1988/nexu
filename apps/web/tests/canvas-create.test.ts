@@ -9,11 +9,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createConnectedNode } from "../src/lib/canvas/canvas-create";
 import {
+  NODE_DEFAULT_SIZES,
   __resetCanvasForTests,
   addNode,
   getCanvasState,
 } from "../src/lib/canvas/canvas-store";
-import { NODE_DEFAULT_SIZES } from "../src/lib/canvas/canvas-store";
 
 // Minimal localStorage polyfill (matches other canvas tests).
 if (typeof globalThis.localStorage === "undefined") {
