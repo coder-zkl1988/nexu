@@ -1,20 +1,13 @@
-import { A2UIRenderer } from "@/lib/a2ui";
 import { cn } from "@/lib/utils";
 import {
   AudioLines,
   Clapperboard,
-  Download,
   ImagePlus,
   Lock,
-  Maximize2,
-  Redo2,
   SlidersHorizontal,
   Star,
-  Trash2,
   Type,
-  Undo2,
   Unlock,
-  Upload,
   X,
 } from "lucide-react";
 import {
@@ -25,7 +18,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { toast } from "sonner";
 import {
   isHiddenBatchChild,
   setBatchPrimary,
@@ -39,7 +31,6 @@ import {
 } from "./canvas-clipboard";
 import { createConnectedNode } from "./canvas-create";
 import { FloatingMenu, clampMenuPosition } from "./canvas-floating-menu";
-import { generateImageIntoNode, retryNodeTask } from "./canvas-generation";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import {
   ingestFilesAsNodes,
@@ -47,19 +38,13 @@ import {
   readFilesAsDataUrls,
 } from "./canvas-ingest";
 import {
-  type CanvasExportFile,
   type CanvasNode,
   type CanvasViewport,
-  addNode,
-  clearCanvas,
   clearSelection,
   connectNodes,
   deleteSelection,
-  exportCanvas,
-  getA2UIPayload,
   getCanvasState,
   hydrateCanvasFromStorage,
-  importCanvas,
   moveNodes,
   redo,
   removeConnection,
@@ -73,10 +58,10 @@ import {
   updateNode,
   useCanvas,
 } from "./canvas-store";
-import { ConfigNodeContent } from "./config-node";
+import { CanvasToolbar } from "./canvas-toolbar";
 import { applyConnectionEffects } from "./connection-effects";
+import { NodeBody } from "./node-views";
 import { PromptPanel } from "./prompt-panel";
-import { TeamStepNodeContent } from "./team-step-node";
 
 /**
  * Canvas v2 surface — pannable/zoomable plane with typed nodes, free
@@ -908,6 +893,7 @@ export function CanvasSurface({ className }: { className?: string }) {
           width: containerRef.current?.clientWidth ?? 0,
           height: containerRef.current?.clientHeight ?? 0,
         })}
+        fitViewport={fitViewport}
       />
 
       {/* Context menu — screen-space, outside the transform layer */}
@@ -1188,402 +1174,6 @@ const CanvasNodeView = memo(function CanvasNodeView({
     </div>
   );
 });
-
-/** Node content re-renders only on content changes, never on geometry. */
-const NodeBody = memo(
-  function NodeBody({ node }: { node: CanvasNode }) {
-    return <NodeContent node={node} />;
-  },
-  (prev, next) =>
-    prev.node.id === next.node.id &&
-    prev.node.type === next.node.type &&
-    prev.node.title === next.node.title &&
-    prev.node.metadata === next.node.metadata,
-);
-
-// ── Node content by type ───────────────────────────────────────
-
-function EmptyMediaHint({
-  icon,
-  label,
-}: {
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-text-tertiary">
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-surface-2">
-        <span className="opacity-40">{icon}</span>
-      </div>
-      <span className="text-[10px] tracking-[0.18em] opacity-70">{label}</span>
-    </div>
-  );
-}
-
-function NodeContent({ node }: { node: CanvasNode }): ReactNode {
-  if (node.type === "team-step") {
-    return <TeamStepNodeContent node={node} />;
-  }
-
-  // Config nodes have their own inline UI — they never get the task spinner
-  // (the RESULT node carries the task, not the config node).
-  if (node.type === "config") {
-    return <ConfigNodeContent node={node} />;
-  }
-
-  // Task status overlay: applies before per-type media rendering for image/video/audio.
-  if (node.metadata.task?.status === "generating") {
-    return (
-      <div
-        data-canvas-node-generating={node.id}
-        className="flex h-full w-full flex-col items-center justify-center gap-3"
-      >
-        <div className="size-10 animate-spin rounded-full border-2 border-border border-t-sky-500" />
-        <span className="text-[11px] tracking-[0.18em] text-text-tertiary">
-          生成中
-        </span>
-      </div>
-    );
-  }
-  if (node.metadata.task?.status === "error") {
-    return (
-      <div
-        data-canvas-node-error={node.id}
-        className="flex h-full w-full flex-col items-center justify-center gap-2"
-      >
-        <p className="text-[11px] text-danger">
-          {node.metadata.task.error ?? "生成失败，请重试"}
-        </p>
-        <button
-          type="button"
-          data-canvas-node-retry={node.id}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => retryNodeTask(node.id)}
-          className="rounded-full border border-border px-3 py-1 text-[11px] text-text-secondary hover:bg-surface-2"
-        >
-          重试
-        </button>
-      </div>
-    );
-  }
-
-  if (node.type === "video") {
-    return node.metadata.content ? (
-      // biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions
-      <video
-        src={node.metadata.content}
-        controls
-        className="h-full w-full bg-black object-contain"
-      />
-    ) : (
-      <EmptyMediaHint icon={<Clapperboard size={22} />} label="空视频节点" />
-    );
-  }
-  if (node.type === "audio") {
-    return node.metadata.content ? (
-      <div className="flex h-full w-full flex-col justify-center">
-        {/* biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions */}
-        <audio src={node.metadata.content} controls className="w-full" />
-      </div>
-    ) : (
-      <EmptyMediaHint icon={<AudioLines size={22} />} label="空音频节点" />
-    );
-  }
-  if (node.type === "a2ui") {
-    const payload = node.metadata.surfaceId
-      ? getA2UIPayload(node.metadata.surfaceId)
-      : null;
-    if (!payload) {
-      return (
-        <p className="text-xs text-text-tertiary">
-          内容已过期 — 从原入口（运行卡/编辑器）重新打开即可恢复。
-        </p>
-      );
-    }
-    return (
-      <A2UIRenderer messages={payload.messages} onAction={payload.onAction} />
-    );
-  }
-  if (node.type === "text") {
-    return (
-      <textarea
-        className="h-full w-full select-text resize-none bg-transparent text-sm outline-none"
-        style={{ fontSize: node.metadata.fontSize ?? 14 }}
-        placeholder="输入文本…"
-        value={node.metadata.content ?? ""}
-        onChange={(event) =>
-          updateNode(node.id, { metadata: { content: event.target.value } })
-        }
-      />
-    );
-  }
-  // image
-  if (node.metadata.content) {
-    return (
-      <img
-        src={node.metadata.content}
-        alt={node.title}
-        className="pointer-events-none h-full w-full select-none object-contain"
-        draggable={false}
-      />
-    );
-  }
-  return <EmptyImageNode node={node} />;
-}
-
-/**
- * Empty image node: upload a file OR generate one from a prompt via the S7
- * controller channel (POST /api/v1/media/generate-image).
- *
- * Generating/error state lives in node.metadata.task (store-level); this
- * component holds only the local prompt input state.
- */
-function EmptyImageNode({ node }: { node: CanvasNode }) {
-  const [prompt, setPrompt] = useState("");
-  const isGenerating = node.metadata.task?.status === "generating";
-
-  return (
-    <div className="flex h-full w-full flex-col gap-2">
-      <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-xs text-text-tertiary hover:bg-surface-2/50">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-surface-2">
-          <ImagePlus size={22} className="opacity-40" />
-        </div>
-        <span className="text-[10px] tracking-[0.18em] opacity-70">
-          上传或在下方生成
-        </span>
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-              updateNode(node.id, {
-                title: file.name,
-                metadata: { content: String(reader.result) },
-              });
-            };
-            reader.readAsDataURL(file);
-          }}
-        />
-      </label>
-      <div className="flex shrink-0 items-center gap-1">
-        <input
-          value={prompt}
-          disabled={isGenerating}
-          placeholder="描述要生成的图片…"
-          onChange={(event) => setPrompt(event.target.value)}
-          className="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
-        />
-        <button
-          type="button"
-          disabled={isGenerating || !prompt.trim()}
-          data-canvas-generate-image={node.id}
-          onClick={() => {
-            void generateImageIntoNode(node.id, prompt.trim());
-          }}
-          className="shrink-0 rounded border border-[var(--color-accent)] bg-[var(--color-accent)] px-2 py-1 text-xs font-bold text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50"
-        >
-          生成
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Toolbar ────────────────────────────────────────────────────
-
-function CanvasToolbar({
-  getContainerSize,
-}: {
-  getContainerSize: () => { width: number; height: number };
-}) {
-  const { nodes, viewport, selectedNodeIds, selectedConnectionId } =
-    useCanvas();
-  const hasSelection = selectedNodeIds.length > 0 || !!selectedConnectionId;
-
-  return (
-    <div
-      data-canvas-toolbar="true"
-      className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-surface-1/95 px-2 py-1 shadow-md"
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <ToolButton label="撤销" onClick={undo}>
-        <Undo2 size={14} />
-      </ToolButton>
-      <ToolButton label="重做" onClick={redo}>
-        <Redo2 size={14} />
-      </ToolButton>
-      <Divider />
-      <ToolButton
-        label="文本节点"
-        onClick={() => addNode({ type: "text", title: "文本" })}
-      >
-        <Type size={14} />
-      </ToolButton>
-      <ToolButton
-        label="图片节点"
-        onClick={() => addNode({ type: "image", title: "图片" })}
-      >
-        <ImagePlus size={14} />
-      </ToolButton>
-      <ToolButton
-        label="视频节点"
-        onClick={() => addNode({ type: "video", title: "视频" })}
-      >
-        <Clapperboard size={14} />
-      </ToolButton>
-      <ToolButton
-        label="音频节点"
-        onClick={() => addNode({ type: "audio", title: "音频" })}
-      >
-        <AudioLines size={14} />
-      </ToolButton>
-      <ToolButton
-        label="配置节点"
-        onClick={() =>
-          addNode({
-            type: "config",
-            title: "生成配置",
-            metadata: { config: { mode: "image" } },
-          })
-        }
-      >
-        <SlidersHorizontal size={14} />
-      </ToolButton>
-      <label
-        title="上传素材"
-        className="cursor-pointer rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-      >
-        <Upload size={14} />
-        <input
-          type="file"
-          multiple
-          accept="image/*,video/*,audio/*"
-          className="hidden"
-          onChange={(event) => {
-            const files = Array.from(event.target.files ?? []);
-            event.target.value = "";
-            if (files.length === 0) return;
-            // Place at top-left cascade; ingestFilesAsNodes handles MIME detection.
-            void readFilesAsDataUrls(files).then((inputs) => {
-              ingestFilesAsNodes(inputs, { x: 32, y: 32 });
-            });
-          }}
-        />
-      </label>
-      <ToolButton
-        label="导出画布"
-        onClick={() => {
-          const file = exportCanvas();
-          const json = JSON.stringify(file, null, 2);
-          const blob = new Blob([json], { type: "application/json" });
-          const url = URL.createObjectURL(blob);
-          const now = new Date();
-          const pad = (n: number) => String(n).padStart(2, "0");
-          const filename = `nexu-canvas-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.json`;
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = filename;
-          a.click();
-          URL.revokeObjectURL(url);
-        }}
-      >
-        <Download size={14} />
-      </ToolButton>
-      <label
-        title="导入画布"
-        className="cursor-pointer rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-      >
-        <Upload size={14} />
-        <input
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-              try {
-                const parsed = JSON.parse(
-                  String(reader.result),
-                ) as CanvasExportFile;
-                importCanvas(parsed);
-              } catch {
-                toast.error("导入失败：不是有效的画布文件");
-              }
-              event.target.value = "";
-            };
-            reader.onerror = () => {
-              toast.error("导入失败：不是有效的画布文件");
-              event.target.value = "";
-            };
-            reader.readAsText(file);
-          }}
-        />
-      </label>
-      <Divider />
-      {hasSelection ? (
-        <>
-          <ToolButton label="删除选中" onClick={deleteSelection}>
-            <Trash2 size={14} className="text-danger" />
-          </ToolButton>
-          <Divider />
-        </>
-      ) : null}
-      <ToolButton
-        label="适配全部"
-        onClick={() => setViewport(fitViewport(nodes, getContainerSize()))}
-      >
-        <Maximize2 size={14} />
-      </ToolButton>
-      <span className="px-1 text-[10px] tabular-nums text-text-tertiary">
-        {Math.round(viewport.scale * 100)}%
-      </span>
-      <Divider />
-      <button
-        type="button"
-        onClick={() => {
-          if (nodes.length === 0 || window.confirm("清空画布上的全部节点？")) {
-            clearCanvas();
-          }
-        }}
-        className="rounded px-1.5 py-1 text-[10px] text-text-tertiary hover:bg-surface-2 hover:text-danger"
-      >
-        清空
-      </button>
-    </div>
-  );
-}
-
-function ToolButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-    >
-      {children}
-    </button>
-  );
-}
-
-function Divider() {
-  return <div className="mx-0.5 h-4 w-px bg-border" />;
-}
 
 function ContextMenuItem({
   label,
