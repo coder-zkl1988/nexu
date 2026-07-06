@@ -96,3 +96,16 @@
 - **顺序不可倒**:W2 依赖 W1 的持久化（生成中状态刷新不能丢）；W3 依赖 W2 的状态模型与通道；S8 依赖前三波的完整 op 面。
 - **性能红线**：v2.2 的交互契约（rAF 合帧/memo 隔离/translate3d/select-none）是所有新增交互的基线,新功能不得引入逐帧 store 全量重渲；0.05 极限缩放若 a2ui 节点掉帧,按节点类型做 LOD（缩略占位）。
 - **测试基线**：每 Wave 后 web 全套 + controller 全套（涉后端时）+ 真机验收截图记入设计文档。
+
+---
+
+## W1 完成记录（2026-07-06）
+
+九项全部落地并通过 SDD 双层评审（6 任务门 + 1 全波终审）。11 commit（a1cf2a810..649947934），web 测试 115→175，零新依赖。细节见设计文档 §9。
+
+**W2 新增前置任务 —— 画布卫生（终审移交，先做再进 2.1）**：
+- 内部剪贴板遮蔽 OS 粘贴：加清空条件（OS 有文件优先 / Esc 清空）
+- 抽 `readFilesAsDataUrls()`（drop/paste/upload/import 四处重复）
+- 抽共享 `FloatingMenu`（钳位常量两套、关闭四种写法收敛）
+- `onContextMenu` 补 isEditableTarget 守卫；空格按住的节点上光标反馈
+- clipboard 模块改用 store 导出的 genId；import 失败 alert 换 AntD message

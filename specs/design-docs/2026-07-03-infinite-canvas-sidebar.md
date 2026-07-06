@@ -112,3 +112,22 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 3. **卡片样式对齐参考**：`rounded-2xl border-2` + 选中蓝边升 `z-50` + `shadow-xl` + `transition-shadow 200ms`；连接点改为悬停/选中浮现的 12px 圆点（48px 隐形热区，hover scale-125）；缩放把手改角落 28px 隐形热区（光标即提示）；空媒体节点改居中图标砖 + 细字距标签（空图片/视频/音频节点）；有内容的图片/视频满铺圆角（p-0 full-bleed）、img `pointer-events-none select-none`；网格背景位置取模（数值不膨胀）。保留我们的标题栏（参考是无框卡片，但我们的节点含交互内容——A2UI 表单/文本编辑——需要专用拖拽把手与关闭钮）。
 
 测试：新增 `moveNodes` 批量断言 + 「流畅交互契约」标记断言（容器 `select-none`、节点 `translate3d`/`contain`）；web 全套 115 通过、tsc/lint 干净。
+
+## 9. Wave 1 —— 持久化 + 手感补全（2026-07-06 落地，SDD 流程）
+
+执行计划 `specs/exec-plans/2026-07-06-canvas-parity-migration.md` 的 Wave 1（九项 1.1–1.9）全部落地。首次采用 superpowers **subagent-driven development** 流程：9 项编组为 6 个任务，每任务独立实现子代理 + 规格/质量双裁决评审 + 修复循环，收尾一次全波终审（最强模型），全程台账 `.superpowers/sdd/progress.md`。
+
+**能力清单（全部真机可用）**：
+1. **画布内容持久化**（IndexedDB `nexu-canvas/boards`，600ms 尾随去抖；a2ui 存框架、载荷重开重绑；水合不产生撤销步/不回存；StrictMode 安全）——刷新不再丢画布。
+2. 文件拖放进画布（落点 world 坐标，多文件 +24 连续错位，读失败兜底不建节点）。
+3. 系统剪贴板 Cmd+V（截图→图节点、文本→文本节点，落视口中心；输入框内不拦截）。
+4. 节点复制/粘贴/副本（Cmd+C/V + 右键；选区内连线保留重映射；+36 逐次错位；`pasteClipboard(at)` 按组包围盒落点；**内部剪贴板优先、OS 粘贴兜底**单链路）。
+5. 右键菜单（节点=副本/删除、连线=删除、背景=粘贴到此处；屏幕坐标钳位;任何手势起点统一关闭浮动菜单）。
+6. 四角缩放 + 宽高比锁定（`canvas-geometry.ts` 纯函数:对角锚定含 min 钳位恒等式;图/视频默认锁比、头部锁钮切自由;比例=拖起时纵横比）。
+7. 空格/中键平移（capture 相拦截,节点上也可平移;blur 防卡键）+ 缩放域 25%–200% → **5%–500%**（网格 <4px LOD 隐藏）。
+8. 导出/导入 UI（JSON 下载/合并导入;**导入 id 全量重映射 + 端点校验 + surfaceId 剥离**——终审揪出的备份恢复损坏路径已封死）。
+9. 连线落空白 → 建节点菜单（四类型,新节点左缘中点对齐落点并自动连线;`canvas-create.ts` 纯函数）。
+
+**质量数据**：11 个 commit（6 feat + 5 修复轮）;web 测试 115 → **175**;5 个新纯模块（persistence/ingest/clipboard/create/geometry,全部 DOM-free 单测）;v2.2 交互契约终审逐条verified Held（mount-once/rAF 单帧单提交/memo 隔离/translate3d/select-none）;零新依赖零 any。
+
+**W2 前置卫生任务（终审记录,不阻塞本波）**：内部剪贴板永久遮蔽 OS 粘贴需清空条件;FileReader→dataURL 三处重复提 `readFilesAsDataUrls()`;菜单钳位/关闭逻辑重复提共享 `FloatingMenu`;`onContextMenu` 缺 isEditableTarget 守卫;clipboard 的 genId 重复应导出 store 版;alert 换 AntD 提示;空格按住时节点上无光标反馈。`infinite-canvas.tsx` 1003→1521 行,架构仍清晰,W2 顺手抽 ~120 行重复。
