@@ -109,3 +109,9 @@
 - 抽共享 `FloatingMenu`（钳位常量两套、关闭四种写法收敛）
 - `onContextMenu` 补 isEditableTarget 守卫；空格按住的节点上光标反馈
 - clipboard 模块改用 store 导出的 genId；import 失败 alert 换 AntD message
+
+## W2 完成记录（2026-07-06）
+
+七任务(卫生前置+2.1–2.7)全部落地并过 SDD 双层评审;终审 Ready(契约 1–6 全 Held)。13 commit(a57b3f4a8..dc3399cf8),web 286 / controller 437 测试,真机闸门:生图 200/46s、视频/音频 UNAVAILABLE→502 语义正确。细节见设计文档 §10。
+
+**W3 新增前置任务(终审移交)**:动工 3.1 悬停工具栏前,先把 `infinite-canvas.tsx`(1610 行)的节点体做机械拆分(NodeContent 各类型 → `canvas-node-views/` 目录),否则 W3 的裁剪/拆分 UI 会再堆几百行进同一文件。

@@ -131,3 +131,22 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 **质量数据**：11 个 commit（6 feat + 5 修复轮）;web 测试 115 → **175**;5 个新纯模块（persistence/ingest/clipboard/create/geometry,全部 DOM-free 单测）;v2.2 交互契约终审逐条verified Held（mount-once/rAF 单帧单提交/memo 隔离/translate3d/select-none）;零新依赖零 any。
 
 **W2 前置卫生任务（终审记录,不阻塞本波）**：内部剪贴板永久遮蔽 OS 粘贴需清空条件;FileReader→dataURL 三处重复提 `readFilesAsDataUrls()`;菜单钳位/关闭逻辑重复提共享 `FloatingMenu`;`onContextMenu` 缺 isEditableTarget 守卫;clipboard 的 genId 重复应导出 store 版;alert 换 AntD 提示;空格按住时节点上无光标反馈。`infinite-canvas.tsx` 1003→1521 行,架构仍清晰,W2 顺手抽 ~120 行重复。
+
+## 10. Wave 2 —— 生成管线泛化（2026-07-06 落地，SDD 流程）
+
+执行计划 Wave 2（卫生前置 + 2.1–2.7）七任务全部落地,13 个 commit（7 feat/refactor + 修复轮）,web 测试 175→**286**、controller 420→**437**。终审(opus)裁决 Ready:六条契约全部 Held、零 Critical/Important。
+
+**能力清单**:
+1. **画布卫生**(W1 终审移交):OS 文件粘贴优先于内部剪贴板、`readFilesAsDataUrls` 统一四处读取、共享 `FloatingMenu`(单一钳位实现)、右键可编辑区豁免、空格平移光标反馈(DOM 属性零渲染)、genId 收敛、toast 替代 alert。
+2. **连线=生成输入**(2.1):`resource-references.ts` BFS 上游收集(直连优先层序、环安全、a2ui/team-step 透明);connection-effects 改注册表制(XHS 喂图为首个 effect)。
+3. **节点异步任务状态**(2.2):`metadata.task`(缺省=idle/success 的精简态机)、生成中转圈/失败重试、**水合把中断的 generating 归一为 error**(重启无永久转圈);`canvas-generation.ts` 成为全部生成流的单一接缝(删除中途零僵尸写入)。
+4. **三通道后端**(2.5/2.6):生图加 `referenceImages`(≤4,含入媒体目录校验→400)+`count`(≤4);`generate-video`/`generate-audio` UNAVAILABLE 先行(S7 剧本);响应 `url/path` 顶层向后兼容 + `items` 数组;**真机闸门:生图 200/46s(1.8MB PNG 可取)、视频 502/68s、音频 502/10s**。tabby-image 实测不支持参考图,合同"支持才用"措辞已正确覆盖,等技能升级即点亮。
+5. **提示词面板**(2.3):选中媒体节点浮出世界坐标面板——@引用上游节点(自研 mention 下拉)、按类型参数、上游汇总(参考图可用数)、经接缝生成并自动附参考图。
+6. **Config 节点**(2.4):聚合上游文本为提示词+上游图为参考,生成时右侧建结果节点并连线;诚实裁剪:模型/比例选择器等通道支持后再加。
+7. **批量图组**(2.7):count>1 扇出为根+子(收起为堆叠幽灵卡、×N 徽章、设主图交换);删除级联/导入 id 重映射同步改写 batch 关联/复制得独立副本。
+
+**过程记录**:mid-wave 治理事件一次——haiku 修复者产出套套逻辑测试并误提交台账,主控回退手修(`CONNECT_MENU_ITEMS` satisfies 钉住 + `.superpowers/` gitignore);fable 终审两次派发失败(watchdog/403)后降级 opus 完成。
+
+**入档 Minor(不阻塞)**:hasUpstream 死导出、count 去重可能低于请求数、batch 双 emit 依赖历史去抖窗口、面板/Config 每帧 BFS(画布变大再上 Map 索引)、400/502 同一 toast。
+
+**W3 前置移交**:`infinite-canvas.tsx` 已 1610 行——悬停工具栏动工前先做机械拆分(节点体 → `canvas-node-views/`)。
