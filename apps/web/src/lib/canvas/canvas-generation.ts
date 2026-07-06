@@ -8,6 +8,8 @@
  */
 
 import {
+  postApiV1MediaDescribeImage,
+  postApiV1MediaEnhanceImage,
   postApiV1MediaGenerateAudio,
   postApiV1MediaGenerateImage,
   postApiV1MediaGenerateVideo,
@@ -31,7 +33,12 @@ import { getCanvasState, setNodeTask, updateNode } from "./canvas-store";
 export async function generateImageIntoNode(
   nodeId: string,
   prompt: string,
-  opts?: { referenceImages?: string[]; count?: number },
+  opts?: {
+    referenceImages?: string[];
+    count?: number;
+    sourceImage?: string;
+    maskDataUrl?: string;
+  },
 ): Promise<boolean> {
   const retry = {
     kind: "image" as const,
@@ -40,6 +47,12 @@ export async function generateImageIntoNode(
       ? { referenceImages: opts.referenceImages }
       : {}),
     ...(opts?.count !== undefined ? { count: opts.count } : {}),
+    ...(opts?.sourceImage !== undefined
+      ? { sourceImage: opts.sourceImage }
+      : {}),
+    ...(opts?.maskDataUrl !== undefined
+      ? { maskDataUrl: opts.maskDataUrl }
+      : {}),
   };
 
   setNodeTask(nodeId, { status: "generating", retry });
@@ -52,6 +65,12 @@ export async function generateImageIntoNode(
           ? { referenceImages: opts.referenceImages }
           : {}),
         ...(opts?.count !== undefined ? { count: opts.count } : {}),
+        ...(opts?.sourceImage !== undefined
+          ? { sourceImage: opts.sourceImage }
+          : {}),
+        ...(opts?.maskDataUrl !== undefined
+          ? { maskDataUrl: opts.maskDataUrl }
+          : {}),
       },
     });
 
@@ -222,6 +241,100 @@ export async function generateAudioIntoNode(
   }
 }
 
+// ── Enhance ────────────────────────────────────────────────────
+
+type EnhanceInput = {
+  sourceImage: string;
+  operation: "super-resolve" | "multi-angle";
+  targetLongEdge?: 1024 | 2048 | 4096;
+  horizontalDeg?: number;
+  pitchDeg?: number;
+  distance?: number;
+  wideAngle?: boolean;
+  prompt?: string;
+};
+
+/**
+ * Kick off an image enhancement (super-resolve or multi-angle) into `nodeId`.
+ * Lifecycle mirrors generateImageIntoNode: generating → content=url + clear / error+retry.
+ * Returns `true` on success, `false` on failure.
+ */
+export async function enhanceImageIntoNode(
+  nodeId: string,
+  input: EnhanceInput,
+): Promise<boolean> {
+  const retry = { kind: "enhance" as const, ...input };
+
+  setNodeTask(nodeId, { status: "generating", retry });
+
+  try {
+    const { data, error } = await postApiV1MediaEnhanceImage({
+      body: {
+        sourceImage: input.sourceImage,
+        operation: input.operation,
+        ...(input.targetLongEdge !== undefined
+          ? { targetLongEdge: input.targetLongEdge }
+          : {}),
+        ...(input.horizontalDeg !== undefined
+          ? { horizontalDeg: input.horizontalDeg }
+          : {}),
+        ...(input.pitchDeg !== undefined ? { pitchDeg: input.pitchDeg } : {}),
+        ...(input.distance !== undefined ? { distance: input.distance } : {}),
+        ...(input.wideAngle !== undefined
+          ? { wideAngle: input.wideAngle }
+          : {}),
+        ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
+      },
+    });
+
+    const stillExists = getCanvasState().nodes.some((n) => n.id === nodeId);
+    if (!stillExists) return false;
+
+    if (!data || error) {
+      setNodeTask(nodeId, {
+        status: "error",
+        error: "生成失败，请重试",
+        retry,
+      });
+      return false;
+    }
+
+    updateNode(nodeId, { metadata: { content: data.url } });
+    setNodeTask(nodeId, null);
+    return true;
+  } catch {
+    const stillExists = getCanvasState().nodes.some((n) => n.id === nodeId);
+    if (!stillExists) return false;
+
+    setNodeTask(nodeId, {
+      status: "error",
+      error: "生成失败，请重试",
+      retry,
+    });
+    return false;
+  }
+}
+
+// ── Describe ───────────────────────────────────────────────────
+
+/**
+ * Describe an image source to get a text-to-image prompt.
+ * Plain call (no node/task lifecycle). Returns trimmed prompt or null on any failure.
+ */
+export async function describeImageSource(
+  sourceImage: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await postApiV1MediaDescribeImage({
+      body: { sourceImage },
+    });
+    if (!data || error) return null;
+    return data.prompt.trim();
+  } catch {
+    return null;
+  }
+}
+
 // ── Retry ──────────────────────────────────────────────────────
 
 /**
@@ -236,6 +349,8 @@ export function retryNodeTask(nodeId: string): void {
     void generateImageIntoNode(nodeId, retry.prompt, {
       referenceImages: retry.referenceImages,
       count: retry.count,
+      sourceImage: retry.sourceImage,
+      maskDataUrl: retry.maskDataUrl,
     });
   } else if (retry.kind === "video") {
     void generateVideoIntoNode(nodeId, retry.prompt, {
@@ -246,6 +361,17 @@ export function retryNodeTask(nodeId: string): void {
     void generateAudioIntoNode(nodeId, retry.prompt, {
       voice: retry.voice,
       speed: retry.speed,
+    });
+  } else if (retry.kind === "enhance") {
+    void enhanceImageIntoNode(nodeId, {
+      sourceImage: retry.sourceImage,
+      operation: retry.operation,
+      targetLongEdge: retry.targetLongEdge,
+      horizontalDeg: retry.horizontalDeg,
+      pitchDeg: retry.pitchDeg,
+      distance: retry.distance,
+      wideAngle: retry.wideAngle,
+      prompt: retry.prompt,
     });
   }
 }

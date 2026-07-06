@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   mentionQueryAt,
   servablePathFromUrl,
+  servableSourceOf,
   upstreamSummary,
   usableReferencePaths,
 } from "../src/lib/canvas/prompt-panel-utils";
@@ -132,6 +133,50 @@ describe("mentionQueryAt", () => {
     // "hello @alice @bo" — caret at 16, last @ at 13
     const result = mentionQueryAt("hello @alice @bo", 16);
     expect(result).toEqual({ query: "bo", start: 13 });
+  });
+});
+
+describe("servableSourceOf", () => {
+  it("returns servable path for image node with state-file content URL", () => {
+    const node = {
+      type: "image" as const,
+      metadata: {
+        content: "/api/v1/media/state-file?path=%2Fnexu%2Fimg%2Fabc.png",
+      },
+    };
+    expect(servableSourceOf(node)).toBe("/nexu/img/abc.png");
+  });
+
+  it("returns null for image node with dataURL content (not servable)", () => {
+    const node = {
+      type: "image" as const,
+      metadata: { content: "data:image/png;base64,abc123" },
+    };
+    expect(servableSourceOf(node)).toBeNull();
+  });
+
+  it("returns null for text node even with servable URL content", () => {
+    const node = {
+      type: "text" as const,
+      metadata: { content: "/api/v1/media/state-file?path=%2Fimg%2Fx.png" },
+    };
+    expect(servableSourceOf(node)).toBeNull();
+  });
+
+  it("returns null for image node with no content", () => {
+    const node = {
+      type: "image" as const,
+      metadata: {},
+    };
+    expect(servableSourceOf(node)).toBeNull();
+  });
+
+  it("returns null for video node with servable URL (only image supported)", () => {
+    const node = {
+      type: "video" as const,
+      metadata: { content: "/api/v1/media/state-file?path=%2Fimg%2Fv.mp4" },
+    };
+    expect(servableSourceOf(node)).toBeNull();
   });
 });
 

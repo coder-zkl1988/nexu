@@ -15,6 +15,8 @@ export type CanvasDialogState =
   | { kind: "crop"; nodeId: string }
   | { kind: "split"; nodeId: string }
   | { kind: "upscale"; nodeId: string }
+  | { kind: "mask"; nodeId: string }
+  | { kind: "angle"; nodeId: string }
   | null;
 
 // ── Store internals ────────────────────────────────────────────────────────

@@ -29,14 +29,17 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
+import { enhanceImageIntoNode } from "./canvas-generation";
 import { addNode, getCanvasState } from "./canvas-store";
 import { loadImageBitmap } from "./load-image-bitmap";
+import { servableSourceOf } from "./prompt-panel-utils";
 import { upscaleTargetSize } from "./split-upscale-math";
 
 // ── Types & constants ──────────────────────────────────────────────────────
 
 type LongEdge = 1024 | 2048 | 4096;
 type SmoothingMode = "high" | "low" | "none";
+type UpscaleMode = "interpolation" | "ai";
 
 const LONG_EDGES: LongEdge[] = [1024, 2048, 4096];
 
@@ -65,8 +68,11 @@ export function UpscaleDialog({
   const [target, setTarget] = useState<LongEdge>(2048);
   const [smoothing, setSmoothing] = useState<SmoothingMode>("high");
 
+  const [upscaleMode, setUpscaleMode] = useState<UpscaleMode>("interpolation");
+
   const node = getCanvasState().nodes.find((n) => n.id === nodeId);
   const srcUrl = node?.metadata.content as string | undefined;
+  const sourceImage = node ? servableSourceOf(node) : null;
 
   useEffect(() => {
     if (!srcUrl) {
@@ -142,6 +148,31 @@ export function UpscaleDialog({
   const handleConfirm = useCallback(() => {
     if (!bitmap || !currentTargetSize) return;
 
+    if (upscaleMode === "ai") {
+      // AI super-resolve path: create result node + fire enhance seam
+      if (!sourceImage) return;
+      const src = getCanvasState().nodes.find((n) => n.id === nodeId);
+      const liveTitle = src?.title ?? "图片";
+      const newNode = addNode({
+        type: "image",
+        title: `${liveTitle} 超分${longEdgeLabel(target)}`,
+        position: src
+          ? { x: src.position.x + src.size.width + 40, y: src.position.y }
+          : undefined,
+        size: src?.size ?? { width: 340, height: 240 },
+        metadata: {},
+      });
+      void enhanceImageIntoNode(newNode.id, {
+        sourceImage,
+        operation: "super-resolve",
+        targetLongEdge: target,
+      });
+      closeCanvasDialog();
+      toast.success("已创建 AI 超分节点");
+      return;
+    }
+
+    // Interpolation path (existing)
     const { width: outW, height: outH } = currentTargetSize;
     const offscreen = document.createElement("canvas");
     offscreen.width = outW;
@@ -179,7 +210,15 @@ export function UpscaleDialog({
 
     closeCanvasDialog();
     toast.success(`已放大至 ${outW}×${outH} 并生成节点`);
-  }, [bitmap, currentTargetSize, nodeId, smoothing, target]);
+  }, [
+    bitmap,
+    currentTargetSize,
+    nodeId,
+    smoothing,
+    target,
+    upscaleMode,
+    sourceImage,
+  ]);
 
   return (
     <Dialog
@@ -205,6 +244,42 @@ export function UpscaleDialog({
                   原始尺寸：{bitmap.width} × {bitmap.height} px
                 </div>
               ) : null}
+
+              {/* Mode radio: interpolation | AI super-resolve */}
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-text-primary">
+                  放大方式
+                </span>
+                <div
+                  data-canvas-upscale-mode="true"
+                  className="flex overflow-hidden rounded-lg border border-border"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setUpscaleMode("interpolation")}
+                    className={`flex-1 px-4 py-1.5 text-sm transition-colors ${
+                      upscaleMode === "interpolation"
+                        ? "bg-sky-500 text-white"
+                        : "bg-surface-1 text-text-primary hover:bg-surface-2"
+                    }`}
+                  >
+                    插值放大
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!sourceImage}
+                    title={sourceImage ? undefined : "需为已生成的图片"}
+                    onClick={() => setUpscaleMode("ai")}
+                    className={`flex-1 px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      upscaleMode === "ai"
+                        ? "bg-sky-500 text-white"
+                        : "bg-surface-1 text-text-primary hover:bg-surface-2"
+                    }`}
+                  >
+                    AI 超分辨率
+                  </button>
+                </div>
+              </div>
 
               {/* Target size selector */}
               <div className="flex flex-col gap-2">
@@ -236,25 +311,27 @@ export function UpscaleDialog({
                 )}
               </div>
 
-              {/* Algorithm selector */}
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-text-primary">
-                  插值算法
-                </span>
-                <select
-                  value={smoothing}
-                  onChange={(e) =>
-                    setSmoothing(e.target.value as SmoothingMode)
-                  }
-                  className="rounded border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-primary"
-                >
-                  {SMOOTHING_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Algorithm selector — hidden in AI mode */}
+              {upscaleMode === "interpolation" ? (
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-medium text-text-primary">
+                    插值算法
+                  </span>
+                  <select
+                    value={smoothing}
+                    onChange={(e) =>
+                      setSmoothing(e.target.value as SmoothingMode)
+                    }
+                    className="rounded border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-primary"
+                  >
+                    {SMOOTHING_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
 
               {/* Output size readout */}
               {currentTargetSize ? (
@@ -269,12 +346,18 @@ export function UpscaleDialog({
                 <button
                   type="button"
                   data-canvas-upscale-confirm="true"
-                  disabled={allNull || currentTargetSize === null}
+                  disabled={
+                    allNull ||
+                    currentTargetSize === null ||
+                    (upscaleMode === "ai" && !sourceImage)
+                  }
                   onClick={handleConfirm}
                   className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ZoomIn size={14} />
-                  放大并生成节点
+                  {upscaleMode === "ai"
+                    ? "AI 超分并生成节点"
+                    : "放大并生成节点"}
                 </button>
               </div>
             </div>

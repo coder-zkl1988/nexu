@@ -95,6 +95,8 @@ export type CanvasNodeMetadata = {
           prompt: string;
           referenceImages?: string[];
           count?: number;
+          sourceImage?: string;
+          maskDataUrl?: string;
         }
       | {
           kind: "video";
@@ -102,7 +104,18 @@ export type CanvasNodeMetadata = {
           durationSeconds?: number;
           resolution?: "720p" | "1080p";
         }
-      | { kind: "audio"; prompt: string; voice?: string; speed?: number };
+      | { kind: "audio"; prompt: string; voice?: string; speed?: number }
+      | {
+          kind: "enhance";
+          sourceImage: string;
+          operation: "super-resolve" | "multi-angle";
+          targetLongEdge?: 1024 | 2048 | 4096;
+          horizontalDeg?: number;
+          pitchDeg?: number;
+          distance?: number;
+          wideAngle?: boolean;
+          prompt?: string;
+        };
   };
 };
 

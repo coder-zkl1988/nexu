@@ -30,6 +30,7 @@ import {
 import { Crop } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AngleDialog } from "./angle-dialog";
 import {
   type CanvasDialogState,
   closeCanvasDialog,
@@ -43,6 +44,7 @@ import {
   fitScale,
 } from "./crop-geometry";
 import { resolveMediaUrl } from "./load-image-bitmap";
+import { MaskDialog } from "./mask-dialog";
 import { SplitDialog } from "./split-dialog";
 import { UpscaleDialog } from "./upscale-dialog";
 
@@ -61,6 +63,8 @@ export function CanvasDialogs() {
   if (dialog.kind === "crop") return <CropDialog state={dialog} />;
   if (dialog.kind === "split") return <SplitDialog state={dialog} />;
   if (dialog.kind === "upscale") return <UpscaleDialog state={dialog} />;
+  if (dialog.kind === "mask") return <MaskDialog state={dialog} />;
+  if (dialog.kind === "angle") return <AngleDialog state={dialog} />;
   return null;
 }
 

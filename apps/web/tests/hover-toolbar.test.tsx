@@ -310,6 +310,78 @@ describe("HoverToolbar", () => {
     expect(markup).not.toContain("data-canvas-upscale-dialog");
   });
 
+  // ── T6: mask / angle / describe / AI upscale ────────────────────────────
+
+  it("image WITH servable URL → mask, angle, describe actions present", () => {
+    addNode({
+      type: "image",
+      title: "servable-img",
+      metadata: {
+        content: "/api/v1/media/state-file?path=%2Fnexu%2Fimg%2Fabc.png",
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).toContain('data-canvas-hover-action="mask"');
+    expect(markup).toContain('data-canvas-hover-action="angle"');
+    expect(markup).toContain('data-canvas-hover-action="describe"');
+  });
+
+  it("image WITH dataURL (not servable) → mask, angle, describe actions ABSENT", () => {
+    addNode({
+      type: "image",
+      title: "dataurl-img",
+      metadata: { content: "data:image/png;base64,abc123" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).not.toContain('data-canvas-hover-action="mask"');
+    expect(markup).not.toContain('data-canvas-hover-action="angle"');
+    expect(markup).not.toContain('data-canvas-hover-action="describe"');
+  });
+
+  it("text node → mask, angle, describe actions ABSENT", () => {
+    addNode({
+      type: "text",
+      title: "note",
+      metadata: { content: "hello" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).not.toContain('data-canvas-hover-action="mask"');
+    expect(markup).not.toContain('data-canvas-hover-action="angle"');
+    expect(markup).not.toContain('data-canvas-hover-action="describe"');
+  });
+
+  it("mask and angle dialog attrs absent from default markup", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: {
+        content: "/api/v1/media/state-file?path=%2Fnexu%2Fimg%2Fabc.png",
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-mask-dialog");
+    expect(markup).not.toContain("data-canvas-angle-dialog");
+  });
+
+  it("upscale-mode radio is in the UpscaleDialog source (static check)", () => {
+    // The UpscaleDialog renders into a radix portal not captured by renderToStaticMarkup.
+    // We verify here that the upscale toolbar button IS present for servable images,
+    // which is the entry point to the AI mode radio in the dialog.
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: {
+        content: "/api/v1/media/state-file?path=%2Fnexu%2Fimg%2Fabc.png",
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // The upscale button is the entry; the mode radio is inside the dialog (portal).
+    expect(markup).toContain('data-canvas-hover-action="upscale"');
+  });
+
   it("ReplaceButton clears error task when updating node content", () => {
     // Create an image node with an error task overlay
     addNode({

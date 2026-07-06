@@ -12,19 +12,24 @@
 import {
   AArrowDown,
   AArrowUp,
+  Brush,
   Crop,
   Download,
+  FileText,
   Grid3x3,
   ImagePlus,
   Info,
   Lock,
   RefreshCw,
+  Rotate3d,
   Trash2,
   Unlock,
   ZoomIn,
 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { openCanvasDialog } from "./canvas-dialogs";
+import { describeImageSource } from "./canvas-generation";
 import { readFilesAsDataUrls } from "./canvas-ingest";
 import {
   type CanvasNode,
@@ -32,6 +37,7 @@ import {
   setNodeTask,
   updateNode,
 } from "./canvas-store";
+import { servableSourceOf } from "./prompt-panel-utils";
 import { nextFontSize, textNodeToImage } from "./text-node-utils";
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -66,6 +72,8 @@ export function HoverToolbar({
   node: CanvasNode;
   selected: boolean;
 }) {
+  const [describePending, setDescribePending] = useState(false);
+
   // a2ui and team-step nodes keep minimal chrome — no toolbar.
   if (node.type === "a2ui" || node.type === "team-step") {
     return null;
@@ -76,6 +84,9 @@ export function HoverToolbar({
   const hasContent = Boolean(metadata.content);
   const isMedia = MEDIA_TYPES.has(type);
   const isContentMedia = CONTENT_MEDIA_TYPES.has(type) && hasContent;
+
+  // Servable gate: all four T6 features require a servable backend path
+  const servablePath = servableSourceOf(node);
 
   return (
     <ToolbarPill nodeId={id} selected={selected}>
@@ -174,6 +185,60 @@ export function HoverToolbar({
         </ToolbarButton>
       ) : null}
 
+      {/* mask (重绘) — image WITH servable content only */}
+      {servablePath ? (
+        <ToolbarButton
+          actionKey="mask"
+          label="重绘选区"
+          title="重绘选区"
+          onClick={() => {
+            openCanvasDialog({ kind: "mask", nodeId: id });
+          }}
+        >
+          <Brush size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* angle (视角) — image WITH servable content only */}
+      {servablePath ? (
+        <ToolbarButton
+          actionKey="angle"
+          label="生成新视角"
+          title="生成新视角"
+          onClick={() => {
+            openCanvasDialog({ kind: "angle", nodeId: id });
+          }}
+        >
+          <Rotate3d size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* describe (反推提示词) — image WITH servable content only */}
+      {servablePath ? (
+        <ToolbarButton
+          actionKey="describe"
+          label="反推提示词"
+          title="反推提示词"
+          disabled={describePending}
+          onClick={() => {
+            if (!servablePath || describePending) return;
+            setDescribePending(true);
+            void describeImageSource(servablePath).then((prompt) => {
+              setDescribePending(false);
+              if (prompt === null) {
+                toast.error("反推失败（后端未配置或不可用）");
+              } else {
+                void navigator.clipboard.writeText(prompt).then(() => {
+                  toast.success("提示词已复制");
+                });
+              }
+            });
+          }}
+        >
+          <FileText size={13} />
+        </ToolbarButton>
+      ) : null}
+
       {/* font-inc — text nodes only */}
       {type === "text" ? (
         <ToolbarButton
@@ -266,6 +331,7 @@ function ToolbarButton({
   title,
   onClick,
   className,
+  disabled,
   "data-canvas-lock-toggle": lockToggle,
   children,
 }: {
@@ -274,6 +340,7 @@ function ToolbarButton({
   title: string;
   onClick: () => void;
   className?: string;
+  disabled?: boolean;
   "data-canvas-lock-toggle"?: string;
   children: React.ReactNode;
 }) {
@@ -286,9 +353,10 @@ function ToolbarButton({
         : {})}
       aria-label={label}
       title={title}
+      disabled={disabled}
       onClick={onClick}
       onPointerDown={(event) => event.stopPropagation()}
-      className={`rounded p-1 hover:bg-surface-2 ${className ?? ""}`}
+      className={`rounded p-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 ${className ?? ""}`}
     >
       {children}
     </button>

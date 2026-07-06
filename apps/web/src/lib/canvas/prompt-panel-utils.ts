@@ -39,6 +39,27 @@ export function servablePathFromUrl(url: string): string | null {
   }
 }
 
+// ── servableSourceOf ───────────────────────────────────────────
+
+/**
+ * Return the absolute server path for an image node whose content is a servable
+ * state-file URL, or `null` for everything else.
+ *
+ * All four T6 features (mask, angle, AI upscale, reverse-prompt) gate on this:
+ * dataURL uploads can't be server-edited.
+ */
+export function servableSourceOf(
+  node: Pick<
+    { type: string; metadata: { content?: string } },
+    "type" | "metadata"
+  >,
+): string | null {
+  if (node.type !== "image") return null;
+  const content = node.metadata.content;
+  if (!content) return null;
+  return servablePathFromUrl(content);
+}
+
 // ── usableReferencePaths ───────────────────────────────────────
 
 /**

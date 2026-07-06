@@ -8,6 +8,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  describeImageSource,
+  enhanceImageIntoNode,
   generateAudioIntoNode,
   generateImageIntoNode,
   generateVideoIntoNode,
@@ -47,10 +49,14 @@ vi.mock("../lib/api/sdk.gen", () => ({
   postApiV1MediaGenerateImage: vi.fn(),
   postApiV1MediaGenerateVideo: vi.fn(),
   postApiV1MediaGenerateAudio: vi.fn(),
+  postApiV1MediaEnhanceImage: vi.fn(),
+  postApiV1MediaDescribeImage: vi.fn(),
 }));
 
 // Import the mocked SDK so tests can configure it per-scenario
 import {
+  postApiV1MediaDescribeImage,
+  postApiV1MediaEnhanceImage,
   postApiV1MediaGenerateAudio,
   postApiV1MediaGenerateImage,
   postApiV1MediaGenerateVideo,
@@ -58,6 +64,8 @@ import {
 const mockGenerateImage = vi.mocked(postApiV1MediaGenerateImage);
 const mockGenerateVideo = vi.mocked(postApiV1MediaGenerateVideo);
 const mockGenerateAudio = vi.mocked(postApiV1MediaGenerateAudio);
+const mockEnhanceImage = vi.mocked(postApiV1MediaEnhanceImage);
+const mockDescribeImage = vi.mocked(postApiV1MediaDescribeImage);
 
 beforeEach(() => {
   __resetCanvasForTests();
@@ -511,5 +519,288 @@ describe("retryNodeTask", () => {
   it("is a no-op for an unknown node id", () => {
     retryNodeTask("ghost-node-id");
     expect(mockGenerateImage).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateImageIntoNode sourceImage/maskDataUrl extensions", () => {
+  it("forwards sourceImage and maskDataUrl in SDK body", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockGenerateImage.mockResolvedValueOnce({
+      data: {
+        url: "http://localhost/img/inpaint.png",
+        path: "/img/inpaint.png",
+        items: [
+          { url: "http://localhost/img/inpaint.png", path: "/img/inpaint.png" },
+        ],
+      },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    await generateImageIntoNode(node.id, "a dog", {
+      sourceImage: "/path/to/source.png",
+      maskDataUrl: "data:image/png;base64,maskdata",
+    });
+
+    expect(mockGenerateImage).toHaveBeenCalledWith({
+      body: {
+        prompt: "a dog",
+        sourceImage: "/path/to/source.png",
+        maskDataUrl: "data:image/png;base64,maskdata",
+      },
+    });
+  });
+
+  it("retry payload includes sourceImage and maskDataUrl on failure", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockGenerateImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "502" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+
+    await generateImageIntoNode(node.id, "repaint", {
+      sourceImage: "/src/img.png",
+      maskDataUrl: "data:image/png;base64,mask",
+    });
+
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.metadata.task?.retry).toEqual({
+      kind: "image",
+      prompt: "repaint",
+      sourceImage: "/src/img.png",
+      maskDataUrl: "data:image/png;base64,mask",
+    });
+  });
+
+  it("retryNodeTask re-runs with sourceImage and maskDataUrl preserved", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+
+    mockGenerateImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "fail" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+    await generateImageIntoNode(node.id, "redo", {
+      sourceImage: "/img/s.png",
+      maskDataUrl: "data:image/png;base64,m",
+    });
+
+    mockGenerateImage.mockResolvedValueOnce({
+      data: {
+        url: "http://localhost/img/retried.png",
+        path: "/img/retried.png",
+        items: [
+          { url: "http://localhost/img/retried.png", path: "/img/retried.png" },
+        ],
+      },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    retryNodeTask(node.id);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(mockGenerateImage).toHaveBeenCalledTimes(2);
+    const call2 = (
+      mockGenerateImage.mock.calls[1]?.[0] as { body: Record<string, unknown> }
+    )?.body;
+    expect(call2?.sourceImage).toBe("/img/s.png");
+    expect(call2?.maskDataUrl).toBe("data:image/png;base64,m");
+  });
+});
+
+describe("enhanceImageIntoNode", () => {
+  it("success: node gets content, task cleared, resolves true", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockEnhanceImage.mockResolvedValueOnce({
+      data: {
+        url: "http://localhost/img/enhanced.png",
+        path: "/img/enhanced.png",
+        items: [
+          {
+            url: "http://localhost/img/enhanced.png",
+            path: "/img/enhanced.png",
+          },
+        ],
+      },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    const result = await enhanceImageIntoNode(node.id, {
+      sourceImage: "/path/to/src.png",
+      operation: "super-resolve",
+      targetLongEdge: 2048,
+    });
+
+    expect(result).toBe(true);
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.metadata.content).toBe("http://localhost/img/enhanced.png");
+    expect(updated?.metadata).not.toHaveProperty("task");
+  });
+
+  it("failure (error response): task=error with enhance retry payload, resolves false", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockEnhanceImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "502 unavailable" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+
+    const result = await enhanceImageIntoNode(node.id, {
+      sourceImage: "/path/to/src.png",
+      operation: "multi-angle",
+      horizontalDeg: 30,
+      pitchDeg: -10,
+      distance: 5,
+      wideAngle: false,
+    });
+
+    expect(result).toBe(false);
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.metadata.task?.status).toBe("error");
+    expect(updated?.metadata.task?.retry).toEqual({
+      kind: "enhance",
+      sourceImage: "/path/to/src.png",
+      operation: "multi-angle",
+      horizontalDeg: 30,
+      pitchDeg: -10,
+      distance: 5,
+      wideAngle: false,
+    });
+  });
+
+  it("failure (thrown): task=error with retry payload, resolves false", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockEnhanceImage.mockRejectedValueOnce(new Error("network"));
+
+    const result = await enhanceImageIntoNode(node.id, {
+      sourceImage: "/img/x.png",
+      operation: "super-resolve",
+    });
+
+    expect(result).toBe(false);
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.metadata.task?.status).toBe("error");
+    expect(updated?.metadata.task?.retry?.kind).toBe("enhance");
+  });
+
+  it("forwards all enhance params in SDK body", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockEnhanceImage.mockResolvedValueOnce({
+      data: {
+        url: "http://localhost/img/e.png",
+        path: "/img/e.png",
+        items: [{ url: "http://localhost/img/e.png", path: "/img/e.png" }],
+      },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    await enhanceImageIntoNode(node.id, {
+      sourceImage: "/img/src.png",
+      operation: "multi-angle",
+      horizontalDeg: 45,
+      pitchDeg: -20,
+      distance: 7,
+      wideAngle: true,
+      prompt: "wide view",
+    });
+
+    expect(mockEnhanceImage).toHaveBeenCalledWith({
+      body: {
+        sourceImage: "/img/src.png",
+        operation: "multi-angle",
+        horizontalDeg: 45,
+        pitchDeg: -20,
+        distance: 7,
+        wideAngle: true,
+        prompt: "wide view",
+      },
+    });
+  });
+
+  it("retryNodeTask dispatches enhanceImageIntoNode for enhance kind", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+
+    // First: fail to set retry
+    mockEnhanceImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "fail" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+    await enhanceImageIntoNode(node.id, {
+      sourceImage: "/img/r.png",
+      operation: "super-resolve",
+      targetLongEdge: 4096,
+    });
+
+    // Second: succeed via retry
+    mockEnhanceImage.mockResolvedValueOnce({
+      data: {
+        url: "http://localhost/img/retried.png",
+        path: "/img/retried.png",
+        items: [
+          { url: "http://localhost/img/retried.png", path: "/img/retried.png" },
+        ],
+      },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    retryNodeTask(node.id);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(mockEnhanceImage).toHaveBeenCalledTimes(2);
+    const call2 = (
+      mockEnhanceImage.mock.calls[1]?.[0] as { body: Record<string, unknown> }
+    )?.body;
+    expect(call2?.targetLongEdge).toBe(4096);
+    expect(call2?.operation).toBe("super-resolve");
+  });
+});
+
+describe("describeImageSource", () => {
+  it("success: returns trimmed prompt string", async () => {
+    mockDescribeImage.mockResolvedValueOnce({
+      data: { prompt: "  a beautiful landscape  " },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    const result = await describeImageSource("/img/source.png");
+    expect(result).toBe("a beautiful landscape");
+  });
+
+  it("failure (error response): returns null", async () => {
+    mockDescribeImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "unavailable" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+
+    const result = await describeImageSource("/img/source.png");
+    expect(result).toBeNull();
+  });
+
+  it("failure (thrown): returns null without throwing", async () => {
+    mockDescribeImage.mockRejectedValueOnce(new Error("network"));
+
+    const result = await describeImageSource("/img/source.png");
+    expect(result).toBeNull();
+  });
+
+  it("forwards sourceImage in SDK body", async () => {
+    mockDescribeImage.mockResolvedValueOnce({
+      data: { prompt: "test" },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    await describeImageSource("/img/my-photo.png");
+    expect(mockDescribeImage).toHaveBeenCalledWith({
+      body: { sourceImage: "/img/my-photo.png" },
+    });
   });
 });

@@ -71,6 +71,35 @@ describe("canvas-dialogs module store", () => {
     expect(getCanvasDialog()).toEqual({ kind: "upscale", nodeId: "upscale-1" });
   });
 
+  it("mask kind round-trips through open/close", () => {
+    openCanvasDialog({ kind: "mask", nodeId: "mask-node-1" });
+    expect(getCanvasDialog()).toEqual({ kind: "mask", nodeId: "mask-node-1" });
+    closeCanvasDialog();
+    expect(getCanvasDialog()).toBeNull();
+  });
+
+  it("angle kind round-trips through open/close", () => {
+    openCanvasDialog({ kind: "angle", nodeId: "angle-node-1" });
+    expect(getCanvasDialog()).toEqual({
+      kind: "angle",
+      nodeId: "angle-node-1",
+    });
+    closeCanvasDialog();
+    expect(getCanvasDialog()).toBeNull();
+  });
+
+  it("mask open overwrites upscale open", () => {
+    openCanvasDialog({ kind: "upscale", nodeId: "upscale-1" });
+    openCanvasDialog({ kind: "mask", nodeId: "mask-1" });
+    expect(getCanvasDialog()).toEqual({ kind: "mask", nodeId: "mask-1" });
+  });
+
+  it("angle open overwrites mask open", () => {
+    openCanvasDialog({ kind: "mask", nodeId: "mask-1" });
+    openCanvasDialog({ kind: "angle", nodeId: "angle-1" });
+    expect(getCanvasDialog()).toEqual({ kind: "angle", nodeId: "angle-1" });
+  });
+
   it("subscription mechanism: spy is called on open and close, not after unsubscribe", () => {
     const spy = vi.fn();
     const unsubscribe = __subscribeForTests(spy);
