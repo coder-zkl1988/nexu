@@ -501,12 +501,20 @@ export function CanvasSurface({ className }: { className?: string }) {
                       dataUrl: String(reader.result),
                     });
                   };
+                  reader.onerror = () => {
+                    resolve({
+                      name: file.name,
+                      type: file.type,
+                      dataUrl: "",
+                    });
+                  };
                   reader.readAsDataURL(file);
                 },
               ),
           ),
         ).then((inputs) => {
-          ingestFilesAsNodes(inputs, centerWorld);
+          const validInputs = inputs.filter((input) => input.dataUrl !== "");
+          ingestFilesAsNodes(validInputs, centerWorld);
         });
         return;
       }
@@ -567,12 +575,20 @@ export function CanvasSurface({ className }: { className?: string }) {
                       dataUrl: String(reader.result),
                     });
                   };
+                  reader.onerror = () => {
+                    resolve({
+                      name: file.name,
+                      type: file.type,
+                      dataUrl: "",
+                    });
+                  };
                   reader.readAsDataURL(file);
                 },
               ),
           ),
         ).then((inputs) => {
-          ingestFilesAsNodes(inputs, dropWorld);
+          const validInputs = inputs.filter((input) => input.dataUrl !== "");
+          ingestFilesAsNodes(validInputs, dropWorld);
         });
       }}
       onPointerDown={(event) => {

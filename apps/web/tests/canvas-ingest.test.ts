@@ -116,6 +116,39 @@ describe("ingestFilesAsNodes", () => {
     expect(nodes).toHaveLength(1);
     expect(nodes[0]?.title).toBe("song.mp3");
   });
+
+  it("c. stagger offset uses CREATED count, not input index (skip.pdf=skipped, images=contiguous)", () => {
+    const files = [
+      {
+        name: "skip.pdf",
+        type: "application/pdf",
+        dataUrl: "data:application/pdf;base64,D",
+      },
+      {
+        name: "a.png",
+        type: "image/png",
+        dataUrl: "data:image/png;base64,D1",
+      },
+      {
+        name: "b.png",
+        type: "image/png",
+        dataUrl: "data:image/png;base64,D2",
+      },
+    ];
+    const count = ingestFilesAsNodes(files, { x: 10, y: 20 });
+    expect(count).toBe(2); // only the two images
+
+    const { nodes } = getCanvasState();
+    expect(nodes).toHaveLength(2);
+
+    // First image at (10, 20) — created index 0
+    expect(nodes[0]?.title).toBe("a.png");
+    expect(nodes[0]?.position).toEqual({ x: 10, y: 20 });
+
+    // Second image at (34, 44) — created index 1, no gap for the skipped pdf
+    expect(nodes[1]?.title).toBe("b.png");
+    expect(nodes[1]?.position).toEqual({ x: 34, y: 44 });
+  });
 });
 
 describe("ingestTextAsNode", () => {
