@@ -8,6 +8,7 @@ import {
   Lock,
   Maximize2,
   Redo2,
+  SlidersHorizontal,
   Trash2,
   Type,
   Undo2,
@@ -66,6 +67,7 @@ import {
   updateNode,
   useCanvas,
 } from "./canvas-store";
+import { ConfigNodeContent } from "./config-node";
 import { applyConnectionEffects } from "./connection-effects";
 import { PromptPanel } from "./prompt-panel";
 import { TeamStepNodeContent } from "./team-step-node";
@@ -929,6 +931,11 @@ export function CanvasSurface({ className }: { className?: string }) {
                 icon: <AudioLines size={14} />,
                 label: "音频",
               },
+              {
+                type: "config",
+                icon: <SlidersHorizontal size={14} />,
+                label: "配置",
+              },
             ] as const
           ).map(({ type, icon, label }) => (
             <button
@@ -1132,6 +1139,12 @@ function EmptyMediaHint({
 function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   if (node.type === "team-step") {
     return <TeamStepNodeContent node={node} />;
+  }
+
+  // Config nodes have their own inline UI — they never get the task spinner
+  // (the RESULT node carries the task, not the config node).
+  if (node.type === "config") {
+    return <ConfigNodeContent node={node} />;
   }
 
   // Task status overlay: applies before per-type media rendering for image/video/audio.
@@ -1343,6 +1356,18 @@ function CanvasToolbar({
         onClick={() => addNode({ type: "audio", title: "音频" })}
       >
         <AudioLines size={14} />
+      </ToolButton>
+      <ToolButton
+        label="配置节点"
+        onClick={() =>
+          addNode({
+            type: "config",
+            title: "生成配置",
+            metadata: { config: { mode: "image" } },
+          })
+        }
+      >
+        <SlidersHorizontal size={14} />
       </ToolButton>
       <label
         title="上传素材"

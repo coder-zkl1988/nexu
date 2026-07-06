@@ -30,7 +30,8 @@ export type CanvasNodeType =
   | "image"
   | "video"
   | "audio"
-  | "team-step";
+  | "team-step"
+  | "config";
 
 export type CanvasNodeMetadata = {
   /** a2ui: surfaceId into the runtime payload map. */
@@ -44,6 +45,25 @@ export type CanvasNodeMetadata = {
    * Set true to opt out of ratio lock (free resize).
    */
   freeResize?: boolean;
+  /**
+   * Config node: generation settings (params mirror channel capabilities).
+   *
+   * NOTE: model/aspect-ratio pickers are intentionally absent here — the
+   * channels do not accept those params yet. Add them when the channels do.
+   */
+  config?: {
+    mode: "image" | "video" | "audio";
+    /** image: number of outputs, 1–4 */
+    count?: number;
+    /** video: duration in seconds, 1–60 */
+    durationSeconds?: number;
+    /** video: output resolution */
+    resolution?: "720p" | "1080p";
+    /** audio: voice identifier */
+    voice?: string;
+    /** audio: playback speed, 0.5–2 */
+    speed?: number;
+  };
   /** team-step: one step of a live team run (board card is the truth). */
   step?: {
     teamId: string;
@@ -118,6 +138,7 @@ export const NODE_DEFAULT_SIZES: Record<
   video: { width: 420, height: 260 },
   audio: { width: 340, height: 120 },
   "team-step": { width: 300, height: 200 },
+  config: { width: 320, height: 240 },
 };
 
 // ── Store internals ────────────────────────────────────────────

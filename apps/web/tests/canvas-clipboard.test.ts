@@ -233,6 +233,38 @@ describe("pasteClipboard", () => {
   });
 });
 
+describe("config node copyable", () => {
+  it("config node is included in COPYABLE_TYPES — copySelection returns it", () => {
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "image" } },
+    });
+    selectNodes([config.id]);
+    const count = copySelection();
+    expect(count).toBe(1);
+    expect(clipboardHasContent()).toBe(true);
+  });
+
+  it("pasting a config node preserves its metadata.config", () => {
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      position: { x: 100, y: 100 },
+      metadata: { config: { mode: "video", durationSeconds: 10 } },
+    });
+    selectNodes([config.id]);
+    copySelection();
+    pasteClipboard();
+
+    const { nodes } = getCanvasState();
+    const pasted = nodes.find((n) => n.type === "config" && n.id !== config.id);
+    expect(pasted).toBeDefined();
+    expect(pasted?.metadata.config?.mode).toBe("video");
+    expect(pasted?.metadata.config?.durationSeconds).toBe(10);
+  });
+});
+
 describe("duplicateNodes", () => {
   it("e. duplicateNodes creates offset copies and does NOT modify persistent clipboard", () => {
     expect(clipboardHasContent()).toBe(false);

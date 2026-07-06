@@ -28,6 +28,7 @@ const COPYABLE_TYPES = new Set<CanvasNode["type"]>([
   "image",
   "video",
   "audio",
+  "config",
 ]);
 
 type ClipboardEntry = {

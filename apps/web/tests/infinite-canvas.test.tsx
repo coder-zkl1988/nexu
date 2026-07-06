@@ -453,6 +453,47 @@ describe("PromptPanel visibility", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).toContain("data-canvas-prompt-panel=");
   });
+
+  it("single selected config node does NOT render data-canvas-prompt-panel", () => {
+    addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "image" } },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // Config nodes have their own inline UI — the media prompt panel must not appear.
+    expect(markup).not.toContain("data-canvas-prompt-panel");
+    // But the config generate button must appear.
+    expect(markup).toContain("data-canvas-config-generate");
+  });
+});
+
+describe("ConfigNode markup", () => {
+  it("config node renders data-canvas-config-generate and mode labels", () => {
+    addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "image" } },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-config-generate");
+    // Mode labels must be present in the segmented control
+    expect(markup).toContain("图");
+    expect(markup).toContain("视频");
+    expect(markup).toContain("音频");
+  });
+
+  it("toolbar contains 配置节点 button", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("配置节点");
+  });
+
+  it("connect menu contains 配置 option when connectMenu is open — connect menu is absent by default", () => {
+    // The connect menu is only shown after a connect-drop gesture; default markup omits it.
+    addNode({ type: "text", title: "文本" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-connect-menu");
+  });
 });
 
 describe("connection effects", () => {

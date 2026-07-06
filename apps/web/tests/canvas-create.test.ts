@@ -121,6 +121,16 @@ describe("createConnectedNode", () => {
     expect(created?.title).toBe("音频");
   });
 
+  it("d. config type creates with default config metadata {mode: 'image'}", () => {
+    const source = addNode({ type: "text", title: "Src" });
+    const created = createConnectedNode(source.id, "config", { x: 0, y: 0 });
+
+    expect(created).not.toBeNull();
+    expect(created?.type).toBe("config");
+    expect(created?.title).toBe("生成配置");
+    expect(created?.metadata.config).toEqual({ mode: "image" });
+  });
+
   it("c. position math: new node left-edge midpoint lands at drop point", () => {
     const source = addNode({ type: "text", title: "Src" });
     const at = { x: 500, y: 200 };
