@@ -329,7 +329,8 @@ export async function describeImageSource(
       body: { sourceImage },
     });
     if (!data || error) return null;
-    return data.prompt.trim();
+    const trimmed = data.prompt.trim();
+    return trimmed === "" ? null : trimmed;
   } catch {
     return null;
   }

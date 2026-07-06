@@ -228,9 +228,14 @@ export function HoverToolbar({
               if (prompt === null) {
                 toast.error("反推失败（后端未配置或不可用）");
               } else {
-                void navigator.clipboard.writeText(prompt).then(() => {
-                  toast.success("提示词已复制");
-                });
+                navigator.clipboard
+                  .writeText(prompt)
+                  .then(() => {
+                    toast.success("提示词已复制");
+                  })
+                  .catch(() => {
+                    toast.error("复制失败");
+                  });
               }
             });
           }}
