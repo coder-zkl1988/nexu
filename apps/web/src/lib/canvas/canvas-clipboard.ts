@@ -43,11 +43,14 @@ let clipboard: ClipboardEntry | null = null;
 // ── Helpers ────────────────────────────────────────────────────
 
 function deepCopyNode(node: CanvasNode): CanvasNode {
+  // Omit surfaceId to prevent two nodes sharing the same a2ui payload
+  // (a2ui payloads are keyed by surfaceId and deleted on node removal).
+  const { surfaceId: _omitted, ...metadata } = node.metadata;
   return {
     ...node,
     position: { ...node.position },
     size: { ...node.size },
-    metadata: { ...node.metadata },
+    metadata: { ...metadata },
   };
 }
 

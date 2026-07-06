@@ -623,8 +623,20 @@ export function CanvasSurface({ className }: { className?: string }) {
       onContextMenu={(event) => {
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        const screenX = event.clientX - (rect?.left ?? 0);
-        const screenY = event.clientY - (rect?.top ?? 0);
+        let screenX = event.clientX - (rect?.left ?? 0);
+        let screenY = event.clientY - (rect?.top ?? 0);
+        // Clamp menu position to stay inside container (approximate menu size ~180x160)
+        const menuWidth = 180;
+        const menuHeight = 160;
+        const minOffset = 8;
+        screenX = Math.max(
+          minOffset,
+          Math.min(screenX, (rect?.width ?? 0) - menuWidth - minOffset),
+        );
+        screenY = Math.max(
+          minOffset,
+          Math.min(screenY, (rect?.height ?? 0) - menuHeight - minOffset),
+        );
         const target = event.target as Element | null;
         const nodeEl = target?.closest("[data-canvas-node]");
         const edgeEl = target?.closest("[data-canvas-edge]");
@@ -635,7 +647,7 @@ export function CanvasSurface({ className }: { className?: string }) {
             selectNodes([id]);
           }
           setContextMenu({ kind: "node", id, x: screenX, y: screenY });
-        } else if (edgeEl instanceof SVGElement) {
+        } else if (edgeEl) {
           const id = edgeEl.getAttribute("data-canvas-edge") ?? "";
           setContextMenu({ kind: "edge", id, x: screenX, y: screenY });
         } else {

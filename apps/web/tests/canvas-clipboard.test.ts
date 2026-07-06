@@ -160,6 +160,7 @@ describe("pasteClipboard", () => {
     pasteClipboard(); // first paste: +36/+36 from copied position
     const { nodes: afterFirst } = getCanvasState();
     const firstPasted = afterFirst.find((n) => n.id !== text.id);
+    expect(firstPasted).toBeDefined();
     expect(firstPasted?.position).toEqual({ x: 36, y: 36 });
 
     pasteClipboard(); // second paste: +72/+72 from copied position
@@ -168,6 +169,7 @@ describe("pasteClipboard", () => {
     const secondPasted = afterSecond.find(
       (n) => n.id !== text.id && n.id !== firstPastedId,
     );
+    expect(secondPasted).toBeDefined();
     expect(secondPasted?.position).toEqual({ x: 72, y: 72 });
   });
 
@@ -209,6 +211,25 @@ describe("pasteClipboard", () => {
     const count = pasteClipboard();
     expect(count).toBe(0);
     expect(getCanvasState().nodes).toHaveLength(before);
+  });
+
+  it("g. surfaceId is stripped from pasted node metadata to prevent a2ui payload collision", () => {
+    // Create a text node with surfaceId in metadata (simulating a sneakily-added value)
+    const text = addNode({
+      type: "text",
+      title: "TextWithSurfaceId",
+      metadata: { surfaceId: "sneak" },
+    });
+    selectNodes([text.id]);
+    copySelection();
+
+    pasteClipboard();
+    const { nodes } = getCanvasState();
+    const pasted = nodes.find(
+      (n) => n.title === "TextWithSurfaceId" && n.id !== text.id,
+    );
+    expect(pasted).toBeDefined();
+    expect(pasted?.metadata.surfaceId).toBeUndefined();
   });
 });
 
