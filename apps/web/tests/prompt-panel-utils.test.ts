@@ -44,6 +44,11 @@ describe("servablePathFromUrl", () => {
   it("returns null for an empty string", () => {
     expect(servablePathFromUrl("")).toBeNull();
   });
+
+  it("returns null for a URL with extra path prefix before state-file", () => {
+    const url = "http://evil.com/x/api/v1/media/state-file?path=%2Fabs%2Fp.png";
+    expect(servablePathFromUrl(url)).toBeNull();
+  });
 });
 
 describe("usableReferencePaths", () => {

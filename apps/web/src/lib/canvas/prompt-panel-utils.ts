@@ -31,7 +31,7 @@ export function servablePathFromUrl(url: string): string | null {
   try {
     // For relative URLs, use a dummy base so URL() can parse them.
     const parsed = new URL(url, "http://localhost");
-    if (!parsed.pathname.endsWith("/api/v1/media/state-file")) return null;
+    if (parsed.pathname !== "/api/v1/media/state-file") return null;
     const path = parsed.searchParams.get("path");
     return path ?? null;
   } catch {
