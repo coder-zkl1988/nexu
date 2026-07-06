@@ -8,6 +8,7 @@ import {
   exportCanvas,
   getCanvasState,
   importCanvas,
+  moveNodes,
   redo,
   removeNodes,
   undo,
@@ -91,6 +92,24 @@ describe("canvas store", () => {
     expect(edge).not.toBeNull();
     expect(connectNodes(a.id, b.id)).toBeNull(); // duplicate
     expect(getCanvasState().connections).toHaveLength(1);
+  });
+
+  it("moveNodes moves a multi-selection in one state update", () => {
+    const a = addNode({ type: "text", title: "A" });
+    const b = addNode({ type: "text", title: "B" });
+    moveNodes([
+      { id: a.id, position: { x: 10, y: 20 } },
+      { id: b.id, position: { x: 30, y: 40 } },
+    ]);
+    const state = getCanvasState();
+    expect(state.nodes.find((n) => n.id === a.id)?.position).toEqual({
+      x: 10,
+      y: 20,
+    });
+    expect(state.nodes.find((n) => n.id === b.id)?.position).toEqual({
+      x: 30,
+      y: 40,
+    });
   });
 
   it("removing a node cascades its connections", () => {
@@ -184,6 +203,16 @@ describe("CanvasSurface", () => {
     expect(markup).toContain("data-canvas-node-selected");
     expect(markup).toContain("初稿");
     expect(markup).toContain("配图");
+  });
+
+  it("keeps the smooth-interaction contract: select-none container, transform-positioned nodes", () => {
+    addNode({ type: "text", title: "T", position: { x: 500, y: 100 } });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // Dragging must never start a text selection…
+    expect(markup).toContain("select-none");
+    // …and nodes are compositor-positioned (no per-frame layout).
+    expect(markup).toContain("translate3d(500px, 100px, 0)");
+    expect(markup).toContain("contain:layout style");
   });
 
   it("renders the expired placeholder for an a2ui node without payload", () => {

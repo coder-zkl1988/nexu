@@ -98,3 +98,17 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 - **端点**：`POST /api/v1/media/generate-image {prompt} → {url, path}`（502 = 失败/超时/未配置后端）。
 - **前端**：画布空图片节点新增「描述要生成的图片… + 生成」（与上传并列），成功后 `metadata.content = url`，可直接连线喂给 XHS 编辑器（复用 connection-effects）。
 - **环境依赖与实测**：`image_generate` 工具需图像模型 provider 才注册；合入 main 的 **tabby-image 官方 skill**（走已登录 Tabby 云账号，零配置）后，生成合同更新为「优先 image_generate 工具 → 其次 tabby-image skill → 都不可用只回 UNAVAILABLE」。**真机全通**：POST 生图 108s 返回 200，产物 1536×1024 PNG 落 `media/outbound/<botId>/tabby-image/`，servable URL 直接可取（2.1MB）。超时上限 240s（skill 链路叠加 agent 开销：读 SKILL→起脚本→轮询）。弱模型可能无视 UNAVAILABLE 合同而空转至超时兜底。
+
+## 8. v2.2 —— 交互内核重做：流畅度 + 划选文字 + 卡片对齐（2026-07-06 验收反馈）
+
+验收反馈三项：拖动/改尺寸卡顿、拖动时鼠标划选文字、卡片样式与参考项目未对齐。逐项对齐参考项目范式（AGPL，仅借鉴范式，零代码复用）：
+
+1. **划选文字**：画布容器永久 `select-none`（参考同款）；所有手势起点 `preventDefault()` + `setPointerCapture()`；文本节点 textarea 加 `select-text` 豁免（表单控件本身不受父级 user-select 影响，输入框选择不受损）。
+2. **流畅度**（四个叠加根因一起修）：
+   - **隐藏 bug**：旧 `onPointerMove` 回调身份依赖 viewport → 平移第一帧后 effect 清理把 window 监听器摘掉，平移基本冻结。重做后 window pointer 监听器**挂载期注册一次**，手势态全走 ref + `getCanvasState()` 读活值，身份零漂移。
+   - **rAF 合帧**：pointermove 只记录坐标 + 调度一次 requestAnimationFrame，每帧至多一次 store 提交（参考同款）；pointerup 取消挂起帧并以松手坐标终提交。
+   - **渲染隔离**：节点帧 `React.memo`（`CanvasNodeView`）+ 内容层 `NodeBody` 自定义比较（id/type/title/metadata 同一性）——拖动/缩放只重渲被拖节点的外框与连线 SVG，**A2UI 树/团队步骤内容零重渲**；节点定位从 `left/top` 改 `transform: translate3d` + `contain: layout style`（免每帧 layout）。
+   - **store 侧**：`setViewport` 的 localStorage 持久化去抖 300ms（同步 I/O 出帧循环）；新增 `moveNodes()` 批量移动（多选拖动单次 emit），拖已选中节点整组移动、不再塌缩选区。
+3. **卡片样式对齐参考**：`rounded-2xl border-2` + 选中蓝边升 `z-50` + `shadow-xl` + `transition-shadow 200ms`；连接点改为悬停/选中浮现的 12px 圆点（48px 隐形热区，hover scale-125）；缩放把手改角落 28px 隐形热区（光标即提示）；空媒体节点改居中图标砖 + 细字距标签（空图片/视频/音频节点）；有内容的图片/视频满铺圆角（p-0 full-bleed）、img `pointer-events-none select-none`；网格背景位置取模（数值不膨胀）。保留我们的标题栏（参考是无框卡片，但我们的节点含交互内容——A2UI 表单/文本编辑——需要专用拖拽把手与关闭钮）。
+
+测试：新增 `moveNodes` 批量断言 + 「流畅交互契约」标记断言（容器 `select-none`、节点 `translate3d`/`contain`）；web 全套 115 通过、tsc/lint 干净。

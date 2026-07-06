@@ -198,6 +198,18 @@ function persistViewport(viewport: CanvasViewport): void {
   }
 }
 
+/** localStorage writes are synchronous I/O — never run them per pan/zoom frame. */
+let viewportPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function persistViewportDebounced(viewport: CanvasViewport): void {
+  if (viewportPersistTimer) {
+    clearTimeout(viewportPersistTimer);
+  }
+  viewportPersistTimer = setTimeout(() => {
+    viewportPersistTimer = null;
+    persistViewport(viewport);
+  }, 300);
+}
+
 function genId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -256,11 +268,21 @@ export function updateNode(
 }
 
 export function moveNode(id: string, position: { x: number; y: number }): void {
+  moveNodes([{ id, position }]);
+}
+
+/** Move several nodes in one state update (multi-select drag = one emit). */
+export function moveNodes(
+  updates: ReadonlyArray<{ id: string; position: { x: number; y: number } }>,
+): void {
+  if (updates.length === 0) return;
   recordHistory();
+  const byId = new Map(updates.map((update) => [update.id, update.position]));
   setState({
-    nodes: state.nodes.map((node) =>
-      node.id === id ? { ...node, position } : node,
-    ),
+    nodes: state.nodes.map((node) => {
+      const position = byId.get(node.id);
+      return position ? { ...node, position } : node;
+    }),
   });
 }
 
@@ -339,7 +361,7 @@ export function removeConnection(id: string): void {
 
 export function setViewport(viewport: CanvasViewport): void {
   setState({ viewport });
-  persistViewport(viewport);
+  persistViewportDebounced(viewport);
 }
 
 export function selectNodes(ids: readonly string[], additive = false): void {
@@ -497,6 +519,10 @@ export function __resetCanvasForTests(): void {
   if (historyTimer) {
     clearTimeout(historyTimer);
     historyTimer = null;
+  }
+  if (viewportPersistTimer) {
+    clearTimeout(viewportPersistTimer);
+    viewportPersistTimer = null;
   }
   a2uiPayloads.clear();
   emit();

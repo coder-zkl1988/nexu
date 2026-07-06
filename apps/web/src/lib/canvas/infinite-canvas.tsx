@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   type ReactNode,
+  memo,
   useCallback,
   useEffect,
   useRef,
@@ -29,7 +30,8 @@ import {
   connectNodes,
   deleteSelection,
   getA2UIPayload,
-  moveNode,
+  getCanvasState,
+  moveNodes,
   redo,
   removeConnection,
   removeNodes,
@@ -52,6 +54,18 @@ import { TeamStepNodeContent } from "./team-step-node";
  * DOM-based; interaction paradigm follows the reference infinite-canvas app
  * (AGPL — reimplemented, no code reuse). Design doc
  * 2026-07-03-infinite-canvas-sidebar.md.
+ *
+ * Interaction core (reference paradigm):
+ * - the container opts out of text selection permanently (`select-none`);
+ *   gesture starts call preventDefault + setPointerCapture, and editors
+ *   inside nodes opt back in with `select-text` / native form controls.
+ * - window pointer listeners are registered ONCE and read live state via
+ *   getCanvasState() — no identity churn mid-gesture.
+ * - pointermove is coalesced through requestAnimationFrame: at most one
+ *   store commit per frame.
+ * - nodes are positioned with transform + `contain: layout style` and
+ *   rendered through React.memo; node content additionally ignores
+ *   geometry-only changes, so dragging never re-renders A2UI trees.
  */
 
 export const CANVAS_MIN_SCALE = 0.25;
@@ -132,14 +146,13 @@ function targetAnchor(node: Pick<CanvasNode, "position" | "size">) {
   return { x: node.position.x, y: node.position.y + node.size.height / 2 };
 }
 
-type DragState =
+type GestureState =
   | { kind: "pan"; startX: number; startY: number; origin: CanvasViewport }
   | {
       kind: "node";
-      id: string;
       startX: number;
       startY: number;
-      origin: { x: number; y: number };
+      origins: Array<{ id: string; x: number; y: number }>;
     }
   | {
       kind: "resize";
@@ -169,32 +182,240 @@ export function CanvasSurface({ className }: { className?: string }) {
     selectedConnectionId,
   } = useCanvas();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<DragState | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const [connectPoint, setConnectPoint] = useState<{
+  const gestureRef = useRef<GestureState | null>(null);
+  const pointerRef = useRef({ x: 0, y: 0 });
+  const rafRef = useRef<number | null>(null);
+  const marqueeRef = useRef<{
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null>(null);
+  const [gestureActive, setGestureActive] = useState(false);
+  const [connectPreview, setConnectPreview] = useState<{
     x: number;
     y: number;
   } | null>(null);
-  const [marquee, setMarquee] = useState<{
+  const [marqueeBox, setMarqueeBox] = useState<{
     start: { x: number; y: number };
     current: { x: number; y: number };
   } | null>(null);
   const selected = new Set(selectedNodeIds);
 
-  const toWorld = useCallback(
-    (clientX: number, clientY: number) => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      const px = clientX - (rect?.left ?? 0);
-      const py = clientY - (rect?.top ?? 0);
-      return {
-        x: (px - viewport.x) / viewport.scale,
-        y: (py - viewport.y) / viewport.scale,
-      };
+  // Stable: reads the live viewport from the store, never from a closure.
+  const toWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const live = getCanvasState().viewport;
+    const px = clientX - (rect?.left ?? 0);
+    const py = clientY - (rect?.top ?? 0);
+    return {
+      x: (px - live.x) / live.scale,
+      y: (py - live.y) / live.scale,
+    };
+  }, []);
+
+  /** Apply the latest pointer position for `gesture` (≤ once per frame). */
+  const applyGesture = useCallback(
+    (gesture: GestureState) => {
+      const { x: clientX, y: clientY } = pointerRef.current;
+      if (gesture.kind === "pan") {
+        setViewport({
+          scale: gesture.origin.scale,
+          x: gesture.origin.x + (clientX - gesture.startX),
+          y: gesture.origin.y + (clientY - gesture.startY),
+        });
+      } else if (gesture.kind === "node") {
+        const scale = getCanvasState().viewport.scale;
+        const dx = (clientX - gesture.startX) / scale;
+        const dy = (clientY - gesture.startY) / scale;
+        moveNodes(
+          gesture.origins.map((origin) => ({
+            id: origin.id,
+            position: { x: origin.x + dx, y: origin.y + dy },
+          })),
+        );
+      } else if (gesture.kind === "resize") {
+        const scale = getCanvasState().viewport.scale;
+        resizeNode(gesture.id, {
+          width: gesture.origin.width + (clientX - gesture.startX) / scale,
+          height: gesture.origin.height + (clientY - gesture.startY) / scale,
+        });
+      } else if (gesture.kind === "connect") {
+        setConnectPreview(toWorld(clientX, clientY));
+      } else if (gesture.kind === "marquee") {
+        const box = marqueeRef.current;
+        if (box) {
+          const next = { ...box, current: toWorld(clientX, clientY) };
+          marqueeRef.current = next;
+          setMarqueeBox(next);
+        }
+      }
     },
-    [viewport],
+    [toWorld],
   );
 
-  // Wheel zoom: non-passive listener so preventDefault works.
+  // Window listeners live for the component lifetime; gestures are pure ref
+  // state, so identities never churn mid-drag (a viewport-dependent handler
+  // here previously lost the pan listener after the first frame).
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      if (!gestureRef.current) return;
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (gestureRef.current) applyGesture(gestureRef.current);
+        });
+      }
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      const gesture = gestureRef.current;
+      if (!gesture) return;
+      gestureRef.current = null;
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      setGestureActive(false);
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+
+      if (gesture.kind === "node" || gesture.kind === "resize") {
+        // Commit the exact release position (a pending frame may be stale).
+        applyGesture(gesture);
+        return;
+      }
+      if (gesture.kind === "connect") {
+        setConnectPreview(null);
+        const point = toWorld(event.clientX, event.clientY);
+        const liveNodes = getCanvasState().nodes;
+        const target = [...liveNodes]
+          .reverse()
+          .find(
+            (node) =>
+              node.id !== gesture.fromId &&
+              point.x >= node.position.x &&
+              point.x <= node.position.x + node.size.width &&
+              point.y >= node.position.y &&
+              point.y <= node.position.y + node.size.height,
+          );
+        if (target) {
+          const created = connectNodes(gesture.fromId, target.id);
+          const source = liveNodes.find((node) => node.id === gesture.fromId);
+          if (created && source) {
+            // Edges carry data: e.g. image → XHS editor feeds the post image.
+            applyConnectionEffects(source, target);
+          }
+        }
+        return;
+      }
+      if (gesture.kind === "marquee") {
+        const box = marqueeRef.current;
+        marqueeRef.current = null;
+        setMarqueeBox(null);
+        if (box) {
+          const x1 = Math.min(box.start.x, box.current.x);
+          const x2 = Math.max(box.start.x, box.current.x);
+          const y1 = Math.min(box.start.y, box.current.y);
+          const y2 = Math.max(box.start.y, box.current.y);
+          const hit = getCanvasState()
+            .nodes.filter(
+              (node) =>
+                node.position.x < x2 &&
+                node.position.x + node.size.width > x1 &&
+                node.position.y < y2 &&
+                node.position.y + node.size.height > y1,
+            )
+            .map((node) => node.id);
+          selectNodes(hit, gesture.additive);
+        }
+      }
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [applyGesture, toWorld]);
+
+  /** Start a gesture: kill text selection/native drag, capture the pointer. */
+  const beginGesture = useCallback(
+    (event: React.PointerEvent, gesture: GestureState) => {
+      event.preventDefault();
+      try {
+        (event.currentTarget as Element).setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is best-effort (absent in some test DOMs).
+      }
+      pointerRef.current = { x: event.clientX, y: event.clientY };
+      gestureRef.current = gesture;
+      setGestureActive(true);
+    },
+    [],
+  );
+
+  const beginNodeDrag = useCallback(
+    (event: React.PointerEvent, nodeId: string) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      const state = getCanvasState();
+      // Dragging a node inside the current selection moves the whole
+      // selection; otherwise selection collapses to the grabbed node.
+      if (!state.selectedNodeIds.includes(nodeId)) {
+        selectNodes([nodeId], event.shiftKey);
+      }
+      const after = getCanvasState();
+      const origins = after.nodes
+        .filter((node) => after.selectedNodeIds.includes(node.id))
+        .map((node) => ({
+          id: node.id,
+          x: node.position.x,
+          y: node.position.y,
+        }));
+      beginGesture(event, {
+        kind: "node",
+        startX: event.clientX,
+        startY: event.clientY,
+        origins,
+      });
+    },
+    [beginGesture],
+  );
+
+  const beginResize = useCallback(
+    (event: React.PointerEvent, nodeId: string) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      const node = getCanvasState().nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      beginGesture(event, {
+        kind: "resize",
+        id: nodeId,
+        startX: event.clientX,
+        startY: event.clientY,
+        origin: node.size,
+      });
+    },
+    [beginGesture],
+  );
+
+  const beginConnect = useCallback(
+    (event: React.PointerEvent, nodeId: string) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      setConnectPreview(toWorld(event.clientX, event.clientY));
+      beginGesture(event, { kind: "connect", fromId: nodeId });
+    },
+    [beginGesture, toWorld],
+  );
+
+  // Wheel zoom: non-passive listener registered once; reads live viewport.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -205,12 +426,13 @@ export function CanvasSurface({ className }: { className?: string }) {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
       };
+      const live = getCanvasState().viewport;
       const factor = Math.exp(-event.deltaY * 0.0015);
-      setViewport(zoomAtPoint(viewport, pointer, viewport.scale * factor));
+      setViewport(zoomAtPoint(live, pointer, live.scale * factor));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [viewport]);
+  }, []);
 
   // Keyboard shortcuts (active while the canvas is mounted; skipped when
   // typing into inputs/textareas so node editors keep native behavior).
@@ -238,144 +460,43 @@ export function CanvasSurface({ className }: { className?: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const onPointerMove = useCallback(
-    (event: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      if (drag.kind === "pan") {
-        setViewport({
-          ...drag.origin,
-          x: drag.origin.x + (event.clientX - drag.startX),
-          y: drag.origin.y + (event.clientY - drag.startY),
-        });
-      } else if (drag.kind === "node") {
-        moveNode(drag.id, {
-          x: drag.origin.x + (event.clientX - drag.startX) / viewport.scale,
-          y: drag.origin.y + (event.clientY - drag.startY) / viewport.scale,
-        });
-      } else if (drag.kind === "resize") {
-        resizeNode(drag.id, {
-          width:
-            drag.origin.width + (event.clientX - drag.startX) / viewport.scale,
-          height:
-            drag.origin.height + (event.clientY - drag.startY) / viewport.scale,
-        });
-      } else if (drag.kind === "connect") {
-        setConnectPoint(toWorld(event.clientX, event.clientY));
-      } else if (drag.kind === "marquee") {
-        setMarquee((prev) =>
-          prev
-            ? { ...prev, current: toWorld(event.clientX, event.clientY) }
-            : prev,
-        );
-      }
-    },
-    [viewport.scale, toWorld],
-  );
-
-  const onPointerUp = useCallback(
-    (event: PointerEvent) => {
-      const drag = dragRef.current;
-      dragRef.current = null;
-      setDragging(false);
-      window.removeEventListener("pointermove", onPointerMove);
-      if (!drag) return;
-
-      if (drag.kind === "connect") {
-        setConnectPoint(null);
-        const point = toWorld(event.clientX, event.clientY);
-        const target = [...nodes]
-          .reverse()
-          .find(
-            (node) =>
-              node.id !== drag.fromId &&
-              point.x >= node.position.x &&
-              point.x <= node.position.x + node.size.width &&
-              point.y >= node.position.y &&
-              point.y <= node.position.y + node.size.height,
-          );
-        if (target) {
-          const created = connectNodes(drag.fromId, target.id);
-          const source = nodes.find((node) => node.id === drag.fromId);
-          if (created && source) {
-            // Edges carry data: e.g. image → XHS editor feeds the post image.
-            applyConnectionEffects(source, target);
-          }
-        }
-      } else if (drag.kind === "marquee") {
-        setMarquee((box) => {
-          if (box) {
-            const x1 = Math.min(box.start.x, box.current.x);
-            const x2 = Math.max(box.start.x, box.current.x);
-            const y1 = Math.min(box.start.y, box.current.y);
-            const y2 = Math.max(box.start.y, box.current.y);
-            const hit = nodes
-              .filter(
-                (node) =>
-                  node.position.x < x2 &&
-                  node.position.x + node.size.width > x1 &&
-                  node.position.y < y2 &&
-                  node.position.y + node.size.height > y1,
-              )
-              .map((node) => node.id);
-            selectNodes(hit, drag.additive);
-          }
-          return null;
-        });
-      }
-    },
-    [nodes, onPointerMove, toWorld],
-  );
-
-  useEffect(() => {
-    window.addEventListener("pointerup", onPointerUp);
-    return () => {
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointermove", onPointerMove);
-    };
-  }, [onPointerUp, onPointerMove]);
-
-  function beginDrag(state: DragState) {
-    dragRef.current = state;
-    setDragging(true);
-    window.addEventListener("pointermove", onPointerMove);
-  }
-
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const connectSource =
-    dragRef.current?.kind === "connect"
-      ? nodeById.get(dragRef.current.fromId)
+    gestureRef.current?.kind === "connect"
+      ? nodeById.get(gestureRef.current.fromId)
       : null;
+  const gridSize = 24 * viewport.scale;
 
   return (
     <div
       ref={containerRef}
       data-infinite-canvas="true"
       className={cn(
-        "relative h-full w-full overflow-hidden",
-        dragging ? "cursor-grabbing" : "cursor-grab",
+        "relative h-full w-full select-none overflow-hidden",
+        gestureActive ? "cursor-grabbing" : "cursor-grab",
         className,
       )}
       style={{
         backgroundImage:
           "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
-        backgroundSize: `${24 * viewport.scale}px ${24 * viewport.scale}px`,
-        backgroundPosition: `${viewport.x}px ${viewport.y}px`,
+        backgroundSize: `${gridSize}px ${gridSize}px`,
+        backgroundPosition: `${viewport.x % gridSize}px ${viewport.y % gridSize}px`,
       }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         if (event.metaKey || event.ctrlKey) {
           const start = toWorld(event.clientX, event.clientY);
-          setMarquee({ start, current: start });
-          beginDrag({ kind: "marquee", additive: event.shiftKey });
+          marqueeRef.current = { start, current: start };
+          setMarqueeBox(marqueeRef.current);
+          beginGesture(event, { kind: "marquee", additive: event.shiftKey });
           return;
         }
         clearSelection();
-        beginDrag({
+        beginGesture(event, {
           kind: "pan",
           startX: event.clientX,
           startY: event.clientY,
-          origin: viewport,
+          origin: getCanvasState().viewport,
         });
       }}
     >
@@ -416,9 +537,9 @@ export function CanvasSurface({ className }: { className?: string }) {
               />
             );
           })}
-          {connectSource && connectPoint ? (
+          {connectSource && connectPreview ? (
             <path
-              d={connectionPath(sourceAnchor(connectSource), connectPoint)}
+              d={connectionPath(sourceAnchor(connectSource), connectPreview)}
               fill="none"
               className="stroke-sky-500"
               strokeWidth={2}
@@ -429,99 +550,26 @@ export function CanvasSurface({ className }: { className?: string }) {
 
         {/* Nodes */}
         {nodes.map((node) => (
-          <div
+          <CanvasNodeView
             key={node.id}
-            data-canvas-node={node.id}
-            data-canvas-node-selected={selected.has(node.id) || undefined}
-            className={cn(
-              "absolute flex flex-col rounded-lg border bg-surface-1 shadow-lg shadow-black/5",
-              selected.has(node.id) ? "border-sky-500" : "border-border",
-            )}
-            style={{
-              left: node.position.x,
-              top: node.position.y,
-              width: node.size.width,
-              height: node.size.height,
-            }}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              selectNodes([node.id], event.shiftKey);
-            }}
-          >
-            <div
-              className="flex shrink-0 cursor-move items-center justify-between gap-2 rounded-t-lg border-b border-border bg-surface-2/60 px-3 py-1.5"
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.stopPropagation();
-                selectNodes([node.id], event.shiftKey);
-                beginDrag({
-                  kind: "node",
-                  id: node.id,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  origin: node.position,
-                });
-              }}
-            >
-              <span className="min-w-0 truncate text-xs font-medium text-text-secondary">
-                {node.title}
-              </span>
-              <button
-                type="button"
-                aria-label="close node"
-                onClick={() => removeNodes([node.id])}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="shrink-0 rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
-              >
-                <X size={12} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
-              <NodeContent node={node} />
-            </div>
-
-            {/* Connect handle: drag from the right edge to another node */}
-            <button
-              type="button"
-              aria-label="connect from node"
-              data-canvas-connect-handle={node.id}
-              className="absolute -right-2 top-1/2 h-4 w-4 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-sky-500 bg-surface-1"
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.stopPropagation();
-                setConnectPoint(toWorld(event.clientX, event.clientY));
-                beginDrag({ kind: "connect", fromId: node.id });
-              }}
-            />
-            {/* Resize handle (bottom-right corner) */}
-            <div
-              data-canvas-resize-handle={node.id}
-              className="absolute -bottom-1 -right-1 h-3 w-3 cursor-nwse-resize rounded-sm border border-border bg-surface-2"
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.stopPropagation();
-                beginDrag({
-                  kind: "resize",
-                  id: node.id,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  origin: node.size,
-                });
-              }}
-            />
-          </div>
+            node={node}
+            selected={selected.has(node.id)}
+            onHeaderDown={beginNodeDrag}
+            onResizeDown={beginResize}
+            onConnectDown={beginConnect}
+          />
         ))}
 
         {/* Marquee rectangle */}
-        {marquee ? (
+        {marqueeBox ? (
           <div
             data-canvas-marquee="true"
             className="absolute border border-sky-500/70 bg-sky-500/10"
             style={{
-              left: Math.min(marquee.start.x, marquee.current.x),
-              top: Math.min(marquee.start.y, marquee.current.y),
-              width: Math.abs(marquee.current.x - marquee.start.x),
-              height: Math.abs(marquee.current.y - marquee.start.y),
+              left: Math.min(marqueeBox.start.x, marqueeBox.current.x),
+              top: Math.min(marqueeBox.start.y, marqueeBox.current.y),
+              width: Math.abs(marqueeBox.current.x - marqueeBox.start.x),
+              height: Math.abs(marqueeBox.current.y - marqueeBox.start.y),
             }}
           />
         ) : null}
@@ -537,7 +585,134 @@ export function CanvasSurface({ className }: { className?: string }) {
   );
 }
 
+// ── Node view (memoized frame + geometry-insensitive body) ─────
+
+type NodeGestureHandler = (event: React.PointerEvent, nodeId: string) => void;
+
+const CanvasNodeView = memo(function CanvasNodeView({
+  node,
+  selected,
+  onHeaderDown,
+  onResizeDown,
+  onConnectDown,
+}: {
+  node: CanvasNode;
+  selected: boolean;
+  onHeaderDown: NodeGestureHandler;
+  onResizeDown: NodeGestureHandler;
+  onConnectDown: NodeGestureHandler;
+}) {
+  // Media with content renders full-bleed like the reference cards.
+  const fullBleed =
+    (node.type === "image" || node.type === "video") &&
+    Boolean(node.metadata.content);
+  return (
+    <div
+      data-canvas-node={node.id}
+      data-canvas-node-selected={selected || undefined}
+      className={cn(
+        "group absolute flex flex-col rounded-2xl border-2 bg-surface-1 transition-shadow duration-200",
+        selected
+          ? "z-50 border-sky-500 shadow-xl shadow-sky-500/10"
+          : "z-10 border-border shadow-lg shadow-black/5",
+      )}
+      style={{
+        transform: `translate3d(${node.position.x}px, ${node.position.y}px, 0)`,
+        width: node.size.width,
+        height: node.size.height,
+        contain: "layout style",
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (!getCanvasState().selectedNodeIds.includes(node.id)) {
+          selectNodes([node.id], event.shiftKey);
+        }
+      }}
+    >
+      <div
+        className="flex shrink-0 cursor-move items-center justify-between gap-2 rounded-t-[14px] border-b border-border bg-surface-2/60 px-3 py-1.5"
+        onPointerDown={(event) => onHeaderDown(event, node.id)}
+      >
+        <span className="min-w-0 truncate text-xs font-medium text-text-secondary">
+          {node.title}
+        </span>
+        <button
+          type="button"
+          aria-label="close node"
+          onClick={() => removeNodes([node.id])}
+          onPointerDown={(event) => event.stopPropagation()}
+          className="shrink-0 rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          fullBleed
+            ? "overflow-hidden rounded-b-[14px]"
+            : "overflow-y-auto p-3",
+        )}
+      >
+        <NodeBody node={node} />
+      </div>
+
+      {/* Connect handle: 48px hit zone with a 12px dot, shown on
+          hover/selection (reference paradigm), drag to another node. */}
+      <button
+        type="button"
+        aria-label="connect from node"
+        data-canvas-connect-handle={node.id}
+        className={cn(
+          "absolute -right-6 top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150",
+          selected
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+        )}
+        onPointerDown={(event) => onConnectDown(event, node.id)}
+      >
+        <span className="size-3 rounded-full border-2 border-sky-500 bg-surface-1 transition-transform hover:scale-125" />
+      </button>
+      {/* Resize: invisible 28px corner zone (cursor is the affordance). */}
+      <div
+        data-canvas-resize-handle={node.id}
+        className="absolute -bottom-3.5 -right-3.5 z-40 size-7 cursor-nwse-resize"
+        onPointerDown={(event) => onResizeDown(event, node.id)}
+      />
+    </div>
+  );
+});
+
+/** Node content re-renders only on content changes, never on geometry. */
+const NodeBody = memo(
+  function NodeBody({ node }: { node: CanvasNode }) {
+    return <NodeContent node={node} />;
+  },
+  (prev, next) =>
+    prev.node.id === next.node.id &&
+    prev.node.type === next.node.type &&
+    prev.node.title === next.node.title &&
+    prev.node.metadata === next.node.metadata,
+);
+
 // ── Node content by type ───────────────────────────────────────
+
+function EmptyMediaHint({
+  icon,
+  label,
+}: {
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-text-tertiary">
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-surface-2">
+        <span className="opacity-40">{icon}</span>
+      </div>
+      <span className="text-[10px] tracking-[0.18em] opacity-70">{label}</span>
+    </div>
+  );
+}
 
 function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   if (node.type === "team-step") {
@@ -549,22 +724,20 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
       <video
         src={node.metadata.content}
         controls
-        className="h-full w-full rounded object-contain"
+        className="h-full w-full bg-black object-contain"
       />
     ) : (
-      <p className="text-xs text-text-tertiary">
-        通过底部工具栏「上传」放入视频。
-      </p>
+      <EmptyMediaHint icon={<Clapperboard size={22} />} label="空视频节点" />
     );
   }
   if (node.type === "audio") {
     return node.metadata.content ? (
-      // biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions
-      <audio src={node.metadata.content} controls className="w-full" />
+      <div className="flex h-full w-full flex-col justify-center">
+        {/* biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions */}
+        <audio src={node.metadata.content} controls className="w-full" />
+      </div>
     ) : (
-      <p className="text-xs text-text-tertiary">
-        通过底部工具栏「上传」放入音频。
-      </p>
+      <EmptyMediaHint icon={<AudioLines size={22} />} label="空音频节点" />
     );
   }
   if (node.type === "a2ui") {
@@ -585,7 +758,7 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   if (node.type === "text") {
     return (
       <textarea
-        className="h-full w-full resize-none bg-transparent text-sm outline-none"
+        className="h-full w-full select-text resize-none bg-transparent text-sm outline-none"
         style={{ fontSize: node.metadata.fontSize ?? 14 }}
         placeholder="输入文本…"
         value={node.metadata.content ?? ""}
@@ -601,7 +774,7 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
       <img
         src={node.metadata.content}
         alt={node.title}
-        className="h-full w-full rounded object-contain"
+        className="pointer-events-none h-full w-full select-none object-contain"
         draggable={false}
       />
     );
@@ -620,9 +793,13 @@ function EmptyImageNode({ node }: { node: CanvasNode }) {
 
   return (
     <div className="flex h-full w-full flex-col gap-2">
-      <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 rounded border border-dashed border-border text-xs text-text-tertiary hover:bg-surface-2/50">
-        <ImagePlus size={18} />
-        选择图片
+      <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-xs text-text-tertiary hover:bg-surface-2/50">
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-surface-2">
+          <ImagePlus size={22} className="opacity-40" />
+        </div>
+        <span className="text-[10px] tracking-[0.18em] opacity-70">
+          上传或在下方生成
+        </span>
         <input
           type="file"
           accept="image/*"
