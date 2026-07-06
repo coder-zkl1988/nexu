@@ -198,14 +198,12 @@ type GestureState =
   | { kind: "marquee"; additive: boolean };
 
 type ContextMenuState =
-  | { kind: "node"; id: string; x: number; y: number; cw: number; ch: number }
-  | { kind: "edge"; id: string; x: number; y: number; cw: number; ch: number }
+  | { kind: "node"; id: string; x: number; y: number }
+  | { kind: "edge"; id: string; x: number; y: number }
   | {
       kind: "background";
       x: number;
       y: number;
-      cw: number;
-      ch: number;
       worldPoint: { x: number; y: number };
     };
 
@@ -215,8 +213,6 @@ type ConnectMenuState = {
   screenY: number;
   worldX: number;
   worldY: number;
-  cw: number;
-  ch: number;
 };
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -399,8 +395,6 @@ export function CanvasSurface({ className }: { className?: string }) {
             screenY,
             worldX: point.x,
             worldY: point.y,
-            cw,
-            ch,
           });
         }
         return;
@@ -736,18 +730,16 @@ export function CanvasSurface({ className }: { className?: string }) {
           if (!getCanvasState().selectedNodeIds.includes(id)) {
             selectNodes([id]);
           }
-          setContextMenu({ kind: "node", id, x: screenX, y: screenY, cw, ch });
+          setContextMenu({ kind: "node", id, x: screenX, y: screenY });
         } else if (edgeEl) {
           const id = edgeEl.getAttribute("data-canvas-edge") ?? "";
-          setContextMenu({ kind: "edge", id, x: screenX, y: screenY, cw, ch });
+          setContextMenu({ kind: "edge", id, x: screenX, y: screenY });
         } else {
           const worldPoint = toWorld(event.clientX, event.clientY);
           setContextMenu({
             kind: "background",
             x: screenX,
             y: screenY,
-            cw,
-            ch,
             worldPoint,
           });
         }
@@ -1382,7 +1374,7 @@ function CanvasToolbar({
               event.target.value = "";
             };
             reader.onerror = () => {
-              window.alert("导入失败：不是有效的画布文件");
+              toast.error("导入失败：不是有效的画布文件");
               event.target.value = "";
             };
             reader.readAsText(file);
