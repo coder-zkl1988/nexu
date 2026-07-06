@@ -1,7 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { __resetCanvasForTests, addNode } from "../src/lib/canvas/canvas-store";
+import {
+  __resetCanvasForTests,
+  addNode,
+  getCanvasState,
+  setNodeTask,
+  updateNode,
+} from "../src/lib/canvas/canvas-store";
 import { CanvasSurface } from "../src/lib/canvas/infinite-canvas";
 
 // Mock hooks used by TeamStepNodeContent to avoid QueryClient requirement
@@ -138,5 +144,38 @@ describe("HoverToolbar", () => {
     });
     const markup = renderWithClient(<CanvasSurface />);
     expect(markup).not.toContain("data-canvas-hover-toolbar=");
+  });
+
+  it("ReplaceButton clears error task when updating node content", () => {
+    // Create an image node with an error task overlay
+    addNode({
+      type: "image",
+      title: "failed-generation",
+      metadata: {
+        content: undefined,
+        task: { status: "error", error: "Generation failed" },
+      },
+    });
+
+    // Get the node ID and verify error task exists
+    let state = getCanvasState();
+    const node = state.nodes[0];
+    expect(node.metadata.task).toBeDefined();
+    expect(node.metadata.task?.status).toBe("error");
+
+    // Simulate what ReplaceButton does: updateNode + setNodeTask(null)
+    updateNode(node.id, {
+      title: "new-image.png",
+      metadata: { content: "data:image/png;base64,new", mimeType: "image/png" },
+    });
+    setNodeTask(node.id, null);
+
+    // Verify error task is cleared and new content is present
+    state = getCanvasState();
+    const updatedNode = state.nodes[0];
+    expect(updatedNode.metadata.task).toBeUndefined();
+    expect(updatedNode.metadata.content).toBe("data:image/png;base64,new");
+    expect(updatedNode.metadata.mimeType).toBe("image/png");
+    expect(updatedNode.title).toBe("new-image.png");
   });
 });

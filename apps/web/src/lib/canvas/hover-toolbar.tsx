@@ -10,10 +10,14 @@
  */
 
 import { Download, Info, Lock, RefreshCw, Trash2, Unlock } from "lucide-react";
-import { useRef } from "react";
 import { toast } from "sonner";
 import { readFilesAsDataUrls } from "./canvas-ingest";
-import { type CanvasNode, removeNodes, updateNode } from "./canvas-store";
+import {
+  type CanvasNode,
+  removeNodes,
+  setNodeTask,
+  updateNode,
+} from "./canvas-store";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -187,8 +191,6 @@ function ToolbarButton({
 }
 
 function ReplaceButton({ node }: { node: CanvasNode }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
   const accept =
     node.type === "video"
       ? "video/*"
@@ -206,7 +208,6 @@ function ReplaceButton({ node }: { node: CanvasNode }) {
     >
       <RefreshCw size={13} />
       <input
-        ref={inputRef}
         type="file"
         accept={accept}
         className="hidden"
@@ -220,6 +221,8 @@ function ReplaceButton({ node }: { node: CanvasNode }) {
               title: first.name,
               metadata: { content: first.dataUrl, mimeType: first.type },
             });
+            // Clear stale error task overlay when replacing content.
+            setNodeTask(node.id, null);
           });
           // Reset so the same file can be re-selected.
           event.target.value = "";
