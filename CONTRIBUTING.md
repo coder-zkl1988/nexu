@@ -50,7 +50,7 @@ pnpm install
 ```text
 nexu/
 ├── apps/
-│   ├── web/              # React + Ant Design dashboard
+│   ├── web/              # React + Radix UI + Tailwind dashboard
 │   ├── desktop/          # Electron desktop shell
 │   └── controller/       # Hono backend + OpenClaw orchestration
 ├── packages/shared/      # Shared Zod schemas

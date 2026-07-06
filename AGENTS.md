@@ -9,7 +9,7 @@ Nexu is a desktop-first OpenClaw platform. Users create AI bots, connect them to
 - Monorepo: pnpm workspaces
 - `apps/controller` — Single-user local control plane for Nexu config, OpenClaw sync, and runtime orchestration
 - `apps/desktop` — Electron desktop runtime shell and sidecar orchestrator
-- `apps/web` — React + Ant Design + Vite
+- `apps/web` — React + Radix UI + Tailwind CSS 4 + Vite
 - `packages/slimclaw` — Repo-local Nexu-owned OpenClaw runtime contract, prepared runtime root, and staging/patch ownership for local dev and desktop packaging
 - `packages/shared` — Shared Zod schemas
 - `packages/dev-utils` — TS-first reusable utilities for local script tooling
