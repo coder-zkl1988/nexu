@@ -15,6 +15,7 @@ import {
   type CanvasNode,
   addNode,
   connectNodes,
+  genId,
   getCanvasState,
   selectNodes,
 } from "./canvas-store";
@@ -52,11 +53,6 @@ function deepCopyNode(node: CanvasNode): CanvasNode {
     size: { ...node.size },
     metadata: { ...metadata },
   };
-}
-
-/** Generate a fresh id in the same style as the store's genId. */
-function genId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**

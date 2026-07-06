@@ -24,6 +24,37 @@ export function mediaTypeForMime(
 
 export type IngestFileInput = { name: string; type: string; dataUrl: string };
 
+// ── FileReader helper ──────────────────────────────────────────────
+
+/**
+ * Read each File as a data URL using FileReader.
+ * Files that fail to read are silently excluded (onerror → empty dataUrl sentinel).
+ * NOTE: FileReader is a browser-only API; do not call this in plain-Node tests.
+ */
+export function readFilesAsDataUrls(
+  files: ReadonlyArray<File>,
+): Promise<IngestFileInput[]> {
+  return Promise.all(
+    Array.from(files).map(
+      (file) =>
+        new Promise<IngestFileInput>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            resolve({
+              name: file.name,
+              type: file.type,
+              dataUrl: String(reader.result),
+            });
+          };
+          reader.onerror = () => {
+            resolve({ name: file.name, type: file.type, dataUrl: "" });
+          };
+          reader.readAsDataURL(file);
+        }),
+    ),
+  ).then((inputs) => inputs.filter((input) => input.dataUrl !== ""));
+}
+
 /**
  * For each file with a recognized media type, add a node at `dropPoint`
  * offset by index (`x + index * 24`, `y + index * 24`).

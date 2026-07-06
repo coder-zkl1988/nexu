@@ -258,7 +258,8 @@ function persistViewportDebounced(viewport: CanvasViewport): void {
   }, 300);
 }
 
-function genId(prefix: string): string {
+/** Generate a unique id with the given prefix (e.g. "text-lx3abc-4z1f"). */
+export function genId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 

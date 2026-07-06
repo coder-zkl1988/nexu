@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import { postApiV1MediaGenerateImage } from "../../../lib/api/sdk.gen";
 import {
   clipboardHasContent,
@@ -31,8 +32,13 @@ import {
   pasteClipboard,
 } from "./canvas-clipboard";
 import { createConnectedNode } from "./canvas-create";
+import { FloatingMenu, clampMenuPosition } from "./canvas-floating-menu";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
-import { ingestFilesAsNodes, ingestTextAsNode } from "./canvas-ingest";
+import {
+  ingestFilesAsNodes,
+  ingestTextAsNode,
+  readFilesAsDataUrls,
+} from "./canvas-ingest";
 import {
   type CanvasExportFile,
   type CanvasNode,
@@ -192,12 +198,14 @@ type GestureState =
   | { kind: "marquee"; additive: boolean };
 
 type ContextMenuState =
-  | { kind: "node"; id: string; x: number; y: number }
-  | { kind: "edge"; id: string; x: number; y: number }
+  | { kind: "node"; id: string; x: number; y: number; cw: number; ch: number }
+  | { kind: "edge"; id: string; x: number; y: number; cw: number; ch: number }
   | {
       kind: "background";
       x: number;
       y: number;
+      cw: number;
+      ch: number;
       worldPoint: { x: number; y: number };
     };
 
@@ -207,6 +215,8 @@ type ConnectMenuState = {
   screenY: number;
   worldX: number;
   worldY: number;
+  cw: number;
+  ch: number;
 };
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -370,18 +380,18 @@ export function CanvasSurface({ className }: { className?: string }) {
         } else {
           // No target node hit — open the create-node menu at the drop point.
           const rect = containerRef.current?.getBoundingClientRect();
-          let screenX = event.clientX - (rect?.left ?? 0);
-          let screenY = event.clientY - (rect?.top ?? 0);
-          const menuWidth = 160;
-          const menuHeight = 170;
-          const minOffset = 8;
-          screenX = Math.max(
-            minOffset,
-            Math.min(screenX, (rect?.width ?? 0) - menuWidth - minOffset),
-          );
-          screenY = Math.max(
-            minOffset,
-            Math.min(screenY, (rect?.height ?? 0) - menuHeight - minOffset),
+          const cw = rect?.width ?? 0;
+          const ch = rect?.height ?? 0;
+          const rawX = event.clientX - (rect?.left ?? 0);
+          const rawY = event.clientY - (rect?.top ?? 0);
+          // Connect menu is ~160px wide, use shared clamp with explicit override.
+          const { x: screenX, y: screenY } = clampMenuPosition(
+            rawX,
+            rawY,
+            cw,
+            ch,
+            160,
+            170,
           );
           setConnectMenu({
             fromId: gesture.fromId,
@@ -389,6 +399,8 @@ export function CanvasSurface({ className }: { className?: string }) {
             screenY,
             worldX: point.x,
             worldY: point.y,
+            cw,
+            ch,
           });
         }
         return;
@@ -561,20 +573,12 @@ export function CanvasSurface({ className }: { className?: string }) {
         deleteSelection();
       } else if (event.key === "Escape") {
         clearSelection();
-        setContextMenu(null);
-        setConnectMenu(null);
+        closeFloatingMenus();
       }
     };
 
     const onPaste = (event: ClipboardEvent) => {
       if (isEditableTarget(event.target)) return;
-
-      // Precedence: internal node clipboard first; OS ingestion as fallback.
-      if (clipboardHasContent()) {
-        event.preventDefault();
-        pasteClipboard();
-        return;
-      }
 
       const data = event.clipboardData;
       if (!data) return;
@@ -587,45 +591,29 @@ export function CanvasSurface({ className }: { className?: string }) {
       };
       const centerWorld = toWorld(centerClient.x, centerClient.y);
 
-      // Collect image files from items (DataTransferItem with image files).
-      const imageFiles: Array<{ file: File }> = [];
+      // Precedence:
+      // 1. OS file items with image/* type → ingest as image nodes (screenshot Cmd+V).
+      // 2. Internal node clipboard → paste copied nodes.
+      // 3. OS plain text → ingest as text node.
+      const imageFiles: File[] = [];
       for (const item of Array.from(data.items)) {
         if (item.kind === "file" && item.type.startsWith("image/")) {
           const file = item.getAsFile();
-          if (file) imageFiles.push({ file });
+          if (file) imageFiles.push(file);
         }
       }
 
       if (imageFiles.length > 0) {
         event.preventDefault();
-        void Promise.all(
-          imageFiles.map(
-            ({ file }) =>
-              new Promise<{ name: string; type: string; dataUrl: string }>(
-                (resolve) => {
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    resolve({
-                      name: file.name,
-                      type: file.type,
-                      dataUrl: String(reader.result),
-                    });
-                  };
-                  reader.onerror = () => {
-                    resolve({
-                      name: file.name,
-                      type: file.type,
-                      dataUrl: "",
-                    });
-                  };
-                  reader.readAsDataURL(file);
-                },
-              ),
-          ),
-        ).then((inputs) => {
-          const validInputs = inputs.filter((input) => input.dataUrl !== "");
-          ingestFilesAsNodes(validInputs, centerWorld);
+        void readFilesAsDataUrls(imageFiles).then((inputs) => {
+          ingestFilesAsNodes(inputs, centerWorld);
         });
+        return;
+      }
+
+      if (clipboardHasContent()) {
+        event.preventDefault();
+        pasteClipboard();
         return;
       }
 
@@ -642,22 +630,27 @@ export function CanvasSurface({ className }: { className?: string }) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("paste", onPaste);
     };
-  }, [toWorld]);
+  }, [toWorld, closeFloatingMenus]);
 
   // Space-key pan mode: track via ref for capture-phase handler (zero re-render cost).
+  // DOM attribute on the container drives cursor feedback via a CSS rule in index.css.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
       if (isEditableTarget(event.target)) return;
       if (event.repeat) return;
+      event.preventDefault(); // prevent scrollable ancestors from scrolling
       spaceRef.current = true;
+      containerRef.current?.setAttribute("data-space-pan", "true");
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
       spaceRef.current = false;
+      containerRef.current?.removeAttribute("data-space-pan");
     };
     const onBlur = () => {
       spaceRef.current = false;
+      containerRef.current?.removeAttribute("data-space-pan");
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -697,9 +690,8 @@ export function CanvasSurface({ className }: { className?: string }) {
       }
       onPointerDownCapture={(event) => {
         // Space+left or middle-click: begin pan from anywhere (including over nodes).
+        // beginGesture calls closeFloatingMenus() — no need to do it explicitly here.
         if ((spaceRef.current && event.button === 0) || event.button === 1) {
-          setContextMenu(null);
-          setConnectMenu(null);
           event.preventDefault();
           event.stopPropagation();
           beginGesture(event, {
@@ -716,51 +708,24 @@ export function CanvasSurface({ className }: { className?: string }) {
         const files = Array.from(event.dataTransfer?.files ?? []);
         if (files.length === 0) return;
         const dropWorld = toWorld(event.clientX, event.clientY);
-        void Promise.all(
-          files.map(
-            (file) =>
-              new Promise<{ name: string; type: string; dataUrl: string }>(
-                (resolve) => {
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    resolve({
-                      name: file.name,
-                      type: file.type,
-                      dataUrl: String(reader.result),
-                    });
-                  };
-                  reader.onerror = () => {
-                    resolve({
-                      name: file.name,
-                      type: file.type,
-                      dataUrl: "",
-                    });
-                  };
-                  reader.readAsDataURL(file);
-                },
-              ),
-          ),
-        ).then((inputs) => {
-          const validInputs = inputs.filter((input) => input.dataUrl !== "");
-          ingestFilesAsNodes(validInputs, dropWorld);
+        void readFilesAsDataUrls(files).then((inputs) => {
+          ingestFilesAsNodes(inputs, dropWorld);
         });
       }}
       onContextMenu={(event) => {
+        // Right-click inside a node textarea/input must not open the canvas menu.
+        if (isEditableTarget(event.target)) return;
         event.preventDefault();
         const rect = containerRef.current?.getBoundingClientRect();
-        let screenX = event.clientX - (rect?.left ?? 0);
-        let screenY = event.clientY - (rect?.top ?? 0);
-        // Clamp menu position to stay inside container (approximate menu size ~180x160)
-        const menuWidth = 180;
-        const menuHeight = 160;
-        const minOffset = 8;
-        screenX = Math.max(
-          minOffset,
-          Math.min(screenX, (rect?.width ?? 0) - menuWidth - minOffset),
-        );
-        screenY = Math.max(
-          minOffset,
-          Math.min(screenY, (rect?.height ?? 0) - menuHeight - minOffset),
+        const cw = rect?.width ?? 0;
+        const ch = rect?.height ?? 0;
+        const rawX = event.clientX - (rect?.left ?? 0);
+        const rawY = event.clientY - (rect?.top ?? 0);
+        const { x: screenX, y: screenY } = clampMenuPosition(
+          rawX,
+          rawY,
+          cw,
+          ch,
         );
         const target = event.target as Element | null;
         const nodeEl = target?.closest("[data-canvas-node]");
@@ -771,24 +736,27 @@ export function CanvasSurface({ className }: { className?: string }) {
           if (!getCanvasState().selectedNodeIds.includes(id)) {
             selectNodes([id]);
           }
-          setContextMenu({ kind: "node", id, x: screenX, y: screenY });
+          setContextMenu({ kind: "node", id, x: screenX, y: screenY, cw, ch });
         } else if (edgeEl) {
           const id = edgeEl.getAttribute("data-canvas-edge") ?? "";
-          setContextMenu({ kind: "edge", id, x: screenX, y: screenY });
+          setContextMenu({ kind: "edge", id, x: screenX, y: screenY, cw, ch });
         } else {
           const worldPoint = toWorld(event.clientX, event.clientY);
           setContextMenu({
             kind: "background",
             x: screenX,
             y: screenY,
+            cw,
+            ch,
             worldPoint,
           });
         }
       }}
       onPointerDown={(event) => {
-        // Close context menu and connect menu on any pointerdown on the container background
-        setContextMenu(null);
-        setConnectMenu(null);
+        // Close floating menus on any pointerdown on the container background.
+        // For left-click paths, beginGesture also calls closeFloatingMenus; this
+        // covers non-left-click (e.g. right-click while the menu is open).
+        closeFloatingMenus();
         if (event.button !== 0) return;
         if (event.metaKey || event.ctrlKey) {
           const start = toWorld(event.clientX, event.clientY);
@@ -890,11 +858,10 @@ export function CanvasSurface({ className }: { className?: string }) {
 
       {/* Context menu — screen-space, outside the transform layer */}
       {contextMenu ? (
-        <div
-          data-canvas-context-menu="true"
-          className="absolute z-50 min-w-[140px] rounded-lg border border-border bg-surface-1/95 py-1 shadow-md"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onPointerDown={(e) => e.stopPropagation()}
+        <FloatingMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          dataAttr={{ name: "data-canvas-context-menu", value: "true" }}
         >
           {contextMenu.kind === "node" ? (
             <>
@@ -932,16 +899,15 @@ export function CanvasSurface({ className }: { className?: string }) {
               }}
             />
           )}
-        </div>
+        </FloatingMenu>
       ) : null}
 
       {/* Connect menu — screen-space, outside the transform layer */}
       {connectMenu ? (
-        <div
-          data-canvas-connect-menu="true"
-          className="absolute z-50 min-w-[140px] rounded-lg border border-border bg-surface-1/95 py-1 shadow-md"
-          style={{ left: connectMenu.screenX, top: connectMenu.screenY }}
-          onPointerDown={(e) => e.stopPropagation()}
+        <FloatingMenu
+          x={connectMenu.screenX}
+          y={connectMenu.screenY}
+          dataAttr={{ name: "data-canvas-connect-menu", value: "true" }}
         >
           {(
             [
@@ -975,7 +941,7 @@ export function CanvasSurface({ className }: { className?: string }) {
               {label}
             </button>
           ))}
-        </div>
+        </FloatingMenu>
       ) : null}
     </div>
   );
@@ -1362,26 +1328,13 @@ function CanvasToolbar({
           accept="image/*,video/*,audio/*"
           className="hidden"
           onChange={(event) => {
-            for (const file of Array.from(event.target.files ?? [])) {
-              const reader = new FileReader();
-              const kind = file.type.startsWith("video/")
-                ? ("video" as const)
-                : file.type.startsWith("audio/")
-                  ? ("audio" as const)
-                  : ("image" as const);
-              reader.onload = () => {
-                addNode({
-                  type: kind,
-                  title: file.name,
-                  metadata: {
-                    content: String(reader.result),
-                    mimeType: file.type,
-                  },
-                });
-              };
-              reader.readAsDataURL(file);
-            }
+            const files = Array.from(event.target.files ?? []);
             event.target.value = "";
+            if (files.length === 0) return;
+            // Place at top-left cascade; ingestFilesAsNodes handles MIME detection.
+            void readFilesAsDataUrls(files).then((inputs) => {
+              ingestFilesAsNodes(inputs, { x: 32, y: 32 });
+            });
           }}
         />
       </label>
@@ -1424,7 +1377,7 @@ function CanvasToolbar({
                 ) as CanvasExportFile;
                 importCanvas(parsed);
               } catch {
-                window.alert("导入失败：不是有效的画布文件");
+                toast.error("导入失败：不是有效的画布文件");
               }
               event.target.value = "";
             };
