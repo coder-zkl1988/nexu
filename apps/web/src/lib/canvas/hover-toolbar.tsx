@@ -10,9 +10,12 @@
  */
 
 import {
+  AArrowDown,
+  AArrowUp,
   Crop,
   Download,
   Grid3x3,
+  ImagePlus,
   Info,
   Lock,
   RefreshCw,
@@ -29,6 +32,7 @@ import {
   setNodeTask,
   updateNode,
 } from "./canvas-store";
+import { nextFontSize, textNodeToImage } from "./text-node-utils";
 
 // ── Helpers ─────────────────────────────────────────────────────
 
@@ -167,6 +171,53 @@ export function HoverToolbar({
           }}
         >
           <ZoomIn size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* font-inc — text nodes only */}
+      {type === "text" ? (
+        <ToolbarButton
+          actionKey="font-inc"
+          label="字号+"
+          title="字号+"
+          onClick={() => {
+            updateNode(id, {
+              metadata: { fontSize: nextFontSize(metadata.fontSize, 1) },
+            });
+          }}
+        >
+          <AArrowUp size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* font-dec — text nodes only */}
+      {type === "text" ? (
+        <ToolbarButton
+          actionKey="font-dec"
+          label="字号-"
+          title="字号-"
+          onClick={() => {
+            updateNode(id, {
+              metadata: { fontSize: nextFontSize(metadata.fontSize, -1) },
+            });
+          }}
+        >
+          <AArrowDown size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* to-image — text nodes with non-empty content only */}
+      {type === "text" && (metadata.content ?? "").trim() ? (
+        <ToolbarButton
+          actionKey="to-image"
+          label="转图片"
+          title="转图片"
+          onClick={() => {
+            textNodeToImage(id);
+            toast.success("已创建生成节点");
+          }}
+        >
+          <ImagePlus size={13} />
         </ToolbarButton>
       ) : null}
 

@@ -416,6 +416,24 @@ describe("CanvasSurface", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).toContain("data-canvas-node-retry");
   });
+
+  it("text node default markup contains data-canvas-text-display (display mode)", () => {
+    addNode({ type: "text", title: "note", metadata: {} });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-text-display");
+  });
+
+  it("text node default markup contains placeholder 双击编辑文字 for empty content", () => {
+    addNode({ type: "text", title: "note", metadata: {} });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("双击编辑文字");
+  });
+
+  it("text node default markup does NOT contain textarea (edit mode entered by interaction only)", () => {
+    addNode({ type: "text", title: "note", metadata: {} });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("<textarea");
+  });
 });
 
 describe("PromptPanel visibility", () => {

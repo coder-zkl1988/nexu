@@ -112,7 +112,7 @@ describe("HoverToolbar", () => {
     // Toolbar present
     expect(markup).toContain("data-canvas-hover-toolbar=");
 
-    // Only info and delete
+    // info and delete present
     expect(markup).toContain('data-canvas-hover-action="info"');
     expect(markup).toContain('data-canvas-hover-action="delete"');
 
@@ -120,6 +120,56 @@ describe("HoverToolbar", () => {
     expect(markup).not.toContain('data-canvas-hover-action="download"');
     expect(markup).not.toContain('data-canvas-hover-action="replace"');
     expect(markup).not.toContain('data-canvas-hover-action="lock"');
+  });
+
+  it("text node WITH content → font-inc, font-dec, and to-image actions present", () => {
+    addNode({
+      type: "text",
+      title: "my-note",
+      metadata: { content: "hello" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).toContain('data-canvas-hover-action="font-inc"');
+    expect(markup).toContain('data-canvas-hover-action="font-dec"');
+    expect(markup).toContain('data-canvas-hover-action="to-image"');
+  });
+
+  it("text node WITHOUT content → font buttons present, to-image ABSENT", () => {
+    addNode({
+      type: "text",
+      title: "empty-note",
+      metadata: {},
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).toContain('data-canvas-hover-action="font-inc"');
+    expect(markup).toContain('data-canvas-hover-action="font-dec"');
+    expect(markup).not.toContain('data-canvas-hover-action="to-image"');
+  });
+
+  it("text node with whitespace-only content → to-image ABSENT", () => {
+    addNode({
+      type: "text",
+      title: "spaces",
+      metadata: { content: "   " },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).not.toContain('data-canvas-hover-action="to-image"');
+  });
+
+  it("image node → font-inc, font-dec, and to-image actions absent", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).not.toContain('data-canvas-hover-action="font-inc"');
+    expect(markup).not.toContain('data-canvas-hover-action="font-dec"');
+    expect(markup).not.toContain('data-canvas-hover-action="to-image"');
   });
 
   it("a2ui node → NO data-canvas-hover-toolbar in markup", () => {

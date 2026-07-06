@@ -7,6 +7,51 @@ import { type CanvasNode, getA2UIPayload, updateNode } from "./canvas-store";
 import { ConfigNodeContent } from "./config-node";
 import { TeamStepNodeContent } from "./team-step-node";
 
+// ── TextNodeContent ────────────────────────────────────────────
+
+/**
+ * Text node content: static display mode by default; double-click to edit.
+ * Local `editing` state re-renders only this component (memo boundary is NodeBody).
+ */
+function TextNodeContent({ node }: { node: CanvasNode }) {
+  const [editing, setEditing] = useState(false);
+  const fontSize = node.metadata.fontSize ?? 14;
+  const content = node.metadata.content ?? "";
+
+  if (editing) {
+    return (
+      <textarea
+        // biome-ignore lint/a11y/noAutofocus: edit mode intentionally auto-focuses
+        autoFocus
+        className="h-full w-full select-text resize-none bg-transparent text-sm outline-none"
+        style={{ fontSize }}
+        value={content}
+        onChange={(event) =>
+          updateNode(node.id, { metadata: { content: event.target.value } })
+        }
+        onBlur={() => setEditing(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      data-canvas-text-display
+      className="h-full w-full select-none overflow-hidden whitespace-pre-wrap text-sm"
+      style={{ fontSize }}
+      onDoubleClick={() => setEditing(true)}
+    >
+      {content || <span className="text-text-tertiary">双击编辑文字</span>}
+    </div>
+  );
+}
+
 /** Node content re-renders only on content changes, never on geometry. */
 export const NodeBody = memo(
   function NodeBody({ node }: { node: CanvasNode }) {
@@ -123,17 +168,7 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
     );
   }
   if (node.type === "text") {
-    return (
-      <textarea
-        className="h-full w-full select-text resize-none bg-transparent text-sm outline-none"
-        style={{ fontSize: node.metadata.fontSize ?? 14 }}
-        placeholder="输入文本…"
-        value={node.metadata.content ?? ""}
-        onChange={(event) =>
-          updateNode(node.id, { metadata: { content: event.target.value } })
-        }
-      />
-    );
+    return <TextNodeContent node={node} />;
   }
   // image
   if (node.metadata.content) {
