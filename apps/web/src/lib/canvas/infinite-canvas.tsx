@@ -430,6 +430,12 @@ export function CanvasSurface({ className }: { className?: string }) {
     };
   }, [applyGesture, toWorld]);
 
+  /** Close floating menus (context and connect). */
+  const closeFloatingMenus = useCallback(() => {
+    setContextMenu(null);
+    setConnectMenu(null);
+  }, []);
+
   /** Start a gesture: kill text selection/native drag, capture the pointer. */
   const beginGesture = useCallback(
     (event: React.PointerEvent, gesture: GestureState) => {
@@ -442,8 +448,9 @@ export function CanvasSurface({ className }: { className?: string }) {
       pointerRef.current = { x: event.clientX, y: event.clientY };
       gestureRef.current = gesture;
       setGestureActive(true);
+      closeFloatingMenus();
     },
-    [],
+    [closeFloatingMenus],
   );
 
   const beginNodeDrag = useCallback(
