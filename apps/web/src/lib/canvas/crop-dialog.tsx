@@ -43,6 +43,8 @@ import {
   applyCropDrag,
   fitScale,
 } from "./crop-geometry";
+import { SplitDialog } from "./split-dialog";
+import { UpscaleDialog } from "./upscale-dialog";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -75,6 +77,8 @@ export function CanvasDialogs() {
   const dialog = useCanvasDialog();
   if (!dialog) return null;
   if (dialog.kind === "crop") return <CropDialog state={dialog} />;
+  if (dialog.kind === "split") return <SplitDialog state={dialog} />;
+  if (dialog.kind === "upscale") return <UpscaleDialog state={dialog} />;
   return null;
 }
 

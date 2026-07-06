@@ -11,7 +11,11 @@ import { useSyncExternalStore } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type CanvasDialogState = { kind: "crop"; nodeId: string } | null;
+export type CanvasDialogState =
+  | { kind: "crop"; nodeId: string }
+  | { kind: "split"; nodeId: string }
+  | { kind: "upscale"; nodeId: string }
+  | null;
 
 // ── Store internals ────────────────────────────────────────────────────────
 

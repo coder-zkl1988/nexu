@@ -12,11 +12,13 @@
 import {
   Crop,
   Download,
+  Grid3x3,
   Info,
   Lock,
   RefreshCw,
   Trash2,
   Unlock,
+  ZoomIn,
 } from "lucide-react";
 import { toast } from "sonner";
 import { openCanvasDialog } from "./canvas-dialogs";
@@ -137,6 +139,34 @@ export function HoverToolbar({
           }}
         >
           <Crop size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* split — image WITH content only */}
+      {type === "image" && hasContent ? (
+        <ToolbarButton
+          actionKey="split"
+          label="拆分图片"
+          title="拆分图片"
+          onClick={() => {
+            openCanvasDialog({ kind: "split", nodeId: id });
+          }}
+        >
+          <Grid3x3 size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* upscale — image WITH content only */}
+      {type === "image" && hasContent ? (
+        <ToolbarButton
+          actionKey="upscale"
+          label="放大图片"
+          title="放大图片"
+          onClick={() => {
+            openCanvasDialog({ kind: "upscale", nodeId: id });
+          }}
+        >
+          <ZoomIn size={13} />
         </ToolbarButton>
       ) : null}
 

@@ -39,6 +39,38 @@ describe("canvas-dialogs module store", () => {
     expect(getCanvasDialog()).toEqual({ kind: "crop", nodeId: "node-2" });
   });
 
+  it("split kind round-trips through open/close", () => {
+    openCanvasDialog({ kind: "split", nodeId: "split-node-1" });
+    expect(getCanvasDialog()).toEqual({
+      kind: "split",
+      nodeId: "split-node-1",
+    });
+    closeCanvasDialog();
+    expect(getCanvasDialog()).toBeNull();
+  });
+
+  it("upscale kind round-trips through open/close", () => {
+    openCanvasDialog({ kind: "upscale", nodeId: "upscale-node-1" });
+    expect(getCanvasDialog()).toEqual({
+      kind: "upscale",
+      nodeId: "upscale-node-1",
+    });
+    closeCanvasDialog();
+    expect(getCanvasDialog()).toBeNull();
+  });
+
+  it("split open overwrites crop open", () => {
+    openCanvasDialog({ kind: "crop", nodeId: "crop-1" });
+    openCanvasDialog({ kind: "split", nodeId: "split-1" });
+    expect(getCanvasDialog()).toEqual({ kind: "split", nodeId: "split-1" });
+  });
+
+  it("upscale open overwrites split open", () => {
+    openCanvasDialog({ kind: "split", nodeId: "split-1" });
+    openCanvasDialog({ kind: "upscale", nodeId: "upscale-1" });
+    expect(getCanvasDialog()).toEqual({ kind: "upscale", nodeId: "upscale-1" });
+  });
+
   it("subscription mechanism: spy is called on open and close, not after unsubscribe", () => {
     const spy = vi.fn();
     const unsubscribe = __subscribeForTests(spy);

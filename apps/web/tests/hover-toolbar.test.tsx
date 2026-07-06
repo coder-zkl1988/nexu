@@ -189,6 +189,77 @@ describe("HoverToolbar", () => {
     expect(markup).not.toContain("data-canvas-crop-dialog");
   });
 
+  it("image WITH content → split action present", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-hover-action="split"');
+  });
+
+  it("image WITHOUT content → split action absent", () => {
+    addNode({
+      type: "image",
+      title: "empty-img",
+      metadata: {},
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="split"');
+  });
+
+  it("text node → split action absent", () => {
+    addNode({
+      type: "text",
+      title: "note",
+      metadata: { content: "hello" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="split"');
+  });
+
+  it("image WITH content → upscale action present", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-hover-action="upscale"');
+  });
+
+  it("image WITHOUT content → upscale action absent", () => {
+    addNode({
+      type: "image",
+      title: "empty-img",
+      metadata: {},
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="upscale"');
+  });
+
+  it("text node → upscale action absent", () => {
+    addNode({
+      type: "text",
+      title: "note",
+      metadata: { content: "hello" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="upscale"');
+  });
+
+  it("split and upscale dialog attrs absent from default markup", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-split-dialog");
+    expect(markup).not.toContain("data-canvas-upscale-dialog");
+  });
+
   it("ReplaceButton clears error task when updating node content", () => {
     // Create an image node with an error task overlay
     addNode({
