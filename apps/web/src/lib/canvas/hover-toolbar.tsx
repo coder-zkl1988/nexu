@@ -213,8 +213,9 @@ export function HoverToolbar({
           label="转图片"
           title="转图片"
           onClick={() => {
-            textNodeToImage(id);
-            toast.success("已创建生成节点");
+            if (textNodeToImage(id)) {
+              toast.success("已创建生成节点");
+            }
           }}
         >
           <ImagePlus size={13} />
