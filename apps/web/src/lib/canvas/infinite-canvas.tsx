@@ -36,6 +36,7 @@ import {
   ingestTextAsNode,
   readFilesAsDataUrls,
 } from "./canvas-ingest";
+import { CanvasMinimap } from "./canvas-minimap";
 import {
   type CanvasNode,
   type CanvasViewport,
@@ -893,6 +894,14 @@ export function CanvasSurface({ className }: { className?: string }) {
           height: containerRef.current?.clientHeight ?? 0,
         })}
         fitViewport={fitViewport}
+      />
+
+      {/* Minimap — screen-space chrome, bottom-left, toggleable via toolbar */}
+      <CanvasMinimap
+        getContainerSize={() => ({
+          width: containerRef.current?.clientWidth ?? 0,
+          height: containerRef.current?.clientHeight ?? 0,
+        })}
       />
 
       {/* Context menu — screen-space, outside the transform layer */}

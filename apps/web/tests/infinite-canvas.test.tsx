@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  attachBatchChildren,
+  toggleBatchExpanded,
+} from "../src/lib/canvas/canvas-batch";
+import {
   __flushCanvasHistoryForTests,
   __resetCanvasForTests,
   addNode,
@@ -15,6 +19,10 @@ import {
   undo,
   upsertA2UINode,
 } from "../src/lib/canvas/canvas-store";
+import {
+  __resetCanvasUiPrefsForTests,
+  setCanvasUiPref,
+} from "../src/lib/canvas/canvas-ui-prefs";
 import {
   CANVAS_MAX_SCALE,
   CANVAS_MIN_SCALE,
@@ -51,6 +59,7 @@ if (typeof globalThis.localStorage === "undefined") {
 
 beforeEach(() => {
   __resetCanvasForTests();
+  __resetCanvasUiPrefsForTests();
 });
 
 describe("viewport math", () => {
@@ -525,6 +534,59 @@ describe("ConfigNode markup", () => {
       "音频",
       "配置",
     ]);
+  });
+});
+
+describe("CanvasMinimap markup", () => {
+  it("minimap present with a node and pref on (default)", () => {
+    addNode({ type: "text", title: "节点A" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-minimap="true"');
+  });
+
+  it("minimap absent when zero nodes (even with pref on)", () => {
+    // no nodes added
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-minimap="true"');
+  });
+
+  it("minimap absent when minimapVisible pref is off", () => {
+    setCanvasUiPref("minimapVisible", false);
+    addNode({ type: "text", title: "节点A" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-minimap="true"');
+    // restore for other tests
+    __resetCanvasUiPrefsForTests();
+  });
+
+  it("toolbar has minimap toggle button", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-minimap-toggle="true"');
+    expect(markup).toContain("小地图");
+  });
+
+  it("minimap node rects rendered for visible nodes only (data-canvas-minimap-node)", () => {
+    const root = addNode({ type: "image", title: "root" });
+    attachBatchChildren(root.id, [
+      { url: "data:image/png;base64,A" },
+      { url: "data:image/png;base64,B" },
+    ]);
+    // collapse the batch so children are hidden
+    toggleBatchExpanded(root.id);
+
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // Minimap present (at least root is visible)
+    expect(markup).toContain('data-canvas-minimap="true"');
+    // Count occurrences of data-canvas-minimap-node= — should equal number of visible nodes
+    const matches = markup.match(/data-canvas-minimap-node=/g) ?? [];
+    // Only the root (1) should appear, hidden children excluded
+    expect(matches.length).toBe(1);
+  });
+
+  it("viewport outline is rendered inside minimap", () => {
+    addNode({ type: "text", title: "T" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-minimap-viewport="true"');
   });
 });
 

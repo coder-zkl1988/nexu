@@ -4,6 +4,7 @@ import {
   Clapperboard,
   Download,
   ImagePlus,
+  Map as MapIcon,
   Maximize2,
   Redo2,
   SlidersHorizontal,
@@ -28,6 +29,7 @@ import {
   undo,
   useCanvas,
 } from "./canvas-store";
+import { setCanvasUiPref, useCanvasUiPrefs } from "./canvas-ui-prefs";
 
 export function CanvasToolbar({
   getContainerSize,
@@ -45,6 +47,7 @@ export function CanvasToolbar({
 }) {
   const { nodes, viewport, selectedNodeIds, selectedConnectionId } =
     useCanvas();
+  const { minimapVisible } = useCanvasUiPrefs();
   const hasSelection = selectedNodeIds.length > 0 || !!selectedConnectionId;
 
   return (
@@ -197,6 +200,17 @@ export function CanvasToolbar({
         className="rounded px-1.5 py-1 text-[10px] text-text-tertiary hover:bg-surface-2 hover:text-danger"
       >
         清空
+      </button>
+      <Divider />
+      <button
+        type="button"
+        title="小地图"
+        aria-label="小地图"
+        data-canvas-minimap-toggle="true"
+        onClick={() => setCanvasUiPref("minimapVisible", !minimapVisible)}
+        className={`rounded p-1.5 hover:bg-surface-2 ${minimapVisible ? "text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
+      >
+        <MapIcon size={14} />
       </button>
     </div>
   );
