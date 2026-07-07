@@ -14,12 +14,27 @@ import {
   generateVideoResponseSchema,
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
+import { logger } from "../lib/logger.js";
 import { mediaCacheDir, mediaCachePathFor } from "../lib/media-cache.js";
 import {
   ImageGenerationFailedError,
   InvalidMediaReferenceError,
 } from "../services/media-generation-service.js";
 import type { ControllerBindings } from "../types.js";
+
+/**
+ * Map an unexpected media-generation error to a graceful 502. Known failures
+ * (ImageGenerationFailedError → 502, InvalidMediaReferenceError → 400) are
+ * handled at each call site; this catch-all covers anything else — a runtime
+ * hiccup (e.g. the utility agent missing from the openclaw config, a WS drop) —
+ * so the route degrades per the "502 = generation failed" contract instead of
+ * leaking a 500 with internal detail (agent ids, paths). The raw error is
+ * logged server-side for debugging; the client sees a generic message.
+ */
+function mediaGenerationFailure(error: unknown): { message: string } {
+  logger.error({ err: error }, "media generation: unexpected failure");
+  return { message: "生成失败，请稍后重试" };
+}
 
 const MEDIA_EXTENSION_MIME: Record<string, string> = {
   ".webp": "image/webp",
@@ -87,7 +102,7 @@ export function registerMediaRoutes(
         if (error instanceof ImageGenerationFailedError) {
           return c.json({ message: error.message }, 502);
         }
-        throw error;
+        return c.json(mediaGenerationFailure(error), 502);
       }
     },
   );
@@ -135,7 +150,7 @@ export function registerMediaRoutes(
         if (error instanceof ImageGenerationFailedError) {
           return c.json({ message: error.message }, 502);
         }
-        throw error;
+        return c.json(mediaGenerationFailure(error), 502);
       }
     },
   );
@@ -181,7 +196,7 @@ export function registerMediaRoutes(
         if (error instanceof ImageGenerationFailedError) {
           return c.json({ message: error.message }, 502);
         }
-        throw error;
+        return c.json(mediaGenerationFailure(error), 502);
       }
     },
   );
@@ -235,7 +250,7 @@ export function registerMediaRoutes(
         if (error instanceof ImageGenerationFailedError) {
           return c.json({ message: error.message }, 502);
         }
-        throw error;
+        return c.json(mediaGenerationFailure(error), 502);
       }
     },
   );
@@ -290,7 +305,7 @@ export function registerMediaRoutes(
         if (error instanceof ImageGenerationFailedError) {
           return c.json({ message: error.message }, 502);
         }
-        throw error;
+        return c.json(mediaGenerationFailure(error), 502);
       }
     },
   );
