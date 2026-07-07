@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TeamResponse } from "@nexu/shared";
+import type { TeamResponse, TeamWorkflow } from "@nexu/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TeamNotFoundError } from "../src/services/teams/team-service.js";
 import { TeamWorkflowLedgerStore } from "../src/services/teams/team-workflow-ledger.js";
@@ -375,6 +375,44 @@ describe("TeamWorkflowService", () => {
       summary: "Researcher done",
     });
     expect(gateway.workboardCardBlock).not.toHaveBeenCalled();
+  });
+
+  it("runs an in-memory (non-persisted) workflow definition without a ledger lookup", async () => {
+    const service = buildService();
+    // A composed workflow that was never saved to the ledger: getWorkflow
+    // would throw for it, but runWorkflowDefinition operates on it directly.
+    const ephemeral: TeamWorkflow = {
+      ...TWO_STEP_DEFINITION,
+      id: "ephemeral-wf",
+      teamId: TEAM.id,
+      source: "user",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    };
+
+    const result = await service.runWorkflowDefinition(TEAM, ephemeral, {
+      inputs: { topic: "Rust async" },
+    });
+
+    // The run materialized parent + child cards straight from the definition.
+    expect(result.boardId).toBe(TEAM.boardId);
+    expect(result.parentCardId).toBe("card-parent");
+    expect(result.cards).toEqual([
+      { stepId: "research", cardId: "card-1" },
+      { stepId: "write", cardId: "card-2" },
+    ]);
+    // Nothing was persisted — the ephemeral entrypoint bypasses getWorkflow.
+    expect(service.listWorkflows(TEAM.id)).toHaveLength(0);
+    expect(() => service.getWorkflow(TEAM.id, "ephemeral-wf")).toThrow(
+      WorkflowNotFoundError,
+    );
+
+    // Background execution still completes through the same machinery.
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "card-parent" }),
+      );
+    });
   });
 
   it("blocks the failing step, remaining cards, and the parent when a step fails", async () => {

@@ -307,9 +307,8 @@ export class TeamWorkflowService {
   }
 
   /**
-   * Materialize a run: board + parent card + one gated card per step, then
-   * kick off background execution and return immediately. Progress is
-   * observable through the existing team board endpoint.
+   * Run a persisted workflow: resolve the team and stored workflow, then hand
+   * off to the shared run engine.
    */
   async runWorkflow(
     teamId: string,
@@ -318,6 +317,22 @@ export class TeamWorkflowService {
   ): Promise<RunTeamWorkflowResponse> {
     const team = this.requireTeam(teamId);
     const workflow = this.getWorkflow(teamId, workflowId);
+    return this.runWorkflowDefinition(team, workflow, input);
+  }
+
+  /**
+   * Materialize a run: board + parent card + one gated card per step, then
+   * kick off background execution and return immediately. Progress is
+   * observable through the existing team board endpoint.
+   *
+   * Operates on an already-resolved team and an in-memory workflow definition,
+   * so a composed (non-persisted) workflow can run through the same machinery.
+   */
+  async runWorkflowDefinition(
+    team: TeamResponse,
+    workflow: TeamWorkflow,
+    input: RunTeamWorkflowRequest,
+  ): Promise<RunTeamWorkflowResponse> {
     // Members may have changed since the workflow was authored.
     validateWorkflowDefinition(workflow, team);
     const context = resolveRunInputs(workflow, input.inputs);
@@ -380,8 +395,8 @@ export class TeamWorkflowService {
     }).catch((error) => {
       logger.error(
         {
-          teamId,
-          workflowId,
+          teamId: team.id,
+          workflowId: workflow.id,
           runId,
           error: error instanceof Error ? error.message : String(error),
         },
