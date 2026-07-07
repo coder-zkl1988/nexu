@@ -13,6 +13,7 @@ import {
   type CanvasOpBatchView,
   CanvasOpCard,
 } from "@/lib/canvas/canvas-op-card";
+import { bindSessionToBoard } from "@/lib/canvas/canvas-session-binding";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import {
   A2UI_TOOL_NAMES,
@@ -739,6 +740,19 @@ export function SessionsPage() {
       client.disconnect();
     };
   }, [id, session?.botId, session?.sessionKey, queryClient]);
+
+  // Bind this session to its own canvas board (W5): opening a session switches
+  // the global canvas to that session's board, lazily creating one on first
+  // visit. Keyed on sessionKey so it fires once per focused session, not per
+  // render (title is read only to name a freshly-created board — a later title
+  // change must not re-bind, so it is intentionally not a dependency).
+  // bindSessionToBoard routes through the reviewed switchCanvasBoard
+  // (flush-save-first) so no board content is ever lost or mixed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionKey keys the bind; title is a creation-only label
+  useEffect(() => {
+    if (!session?.sessionKey) return;
+    void bindSessionToBoard(session.sessionKey, session.title ?? undefined);
+  }, [session?.sessionKey]);
 
   const { data: channelsData } = useQuery({
     queryKey: ["channels"],
