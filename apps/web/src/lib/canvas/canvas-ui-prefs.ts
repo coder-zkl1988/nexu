@@ -74,16 +74,18 @@ export function setCanvasUiPref<K extends keyof CanvasUiPrefs>(
   emit();
 }
 
-/**
- * Test-only: reset module state to defaults. Mirrors `__resetCanvasForTests`
- * in canvas-store. Re-reads from localStorage so tests that seed
- * localStorage before calling this get the seeded value.
- *
- * Since beforeEach calls localStorage.clear() before this, a "clean reset"
- * always yields defaults; tests that seed localStorage do so before calling
- * this function.
- */
+/** Test-only: reset module state to pure defaults (ignores localStorage). */
 export function __resetCanvasUiPrefsForTests(): void {
   prefs = { ...DEFAULTS };
+  emit();
+}
+
+/**
+ * Test-only: re-run the load-from-localStorage path (merge + corrupt-JSON
+ * degradation), exactly as module init does. Lets tests seed storage and
+ * exercise loadStoredPrefs without a module reload.
+ */
+export function __reloadCanvasUiPrefsForTests(): void {
+  prefs = loadStoredPrefs();
   emit();
 }

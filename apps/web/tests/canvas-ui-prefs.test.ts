@@ -10,6 +10,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  __reloadCanvasUiPrefsForTests,
   __resetCanvasUiPrefsForTests,
   getCanvasUiPrefs,
   setCanvasUiPref,
@@ -76,10 +77,17 @@ describe("setCanvasUiPref", () => {
 
 describe("corrupt JSON in localStorage → defaults", () => {
   it("falls back to defaults when stored value is invalid JSON", () => {
+    setCanvasUiPref("minimapVisible", false); // non-default live state
     localStorage.setItem(PREFS_KEY, "not-valid-json{{");
-    // reset so module re-reads from localStorage
-    __resetCanvasUiPrefsForTests();
+    // reload exercises the real loadStoredPrefs path (parse failure → defaults)
+    __reloadCanvasUiPrefsForTests();
     expect(getCanvasUiPrefs().minimapVisible).toBe(true);
+  });
+
+  it("merges a partial legacy blob with defaults", () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ minimapVisible: false }));
+    __reloadCanvasUiPrefsForTests();
+    expect(getCanvasUiPrefs().minimapVisible).toBe(false);
   });
 });
 
