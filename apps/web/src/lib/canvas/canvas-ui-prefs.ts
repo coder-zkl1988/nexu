@@ -5,7 +5,7 @@
  * Persists to localStorage key `nexu:canvas:ui-prefs`; storage failures
  * degrade silently (same pattern as viewport persistence in canvas-store).
  *
- * T2 will extend this store with appearance panel prefs.
+ * W4.2 extended this store with appearance prefs (gridMode, showImageInfo).
  */
 
 import { useSyncExternalStore } from "react";

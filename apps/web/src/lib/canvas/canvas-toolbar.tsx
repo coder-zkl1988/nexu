@@ -13,8 +13,9 @@ import {
   Type,
   Undo2,
   Upload,
+  X,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ingestFilesAsNodes, readFilesAsDataUrls } from "./canvas-ingest";
 import {
@@ -52,6 +53,16 @@ export function CanvasToolbar({
   const hasSelection = selectedNodeIds.length > 0 || !!selectedConnectionId;
   const [appearanceOpen, setAppearanceOpen] = useState(false);
 
+  // Escape closes the appearance panel (mount-once; harmless when panel closed).
+  useEffect(() => {
+    if (!appearanceOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAppearanceOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [appearanceOpen]);
+
   return (
     <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
       {/* W4.2: Appearance panel — toolbar-anchored, opens above the toolbar */}
@@ -62,6 +73,18 @@ export function CanvasToolbar({
           onPointerDown={(event) => event.stopPropagation()}
         >
           {/* Theme follows the app global theme (no canvas-local toggle by design). */}
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-text-tertiary">外观</p>
+            <button
+              type="button"
+              aria-label="关闭外观面板"
+              data-canvas-appearance-close="true"
+              onClick={() => setAppearanceOpen(false)}
+              className="rounded p-0.5 text-text-tertiary hover:bg-surface-2 hover:text-text-primary"
+            >
+              <X size={12} />
+            </button>
+          </div>
           <div className="mb-2">
             <p className="mb-1 text-text-tertiary">网格</p>
             <div className="flex gap-1">
