@@ -382,6 +382,48 @@ describe("HoverToolbar", () => {
     expect(markup).toContain('data-canvas-hover-action="upscale"');
   });
 
+  // ── W4.3: save-as-asset gating + asset library entry + picker absence ────
+
+  it("text WITH content → save-asset action present", () => {
+    addNode({ type: "text", title: "note", metadata: { content: "hello" } });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-hover-action="save-asset"');
+  });
+
+  it("text WITHOUT content → save-asset action absent", () => {
+    addNode({ type: "text", title: "empty", metadata: {} });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="save-asset"');
+  });
+
+  it("image WITH content → save-asset action present", () => {
+    addNode({
+      type: "image",
+      title: "photo",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-hover-action="save-asset"');
+  });
+
+  it("a2ui node → save-asset action absent (no toolbar at all)", () => {
+    addNode({
+      type: "a2ui",
+      title: "panel",
+      metadata: { surfaceId: "sidebar:x", content: "ignored" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain('data-canvas-hover-action="save-asset"');
+  });
+
+  it("asset library toolbar button present; picker absent by default", () => {
+    addNode({ type: "text", title: "note", metadata: { content: "hi" } });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain('data-canvas-asset-library="true"');
+    // Picker only renders when the dialog store holds { kind: "assets" }.
+    expect(markup).not.toContain("data-canvas-asset-picker");
+  });
+
   it("ReplaceButton clears error task when updating node content", () => {
     // Create an image node with an error task overlay
     addNode({

@@ -12,6 +12,7 @@
 import {
   AArrowDown,
   AArrowUp,
+  Bookmark,
   Brush,
   Crop,
   Download,
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { saveNodeAsAsset } from "./canvas-assets";
 import { openCanvasDialog } from "./canvas-dialogs";
 import { describeImageSource } from "./canvas-generation";
 import { readFilesAsDataUrls } from "./canvas-ingest";
@@ -44,6 +46,7 @@ import { nextFontSize, textNodeToImage } from "./text-node-utils";
 
 const MEDIA_TYPES = new Set(["image", "video", "audio"]);
 const CONTENT_MEDIA_TYPES = new Set(["image", "video"]);
+const ASSET_TYPES = new Set(["text", "image", "video", "audio"]);
 
 /** Return a sane default extension for a media node title without a dot. */
 function defaultExtension(type: string): string {
@@ -289,6 +292,22 @@ export function HoverToolbar({
           }}
         >
           <ImagePlus size={13} />
+        </ToolbarButton>
+      ) : null}
+
+      {/* save-asset — text/image/video/audio WITH non-empty content */}
+      {ASSET_TYPES.has(type) && (metadata.content ?? "").trim() ? (
+        <ToolbarButton
+          actionKey="save-asset"
+          label="存为素材"
+          title="存为素材"
+          onClick={() => {
+            void saveNodeAsAsset(id).then((ok) =>
+              ok ? toast.success("已存为素材") : toast.error("无法保存"),
+            );
+          }}
+        >
+          <Bookmark size={13} />
         </ToolbarButton>
       ) : null}
 

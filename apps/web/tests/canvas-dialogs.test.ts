@@ -100,6 +100,13 @@ describe("canvas-dialogs module store", () => {
     expect(getCanvasDialog()).toEqual({ kind: "angle", nodeId: "angle-1" });
   });
 
+  it("nodeId-less assets kind round-trips through open/close", () => {
+    openCanvasDialog({ kind: "assets" });
+    expect(getCanvasDialog()).toEqual({ kind: "assets" });
+    closeCanvasDialog();
+    expect(getCanvasDialog()).toBeNull();
+  });
+
   it("subscription mechanism: spy is called on open and close, not after unsubscribe", () => {
     const spy = vi.fn();
     const unsubscribe = __subscribeForTests(spy);

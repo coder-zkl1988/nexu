@@ -4,6 +4,7 @@ import {
   Clapperboard,
   Download,
   ImagePlus,
+  Library,
   Map as MapIcon,
   Maximize2,
   Palette,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { openCanvasDialog } from "./canvas-dialogs";
 import { ingestFilesAsNodes, readFilesAsDataUrls } from "./canvas-ingest";
 import {
   type CanvasExportFile,
@@ -160,6 +162,16 @@ export function CanvasToolbar({
         >
           <SlidersHorizontal size={14} />
         </ToolButton>
+        <button
+          type="button"
+          title="素材库"
+          aria-label="素材库"
+          data-canvas-asset-library="true"
+          onClick={() => openCanvasDialog({ kind: "assets" })}
+          className="rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+        >
+          <Library size={14} />
+        </button>
         <label
           title="上传素材"
           className="cursor-pointer rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"

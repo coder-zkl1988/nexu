@@ -23,29 +23,40 @@ export interface CanvasStorage {
   save(boardId: string, snapshot: PersistedCanvas): Promise<void>;
 }
 
+/** A reusable asset saved from node content (W4.3). */
+export type CanvasAsset = {
+  id: string;
+  kind: "text" | "image" | "video" | "audio";
+  title: string;
+  content: string;
+  mimeType?: string;
+  createdAt: string;
+};
+
+export interface AssetStorage {
+  list(): Promise<CanvasAsset[]>;
+  put(asset: CanvasAsset): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
 // ── IndexedDB implementation ────────────────────────────────────
 
 const DB_NAME = "nexu-canvas";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "boards";
+const ASSET_STORE_NAME = "assets";
 
 /**
- * Create an IndexedDB-backed CanvasStorage instance.
- * The DB connection is opened lazily once and reused (promise-memoized).
- * At most one console.warn per session on failure.
+ * Shared lazy DB opener for both the boards and assets stores.
+ * One connection per session, promise-memoized. The upgrade handler only
+ * CREATES missing stores so an existing v1 "boards" DB survives the v2 bump.
  */
-export function createIndexedDBStorage(): CanvasStorage {
+function createSharedDBOpener(
+  warnOnce: (msg: string) => void,
+): () => Promise<IDBDatabase> {
   let dbPromise: Promise<IDBDatabase> | null = null;
-  let warnedOnce = false;
 
-  function warnOnce(msg: string): void {
-    if (!warnedOnce) {
-      warnedOnce = true;
-      console.warn("[canvas-persistence]", msg);
-    }
-  }
-
-  function openDB(): Promise<IDBDatabase> {
+  return function openDB(): Promise<IDBDatabase> {
     if (dbPromise) return dbPromise;
 
     dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
@@ -68,8 +79,12 @@ export function createIndexedDBStorage(): CanvasStorage {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        // Only ADD missing stores — never touch existing v1 boards data.
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME);
+        }
+        if (!db.objectStoreNames.contains(ASSET_STORE_NAME)) {
+          db.createObjectStore(ASSET_STORE_NAME, { keyPath: "id" });
         }
       };
 
@@ -84,11 +99,39 @@ export function createIndexedDBStorage(): CanvasStorage {
 
     // On failure reset so the next call can retry if needed
     dbPromise.catch(() => {
+      warnOnce("openDB failed");
       dbPromise = null;
     });
 
     return dbPromise;
-  }
+  };
+}
+
+/**
+ * Shared warn-once helper — at most one console.warn per session.
+ */
+function createWarnOnce(): (msg: string) => void {
+  let warnedOnce = false;
+  return function warnOnce(msg: string): void {
+    if (!warnedOnce) {
+      warnedOnce = true;
+      console.warn("[canvas-persistence]", msg);
+    }
+  };
+}
+
+// One warn-once + one DB opener shared by both stores (single dbPromise).
+const sharedWarnOnce = createWarnOnce();
+const openSharedDB = createSharedDBOpener(sharedWarnOnce);
+
+/**
+ * Create an IndexedDB-backed CanvasStorage instance.
+ * Uses the shared lazy DB connection (promise-memoized, reused with assets).
+ * At most one console.warn per session on failure.
+ */
+export function createIndexedDBStorage(): CanvasStorage {
+  const warnOnce = sharedWarnOnce;
+  const openDB = openSharedDB;
 
   return {
     async load(boardId: string): Promise<PersistedCanvas | null> {
@@ -138,6 +181,66 @@ export function createIndexedDBStorage(): CanvasStorage {
   };
 }
 
+/**
+ * Create an IndexedDB-backed AssetStorage instance (W4.3).
+ * Shares the same DB connection as the boards store (single dbPromise).
+ * Same graceful degradation: list → [], put/delete resolve on failure.
+ */
+export function createIndexedDBAssetStorage(): AssetStorage {
+  const warnOnce = sharedWarnOnce;
+  const openDB = openSharedDB;
+
+  return {
+    async list(): Promise<CanvasAsset[]> {
+      try {
+        const db = await openDB();
+        return await new Promise<CanvasAsset[]>((resolve, reject) => {
+          const tx = db.transaction(ASSET_STORE_NAME, "readonly");
+          const store = tx.objectStore(ASSET_STORE_NAME);
+          const req = store.getAll();
+          req.onsuccess = () => resolve((req.result as CanvasAsset[]) ?? []);
+          req.onerror = () => reject(req.error);
+        });
+      } catch (err) {
+        warnOnce(`asset list failed: ${String(err)}`);
+        return [];
+      }
+    },
+
+    async put(asset: CanvasAsset): Promise<void> {
+      try {
+        const db = await openDB();
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(ASSET_STORE_NAME, "readwrite");
+          const store = tx.objectStore(ASSET_STORE_NAME);
+          const req = store.put(asset);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (err) {
+        warnOnce(`asset put failed: ${String(err)}`);
+      }
+    },
+
+    async delete(id: string): Promise<void> {
+      try {
+        const db = await openDB();
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(ASSET_STORE_NAME, "readwrite");
+          const store = tx.objectStore(ASSET_STORE_NAME);
+          const req = store.delete(id);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (err) {
+        warnOnce(`asset delete failed: ${String(err)}`);
+      }
+    },
+  };
+}
+
 // ── Module-level singleton + test seam ────────────────────────
 
 const defaultStorage = createIndexedDBStorage();
@@ -155,4 +258,19 @@ export function __setCanvasStorageForTests(
 
 export function getActiveStorage(): CanvasStorage {
   return activeStorage;
+}
+
+const defaultAssetStorage = createIndexedDBAssetStorage();
+let activeAssetStorage: AssetStorage = defaultAssetStorage;
+
+/**
+ * Swap the asset storage implementation for tests.
+ * Pass null to restore the default IndexedDB adapter.
+ */
+export function __setAssetStorageForTests(storage: AssetStorage | null): void {
+  activeAssetStorage = storage ?? defaultAssetStorage;
+}
+
+export function getActiveAssetStorage(): AssetStorage {
+  return activeAssetStorage;
 }
