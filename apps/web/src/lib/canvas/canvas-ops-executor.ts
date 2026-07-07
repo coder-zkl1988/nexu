@@ -72,6 +72,10 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
   // Collected run_generation dispatches — fired after the sync structural loop
   // so they cannot split the coalesced undo step.
   const deferredGenerations: Array<() => void> = [];
+  // Live node-id set, seeded once and maintained incrementally through
+  // add_node/delete_node, so real-id existence checks stay O(1) instead of
+  // scanning the whole board per op.
+  const liveNodeIds = new Set(getCanvasState().nodes.map((node) => node.id));
 
   /**
    * Resolve a target token to a real node id. `"ref:x"` → the id add_node
@@ -87,8 +91,7 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
       }
       return realId;
     }
-    const exists = getCanvasState().nodes.some((node) => node.id === token);
-    if (!exists) {
+    if (!liveNodeIds.has(token)) {
       errors.push(`未找到节点：${token}`);
       return null;
     }
@@ -98,19 +101,18 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
   for (const op of batch.ops) {
     switch (op.op) {
       case "add_node": {
+        const fallback = cascadePosition(getCanvasState().nodes.length);
         const node = addNode({
           type: op.nodeType,
           title: op.title ?? DEFAULT_TITLE[op.nodeType],
           position:
             op.x !== undefined || op.y !== undefined
-              ? {
-                  x: op.x ?? cascadePosition(getCanvasState().nodes.length).x,
-                  y: op.y ?? cascadePosition(getCanvasState().nodes.length).y,
-                }
-              : cascadePosition(getCanvasState().nodes.length),
+              ? { x: op.x ?? fallback.x, y: op.y ?? fallback.y }
+              : fallback,
           metadata: op.content !== undefined ? { content: op.content } : {},
         });
         refs.set(op.ref, node.id);
+        liveNodeIds.add(node.id);
         applied += 1;
         break;
       }
@@ -141,6 +143,7 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
         const id = resolveTarget(op.target);
         if (!id) break;
         removeNodes([id]);
+        liveNodeIds.delete(id);
         applied += 1;
         break;
       }

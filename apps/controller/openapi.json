@@ -19598,7 +19598,8 @@
                 "type": "object",
                 "properties": {
                   "boardId": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 200
                   },
                   "nodes": {
                     "type": "array",
@@ -19606,7 +19607,8 @@
                       "type": "object",
                       "properties": {
                         "id": {
-                          "type": "string"
+                          "type": "string",
+                          "maxLength": 200
                         },
                         "type": {
                           "anyOf": [
@@ -19630,7 +19632,8 @@
                           ]
                         },
                         "title": {
-                          "type": "string"
+                          "type": "string",
+                          "maxLength": 1000
                         },
                         "x": {
                           "type": "number"
@@ -19658,7 +19661,8 @@
                         "h",
                         "hasContent"
                       ]
-                    }
+                    },
+                    "maxItems": 5000
                   },
                   "connections": {
                     "type": "array",
@@ -19666,13 +19670,16 @@
                       "type": "object",
                       "properties": {
                         "id": {
-                          "type": "string"
+                          "type": "string",
+                          "maxLength": 200
                         },
                         "from": {
-                          "type": "string"
+                          "type": "string",
+                          "maxLength": 200
                         },
                         "to": {
-                          "type": "string"
+                          "type": "string",
+                          "maxLength": 200
                         }
                       },
                       "required": [
@@ -19680,7 +19687,8 @@
                         "from",
                         "to"
                       ]
-                    }
+                    },
+                    "maxItems": 10000
                   },
                   "viewport": {
                     "type": "object",
@@ -19704,8 +19712,10 @@
                   "selectedNodeIds": {
                     "type": "array",
                     "items": {
-                      "type": "string"
-                    }
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "maxItems": 5000
                   }
                 },
                 "required": [
@@ -19756,7 +19766,8 @@
                   "type": "object",
                   "properties": {
                     "boardId": {
-                      "type": "string"
+                      "type": "string",
+                      "maxLength": 200
                     },
                     "nodes": {
                       "type": "array",
@@ -19764,7 +19775,8 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           },
                           "type": {
                             "anyOf": [
@@ -19788,7 +19800,8 @@
                             ]
                           },
                           "title": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 1000
                           },
                           "x": {
                             "type": "number"
@@ -19816,7 +19829,8 @@
                           "h",
                           "hasContent"
                         ]
-                      }
+                      },
+                      "maxItems": 5000
                     },
                     "connections": {
                       "type": "array",
@@ -19824,13 +19838,16 @@
                         "type": "object",
                         "properties": {
                           "id": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           },
                           "from": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           },
                           "to": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           }
                         },
                         "required": [
@@ -19838,7 +19855,8 @@
                           "from",
                           "to"
                         ]
-                      }
+                      },
+                      "maxItems": 10000
                     },
                     "viewport": {
                       "type": "object",
@@ -19862,8 +19880,10 @@
                     "selectedNodeIds": {
                       "type": "array",
                       "items": {
-                        "type": "string"
-                      }
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "maxItems": 5000
                     }
                   },
                   "required": [

@@ -94,10 +94,21 @@ export type CanvasOpBatch = z.infer<typeof canvasOpBatchSchema>;
  * op node types with the two runtime-only node kinds the canvas also renders
  * (`a2ui`, `team-step`) so the mirror can faithfully report the whole board.
  */
+/**
+ * Defense-in-depth caps for the mirror. The POST /api/v1/canvas/mirror route is
+ * unauthenticated (loopback, single-user model), so these bound what a runaway
+ * or malformed push can hold in the in-memory singleton. Generous enough to
+ * never reject a real sidebar board; they only stop unbounded input.
+ */
+const MIRROR_ID_MAX = 200;
+const MIRROR_TITLE_MAX = 1000;
+const MIRROR_NODES_MAX = 5000;
+const MIRROR_CONNECTIONS_MAX = 10000;
+
 export const canvasMirrorNodeSchema = z.object({
-  id: z.string(),
+  id: z.string().max(MIRROR_ID_MAX),
   type: canvasOpNodeTypeSchema.or(z.enum(["a2ui", "team-step"])),
-  title: z.string(),
+  title: z.string().max(MIRROR_TITLE_MAX),
   x: z.number(),
   y: z.number(),
   w: z.number(),
@@ -107,9 +118,9 @@ export const canvasMirrorNodeSchema = z.object({
 export type CanvasMirrorNode = z.infer<typeof canvasMirrorNodeSchema>;
 
 export const canvasMirrorConnectionSchema = z.object({
-  id: z.string(),
-  from: z.string(),
-  to: z.string(),
+  id: z.string().max(MIRROR_ID_MAX),
+  from: z.string().max(MIRROR_ID_MAX),
+  to: z.string().max(MIRROR_ID_MAX),
 });
 export type CanvasMirrorConnection = z.infer<
   typeof canvasMirrorConnectionSchema
@@ -117,14 +128,16 @@ export type CanvasMirrorConnection = z.infer<
 
 /** Compact snapshot of the active canvas board. Single active board only. */
 export const canvasMirrorSchema = z.object({
-  boardId: z.string(),
-  nodes: z.array(canvasMirrorNodeSchema),
-  connections: z.array(canvasMirrorConnectionSchema),
+  boardId: z.string().max(MIRROR_ID_MAX),
+  nodes: z.array(canvasMirrorNodeSchema).max(MIRROR_NODES_MAX),
+  connections: z
+    .array(canvasMirrorConnectionSchema)
+    .max(MIRROR_CONNECTIONS_MAX),
   viewport: z.object({
     x: z.number(),
     y: z.number(),
     scale: z.number(),
   }),
-  selectedNodeIds: z.array(z.string()),
+  selectedNodeIds: z.array(z.string().max(MIRROR_ID_MAX)).max(MIRROR_NODES_MAX),
 });
 export type CanvasMirror = z.infer<typeof canvasMirrorSchema>;

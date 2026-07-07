@@ -121,6 +121,23 @@ describe("applyCanvasOps — ref resolution", () => {
     expect(result.errors.length).toBe(1);
     expect(result.errors[0]).toContain("does-not-exist");
   });
+
+  it("the live-id set tracks add and delete within one batch", () => {
+    // A node deleted earlier in the batch is no longer a resolvable real id;
+    // proves the incremental set is maintained (add adds, delete removes).
+    const existing = addNode({ type: "text", title: "existing" });
+    const result = applyCanvasOps({
+      ops: [
+        { op: "delete_node", target: existing.id },
+        // Same real id, now gone → must error, not resurrect.
+        { op: "update_node", target: existing.id, title: "zombie" },
+      ],
+    });
+    expect(result.applied).toBe(1); // only the delete
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain(existing.id);
+    expect(getCanvasState().nodes).toHaveLength(0);
+  });
 });
 
 describe("applyCanvasOps — per-op mapping", () => {

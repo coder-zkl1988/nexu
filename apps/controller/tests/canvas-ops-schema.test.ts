@@ -158,4 +158,48 @@ describe("canvasMirrorSchema", () => {
     };
     expect(canvasMirrorSchema.safeParse(bad).success).toBe(false);
   });
+
+  it("bounds unbounded input on the (unauthenticated) mirror route", () => {
+    const node = {
+      id: "n1",
+      type: "text" as const,
+      title: "t",
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+      hasContent: false,
+    };
+    const base = {
+      boardId: "sidebar",
+      nodes: [] as unknown[],
+      connections: [],
+      viewport: { x: 0, y: 0, scale: 1 },
+      selectedNodeIds: [] as string[],
+    };
+    // Over-cap node array is rejected (defense-in-depth vs runaway push).
+    expect(
+      canvasMirrorSchema.safeParse({
+        ...base,
+        nodes: Array.from({ length: 5001 }, () => node),
+      }).success,
+    ).toBe(false);
+    // Over-long id/title are rejected.
+    expect(
+      canvasMirrorSchema.safeParse({
+        ...base,
+        nodes: [{ ...node, id: "x".repeat(201) }],
+      }).success,
+    ).toBe(false);
+    expect(
+      canvasMirrorSchema.safeParse({
+        ...base,
+        nodes: [{ ...node, title: "y".repeat(1001) }],
+      }).success,
+    ).toBe(false);
+    // A realistic board still parses.
+    expect(
+      canvasMirrorSchema.safeParse({ ...base, nodes: [node] }).success,
+    ).toBe(true);
+  });
 });
