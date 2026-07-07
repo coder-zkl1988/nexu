@@ -32,8 +32,10 @@ import {
   connectionPath,
   fitViewport,
   gridBackgroundSize,
+  gridBackgroundStyle,
   zoomAtPoint,
 } from "../src/lib/canvas/infinite-canvas";
+import { shouldStoreNaturalSize } from "../src/lib/canvas/node-views";
 
 // Plain-Node test env: minimal localStorage so the store's geometry
 // persistence paths run instead of throwing.
@@ -644,5 +646,146 @@ describe("connection effects", () => {
     expect(getBatch("batch-1").posts[0]?.images).toEqual([
       "data:image/png;base64,COVER",
     ]);
+  });
+});
+
+// ── W4.2: gridBackgroundStyle ──────────────────────────────────────
+
+describe("gridBackgroundStyle", () => {
+  const viewport = { x: 10, y: 20 };
+
+  it("dots mode: backgroundImage matches the existing radial-gradient output exactly", () => {
+    const size = 24; // gridBackgroundSize(1) = 24
+    const style = gridBackgroundStyle("dots", 1, viewport);
+    expect(style).not.toBeNull();
+    expect(style?.backgroundImage).toBe(
+      "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
+    );
+    expect(style?.backgroundSize).toBe(`${size}px ${size}px`);
+    expect(style?.backgroundPosition).toBe(
+      `${viewport.x % size}px ${viewport.y % size}px`,
+    );
+  });
+
+  it("lines mode: two linear-gradients", () => {
+    const style = gridBackgroundStyle("lines", 1, viewport);
+    expect(style).not.toBeNull();
+    expect(style?.backgroundImage).toBe(
+      "linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)",
+    );
+  });
+
+  it("blank mode → null", () => {
+    expect(gridBackgroundStyle("blank", 1, viewport)).toBeNull();
+  });
+
+  it("LOD null (scale 0.05) → null for dots", () => {
+    expect(gridBackgroundStyle("dots", 0.05, viewport)).toBeNull();
+  });
+
+  it("LOD null (scale 0.05) → null for lines", () => {
+    expect(gridBackgroundStyle("lines", 0.05, viewport)).toBeNull();
+  });
+});
+
+// ── W4.2: shouldStoreNaturalSize ──────────────────────────────────
+
+describe("shouldStoreNaturalSize", () => {
+  it("returns true when both naturalWidth and naturalHeight are absent", () => {
+    expect(shouldStoreNaturalSize({}, 800, 600)).toBe(true);
+  });
+
+  it("returns false when dims match stored values exactly", () => {
+    expect(
+      shouldStoreNaturalSize(
+        { naturalWidth: 800, naturalHeight: 600 },
+        800,
+        600,
+      ),
+    ).toBe(false);
+  });
+
+  it("returns true when width differs", () => {
+    expect(
+      shouldStoreNaturalSize(
+        { naturalWidth: 400, naturalHeight: 600 },
+        800,
+        600,
+      ),
+    ).toBe(true);
+  });
+
+  it("returns true when height differs", () => {
+    expect(
+      shouldStoreNaturalSize(
+        { naturalWidth: 800, naturalHeight: 300 },
+        800,
+        600,
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false when w=0 (zero dims → skip)", () => {
+    expect(shouldStoreNaturalSize({}, 0, 600)).toBe(false);
+  });
+
+  it("returns false when h=0 (zero dims → skip)", () => {
+    expect(shouldStoreNaturalSize({}, 800, 0)).toBe(false);
+  });
+});
+
+// ── W4.2: markup tests ────────────────────────────────────────────
+
+describe("W4.2 appearance markup", () => {
+  it("toolbar contains appearance toggle button", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-appearance-toggle");
+  });
+
+  it("appearance panel is ABSENT by default (panel closed)", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-appearance-panel");
+  });
+
+  it("image node with dims+pref on renders image info badge", () => {
+    setCanvasUiPref("showImageInfo", true);
+    addNode({
+      type: "image",
+      title: "pic",
+      metadata: {
+        content: "data:image/png;base64,x",
+        naturalWidth: 1920,
+        naturalHeight: 1080,
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-image-info");
+    expect(markup).toContain("1920×1080");
+  });
+
+  it("image info badge absent when pref off", () => {
+    // pref defaults to false
+    addNode({
+      type: "image",
+      title: "pic",
+      metadata: {
+        content: "data:image/png;base64,x",
+        naturalWidth: 1920,
+        naturalHeight: 1080,
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-image-info");
+  });
+
+  it("image info badge absent when dims missing", () => {
+    setCanvasUiPref("showImageInfo", true);
+    addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: "data:image/png;base64,x" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-image-info");
   });
 });

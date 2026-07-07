@@ -4,8 +4,30 @@ import { AudioLines, Clapperboard, ImagePlus } from "lucide-react";
 import { type ReactNode, memo, useState } from "react";
 import { generateImageIntoNode, retryNodeTask } from "./canvas-generation";
 import { type CanvasNode, getA2UIPayload, updateNode } from "./canvas-store";
+import { useCanvasUiPrefs } from "./canvas-ui-prefs";
 import { ConfigNodeContent } from "./config-node";
 import { TeamStepNodeContent } from "./team-step-node";
+
+// ── shouldStoreNaturalSize ─────────────────────────────────────────
+
+/**
+ * W4.2: Pure predicate for deciding whether to write naturalWidth/naturalHeight
+ * to the node metadata after an image onLoad event.
+ *
+ * Returns true iff:
+ *  - w > 0 and h > 0 (zero dims from browser quirk → skip)
+ *  - either naturalWidth/naturalHeight is absent in metadata, OR differs from w/h
+ *
+ * This prevents loops: the second onLoad with the same dims returns false.
+ */
+export function shouldStoreNaturalSize(
+  metadata: { naturalWidth?: number; naturalHeight?: number },
+  w: number,
+  h: number,
+): boolean {
+  if (w <= 0 || h <= 0) return false;
+  return metadata.naturalWidth !== w || metadata.naturalHeight !== h;
+}
 
 // ── TextNodeContent ────────────────────────────────────────────
 
@@ -172,16 +194,55 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   }
   // image
   if (node.metadata.content) {
-    return (
+    return <ImageNodeContent node={node} />;
+  }
+  return <EmptyImageNode node={node} />;
+}
+
+/**
+ * W4.2: Image content renderer.
+ *
+ * Subscribes to the ui-prefs store (separate subscription from NodeBody's canvas-store
+ * subscription) so pref changes re-render without breaking NodeBody's metadata-identity memo.
+ *
+ * onLoad stores naturalWidth/Height via shouldStoreNaturalSize predicate (single write).
+ * Badge is rendered when showImageInfo pref is on AND dims are present.
+ *
+ * Theme comment: badge styling follows app global theme (--color-*); no canvas-local theme toggle by design.
+ */
+function ImageNodeContent({ node }: { node: CanvasNode }) {
+  const { showImageInfo } = useCanvasUiPrefs();
+  const { naturalWidth, naturalHeight } = node.metadata;
+  const hasDims = naturalWidth !== undefined && naturalHeight !== undefined;
+
+  return (
+    <div className="relative h-full w-full">
       <img
         src={node.metadata.content}
         alt={node.title}
         className="pointer-events-none h-full w-full select-none object-contain"
         draggable={false}
+        onLoad={(event) => {
+          const img = event.currentTarget;
+          const w = img.naturalWidth;
+          const h = img.naturalHeight;
+          if (shouldStoreNaturalSize(node.metadata, w, h)) {
+            updateNode(node.id, {
+              metadata: { naturalWidth: w, naturalHeight: h },
+            });
+          }
+        }}
       />
-    );
-  }
-  return <EmptyImageNode node={node} />;
+      {showImageInfo && hasDims ? (
+        <span
+          data-canvas-image-info="true"
+          className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white"
+        >
+          {naturalWidth}×{naturalHeight}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 /**

@@ -58,6 +58,7 @@ import {
   useCanvas,
 } from "./canvas-store";
 import { CanvasToolbar } from "./canvas-toolbar";
+import { useCanvasUiPrefs } from "./canvas-ui-prefs";
 import { applyConnectionEffects } from "./connection-effects";
 import { HoverToolbar } from "./hover-toolbar";
 import { NodeBody } from "./node-views";
@@ -98,6 +99,46 @@ export function clampScale(scale: number): number {
 export function gridBackgroundSize(scale: number): number | null {
   const size = 24 * scale;
   return size < 4 ? null : size;
+}
+
+/**
+ * W4.2: Mode-aware grid background style helper.
+ *
+ * Returns a CSS background style object for the canvas surface, or null when:
+ *  - mode is "blank"
+ *  - LOD determines the grid would be too small to render (gridBackgroundSize returns null)
+ *
+ * dots output is byte-identical to the previous inline style (existing markup test tolerance).
+ */
+export function gridBackgroundStyle(
+  mode: "dots" | "lines" | "blank",
+  scale: number,
+  viewport: { x: number; y: number },
+): {
+  backgroundImage: string;
+  backgroundSize: string;
+  backgroundPosition: string;
+} | null {
+  if (mode === "blank") return null;
+  const size = gridBackgroundSize(scale);
+  if (size === null) return null;
+  const backgroundSize = `${size}px ${size}px`;
+  const backgroundPosition = `${viewport.x % size}px ${viewport.y % size}px`;
+  if (mode === "lines") {
+    return {
+      backgroundImage:
+        "linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px)",
+      backgroundSize,
+      backgroundPosition,
+    };
+  }
+  // dots (default)
+  return {
+    backgroundImage:
+      "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
+    backgroundSize,
+    backgroundPosition,
+  };
 }
 
 /** Zoom keeping the canvas point under `pointer` (container coords) fixed. */
@@ -259,6 +300,7 @@ export function CanvasSurface({ className }: { className?: string }) {
     selectedNodeIds,
     selectedConnectionId,
   } = useCanvas();
+  const { gridMode } = useCanvasUiPrefs();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const pointerRef = useRef({ x: 0, y: 0 });
@@ -691,7 +733,8 @@ export function CanvasSurface({ className }: { className?: string }) {
     gestureRef.current?.kind === "connect"
       ? nodeById.get(gestureRef.current.fromId)
       : null;
-  const gridSize = gridBackgroundSize(viewport.scale);
+  const gridStyle =
+    gridBackgroundStyle(gridMode, viewport.scale, viewport) ?? undefined;
 
   return (
     <div
@@ -702,16 +745,7 @@ export function CanvasSurface({ className }: { className?: string }) {
         gestureActive ? "cursor-grabbing" : "cursor-grab",
         className,
       )}
-      style={
-        gridSize !== null
-          ? {
-              backgroundImage:
-                "radial-gradient(circle, var(--color-border) 1px, transparent 1px)",
-              backgroundSize: `${gridSize}px ${gridSize}px`,
-              backgroundPosition: `${viewport.x % gridSize}px ${viewport.y % gridSize}px`,
-            }
-          : undefined
-      }
+      style={gridStyle}
       onPointerDownCapture={(event) => {
         // Space+left or middle-click: begin pan from anywhere (including over nodes).
         // beginGesture calls closeFloatingMenus() — no need to do it explicitly here.

@@ -77,6 +77,13 @@ export type CanvasNodeMetadata = {
     isApproval?: boolean;
   };
   /**
+   * W4.2: Natural dimensions of the loaded image (stored on first onLoad).
+   * Used by the image-info badge when showImageInfo pref is on.
+   * Written at most once per content load via shouldStoreNaturalSize predicate.
+   */
+  naturalWidth?: number;
+  naturalHeight?: number;
+  /**
    * Transient generation task. Absence = idle; content presence = success.
    *
    * Deliberate refinement of the idle/generating/success/error model: idle and

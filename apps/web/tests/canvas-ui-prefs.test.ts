@@ -1,11 +1,16 @@
 /**
- * canvas-ui-prefs.test.ts — TDD (W4.1): ui-prefs module store.
+ * canvas-ui-prefs.test.ts — TDD (W4.1 + W4.2): ui-prefs module store.
  *
- * Test matrix:
+ * Test matrix (W4.1):
  *  a. Default: minimapVisible = true
  *  b. setCanvasUiPref persists to localStorage
  *  c. Reload-merge: corrupt JSON → defaults
  *  d. Reset helper works
+ *
+ * Test matrix (W4.2):
+ *  e. New defaults: gridMode = "dots", showImageInfo = false
+ *  f. setCanvasUiPref for new keys
+ *  g. Legacy-blob merge: blob with only minimapVisible → gridMode defaults to "dots"
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -97,5 +102,45 @@ describe("__resetCanvasUiPrefsForTests", () => {
     expect(getCanvasUiPrefs().minimapVisible).toBe(false);
     __resetCanvasUiPrefsForTests();
     expect(getCanvasUiPrefs().minimapVisible).toBe(true);
+  });
+});
+
+// ── W4.2: new prefs ────────────────────────────────────────────────
+
+describe("W4.2 new defaults", () => {
+  it("gridMode defaults to 'dots'", () => {
+    expect(getCanvasUiPrefs().gridMode).toBe("dots");
+  });
+
+  it("showImageInfo defaults to false", () => {
+    expect(getCanvasUiPrefs().showImageInfo).toBe(false);
+  });
+});
+
+describe("W4.2 setCanvasUiPref for new keys", () => {
+  it("sets gridMode to 'lines'", () => {
+    setCanvasUiPref("gridMode", "lines");
+    expect(getCanvasUiPrefs().gridMode).toBe("lines");
+  });
+
+  it("sets gridMode to 'blank'", () => {
+    setCanvasUiPref("gridMode", "blank");
+    expect(getCanvasUiPrefs().gridMode).toBe("blank");
+  });
+
+  it("sets showImageInfo to true", () => {
+    setCanvasUiPref("showImageInfo", true);
+    expect(getCanvasUiPrefs().showImageInfo).toBe(true);
+  });
+});
+
+describe("W4.2 legacy-blob merge", () => {
+  it("a blob with only minimapVisible gets gridMode default 'dots'", () => {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ minimapVisible: false }));
+    __reloadCanvasUiPrefsForTests();
+    expect(getCanvasUiPrefs().gridMode).toBe("dots");
+    expect(getCanvasUiPrefs().showImageInfo).toBe(false);
+    // original preserved
+    expect(getCanvasUiPrefs().minimapVisible).toBe(false);
   });
 });

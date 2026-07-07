@@ -12,12 +12,18 @@ import { useSyncExternalStore } from "react";
 
 export type CanvasUiPrefs = {
   minimapVisible: boolean;
+  /** W4.2: Grid background style. "dots" = radial-gradient (default), "lines" = crosshatch, "blank" = no grid. */
+  gridMode: "dots" | "lines" | "blank";
+  /** W4.2: Show naturalWidth × naturalHeight badge on image nodes. */
+  showImageInfo: boolean;
 };
 
 const PREFS_KEY = "nexu:canvas:ui-prefs";
 
 const DEFAULTS: CanvasUiPrefs = {
   minimapVisible: true,
+  gridMode: "dots",
+  showImageInfo: false,
 };
 
 function loadStoredPrefs(): CanvasUiPrefs {
