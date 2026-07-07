@@ -131,8 +131,16 @@ export function TeamDetailPage() {
         id,
         body: { task: task.trim() },
       });
-      setPlan(result.plan);
-      setStarted(result.started);
+      // The auto path now returns a composed DAG (steps) run on the team
+      // board. Show the composed steps as the plan; live progress is on the
+      // board below (the response no longer carries session keys).
+      setPlan(
+        result.steps.map((step) => ({
+          title: step.name ?? step.id,
+          assigneeSlug: step.assigneeSlug,
+          notes: step.task,
+        })),
+      );
     } catch {
       setError(t("teams.errPlanFailed"));
     }

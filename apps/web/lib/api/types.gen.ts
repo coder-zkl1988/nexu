@@ -4598,21 +4598,26 @@ export type PostApiV1TeamsDefaultRunAutoError = PostApiV1TeamsDefaultRunAutoErro
 
 export type PostApiV1TeamsDefaultRunAutoResponses = {
     /**
-     * Task planned against the expert catalog and dispatched on the default team
+     * Task auto-composed into a DAG and run on the default team
      */
     200: {
+        runId: string;
         boardId: string;
         parentCardId: string;
-        started: Array<{
+        cards: Array<{
+            stepId: string;
             cardId: string;
-            sessionKey: string;
-        }>;
-        plan: Array<{
-            title: string;
-            assigneeSlug: string;
-            notes?: string;
         }>;
         teamId: string;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
     };
 };
 
@@ -4844,7 +4849,7 @@ export type PostApiV1TeamsByIdRunAutoData = {
 
 export type PostApiV1TeamsByIdRunAutoErrors = {
     /**
-     * The lead could not produce a usable plan
+     * The task could not be composed into a usable plan
      */
     400: {
         message: string;
@@ -4861,19 +4866,25 @@ export type PostApiV1TeamsByIdRunAutoError = PostApiV1TeamsByIdRunAutoErrors[key
 
 export type PostApiV1TeamsByIdRunAutoResponses = {
     /**
-     * Task auto-decomposed and dispatched
+     * Task auto-composed into a DAG and run
      */
     200: {
+        runId: string;
         boardId: string;
         parentCardId: string;
-        started: Array<{
+        cards: Array<{
+            stepId: string;
             cardId: string;
-            sessionKey: string;
         }>;
-        plan: Array<{
-            title: string;
+        teamId: string;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
             assigneeSlug: string;
-            notes?: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
         }>;
     };
 };

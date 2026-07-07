@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  runTeamWorkflowResponseSchema,
+  workflowStepSchema,
+} from "./team-workflow.js";
 
 /**
  * A team is a named group of installed experts that collaborate on a task.
@@ -121,6 +125,22 @@ export const runDefaultTeamTaskResponseSchema =
   });
 
 /**
+ * Auto team run response (DAG engine). Both auto endpoints
+ * (`/teams/default/run-auto`, `/teams/{id}/run-auto`) compose a workflow DAG
+ * and run it topologically via TeamWorkflowService.autoComposeAndRun. The
+ * response carries the run identity + per-step cards (from
+ * runTeamWorkflowResponseSchema), the team the run landed on, and the composed
+ * DAG steps (with `dependsOn`) so the run-card can render real dependencies.
+ */
+export const runAutoTeamTaskResponseSchema =
+  runTeamWorkflowResponseSchema.extend({
+    /** The team the run landed on (the default team for `/default/run-auto`). */
+    teamId: z.string(),
+    /** The composed DAG steps, in workflow order (carry `dependsOn`). */
+    steps: z.array(workflowStepSchema),
+  });
+
+/**
  * Phase 3: a live snapshot of the team's Workboard for the Kanban view.
  * `status` mirrors the Workboard lifecycle (triage/backlog/todo/scheduled/
  * ready/running/review/blocked/done) and is kept as a string so new runtime
@@ -162,6 +182,9 @@ export type AutoRunTeamTaskResponse = z.infer<
 >;
 export type RunDefaultTeamTaskResponse = z.infer<
   typeof runDefaultTeamTaskResponseSchema
+>;
+export type RunAutoTeamTaskResponse = z.infer<
+  typeof runAutoTeamTaskResponseSchema
 >;
 export type TeamBoardCard = z.infer<typeof teamBoardCardSchema>;
 export type TeamBoardResponse = z.infer<typeof teamBoardResponseSchema>;

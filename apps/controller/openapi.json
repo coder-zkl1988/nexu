@@ -13833,71 +13833,104 @@
         },
         "responses": {
           "200": {
-            "description": "Task planned against the expert catalog and dispatched on the default team",
+            "description": "Task auto-composed into a DAG and run on the default team",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
                     "boardId": {
                       "type": "string"
                     },
                     "parentCardId": {
                       "type": "string"
                     },
-                    "started": {
+                    "cards": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
+                          "stepId": {
+                            "type": "string"
+                          },
                           "cardId": {
                             "type": "string"
-                          },
-                          "sessionKey": {
-                            "type": "string"
                           }
                         },
                         "required": [
-                          "cardId",
-                          "sessionKey"
-                        ]
-                      }
-                    },
-                    "plan": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "title": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 200
-                          },
-                          "assigneeSlug": {
-                            "type": "string",
-                            "minLength": 1
-                          },
-                          "notes": {
-                            "type": "string",
-                            "maxLength": 8000
-                          }
-                        },
-                        "required": [
-                          "title",
-                          "assigneeSlug"
+                          "stepId",
+                          "cardId"
                         ]
                       }
                     },
                     "teamId": {
                       "type": "string"
+                    },
+                    "steps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "task",
+                              "approval"
+                            ],
+                            "default": "task"
+                          },
+                          "assigneeSlug": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "name": {
+                            "type": "string",
+                            "maxLength": 60
+                          },
+                          "task": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 8000
+                          },
+                          "output": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "dependsOn": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 20,
+                            "default": []
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "assigneeSlug",
+                          "task"
+                        ]
+                      }
                     }
                   },
                   "required": [
+                    "runId",
                     "boardId",
                     "parentCardId",
-                    "started",
-                    "plan",
-                    "teamId"
+                    "cards",
+                    "teamId",
+                    "steps"
                   ]
                 }
               }
@@ -14504,74 +14537,111 @@
         },
         "responses": {
           "200": {
-            "description": "Task auto-decomposed and dispatched",
+            "description": "Task auto-composed into a DAG and run",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
                     "boardId": {
                       "type": "string"
                     },
                     "parentCardId": {
                       "type": "string"
                     },
-                    "started": {
+                    "cards": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "cardId": {
+                          "stepId": {
                             "type": "string"
                           },
-                          "sessionKey": {
+                          "cardId": {
                             "type": "string"
                           }
                         },
                         "required": [
-                          "cardId",
-                          "sessionKey"
+                          "stepId",
+                          "cardId"
                         ]
                       }
                     },
-                    "plan": {
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "steps": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "title": {
+                          "id": {
                             "type": "string",
                             "minLength": 1,
-                            "maxLength": 200
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_-]*$"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "task",
+                              "approval"
+                            ],
+                            "default": "task"
                           },
                           "assigneeSlug": {
                             "type": "string",
                             "minLength": 1
                           },
-                          "notes": {
+                          "name": {
                             "type": "string",
+                            "maxLength": 60
+                          },
+                          "task": {
+                            "type": "string",
+                            "minLength": 1,
                             "maxLength": 8000
+                          },
+                          "output": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "dependsOn": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 20,
+                            "default": []
                           }
                         },
                         "required": [
-                          "title",
-                          "assigneeSlug"
+                          "id",
+                          "assigneeSlug",
+                          "task"
                         ]
                       }
                     }
                   },
                   "required": [
+                    "runId",
                     "boardId",
                     "parentCardId",
-                    "started",
-                    "plan"
+                    "cards",
+                    "teamId",
+                    "steps"
                   ]
                 }
               }
             }
           },
           "400": {
-            "description": "The lead could not produce a usable plan",
+            "description": "The task could not be composed into a usable plan",
             "content": {
               "application/json": {
                 "schema": {

@@ -408,6 +408,10 @@ export class TeamService {
    * (auto-installing) whatever experts the plan assigns into the default
    * team, then dispatch like a normal auto run. The chat entry point for
    * "just pull the right experts for this" without creating a team first.
+   *
+   * TODO(dag-cleanup): dead for the auto path — `/teams/default/run-auto` now
+   * routes through TeamWorkflowService.autoComposeAndRun (DAG engine). Kept
+   * (with runTaskAuto + planSubtasks) pending removal in a follow-up.
    */
   async runTaskAutoDefault(
     input: AutoRunTeamTaskRequest,
@@ -440,7 +444,13 @@ export class TeamService {
     return { ...result, plan, teamId: team.id };
   }
 
-  /** Phase 2: the lead's model decomposes the task; the controller dispatches. */
+  /**
+   * Phase 2: the lead's model decomposes the task; the controller dispatches.
+   *
+   * TODO(dag-cleanup): dead for the auto path — `/teams/{id}/run-auto` now
+   * routes through TeamWorkflowService.autoComposeAndRun (DAG engine). Kept
+   * pending removal in a follow-up (dispatchSubtasks stays live via runTask).
+   */
   async runTaskAuto(
     teamId: string,
     input: AutoRunTeamTaskRequest,

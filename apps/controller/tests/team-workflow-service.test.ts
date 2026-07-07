@@ -508,6 +508,8 @@ describe("TeamWorkflowService", () => {
     ]);
     expect(typeof result.runId).toBe("string");
     expect(result.runId.length).toBeGreaterThan(0);
+    // Carries the composed DAG back (with dependsOn) for the run-card.
+    expect(result.steps).toEqual(draft.steps);
 
     // Background execution settles through the same machinery.
     await vi.waitFor(() => {

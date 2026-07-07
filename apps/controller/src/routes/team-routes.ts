@@ -1,11 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   autoRunTeamTaskRequestSchema,
-  autoRunTeamTaskResponseSchema,
   createTeamRequestSchema,
   createTeamResponseSchema,
   deleteTeamResponseSchema,
-  runDefaultTeamTaskResponseSchema,
+  runAutoTeamTaskResponseSchema,
   runTeamTaskRequestSchema,
   runTeamTaskResponseSchema,
   teamBoardResponseSchema,
@@ -18,9 +17,13 @@ import {
   TeamAssigneeNotMemberError,
   TeamMemberNotInstalledError,
   TeamNotFoundError,
-  TeamPlanFailedError,
   type TeamService,
 } from "../services/teams/team-service.js";
+import {
+  type TeamWorkflowService,
+  WorkflowInputError,
+  WorkflowValidationError,
+} from "../services/teams/team-workflow-service.js";
 
 export type TeamRoutesDeps = {
   teamService: Pick<
@@ -34,8 +37,24 @@ export type TeamRoutesDeps = {
     | "runTask"
     | "runTaskAuto"
     | "runTaskAutoDefault"
+    | "ensureDefaultTeam"
   >;
+  teamWorkflowService: Pick<TeamWorkflowService, "autoComposeAndRun">;
 };
+
+/**
+ * Compose/validation failures from the DAG engine (bad LLM draft, cycle,
+ * dangling {{var}}, unknown dep/member, or a required input the ephemeral run
+ * cannot supply) plus member-install failures during enrollment — all
+ * client-facing "no usable plan" outcomes, mapped to 400.
+ */
+function isAutoRunBadRequest(error: unknown): boolean {
+  return (
+    error instanceof WorkflowValidationError ||
+    error instanceof WorkflowInputError ||
+    error instanceof TeamMemberNotInstalledError
+  );
+}
 
 const errorSchema = z.object({ message: z.string() });
 const teamIdParamSchema = z.object({ id: z.string().min(1) });
@@ -120,10 +139,10 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
       responses: {
         200: {
           content: {
-            "application/json": { schema: runDefaultTeamTaskResponseSchema },
+            "application/json": { schema: runAutoTeamTaskResponseSchema },
           },
           description:
-            "Task planned against the expert catalog and dispatched on the default team",
+            "Task auto-composed into a DAG and run on the default team",
         },
         400: {
           content: { "application/json": { schema: errorSchema } },
@@ -134,14 +153,15 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
     async (c) => {
       const input = c.req.valid("json");
       try {
-        const result = await deps.teamService.runTaskAutoDefault(input);
-        return c.json(result, 200);
+        const team = await deps.teamService.ensureDefaultTeam();
+        const result = await deps.teamWorkflowService.autoComposeAndRun(
+          team.id,
+          input.task,
+        );
+        return c.json({ ...result, teamId: team.id }, 200);
       } catch (error) {
-        if (
-          error instanceof TeamPlanFailedError ||
-          error instanceof TeamMemberNotInstalledError
-        ) {
-          return c.json({ message: error.message }, 400);
+        if (isAutoRunBadRequest(error)) {
+          return c.json({ message: (error as Error).message }, 400);
         }
         throw error;
       }
@@ -347,13 +367,13 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
       responses: {
         200: {
           content: {
-            "application/json": { schema: autoRunTeamTaskResponseSchema },
+            "application/json": { schema: runAutoTeamTaskResponseSchema },
           },
-          description: "Task auto-decomposed and dispatched",
+          description: "Task auto-composed into a DAG and run",
         },
         400: {
           content: { "application/json": { schema: errorSchema } },
-          description: "The lead could not produce a usable plan",
+          description: "The task could not be composed into a usable plan",
         },
         404: {
           content: { "application/json": { schema: errorSchema } },
@@ -365,14 +385,17 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
       const { id } = c.req.valid("param");
       const input = c.req.valid("json");
       try {
-        const result = await deps.teamService.runTaskAuto(id, input);
-        return c.json(result, 200);
+        const result = await deps.teamWorkflowService.autoComposeAndRun(
+          id,
+          input.task,
+        );
+        return c.json({ ...result, teamId: id }, 200);
       } catch (error) {
         if (error instanceof TeamNotFoundError) {
           return c.json({ message: error.message }, 404);
         }
-        if (error instanceof TeamPlanFailedError) {
-          return c.json({ message: error.message }, 400);
+        if (isAutoRunBadRequest(error)) {
+          return c.json({ message: (error as Error).message }, 400);
         }
         throw error;
       }

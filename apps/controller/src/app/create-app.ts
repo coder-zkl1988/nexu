@@ -74,7 +74,10 @@ export function createApp(container: ControllerContainer) {
   );
   app.route(
     "/api/v1/teams",
-    buildTeamRoutes({ teamService: container.teamService }),
+    buildTeamRoutes({
+      teamService: container.teamService,
+      teamWorkflowService: container.teamWorkflowService,
+    }),
   );
   app.route(
     "/api/v1/teams",

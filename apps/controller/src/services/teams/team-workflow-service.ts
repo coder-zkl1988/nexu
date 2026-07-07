@@ -248,7 +248,7 @@ export class TeamWorkflowService {
     teamId: string,
     description: string,
     input: RunTeamWorkflowRequest = { inputs: {} },
-  ): Promise<RunTeamWorkflowResponse> {
+  ): Promise<RunTeamWorkflowResponse & { steps: WorkflowStep[] }> {
     this.requireTeam(teamId);
     const { draft } = await this.composeWorkflow(teamId, description);
     // Compose drafts may assign steps to experts that are not members yet —
@@ -271,7 +271,10 @@ export class TeamWorkflowService {
       updatedAt: now,
     };
     // Ephemeral — the composed workflow is intentionally NOT persisted.
-    return this.runWorkflowDefinition(team, workflow, input);
+    const run = await this.runWorkflowDefinition(team, workflow, input);
+    // Carry the composed DAG back so the route/run-card can render real step
+    // dependencies (dependsOn) rather than a flat list.
+    return { ...run, steps: workflow.steps };
   }
 
   /** Runs currently paused on an approval step for this team. */
