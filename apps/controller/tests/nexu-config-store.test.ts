@@ -42,6 +42,11 @@ describe("NexuConfigStore", () => {
         ".openclaw",
         "nexu-runtime-model.json",
       ),
+      accountCreditStatePath: path.join(
+        rootDir,
+        ".openclaw",
+        "nexu-account-credit-state.json",
+      ),
       skillhubCacheDir: path.join(rootDir, ".nexu", "skillhub-cache"),
       skillDbPath: path.join(rootDir, ".nexu", "skill-ledger.json"),
       analyticsStatePath: path.join(rootDir, ".nexu", "analytics-state.json"),
@@ -1268,11 +1273,20 @@ describe("NexuConfigStore", () => {
     );
 
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
-      expect(String(input)).toBe("https://tabby.picaso.studio/api/v1/me");
+      const url = String(input);
       expect(init?.headers).toEqual({ Authorization: "Bearer secret-api-key" });
-      return new Response(JSON.stringify({ id: "user-backfilled" }), {
-        status: 200,
-      });
+      if (url === "https://tabby.picaso.studio/api/v1/me") {
+        return new Response(JSON.stringify({ id: "user-backfilled" }), {
+          status: 200,
+        });
+      }
+      // hydrateDesktopCloudModels also refreshes the account credit state used
+      // to route tabby-image/tabby-video between the paid and free model.
+      expect(url).toBe("https://tabby.picaso.studio/api/v1/rewards/status");
+      return new Response(
+        JSON.stringify({ tasks: [], progress: {}, cloudBalance: null }),
+        { status: 200 },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1287,7 +1301,7 @@ describe("NexuConfigStore", () => {
     };
     expect(desktop.cloud?.userId).toBe("user-backfilled");
     expect(desktop.cloud?.models).toEqual([{ id: "m1", name: "Model 1" }]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("getDesktopRewardsStatus preserves connected state when cloud returns 401 auth_failed", async () => {

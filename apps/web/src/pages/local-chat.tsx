@@ -14,11 +14,6 @@ import {
 } from "../../lib/api/sdk.gen";
 import { buildPendingSessionPath } from "../lib/local-chat-pending";
 
-// Every local chat message targets the agent main webchat session.
-function buildMainSessionKey(botId: string): string {
-  return `agent:${botId}:main`;
-}
-
 export function LocalChatPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -31,6 +26,11 @@ export function LocalChatPage() {
 
   const contextKeyRef = useRef<string>("");
   const urlBotResolvedRef = useRef(false);
+  // Unique per visit to this page, so starting a new conversation never
+  // resumes an existing session for the same bot. The page navigates away as
+  // soon as a real session is established (see sendMessage below), so a
+  // fresh key is generated the next time this page is visited.
+  const sessionUuidRef = useRef<string>(crypto.randomUUID());
 
   // Fetch bots
   const { data: botsData, isLoading: botsLoading } = useQuery({
@@ -109,7 +109,7 @@ export function LocalChatPage() {
       const botId = selectedBot.id;
       const ctxKey = botId;
       contextKeyRef.current = ctxKey;
-      const mainSessionKey = buildMainSessionKey(botId);
+      const newSessionKey = `agent:${botId}:${sessionUuidRef.current}`;
 
       try {
         setWaitingReply(true);
@@ -144,7 +144,7 @@ export function LocalChatPage() {
         const { data: responseData } = await postApiV1ChatLocalStart({
           body: {
             botId,
-            sessionKey: mainSessionKey,
+            sessionKey: newSessionKey,
             message: msgContent,
           },
         });
@@ -174,7 +174,7 @@ export function LocalChatPage() {
         navigate(
           buildPendingSessionPath({
             botId,
-            sessionKey: responseData?.sessionKey ?? mainSessionKey,
+            sessionKey: responseData?.sessionKey ?? newSessionKey,
             runId,
           }),
           {

@@ -170,8 +170,37 @@ const MEDIA_ONLY_PLACEHOLDER_TEXT = "[User sent media without caption]";
  */
 const INTER_SESSION_MESSAGE_PREFIX = "[Inter-session message]";
 
-/** Matches `MEDIA:<path>` directive lines OpenClaw appends to assistant replies. */
-const ASSISTANT_MEDIA_MARKER_PATTERN = /^MEDIA:(\S[^\n]*)$/gmu;
+/**
+ * Matches `MEDIA:<path>` directive lines OpenClaw appends to assistant replies.
+ * Tolerates the space the skill scripts actually emit (`MEDIA: <path>`) and a
+ * full-width colon, which models sometimes substitute when replying in Chinese.
+ */
+const ASSISTANT_MEDIA_MARKER_PATTERN = /^MEDIA[:：]\s*(\S[^\n]*)$/gmu;
+
+/**
+ * OpenClaw injects this literal user-role message into a bot's currently
+ * active session to poll for proactive work, instead of using a dedicated
+ * session (unlike the workspace-bootstrap heartbeat, which nexu already
+ * hides at the session-file level — see heartbeatFileNames above). It has no
+ * `origin` marker at the individual-message level, so it must be matched by
+ * literal content.
+ */
+const HEARTBEAT_POLL_MESSAGE = "[OpenClaw heartbeat poll]";
+
+/** Trivial heartbeat ack the agent sends when there's nothing to report. */
+const HEARTBEAT_OK_REPLY = "HEARTBEAT_OK";
+
+/** True when a heartbeat reply is just the no-op ack, not a proactive message. */
+function isTrivialHeartbeatReply(content: unknown): boolean {
+  if (typeof content === "string") {
+    return content.trim() === HEARTBEAT_OK_REPLY;
+  }
+  if (Array.isArray(content) && content.length === 1) {
+    const block = content[0] as { type?: string; text?: string } | null;
+    return block?.type === "text" && block.text?.trim() === HEARTBEAT_OK_REPLY;
+  }
+  return false;
+}
 
 const IMAGE_EXTENSION_MIME: Record<string, string> = {
   ".png": "image/png",
@@ -981,12 +1010,17 @@ export class SessionsRuntime {
     }
 
     const messages: ChatMessage[] = [];
+    // Set when a heartbeat poll message was skipped and we're waiting to see
+    // whether its direct reply is a trivial ack (also skipped) or a genuine
+    // proactive message (surfaced normally, with no trace of the poll).
+    let pendingHeartbeatPollId: string | null = null;
     for (const line of raw.split("\n")) {
       if (!line.trim()) continue;
       try {
         const entry = JSON.parse(line) as {
           type?: string;
           id?: string;
+          parentId?: string;
           timestamp?: string;
           message?: {
             role?: string;
@@ -1002,6 +1036,24 @@ export class SessionsRuntime {
         };
         if (entry.type !== "message" || !entry.message) continue;
         const role = entry.message.role;
+        if (
+          role === "user" &&
+          entry.message.content === HEARTBEAT_POLL_MESSAGE
+        ) {
+          pendingHeartbeatPollId = entry.id ?? "";
+          continue;
+        }
+        if (pendingHeartbeatPollId !== null) {
+          const isDirectHeartbeatReply =
+            role === "assistant" && entry.parentId === pendingHeartbeatPollId;
+          pendingHeartbeatPollId = null;
+          if (
+            isDirectHeartbeatReply &&
+            isTrivialHeartbeatReply(entry.message.content)
+          ) {
+            continue;
+          }
+        }
         if (role === "toolResult") {
           // Surface renderable tool results (A2UI) so the frontend can pair
           // them with the assistant's toolCall block; drop everything else.

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   BotResponse,
@@ -2092,11 +2093,19 @@ export class NexuConfigStore {
    * Model name is the gateway's published name for the phone VLM (currently
    * `tabby-phone`; was `step-3.7-flash`). Override via NEXU_PHONE_VLM_MODEL so a
    * gateway rename doesn't need a code change.
+   *
+   * reasoningEffort is StepFun's `reasoning_effort` tier (low/medium/high on
+   * step-3.7-flash) forwarded to the phone alongside the credential, so the
+   * desktop can tune per-step latency without an app rebuild. Defaults to
+   * "low" — step-3.7-flash's per-step reasoning generation (not network) is
+   * the dominant cost in the agent loop; override via
+   * NEXU_PHONE_VLM_REASONING_EFFORT for tasks that need deeper reasoning.
    */
   async getVlmGatewayCredential(): Promise<{
     apiUrl: string;
     apiKey: string;
     model: string;
+    reasoningEffort: string;
   } | null> {
     const config = await this.getConfig();
     const cloud = readDesktopCloud(config);
@@ -2109,6 +2118,7 @@ export class NexuConfigStore {
       apiUrl: `${base}/v1/`,
       apiKey: cloud.apiKey,
       model: process.env.NEXU_PHONE_VLM_MODEL ?? "tabby-phone",
+      reasoningEffort: process.env.NEXU_PHONE_VLM_REASONING_EFFORT ?? "low",
     };
   }
 
@@ -2527,6 +2537,53 @@ export class NexuConfigStore {
     }
   }
 
+  /**
+   * Fetch the account's current credit balance. Returns null on any failure
+   * (auth, network, parse) so the caller can fail open toward the paid model
+   * rather than force everyone to the free tier on a transient hiccup.
+   */
+  private async fetchDesktopCloudBalance(
+    cloudApiUrl: string,
+    apiKey: string,
+  ): Promise<number | null> {
+    const service = createCloudRewardService({
+      cloudUrl: cloudApiUrl,
+      apiKey,
+    });
+    const result = await service.getRewardsStatus();
+    return result.ok ? (result.data.cloudBalance?.totalBalance ?? null) : null;
+  }
+
+  /**
+   * Writes tabby-image/tabby-video's free-vs-paid routing signal to a small
+   * sidecar file under OPENCLAW_STATE_DIR, mirroring nexu-credit-guard-state.json.
+   * Read directly by the skill scripts (see skills/nexubot/tabby-image/scripts/lib.js)
+   * rather than folded into openclaw.json's own provider schema, so it can't
+   * collide with what OpenClaw itself validates there.
+   */
+  private async writeAccountCreditState(
+    cloudApiUrl: string,
+    apiKey: string,
+  ): Promise<void> {
+    try {
+      const balance = await this.fetchDesktopCloudBalance(cloudApiUrl, apiKey);
+      const hasBalance = balance === null ? true : balance > 0;
+      await mkdir(path.dirname(this.env.accountCreditStatePath), {
+        recursive: true,
+      });
+      await writeFile(
+        this.env.accountCreditStatePath,
+        `${JSON.stringify({ hasBalance, updatedAt: now() }, null, 2)}\n`,
+        "utf8",
+      );
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        "writeAccountCreditState failed (non-critical)",
+      );
+    }
+  }
+
   private async hydrateDesktopCloudModels(forceRefresh = false): Promise<void> {
     const config = await this.getConfig();
     const cloud = readDesktopCloud(config);
@@ -2570,6 +2627,10 @@ export class NexuConfigStore {
           models: cloud.models ?? [],
         });
       }
+    }
+
+    if (cloud.connected && cloud.apiKey) {
+      await this.writeAccountCreditState(cloudApiUrl, cloud.apiKey);
     }
 
     if (

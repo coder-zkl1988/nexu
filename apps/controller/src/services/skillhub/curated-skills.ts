@@ -62,6 +62,7 @@ export const STATIC_SKILL_SLUGS: readonly string[] = [
   "research-to-diagram",
   "qiaomu-mondo-poster-design",
   "tabby-image",
+  "tabby-video",
 ] as const;
 
 /**

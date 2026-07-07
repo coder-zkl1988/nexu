@@ -1887,6 +1887,126 @@ describe("SessionsRuntime", () => {
     ]);
   });
 
+  it("extracts MEDIA: markers with a space or full-width colon, as skill scripts and models actually emit them", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    const generatedPath = path.join(
+      rootDir,
+      "media",
+      "tool-image-generation",
+      "asian-girl.png",
+    );
+    await writeWebchatSession(rootDir, "media-marker-variants.jsonl", [
+      {
+        type: "message",
+        id: "msg-assistant-media-variant",
+        timestamp: "2026-06-11T06:33:00.000Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-06-11T06:33:00.000Z"),
+          content: [
+            {
+              type: "text",
+              text: `图像已生成完成！\n\nMEDIA： ${generatedPath}`,
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("media-marker-variants.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "text", text: "图像已生成完成！" },
+      {
+        type: "image",
+        url: `/api/v1/media/state-file?path=${encodeURIComponent(generatedPath)}`,
+        mimeType: "image/png",
+      },
+    ]);
+  });
+
+  it("hides a heartbeat poll and its trivial HEARTBEAT_OK ack", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "heartbeat-trivial.jsonl", [
+      {
+        type: "message",
+        id: "msg-before",
+        timestamp: "2026-07-06T13:44:59.000Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-06T13:44:59.000Z"),
+          content: [{ type: "text", text: "图片已生成完成！" }],
+        },
+      },
+      {
+        type: "message",
+        id: "heartbeat-poll-1",
+        parentId: "msg-before",
+        timestamp: "2026-07-06T13:45:00.956Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-07-06T13:45:00.956Z"),
+          content: "[OpenClaw heartbeat poll]",
+        },
+      },
+      {
+        type: "message",
+        id: "heartbeat-reply-1",
+        parentId: "heartbeat-poll-1",
+        timestamp: "2026-07-06T13:45:10.346Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-06T13:45:10.346Z"),
+          content: [{ type: "text", text: "HEARTBEAT_OK" }],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("heartbeat-trivial.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.id).toBe("msg-before");
+  });
+
+  it("hides only the poll line when the agent uses a heartbeat to send a proactive message", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "heartbeat-proactive.jsonl", [
+      {
+        type: "message",
+        id: "heartbeat-poll-2",
+        timestamp: "2026-07-06T13:45:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-07-06T13:45:00.000Z"),
+          content: "[OpenClaw heartbeat poll]",
+        },
+      },
+      {
+        type: "message",
+        id: "heartbeat-reply-2",
+        parentId: "heartbeat-poll-2",
+        timestamp: "2026-07-06T13:45:10.000Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-06T13:45:10.000Z"),
+          content: [{ type: "text", text: "提醒一下：你今天还没检查过日历。" }],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("heartbeat-proactive.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.id).toBe("heartbeat-reply-2");
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "text", text: "提醒一下：你今天还没检查过日历。" },
+    ]);
+  });
+
   it("strips inter-session envelopes and re-attributes routed media to the bot", async () => {
     rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
     const runtime = createWebchatRuntime(rootDir);

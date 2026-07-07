@@ -6,6 +6,7 @@ const SPECIAL_PURPOSE_MODEL_LABEL_KEYS: Record<string, string> = {
   "tabby-image": "models.special.image",
   "tabby-image-free": "models.special.image",
   "tabby-video": "models.special.video",
+  "tabby-video-free": "models.special.video",
 };
 
 /**
