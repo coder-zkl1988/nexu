@@ -4,6 +4,7 @@ import {
   attachBatchChildren,
   toggleBatchExpanded,
 } from "../src/lib/canvas/canvas-batch";
+import { __resetCanvasBoardsForTests } from "../src/lib/canvas/canvas-boards";
 import {
   __flushCanvasHistoryForTests,
   __resetCanvasForTests,
@@ -62,6 +63,7 @@ if (typeof globalThis.localStorage === "undefined") {
 beforeEach(() => {
   __resetCanvasForTests();
   __resetCanvasUiPrefsForTests();
+  __resetCanvasBoardsForTests();
 });
 
 describe("viewport math", () => {
@@ -787,5 +789,21 @@ describe("W4.2 appearance markup", () => {
     });
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).not.toContain("data-canvas-image-info");
+  });
+});
+
+// ── W4.4: board switcher markup ───────────────────────────────────
+
+describe("W4.4 board switcher markup", () => {
+  it("toolbar shows the board switcher button with the active board name", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-board-switcher");
+    // default board name is 画布 1
+    expect(markup).toContain("画布 1");
+  });
+
+  it("board popover is ABSENT by default (closed)", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-board-panel");
   });
 });

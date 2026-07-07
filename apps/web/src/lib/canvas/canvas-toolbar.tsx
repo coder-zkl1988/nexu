@@ -1,6 +1,7 @@
 /** Canvas bottom toolbar extracted from infinite-canvas.tsx (W3.0). */
 import {
   AudioLines,
+  ChevronDown,
   Clapperboard,
   Download,
   ImagePlus,
@@ -8,6 +9,8 @@ import {
   Map as MapIcon,
   Maximize2,
   Palette,
+  Pencil,
+  Plus,
   Redo2,
   SlidersHorizontal,
   Trash2,
@@ -18,6 +21,13 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+  createBoard,
+  deleteBoard,
+  getCanvasBoards,
+  renameBoard,
+  useCanvasBoards,
+} from "./canvas-boards";
 import { openCanvasDialog } from "./canvas-dialogs";
 import { ingestFilesAsNodes, readFilesAsDataUrls } from "./canvas-ingest";
 import {
@@ -30,6 +40,7 @@ import {
   importCanvas,
   redo,
   setViewport,
+  switchCanvasBoard,
   undo,
   useCanvas,
 } from "./canvas-store";
@@ -119,6 +130,8 @@ export function CanvasToolbar({
         className="flex items-center gap-1 rounded-lg border border-border bg-surface-1/95 px-2 py-1 shadow-md"
         onPointerDown={(event) => event.stopPropagation()}
       >
+        <BoardSwitcher />
+        <Divider />
         <ToolButton label="撤销" onClick={undo}>
           <Undo2 size={14} />
         </ToolButton>
@@ -299,6 +312,168 @@ export function CanvasToolbar({
           <Palette size={14} />
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * W4.4: Named-board switcher. A button showing the active board name + caret;
+ * clicking opens a popover (above the toolbar, like the appearance panel) that
+ * lists boards, lets you create/rename/delete, and switches on click.
+ */
+function BoardSwitcher() {
+  const { boards, activeId } = useCanvasBoards();
+  const [open, setOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+
+  // Escape closes the popover (mount-once; harmless when closed).
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  const activeBoard = boards.find((b) => b.id === activeId);
+  const activeName = activeBoard?.name ?? "画布";
+  const canDelete = boards.length > 1;
+
+  function beginRename(id: string, currentName: string) {
+    setRenamingId(id);
+    setDraftName(currentName);
+  }
+
+  function commitRename() {
+    if (renamingId) renameBoard(renamingId, draftName);
+    setRenamingId(null);
+    setDraftName("");
+  }
+
+  function handleDelete(id: string) {
+    // Deleting the active board: switch to the first remaining board first,
+    // then remove — never leave the canvas pointed at a deleted board.
+    if (id === activeId) {
+      const fallback = getCanvasBoards().boards.find((b) => b.id !== id);
+      if (fallback) void switchCanvasBoard(fallback.id);
+    }
+    deleteBoard(id);
+  }
+
+  return (
+    <div className="relative">
+      {open ? (
+        <div
+          data-canvas-board-panel="true"
+          className="absolute bottom-full mb-2 left-0 min-w-[200px] rounded-lg border border-border bg-surface-1/95 py-2 px-2 shadow-md text-xs"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="mb-1 flex items-center justify-between px-1">
+            <p className="text-text-tertiary">画布</p>
+            <button
+              type="button"
+              aria-label="关闭画布面板"
+              data-canvas-board-close="true"
+              onClick={() => setOpen(false)}
+              className="rounded p-0.5 text-text-tertiary hover:bg-surface-2 hover:text-text-primary"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <ul className="mb-1 flex flex-col gap-0.5">
+            {boards.map((board) => {
+              const isActive = board.id === activeId;
+              const isRenaming = renamingId === board.id;
+              return (
+                <li
+                  key={board.id}
+                  data-canvas-board-item={board.id}
+                  className={`group flex items-center gap-1 rounded px-1.5 py-1 ${isActive ? "bg-sky-500/10" : "hover:bg-surface-2"}`}
+                >
+                  {isRenaming ? (
+                    <input
+                      // biome-ignore lint/a11y/noAutofocus: inline rename edit needs immediate focus
+                      autoFocus
+                      value={draftName}
+                      onChange={(event) => setDraftName(event.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitRename();
+                        if (event.key === "Escape") {
+                          setRenamingId(null);
+                          setDraftName("");
+                        }
+                      }}
+                      className="min-w-0 flex-1 rounded border border-border bg-surface-2 px-1 py-0.5 text-[11px] text-text-primary"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void switchCanvasBoard(board.id);
+                        setOpen(false);
+                      }}
+                      className={`min-w-0 flex-1 truncate text-left ${isActive ? "text-sky-500" : "text-text-secondary"}`}
+                    >
+                      {board.name}
+                    </button>
+                  )}
+                  {!isRenaming ? (
+                    <>
+                      <button
+                        type="button"
+                        aria-label="重命名画布"
+                        data-canvas-board-rename={board.id}
+                        onClick={() => beginRename(board.id, board.name)}
+                        className="rounded p-0.5 text-text-tertiary opacity-0 hover:bg-surface-2 hover:text-text-primary group-hover:opacity-100"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          aria-label="删除画布"
+                          data-canvas-board-delete={board.id}
+                          onClick={() => handleDelete(board.id)}
+                          className="rounded p-0.5 text-text-tertiary opacity-0 hover:bg-surface-2 hover:text-danger group-hover:opacity-100"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            data-canvas-board-new="true"
+            onClick={() => {
+              const board = createBoard(`画布 ${boards.length + 1}`);
+              void switchCanvasBoard(board.id);
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+          >
+            <Plus size={12} />
+            新建画布
+          </button>
+        </div>
+      ) : null}
+      <button
+        type="button"
+        title="切换画布"
+        aria-label="切换画布"
+        data-canvas-board-switcher="true"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex max-w-[120px] items-center gap-1 rounded px-1.5 py-1 text-[11px] hover:bg-surface-2 ${open ? "text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
+      >
+        <span className="truncate">{activeName}</span>
+        <ChevronDown size={12} className="shrink-0" />
+      </button>
     </div>
   );
 }

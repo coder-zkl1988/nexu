@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { A2UIMessage } from "../a2ui/a2ui-types";
+import { getCanvasBoards, setActiveBoardId } from "./canvas-boards";
 import { NODE_MIN_HEIGHT, NODE_MIN_WIDTH } from "./canvas-geometry";
 import type { PersistedCanvas } from "./canvas-persistence";
 import { getActiveStorage } from "./canvas-persistence";
@@ -169,7 +170,22 @@ const HISTORY_LIMIT = 50;
 const HISTORY_DEBOUNCE_MS = 400;
 const GEOMETRY_STORAGE_KEY = "nexu:canvas:sidebar:v2";
 const PERSIST_DEBOUNCE_MS = 600;
-const SIDEBAR_BOARD_ID = "sidebar";
+
+/**
+ * The board whose content the persistence paths read/write (W4.4). Mutable so
+ * switchCanvasBoard can retarget save/load without re-keying storage. Seeded
+ * from the boards index active id (defaults to "sidebar" — the back-compat
+ * default board), guarded for SSR / no-localStorage environments.
+ */
+let activeBoardId = readInitialActiveBoardId();
+
+function readInitialActiveBoardId(): string {
+  try {
+    return getCanvasBoards().activeId;
+  } catch {
+    return "sidebar";
+  }
+}
 
 type HistoryEntry = Pick<CanvasState, "nodes" | "connections">;
 
@@ -238,7 +254,7 @@ function schedulePersist(): void {
       connections: state.connections,
     };
     void getActiveStorage()
-      .save(SIDEBAR_BOARD_ID, snapshot)
+      .save(activeBoardId, snapshot)
       .finally(() => {
         for (const resolve of resolvers) resolve();
       });
@@ -767,15 +783,25 @@ export function __resetCanvasForTests(): void {
   persistResolvers = [];
   isHydrating = false;
   hydratedOnce = false;
+  // Reset the active board to the back-compat default (deterministic; does not
+  // depend on boards-store reset ordering in test beforeEach hooks).
+  activeBoardId = "sidebar";
   a2uiPayloads.clear();
   emit();
 }
 
+/** Read the id of the board the persistence paths currently target (tests only). */
+export function __getActiveBoardIdForTests(): string {
+  return activeBoardId;
+}
+
 /**
- * Flush any pending debounced save immediately (tests only).
- * Returns a promise that resolves after the save completes.
+ * Flush any pending debounced save immediately, saving the current snapshot to
+ * the ACTIVE board. Resolves after the save completes (or immediately when
+ * nothing is pending). Shared by the test flush helper and switchCanvasBoard so
+ * a switch never drops the current board's unsaved edits.
  */
-export function __flushCanvasPersistForTests(): Promise<void> {
+function flushPendingSave(): Promise<void> {
   if (!persistTimer) {
     // No pending timer — either already flushed or nothing changed
     return Promise.resolve();
@@ -791,12 +817,110 @@ export function __flushCanvasPersistForTests(): Promise<void> {
       connections: state.connections,
     };
     void getActiveStorage()
-      .save(SIDEBAR_BOARD_ID, snapshot)
+      .save(activeBoardId, snapshot)
       .finally(() => {
         const resolvers = persistResolvers;
         persistResolvers = [];
         for (const r of resolvers) r();
       });
+  });
+}
+
+/**
+ * Flush any pending debounced save immediately (tests only).
+ * Returns a promise that resolves after the save completes.
+ */
+export function __flushCanvasPersistForTests(): Promise<void> {
+  return flushPendingSave();
+}
+
+/**
+ * Switch the active canvas board (W4.4).
+ *
+ * 1. No-op when already on the target board.
+ * 2. Flush-save the CURRENT board first (no data loss on switch).
+ * 3. Retarget the active board id.
+ * 4. Reset in-memory state to empty WITHOUT persisting back and WITHOUT
+ *    recording undo history (isHydrating guards the save; history is cleared).
+ * 5. REPLACE-load the target board's snapshot (never merges two boards'
+ *    content — unlike hydrate's reload-merge path). Missing snapshot → empty.
+ * 6. Persist the boards-index active pointer so a reload returns here.
+ *
+ * The once-ever hydratedOnce guard is intentionally left untouched: the switch
+ * owns its load path and does not go through hydrateCanvasFromStorage.
+ */
+export async function switchCanvasBoard(boardId: string): Promise<void> {
+  if (boardId === activeBoardId) return;
+
+  // 1. Persist the current board's pending edits before leaving it.
+  await flushPendingSave();
+
+  // 2. Retarget, then load the destination board (REPLACE, not merge).
+  activeBoardId = boardId;
+  const saved = await getActiveStorage().load(boardId);
+
+  // 3. Swap in the loaded content with no save-back and no undo history.
+  isHydrating = true;
+  try {
+    if (saved) {
+      const nodes = normalizeInterruptedTasks(saved.nodes);
+      const nodeIds = new Set(nodes.map((n) => n.id));
+      const connections = saved.connections.filter(
+        (c) => nodeIds.has(c.fromNodeId) && nodeIds.has(c.toNodeId),
+      );
+      state = {
+        ...state,
+        nodes,
+        connections,
+        selectedNodeIds: [],
+        selectedConnectionId: null,
+      };
+    } else {
+      state = {
+        ...state,
+        nodes: [],
+        connections: [],
+        selectedNodeIds: [],
+        selectedConnectionId: null,
+      };
+    }
+    // A2UI payloads + history are board-scoped: reset them on switch.
+    a2uiPayloads.clear();
+    history.past = [];
+    history.future = [];
+    historyBase = null;
+    if (historyTimer) {
+      clearTimeout(historyTimer);
+      historyTimer = null;
+    }
+    emit();
+  } finally {
+    isHydrating = false;
+  }
+
+  // 4. Persist the index active pointer.
+  setActiveBoardId(boardId);
+}
+
+/**
+ * Normalize a persisted `generating` task to `error` — a reloaded (or
+ * board-switched-into) canvas must never show an eternal spinner. Nodes
+ * without a generating task pass through unchanged.
+ */
+function normalizeInterruptedTasks(nodes: CanvasNode[]): CanvasNode[] {
+  return nodes.map((n) => {
+    if (n.metadata.task?.status !== "generating") return n;
+    return {
+      ...n,
+      metadata: {
+        ...n.metadata,
+        task: {
+          status: "error" as const,
+          error: "生成已中断（应用重启）",
+          ...(n.metadata.task.retry ? { retry: n.metadata.task.retry } : {}),
+        },
+      },
+    };
   });
 }
 
@@ -813,30 +937,15 @@ export async function hydrateCanvasFromStorage(): Promise<boolean> {
   if (hydratedOnce) return false;
   hydratedOnce = true;
 
-  const saved = await getActiveStorage().load(SIDEBAR_BOARD_ID);
+  const saved = await getActiveStorage().load(activeBoardId);
   if (!saved) return false;
 
   const existingNodeIds = new Set(state.nodes.map((n) => n.id));
   const existingConnIds = new Set(state.connections.map((c) => c.id));
 
-  // Normalize any persisted `generating` task to `error` — a reloaded app must
-  // never show an eternal spinner.
-  const newNodes = saved.nodes
-    .filter((n) => !existingNodeIds.has(n.id))
-    .map((n) => {
-      if (n.metadata.task?.status !== "generating") return n;
-      return {
-        ...n,
-        metadata: {
-          ...n.metadata,
-          task: {
-            status: "error" as const,
-            error: "生成已中断（应用重启）",
-            ...(n.metadata.task.retry ? { retry: n.metadata.task.retry } : {}),
-          },
-        },
-      };
-    });
+  const newNodes = normalizeInterruptedTasks(
+    saved.nodes.filter((n) => !existingNodeIds.has(n.id)),
+  );
 
   // Build the full set of node ids after the merge to validate connections
   const mergedNodeIds = new Set([
