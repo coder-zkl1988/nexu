@@ -167,3 +167,20 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 **入档 Minor**:crop 对话框沿用内联加载器(策略同、函数未收敛)、mask drawingRef.scale 死字段、inpaint 成功覆盖对话框预设标题、describe 两类失败同一 toast。
 
 **W4 前置移交**:crop 收敛到共享 loadImageBitmap;`CanvasDialogs` 挂载开关从 crop-dialog.tsx 提为独立文件(W4 新增对话框前)。
+
+## 12. Wave 4 —— 工作台化 + S8 对话驱动画布（2026-07-07 落地，SDD 流程，收官波）
+
+执行计划 Wave 4（前置收敛 + 4.1–4.4 + S8 旗舰 4.5）七任务全部落地,15 个 commit,web 测试 409→**544**、controller 448→**469**。终审(opus)裁决 Ready:契约 1–7 全 Held、零 Critical/Important。**至此 W1–W4 全 22 项对齐能力交付完毕。**
+
+**能力清单**:
+1. **前置收敛**:五个对话框统一到共享 `loadImageBitmap`(零内联 fetch 管线);`CanvasDialogs` 挂载开关独立成 `canvas-dialogs-mount.tsx`。
+2. **小地图**(4.1):左下 200×132,按类型着色节点块 + 视口白框 + 点击导航(居中该世界点、缩放不变),隐藏批量子节点排除;工具栏开关(`canvas-ui-prefs` 持久化)。
+3. **外观面板**(4.2):网格三模式(点/线/无,dots 输出与旧内联逐字节一致)+ 图片尺寸角标(onLoad 存 naturalWidth/Height,循环安全谓词,pref 独立订阅触发重渲);主题跟随 App(不做画布内切换)。
+4. **素材库**(4.3):IDB v2(新增 assets 存储,升级只加不动 boards)+ 悬停「存为素材」+ 选择器对话框(类型筛选/搜索/8 分页/插入不关闭/删除);纯 filter/paginate 助手。
+5. **命名画布**(4.4):工具栏切换器(新建/重命名/删除/切换),`switchCanvasBoard` 先 flush-save 当前板再 REPLACE-load 目标(绝不混板);**back-compat 命门:默认板 id 保持 "sidebar" 老用户内容原样呈现**;删除活动板先切换后移除。
+6. **S8 对话驱动画布**(4.5,旗舰):op 协议 8 原语(add/update/delete_node、connect、delete_connection、set_viewport、select、run_generation)。链路:`nexu-canvas` runtime plugin(`canvas_read` HTTP GET 控制器镜像 / `canvas_op` 信使发 ```canvas-op``` 围栏块)→ 控制器镜像(前端去抖推送 + 插件读)→ `canvas_op` 结果经 SurfacedToolResultNames 浮现到对话 → 确认卡(应用/忽略)→ 执行器(ref 解析、结构 op 同步应用**合并为一次撤销**、run_generation 异步后置)。客户端经 `canvasOpBatchSchema` 二次校验。**这是对参考工程的差异化超越**:它外接独立 WS agent 面板,我们的 agent 就在对话里。
+7. **真机闸门**:控制器+openclaw 重启载入插件(nexu-canvas 在 compiled openclaw.json 的 allow+entries、controllerUrl 已注入);镜像 POST/GET 往返真机全通(2 节点+1 连线+视口+选区精确回读)——canvas_read 数据路径端到端验证。完整「agent 发 canvas_op→确认卡→应用→一步撤销」为桌面端验收(需 bot+对话轮)。
+
+**入档 Minor**:sessions.tsx 达 1870 行(S8 与 a2ui 并行内联);add_node 单轴给定时 cascadePosition 可能算两次(纯函数、无害);mirror warn-once 模块级。
+
+**收官债移交(可选,分支合并前一次清理)**:sessions.tsx 抽 `chat-message-extract.ts`(a2ui + canvas-op 已是同一 enrich-by-toolCallId 的两份并行拷贝);canvas-store.ts(1001 行)板切换逻辑可移入 `canvas-board-switch.ts`。均不阻塞。

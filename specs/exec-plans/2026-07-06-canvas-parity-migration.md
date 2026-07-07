@@ -121,3 +121,11 @@
 七任务(拆分前置+3.1–3.7)全部落地并过 SDD 双层评审;终审 Ready(契约 1–7 全 Held)。16 commit(b4f880406..25ec5ecdf),web 409 / controller 448 测试。真机:裁剪/拆分/放大/文本工具全活(桌面验收);**反推提示词与 AI 超分真机 200 全通**;蒙版/多角度 UNAVAILABLE 兜底。细节见设计文档 §11。
 
 **W4 新增前置(终审移交)**:crop-dialog 收敛共享 loadImageBitmap;CanvasDialogs 挂载开关提为独立文件。
+
+## W4 完成记录（2026-07-07）—— 迁移收官
+
+七任务(前置收敛+4.1–4.4+S8)全部落地并过 SDD 双层评审;终审 Ready(契约 1–7 全 Held)。15 commit(56267389c..675ff132),web 544 / controller 469 测试。真机:镜像 POST/GET 往返全通、nexu-canvas 插件注册+controllerUrl 注入;完整 chat→canvas_op→卡→撤销 为桌面端验收。细节见设计文档 §12。
+
+**至此 W1–W4 全 22 项对齐能力交付完毕**,4 项适配性裁剪(对话驱动 op 替代 WS 面板 / 主题跟随 App / 不显算力 / 命名画布替代路由)均为计划内决策,无静默丢项。
+
+**收官债(可选,分支合并前)**:sessions.tsx(1870)抽 chat-message-extract.ts;canvas-store.ts(1001)板切换移入 canvas-board-switch.ts。
