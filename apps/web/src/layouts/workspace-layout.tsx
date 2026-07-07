@@ -1703,7 +1703,7 @@ function WorkspaceLayoutContent() {
       {/* Right canvas workbench (all sidebar surfaces live here as nodes) */}
       {rightSidebarOpen && (
         <div
-          className="hidden md:flex shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
+          className="hidden md:flex shrink-0 flex-col bg-[var(--color-surface-1)]"
           style={
             {
               width: rightSidebarWidth,
@@ -1715,9 +1715,11 @@ function WorkspaceLayoutContent() {
             } as React.CSSProperties
           }
         >
-          {/* Title-bar clearance so the header isn't under the inset traffic-bar */}
-          {isDesktopClient && <div className="shrink-0 h-8" />}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
+          {/* Header band matches the chat header's top clearance + height so the
+              two border-b dividers line up: pt compensates the chat column's
+              md:p-3 top pad (12px) on top of its md:pt-7 (28px); min-h matches
+              the chat header's badge row. */}
+          <div className="flex min-h-[34px] items-center justify-between border-b border-[var(--color-border-subtle)] px-4 pb-2 pt-2 md:pt-[40px]">
             <span className="text-sm font-medium text-[var(--color-text-heading)]">
               工作台
               {canvasNodes.length > 0 ? (

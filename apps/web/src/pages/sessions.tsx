@@ -1280,7 +1280,7 @@ export function SessionsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-7">
+      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-3">
         <div className="flex items-center justify-between">
           <div className="flex gap-3 items-center">
             <SessionPlatformBadge
