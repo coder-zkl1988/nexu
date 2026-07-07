@@ -17,6 +17,7 @@ const EMPTY_DEFAULT: CanvasMirror = {
   connections: [],
   viewport: { x: 0, y: 0, scale: 1 },
   selectedNodeIds: [],
+  assets: [],
 };
 
 describe("canvas mirror routes", () => {
@@ -43,6 +44,7 @@ describe("canvas mirror routes", () => {
       connections: [{ id: "c1", from: "node-1", to: "node-1" }],
       viewport: { x: -5, y: 7, scale: 0.5 },
       selectedNodeIds: ["node-1"],
+      assets: [{ id: "asset-1", kind: "image", title: "Saved Cat" }],
     };
 
     const post = await app.request("/api/v1/canvas/mirror", {

@@ -11,6 +11,7 @@ const EMPTY_DEFAULT: CanvasMirror = {
   connections: [],
   viewport: { x: 0, y: 0, scale: 1 },
   selectedNodeIds: [],
+  assets: [],
 };
 
 describe("canvas mirror service", () => {
