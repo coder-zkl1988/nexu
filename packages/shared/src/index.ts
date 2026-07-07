@@ -29,6 +29,7 @@ export * from "./schemas/device-control.js";
 export * from "./schemas/device-mirror.js";
 export * from "./schemas/mirror-control-codec.js";
 export * from "./schemas/device-task-history.js";
+export * from "./schemas/canvas-ops.js";
 export * from "./schemas/schedule.js";
 export * from "./lifecycle/index.js";
 export * from "./platform/index.js";

@@ -151,6 +151,9 @@ const SurfacedToolResultNames = new Set([
   "team_run_auto",
   "team_run_workflow",
   "expert_run_auto",
+  // Canvas op batch (S8 chat-drives-canvas) — the tool result carries the
+  // fenced ```canvas-op``` payload the web chat turns into a confirm card.
+  "canvas_op",
 ]);
 
 /**

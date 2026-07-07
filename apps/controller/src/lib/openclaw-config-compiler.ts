@@ -454,6 +454,7 @@ function compilePlugins(
     "nexu-toolcall-guard",
     "find-expert",
     "nexu-team",
+    "nexu-canvas",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -551,6 +552,14 @@ function compilePlugins(
         config: {
           // Same loopback pattern as find-expert: the plugin resolves the
           // caller's team by leadBotId and drives the team board engine.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+      },
+      "nexu-canvas": {
+        enabled: true,
+        config: {
+          // Same loopback pattern: canvas_read GETs the canvas mirror the web
+          // frontend pushes. canvas_op is a pure courier and needs no URL.
           controllerUrl: `http://127.0.0.1:${env.port}`,
         },
       },

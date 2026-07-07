@@ -1,0 +1,21 @@
+{
+  "id": "nexu-canvas",
+  "name": "Nexu Canvas Operations",
+  "description": "Registers canvas_read / canvas_op so the chat agent can read the Nexu canvas and emit a batch of canvas operations the frontend executes as one undoable step.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "controllerUrl": {
+        "type": "string",
+        "description": "Base URL of the Nexu controller (loopback) for reading the canvas mirror."
+      }
+    }
+  },
+  "contracts": {
+    "tools": ["canvas_read", "canvas_op"]
+  },
+  "activation": {
+    "onStartup": true
+  }
+}

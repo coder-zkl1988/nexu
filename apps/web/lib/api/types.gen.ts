@@ -6529,6 +6529,86 @@ export type PostApiV1MediaDescribeImageResponses = {
 
 export type PostApiV1MediaDescribeImageResponse = PostApiV1MediaDescribeImageResponses[keyof PostApiV1MediaDescribeImageResponses];
 
+export type GetApiV1CanvasMirrorData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/canvas/mirror';
+};
+
+export type GetApiV1CanvasMirrorResponses = {
+    /**
+     * Current canvas mirror
+     */
+    200: {
+        boardId: string;
+        nodes: Array<{
+            id: string;
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step');
+            title: string;
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+            hasContent: boolean;
+        }>;
+        connections: Array<{
+            id: string;
+            from: string;
+            to: string;
+        }>;
+        viewport: {
+            x: number;
+            y: number;
+            scale: number;
+        };
+        selectedNodeIds: Array<string>;
+    };
+};
+
+export type GetApiV1CanvasMirrorResponse = GetApiV1CanvasMirrorResponses[keyof GetApiV1CanvasMirrorResponses];
+
+export type PostApiV1CanvasMirrorData = {
+    body?: {
+        boardId: string;
+        nodes: Array<{
+            id: string;
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step');
+            title: string;
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+            hasContent: boolean;
+        }>;
+        connections: Array<{
+            id: string;
+            from: string;
+            to: string;
+        }>;
+        viewport: {
+            x: number;
+            y: number;
+            scale: number;
+        };
+        selectedNodeIds: Array<string>;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/canvas/mirror';
+};
+
+export type PostApiV1CanvasMirrorResponses = {
+    /**
+     * Mirror accepted
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type PostApiV1CanvasMirrorResponse = PostApiV1CanvasMirrorResponses[keyof PostApiV1CanvasMirrorResponses];
+
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };

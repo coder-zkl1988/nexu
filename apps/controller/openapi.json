@@ -19585,6 +19585,300 @@
           }
         }
       }
+    },
+    "/api/v1/canvas/mirror": {
+      "post": {
+        "tags": [
+          "Canvas"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "boardId": {
+                    "type": "string"
+                  },
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "text",
+                                "image",
+                                "video",
+                                "audio",
+                                "config"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "a2ui",
+                                "team-step"
+                              ]
+                            }
+                          ]
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "w": {
+                          "type": "number"
+                        },
+                        "h": {
+                          "type": "number"
+                        },
+                        "hasContent": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "type",
+                        "title",
+                        "x",
+                        "y",
+                        "w",
+                        "h",
+                        "hasContent"
+                      ]
+                    }
+                  },
+                  "connections": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "from",
+                        "to"
+                      ]
+                    }
+                  },
+                  "viewport": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "scale": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "scale"
+                    ]
+                  },
+                  "selectedNodeIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "boardId",
+                  "nodes",
+                  "connections",
+                  "viewport",
+                  "selectedNodeIds"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mirror accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Canvas"
+        ],
+        "responses": {
+          "200": {
+            "description": "Current canvas mirror",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "boardId": {
+                      "type": "string"
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "text",
+                                  "image",
+                                  "video",
+                                  "audio",
+                                  "config"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "a2ui",
+                                  "team-step"
+                                ]
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          },
+                          "w": {
+                            "type": "number"
+                          },
+                          "h": {
+                            "type": "number"
+                          },
+                          "hasContent": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "title",
+                          "x",
+                          "y",
+                          "w",
+                          "h",
+                          "hasContent"
+                        ]
+                      }
+                    },
+                    "connections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "from": {
+                            "type": "string"
+                          },
+                          "to": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "from",
+                          "to"
+                        ]
+                      }
+                    },
+                    "viewport": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "scale": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "scale"
+                      ]
+                    },
+                    "selectedNodeIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "boardId",
+                    "nodes",
+                    "connections",
+                    "viewport",
+                    "selectedNodeIds"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
