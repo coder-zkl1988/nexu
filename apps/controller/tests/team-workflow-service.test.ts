@@ -415,6 +415,108 @@ describe("TeamWorkflowService", () => {
     });
   });
 
+  it("auto-composes a DAG from a one-sentence task and runs it ephemerally", async () => {
+    // A 3-step DAG: search → analysis (dependsOn search) → generate (dependsOn
+    // analysis), threading each step's output to the next via {{var}}.
+    const draft = {
+      name: "Research and report",
+      description: "search → analyze → generate",
+      inputs: [],
+      steps: [
+        {
+          id: "search",
+          type: "task" as const,
+          assigneeSlug: "researcher",
+          name: "Search",
+          task: "Search the web for background.",
+          output: "search_output",
+          dependsOn: [],
+        },
+        {
+          id: "analysis",
+          type: "task" as const,
+          assigneeSlug: "analyst",
+          name: "Analysis",
+          task: "Analyze the findings:\n{{search_output}}",
+          output: "analysis_output",
+          dependsOn: ["search"],
+        },
+        {
+          id: "generate",
+          type: "task" as const,
+          assigneeSlug: "writer",
+          name: "Generate",
+          task: "Write the report from:\n{{analysis_output}}",
+          output: "final_output",
+          dependsOn: ["analysis"],
+        },
+      ],
+    };
+    // ensureTeamMembers enrolls the missing experts and returns the refreshed
+    // team that covers every assignee in the draft.
+    const composedTeam: TeamResponse = {
+      ...TEAM,
+      members: [
+        {
+          expertSlug: "researcher",
+          botId: "bot-researcher",
+          name: "Researcher",
+        },
+        { expertSlug: "analyst", botId: "bot-analyst", name: "Analyst" },
+        { expertSlug: "writer", botId: "bot-writer", name: "Writer" },
+      ],
+    };
+    const composeDraft = vi.fn(async () => ({ draft, warnings: [] }));
+    ensureTeamMembers.mockResolvedValue(composedTeam);
+    const upsertSpy = vi.spyOn(ledger, "upsert");
+    const service = buildService({ composeDraft });
+
+    const description = "Research a topic and write a report";
+    const result = await service.autoComposeAndRun(TEAM.id, description);
+
+    // Composed through composeWorkflow (resolves the team, then composeDraft).
+    expect(composeDraft).toHaveBeenCalledWith(TEAM, description);
+    // Enrolled the DISTINCT assignee slugs from the draft, in first-seen order.
+    expect(ensureTeamMembers).toHaveBeenCalledWith(TEAM.id, [
+      "researcher",
+      "analyst",
+      "writer",
+    ]);
+    // Went through runWorkflowDefinition: one parent card, a decompose, and one
+    // dependency link per draft edge (analysis→search, generate→analysis).
+    expect(gateway.workboardCardCreate).toHaveBeenCalledTimes(1);
+    expect(gateway.workboardCardDecompose).toHaveBeenCalledTimes(1);
+    expect(gateway.workboardCardLinkDependency).toHaveBeenCalledWith({
+      parentId: "card-1",
+      childId: "card-2",
+    });
+    expect(gateway.workboardCardLinkDependency).toHaveBeenCalledWith({
+      parentId: "card-2",
+      childId: "card-3",
+    });
+    expect(gateway.workboardCardLinkDependency).toHaveBeenCalledTimes(2);
+    // Ephemeral: the composed workflow is never persisted to the ledger.
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(service.listWorkflows(TEAM.id)).toHaveLength(0);
+    // Returns a RunTeamWorkflowResponse.
+    expect(result.boardId).toBe(TEAM.boardId);
+    expect(result.parentCardId).toBe("card-parent");
+    expect(result.cards).toEqual([
+      { stepId: "search", cardId: "card-1" },
+      { stepId: "analysis", cardId: "card-2" },
+      { stepId: "generate", cardId: "card-3" },
+    ]);
+    expect(typeof result.runId).toBe("string");
+    expect(result.runId.length).toBeGreaterThan(0);
+
+    // Background execution settles through the same machinery.
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "card-parent" }),
+      );
+    });
+  });
+
   it("blocks the failing step, remaining cards, and the parent when a step fails", async () => {
     readSessionEntry.mockImplementation(
       async (_botId: string, sessionKey: string) =>

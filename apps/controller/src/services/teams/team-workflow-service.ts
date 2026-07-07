@@ -238,6 +238,42 @@ export class TeamWorkflowService {
     return this.deps.composeDraft(team, description);
   }
 
+  /**
+   * Auto-compose a workflow DAG from a one-sentence task and run it
+   * immediately. Ephemeral: the composed workflow is NOT persisted to the
+   * ledger. Compose → enroll assignees (auto-install) → run topologically via
+   * runWorkflowDefinition (which validates the definition first).
+   */
+  async autoComposeAndRun(
+    teamId: string,
+    description: string,
+    input: RunTeamWorkflowRequest = { inputs: {} },
+  ): Promise<RunTeamWorkflowResponse> {
+    this.requireTeam(teamId);
+    const { draft } = await this.composeWorkflow(teamId, description);
+    // Compose drafts may assign steps to experts that are not members yet —
+    // enroll the distinct assignees (auto-installing) before running.
+    const team = await this.deps.ensureTeamMembers(teamId, [
+      ...new Set(draft.steps.map((step) => step.assigneeSlug)),
+    ]);
+    const now = new Date().toISOString();
+    const workflow: TeamWorkflow = {
+      id: this.deps.genId(),
+      teamId,
+      name: draft.name,
+      description: draft.description,
+      inputs: draft.inputs,
+      steps: draft.steps,
+      // The source enum is builtin|user (no "auto"); an ephemeral run is never
+      // written to the ledger, so this label is not persisted regardless.
+      source: "user",
+      createdAt: now,
+      updatedAt: now,
+    };
+    // Ephemeral — the composed workflow is intentionally NOT persisted.
+    return this.runWorkflowDefinition(team, workflow, input);
+  }
+
   /** Runs currently paused on an approval step for this team. */
   listPendingApprovals(teamId: string): PendingWorkflowApproval[] {
     this.requireTeam(teamId);
