@@ -17,7 +17,6 @@ let configuredControllerUrl = null;
 function controllerOrigin() {
   const raw =
     configuredControllerUrl ||
-    process.env.WEB_API_ORIGIN ||
     process.env.NEXU_CONTROLLER_URL ||
     process.env.CONTROLLER_URL ||
     "";
