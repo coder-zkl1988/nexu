@@ -68,6 +68,129 @@ describe("canvasOpSchema", () => {
   });
 });
 
+describe("canvasOpSchema — image-editing ops (image-ops B)", () => {
+  it("parses each of the 5 image-editing ops", () => {
+    const ops = [
+      { op: "crop_image", target: "node-1", x: 0, y: 0, w: 100, h: 80 },
+      { op: "split_image", target: "node-1", rows: 2, cols: 3 },
+      {
+        op: "upscale_image",
+        target: "node-1",
+        targetLongEdge: 2048,
+        algorithm: "high",
+      },
+      {
+        op: "enhance_image",
+        target: "ref:n1",
+        operation: "multi-angle",
+        horizontalDeg: 30,
+        pitchDeg: -10,
+        distance: 4,
+        wideAngle: true,
+        prompt: "front view",
+      },
+      { op: "enhance_image", target: "node-1", operation: "super-resolve" },
+      { op: "describe_image", target: "node-1" },
+    ];
+    for (const op of ops) {
+      expect(canvasOpSchema.safeParse(op).success).toBe(true);
+    }
+  });
+
+  it("rejects crop_image with non-positive / oversized w/h", () => {
+    expect(
+      canvasOpSchema.safeParse({
+        op: "crop_image",
+        target: "n1",
+        x: 0,
+        y: 0,
+        w: 0,
+        h: 80,
+      }).success,
+    ).toBe(false);
+    expect(
+      canvasOpSchema.safeParse({
+        op: "crop_image",
+        target: "n1",
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 20001,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects split_image rows/cols outside [1, 12]", () => {
+    expect(
+      canvasOpSchema.safeParse({
+        op: "split_image",
+        target: "n1",
+        rows: 0,
+        cols: 3,
+      }).success,
+    ).toBe(false);
+    expect(
+      canvasOpSchema.safeParse({
+        op: "split_image",
+        target: "n1",
+        rows: 2,
+        cols: 13,
+      }).success,
+    ).toBe(false);
+    expect(
+      canvasOpSchema.safeParse({
+        op: "split_image",
+        target: "n1",
+        rows: 2.5,
+        cols: 3,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects upscale_image with a bad targetLongEdge or algorithm", () => {
+    expect(
+      canvasOpSchema.safeParse({
+        op: "upscale_image",
+        target: "n1",
+        targetLongEdge: 3000,
+        algorithm: "high",
+      }).success,
+    ).toBe(false);
+    expect(
+      canvasOpSchema.safeParse({
+        op: "upscale_image",
+        target: "n1",
+        targetLongEdge: 1024,
+        algorithm: "smooth",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects enhance_image with an unknown operation or out-of-range angle", () => {
+    expect(
+      canvasOpSchema.safeParse({
+        op: "enhance_image",
+        target: "n1",
+        operation: "colorize",
+      }).success,
+    ).toBe(false);
+    expect(
+      canvasOpSchema.safeParse({
+        op: "enhance_image",
+        target: "n1",
+        operation: "multi-angle",
+        horizontalDeg: 61,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a non-empty target on describe_image", () => {
+    expect(
+      canvasOpSchema.safeParse({ op: "describe_image", target: "" }).success,
+    ).toBe(false);
+  });
+});
+
 describe("canvasOpBatchSchema", () => {
   const validOp = { op: "delete_node", target: "n1" } as const;
 

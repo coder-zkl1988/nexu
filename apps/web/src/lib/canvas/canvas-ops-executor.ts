@@ -23,10 +23,17 @@
 
 import { type CanvasOp, canvasOpBatchSchema } from "@nexu/shared";
 import {
+  describeImageSource,
+  enhanceImageIntoNode,
   generateAudioIntoNode,
   generateImageIntoNode,
   generateVideoIntoNode,
 } from "./canvas-generation";
+import {
+  applyCrop,
+  applySplit,
+  applyUpscaleInterpolate,
+} from "./canvas-image-ops";
 import {
   type CanvasNodeType,
   addNode,
@@ -42,6 +49,7 @@ import {
   updateNode,
 } from "./canvas-store";
 import { runConfigGeneration } from "./config-node-logic";
+import { servableSourceOf } from "./prompt-panel-utils";
 
 export interface CanvasOpBatchInput {
   ops: CanvasOp[];
@@ -223,6 +231,98 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
             () => void generateImageIntoNode(id, prompt),
           );
         }
+        applied += 1;
+        break;
+      }
+      case "crop_image": {
+        const id = resolveTarget(op.target);
+        if (!id) break;
+        deferredGenerations.push(
+          () =>
+            void applyCrop(id, {
+              x: op.x,
+              y: op.y,
+              width: op.w,
+              height: op.h,
+            }),
+        );
+        applied += 1;
+        break;
+      }
+      case "split_image": {
+        const id = resolveTarget(op.target);
+        if (!id) break;
+        deferredGenerations.push(() => void applySplit(id, op.rows, op.cols));
+        applied += 1;
+        break;
+      }
+      case "upscale_image": {
+        const id = resolveTarget(op.target);
+        if (!id) break;
+        deferredGenerations.push(
+          () =>
+            void applyUpscaleInterpolate(id, op.targetLongEdge, op.algorithm),
+        );
+        applied += 1;
+        break;
+      }
+      case "enhance_image": {
+        const id = resolveTarget(op.target);
+        if (!id) break;
+        const node = getCanvasState().nodes.find((n) => n.id === id);
+        if (!node) break;
+        // Enhance runs server-side — it needs a servable media path. dataURL
+        // uploads have none, so we error gracefully instead of dispatching.
+        const source = servableSourceOf(node);
+        if (!source) {
+          errors.push("该节点不是可服务图片，无法增强");
+          break;
+        }
+        const params = {
+          sourceImage: source,
+          operation: op.operation,
+          ...(op.targetLongEdge !== undefined
+            ? { targetLongEdge: op.targetLongEdge }
+            : {}),
+          ...(op.horizontalDeg !== undefined
+            ? { horizontalDeg: op.horizontalDeg }
+            : {}),
+          ...(op.pitchDeg !== undefined ? { pitchDeg: op.pitchDeg } : {}),
+          ...(op.distance !== undefined ? { distance: op.distance } : {}),
+          ...(op.wideAngle !== undefined ? { wideAngle: op.wideAngle } : {}),
+          ...(op.prompt !== undefined ? { prompt: op.prompt } : {}),
+        };
+        deferredGenerations.push(() => void enhanceImageIntoNode(id, params));
+        applied += 1;
+        break;
+      }
+      case "describe_image": {
+        const id = resolveTarget(op.target);
+        if (!id) break;
+        const node = getCanvasState().nodes.find((n) => n.id === id);
+        if (!node) break;
+        // Reverse-prompt is server-side too — same servable-source gate.
+        const path = servableSourceOf(node);
+        if (!path) {
+          errors.push("该节点不是可服务图片，无法反推");
+          break;
+        }
+        deferredGenerations.push(
+          () =>
+            void describeImageSource(path).then((prompt) => {
+              if (prompt) {
+                addNode({
+                  type: "text",
+                  title: "反推提示词",
+                  position: {
+                    x: node.position.x + node.size.width + 40,
+                    y: node.position.y,
+                  },
+                  metadata: { content: prompt },
+                });
+              }
+            }),
+        );
         applied += 1;
         break;
       }

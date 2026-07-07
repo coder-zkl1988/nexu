@@ -40,6 +40,22 @@ function opLabel(op: CanvasOp): string {
       return "选择节点";
     case "run_generation":
       return "运行生成";
+    case "crop_image":
+      return "裁剪";
+    case "split_image":
+      return `拆分为 ${op.rows}×${op.cols}`;
+    case "upscale_image":
+      return `放大到 ${
+        op.targetLongEdge >= 4096
+          ? "4K"
+          : op.targetLongEdge >= 2048
+            ? "2K"
+            : "1K"
+      }`;
+    case "enhance_image":
+      return op.operation === "multi-angle" ? "多角度" : "超分";
+    case "describe_image":
+      return "反推提示词";
   }
 }
 

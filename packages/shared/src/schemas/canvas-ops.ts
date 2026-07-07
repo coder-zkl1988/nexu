@@ -82,6 +82,52 @@ export const canvasOpSchema = z.discriminatedUnion("op", [
     target: z.string().min(1),
     prompt: z.string().max(20000).optional(),
   }),
+  // ── Image-editing ops (image-ops B) ────────────────────────────
+  // Each edits an existing image node. The frontend executor defers them
+  // (async: load bitmap / call backend) after the sync structural loop, exactly
+  // like run_generation, so they never split the one-undo step. `target`
+  // accepts a real node id OR `"ref:<ref>"` like the other ops.
+  z.object({
+    op: z.literal("crop_image"),
+    target: z.string().min(1),
+    x: z.number(),
+    y: z.number(),
+    w: z.number().positive().max(20000),
+    h: z.number().positive().max(20000),
+  }),
+  z.object({
+    op: z.literal("split_image"),
+    target: z.string().min(1),
+    rows: z.number().int().min(1).max(12),
+    cols: z.number().int().min(1).max(12),
+  }),
+  z.object({
+    op: z.literal("upscale_image"),
+    target: z.string().min(1),
+    targetLongEdge: z.union([
+      z.literal(1024),
+      z.literal(2048),
+      z.literal(4096),
+    ]),
+    algorithm: z.enum(["high", "low", "pixel"]),
+  }),
+  z.object({
+    op: z.literal("enhance_image"),
+    target: z.string().min(1),
+    operation: z.enum(["super-resolve", "multi-angle"]),
+    targetLongEdge: z
+      .union([z.literal(1024), z.literal(2048), z.literal(4096)])
+      .optional(),
+    horizontalDeg: z.number().min(-60).max(60).optional(),
+    pitchDeg: z.number().min(-45).max(45).optional(),
+    distance: z.number().min(1).max(10).optional(),
+    wideAngle: z.boolean().optional(),
+    prompt: z.string().max(2000).optional(),
+  }),
+  z.object({
+    op: z.literal("describe_image"),
+    target: z.string().min(1),
+  }),
 ]);
 export type CanvasOp = z.infer<typeof canvasOpSchema>;
 

@@ -35,20 +35,37 @@ if (typeof globalThis.localStorage === "undefined") {
 }
 
 // Mock the generation seams — run_generation dispatch is a fire-and-forget seam.
+// image-ops B adds the enhance/describe AI seams to the same mock.
 vi.mock("../src/lib/canvas/canvas-generation", () => ({
   generateImageIntoNode: vi.fn(() => Promise.resolve(true)),
   generateVideoIntoNode: vi.fn(() => Promise.resolve(true)),
   generateAudioIntoNode: vi.fn(() => Promise.resolve(true)),
+  enhanceImageIntoNode: vi.fn(() => Promise.resolve(true)),
+  describeImageSource: vi.fn(() => Promise.resolve("a serene mountain lake")),
+}));
+// image-ops B: the headless crop/split/upscale appliers (browser-canvas, not
+// node-testable) are mocked so the executor's deferred dispatch can be asserted.
+vi.mock("../src/lib/canvas/canvas-image-ops", () => ({
+  applyCrop: vi.fn(() => Promise.resolve(null)),
+  applySplit: vi.fn(() => Promise.resolve([])),
+  applyUpscaleInterpolate: vi.fn(() => Promise.resolve(null)),
 }));
 vi.mock("../src/lib/canvas/config-node-logic", () => ({
   runConfigGeneration: vi.fn(() => Promise.resolve(true)),
 }));
 
 import {
+  describeImageSource,
+  enhanceImageIntoNode,
   generateAudioIntoNode,
   generateImageIntoNode,
   generateVideoIntoNode,
 } from "../src/lib/canvas/canvas-generation";
+import {
+  applyCrop,
+  applySplit,
+  applyUpscaleInterpolate,
+} from "../src/lib/canvas/canvas-image-ops";
 import {
   applyCanvasOps,
   parseCanvasOpBlock,
@@ -66,7 +83,17 @@ import { runConfigGeneration } from "../src/lib/canvas/config-node-logic";
 const mockGenerateImage = vi.mocked(generateImageIntoNode);
 const mockGenerateVideo = vi.mocked(generateVideoIntoNode);
 const mockGenerateAudio = vi.mocked(generateAudioIntoNode);
+const mockEnhance = vi.mocked(enhanceImageIntoNode);
+const mockDescribe = vi.mocked(describeImageSource);
+const mockApplyCrop = vi.mocked(applyCrop);
+const mockApplySplit = vi.mocked(applySplit);
+const mockApplyUpscale = vi.mocked(applyUpscaleInterpolate);
 const mockRunConfig = vi.mocked(runConfigGeneration);
+
+// Servable state-file URL vs. non-servable dataURL — servableSourceOf keys on
+// this exact shape (the real helper is used, not mocked).
+const SERVABLE_CONTENT = "/api/v1/media/state-file?path=/x.png";
+const DATA_URL_CONTENT = "data:image/png;base64,x";
 
 beforeEach(() => {
   __resetCanvasForTests();
@@ -317,6 +344,171 @@ describe("applyCanvasOps — run_generation seam", () => {
     expect(mockGenerateAudio).toHaveBeenCalledWith(node.id, "narration");
     expect(mockGenerateImage).not.toHaveBeenCalled();
     expect(mockGenerateVideo).not.toHaveBeenCalled();
+  });
+});
+
+describe("applyCanvasOps — image-editing ops (image-ops B)", () => {
+  it("crop_image defers applyCrop(id, rect) after the sync loop", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: SERVABLE_CONTENT },
+    });
+    const result = applyCanvasOps({
+      ops: [{ op: "crop_image", target: node.id, x: 5, y: 6, w: 100, h: 80 }],
+    });
+    expect(result.applied).toBe(1);
+    expect(mockApplyCrop).toHaveBeenCalledTimes(1);
+    expect(mockApplyCrop).toHaveBeenCalledWith(node.id, {
+      x: 5,
+      y: 6,
+      width: 100,
+      height: 80,
+    });
+  });
+
+  it("split_image defers applySplit(id, rows, cols)", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: SERVABLE_CONTENT },
+    });
+    applyCanvasOps({
+      ops: [{ op: "split_image", target: node.id, rows: 2, cols: 3 }],
+    });
+    expect(mockApplySplit).toHaveBeenCalledTimes(1);
+    expect(mockApplySplit).toHaveBeenCalledWith(node.id, 2, 3);
+  });
+
+  it("upscale_image defers applyUpscaleInterpolate(id, edge, algo)", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: SERVABLE_CONTENT },
+    });
+    applyCanvasOps({
+      ops: [
+        {
+          op: "upscale_image",
+          target: node.id,
+          targetLongEdge: 2048,
+          algorithm: "high",
+        },
+      ],
+    });
+    expect(mockApplyUpscale).toHaveBeenCalledTimes(1);
+    expect(mockApplyUpscale).toHaveBeenCalledWith(node.id, 2048, "high");
+  });
+
+  it("enhance_image on a servable image node defers enhanceImageIntoNode(id, params)", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: SERVABLE_CONTENT },
+    });
+    const result = applyCanvasOps({
+      ops: [
+        {
+          op: "enhance_image",
+          target: node.id,
+          operation: "multi-angle",
+          horizontalDeg: 30,
+          pitchDeg: -10,
+          distance: 4,
+          wideAngle: true,
+          prompt: "front view",
+        },
+      ],
+    });
+    expect(result.applied).toBe(1);
+    expect(result.errors).toEqual([]);
+    expect(mockEnhance).toHaveBeenCalledTimes(1);
+    expect(mockEnhance).toHaveBeenCalledWith(node.id, {
+      // sourceImage is the servable path servableSourceOf decodes from content.
+      sourceImage: "/x.png",
+      operation: "multi-angle",
+      horizontalDeg: 30,
+      pitchDeg: -10,
+      distance: 4,
+      wideAngle: true,
+      prompt: "front view",
+    });
+  });
+
+  it("enhance_image on a dataURL node errors and does not dispatch", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: DATA_URL_CONTENT },
+    });
+    const result = applyCanvasOps({
+      ops: [
+        { op: "enhance_image", target: node.id, operation: "super-resolve" },
+      ],
+    });
+    expect(result.applied).toBe(0);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain("无法增强");
+    expect(mockEnhance).not.toHaveBeenCalled();
+  });
+
+  it("describe_image on a servable node calls describeImageSource and adds a text node", async () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: SERVABLE_CONTENT },
+    });
+    const before = getCanvasState().nodes.length;
+    const result = applyCanvasOps({
+      ops: [{ op: "describe_image", target: node.id }],
+    });
+    expect(result.applied).toBe(1);
+    expect(mockDescribe).toHaveBeenCalledTimes(1);
+    expect(mockDescribe).toHaveBeenCalledWith("/x.png");
+    // The describe result resolves async → a "反推提示词" text node is added.
+    await Promise.resolve();
+    await Promise.resolve();
+    const added = getCanvasState().nodes;
+    expect(added.length).toBe(before + 1);
+    const textNode = added.find((n) => n.title === "反推提示词");
+    expect(textNode?.metadata.content).toBe("a serene mountain lake");
+  });
+
+  it("describe_image on a dataURL node errors and does not dispatch", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: DATA_URL_CONTENT },
+    });
+    const result = applyCanvasOps({
+      ops: [{ op: "describe_image", target: node.id }],
+    });
+    expect(result.applied).toBe(0);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain("无法反推");
+    expect(mockDescribe).not.toHaveBeenCalled();
+  });
+
+  it("image ops defer — they never split the one-undo step", () => {
+    // A crop op mixed with structural ops: the crop applier fires AFTER the sync
+    // loop (deferred), so undo reverts the structural part as one snapshot.
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      metadata: { content: SERVABLE_CONTENT },
+    });
+    __flushCanvasHistoryForTests();
+    const preNodeCount = getCanvasState().nodes.length;
+    applyCanvasOps({
+      ops: [
+        { op: "add_node", ref: "a", nodeType: "text", title: "A" },
+        { op: "crop_image", target: node.id, x: 0, y: 0, w: 10, h: 10 },
+      ],
+    });
+    expect(getCanvasState().nodes.length).toBe(preNodeCount + 1);
+    __flushCanvasHistoryForTests();
+    undo();
+    expect(getCanvasState().nodes.length).toBe(preNodeCount);
   });
 });
 

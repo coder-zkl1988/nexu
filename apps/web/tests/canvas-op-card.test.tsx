@@ -63,4 +63,34 @@ describe("CanvasOpCard", () => {
     expect(markup).toContain("连接");
     expect(markup).toContain("视口");
   });
+
+  it("renders labels for the image-editing ops (image-ops B)", () => {
+    const markup = renderToStaticMarkup(
+      <CanvasOpCard
+        batch={{
+          ops: [
+            { op: "crop_image", target: "n1", x: 0, y: 0, w: 100, h: 80 },
+            { op: "split_image", target: "n1", rows: 2, cols: 3 },
+            {
+              op: "upscale_image",
+              target: "n1",
+              targetLongEdge: 4096,
+              algorithm: "high",
+            },
+            {
+              op: "enhance_image",
+              target: "n1",
+              operation: "multi-angle",
+            },
+            { op: "describe_image", target: "n1" },
+          ],
+        }}
+      />,
+    );
+    expect(markup).toContain("裁剪");
+    expect(markup).toContain("拆分为 2×3");
+    expect(markup).toContain("放大到 4K");
+    expect(markup).toContain("多角度");
+    expect(markup).toContain("反推提示词");
+  });
 });
