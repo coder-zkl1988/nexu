@@ -352,12 +352,13 @@ function BoardSwitcher() {
     setDraftName("");
   }
 
-  function handleDelete(id: string) {
-    // Deleting the active board: switch to the first remaining board first,
-    // then remove — never leave the canvas pointed at a deleted board.
+  async function handleDelete(id: string) {
+    // Deleting the active board: switch to the first remaining board and let
+    // the switch's index write (setActiveBoardId) land BEFORE we remove — so
+    // the persisted index never briefly points activeId at a deleted board.
     if (id === activeId) {
       const fallback = getCanvasBoards().boards.find((b) => b.id !== id);
-      if (fallback) void switchCanvasBoard(fallback.id);
+      if (fallback) await switchCanvasBoard(fallback.id);
     }
     deleteBoard(id);
   }
@@ -436,7 +437,7 @@ function BoardSwitcher() {
                           type="button"
                           aria-label="删除画布"
                           data-canvas-board-delete={board.id}
-                          onClick={() => handleDelete(board.id)}
+                          onClick={() => void handleDelete(board.id)}
                           className="rounded p-0.5 text-text-tertiary opacity-0 hover:bg-surface-2 hover:text-danger group-hover:opacity-100"
                         >
                           <Trash2 size={11} />
