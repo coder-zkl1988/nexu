@@ -37,12 +37,18 @@ if (typeof globalThis.localStorage === "undefined") {
 // Mock the generation seams — run_generation dispatch is a fire-and-forget seam.
 vi.mock("../src/lib/canvas/canvas-generation", () => ({
   generateImageIntoNode: vi.fn(() => Promise.resolve(true)),
+  generateVideoIntoNode: vi.fn(() => Promise.resolve(true)),
+  generateAudioIntoNode: vi.fn(() => Promise.resolve(true)),
 }));
 vi.mock("../src/lib/canvas/config-node-logic", () => ({
   runConfigGeneration: vi.fn(() => Promise.resolve(true)),
 }));
 
-import { generateImageIntoNode } from "../src/lib/canvas/canvas-generation";
+import {
+  generateAudioIntoNode,
+  generateImageIntoNode,
+  generateVideoIntoNode,
+} from "../src/lib/canvas/canvas-generation";
 import {
   applyCanvasOps,
   parseCanvasOpBlock,
@@ -58,6 +64,8 @@ import {
 import { runConfigGeneration } from "../src/lib/canvas/config-node-logic";
 
 const mockGenerateImage = vi.mocked(generateImageIntoNode);
+const mockGenerateVideo = vi.mocked(generateVideoIntoNode);
+const mockGenerateAudio = vi.mocked(generateAudioIntoNode);
 const mockRunConfig = vi.mocked(runConfigGeneration);
 
 beforeEach(() => {
@@ -291,6 +299,50 @@ describe("applyCanvasOps — run_generation seam", () => {
     const node = addNode({ type: "image", title: "sunset over sea" });
     applyCanvasOps({ ops: [{ op: "run_generation", target: node.id }] });
     expect(mockGenerateImage).toHaveBeenCalledWith(node.id, "sunset over sea");
+  });
+
+  it("routes run_generation to the video seam for a video node", () => {
+    const node = addNode({ type: "video", title: "waves" });
+    applyCanvasOps({
+      ops: [{ op: "run_generation", target: node.id, prompt: "ocean" }],
+    });
+    expect(mockGenerateVideo).toHaveBeenCalledWith(node.id, "ocean");
+    expect(mockGenerateImage).not.toHaveBeenCalled();
+    expect(mockGenerateAudio).not.toHaveBeenCalled();
+  });
+
+  it("routes run_generation to the audio seam for an audio node", () => {
+    const node = addNode({ type: "audio", title: "narration" });
+    applyCanvasOps({ ops: [{ op: "run_generation", target: node.id }] });
+    expect(mockGenerateAudio).toHaveBeenCalledWith(node.id, "narration");
+    expect(mockGenerateImage).not.toHaveBeenCalled();
+    expect(mockGenerateVideo).not.toHaveBeenCalled();
+  });
+});
+
+describe("applyCanvasOps — update_node resize", () => {
+  it("resizes a node when w/h are given (clamped by the store)", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      size: { width: 340, height: 240 },
+    });
+    applyCanvasOps({
+      ops: [{ op: "update_node", target: node.id, w: 500, h: 400 }],
+    });
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.size).toEqual({ width: 500, height: 400 });
+  });
+
+  it("resizes only the given axis, leaving the other unchanged", () => {
+    const node = addNode({
+      type: "image",
+      title: "pic",
+      size: { width: 340, height: 240 },
+    });
+    applyCanvasOps({ ops: [{ op: "update_node", target: node.id, w: 600 }] });
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.size).toEqual({ width: 600, height: 240 });
   });
 });
 

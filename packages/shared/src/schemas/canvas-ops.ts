@@ -49,6 +49,9 @@ export const canvasOpSchema = z.discriminatedUnion("op", [
     title: z.string().max(200).optional(),
     x: z.number().optional(),
     y: z.number().optional(),
+    /** Resize the node. Store clamps to its per-type minimums. */
+    w: z.number().positive().max(10000).optional(),
+    h: z.number().positive().max(10000).optional(),
     content: z.string().max(20000).optional(),
   }),
   z.object({

@@ -22,7 +22,11 @@
  */
 
 import { type CanvasOp, canvasOpBatchSchema } from "@nexu/shared";
-import { generateImageIntoNode } from "./canvas-generation";
+import {
+  generateAudioIntoNode,
+  generateImageIntoNode,
+  generateVideoIntoNode,
+} from "./canvas-generation";
 import {
   type CanvasNodeType,
   addNode,
@@ -32,6 +36,7 @@ import {
   moveNode,
   removeConnection,
   removeNodes,
+  resizeNode,
   selectNodes,
   setViewport,
   updateNode,
@@ -128,6 +133,15 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
             });
           }
         }
+        if (op.w !== undefined || op.h !== undefined) {
+          const current = getCanvasState().nodes.find((n) => n.id === id);
+          if (current) {
+            resizeNode(id, {
+              width: op.w ?? current.size.width,
+              height: op.h ?? current.size.height,
+            });
+          }
+        }
         if (op.title !== undefined || op.content !== undefined) {
           updateNode(id, {
             ...(op.title !== undefined ? { title: op.title } : {}),
@@ -191,15 +205,23 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
         if (!id) break;
         const node = getCanvasState().nodes.find((n) => n.id === id);
         if (!node) break;
-        const prompt = op.prompt;
+        // Route by node type so a video/audio node generates the right media;
+        // config nodes drive generation from their aggregated upstream inputs.
+        const prompt = op.prompt ?? node.title;
         if (node.type === "config") {
-          deferredGenerations.push(() => {
-            void runConfigGeneration(id);
-          });
+          deferredGenerations.push(() => void runConfigGeneration(id));
+        } else if (node.type === "video") {
+          deferredGenerations.push(
+            () => void generateVideoIntoNode(id, prompt),
+          );
+        } else if (node.type === "audio") {
+          deferredGenerations.push(
+            () => void generateAudioIntoNode(id, prompt),
+          );
         } else {
-          deferredGenerations.push(() => {
-            void generateImageIntoNode(id, prompt ?? node.title);
-          });
+          deferredGenerations.push(
+            () => void generateImageIntoNode(id, prompt),
+          );
         }
         applied += 1;
         break;
