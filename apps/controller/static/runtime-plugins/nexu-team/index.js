@@ -453,7 +453,8 @@ const plugin = {
             if (!res.ok) {
               return jsonResult({ error: res.error }, true);
             }
-            const { teamId, boardId, parentCardId, started, plan } = res.data;
+            const { teamId, runId, boardId, parentCardId, cards, steps: composed } =
+              res.data;
             teamsCache = null; // the default team may have just been created
             // Resolve member display names for the card.
             const teamRes = await controllerGet(`${TEAMS_PATH}/${teamId}`);
@@ -463,19 +464,27 @@ const plugin = {
                 m.name,
               ]),
             );
-            const steps = (Array.isArray(plan) ? plan : []).map(
-              (subtask, index) => ({
-                id: started?.[index]?.cardId || `step-${index}`,
-                name: subtask.title,
+            const cardByStep = new Map(
+              (cards ?? []).map((card) => [card.stepId, card.cardId]),
+            );
+            // T3 returns the composed DAG (steps carry real dependsOn); map each
+            // step to its board card and preserve the dependency edges.
+            const steps = (Array.isArray(composed) ? composed : []).map(
+              (step) => ({
+                id: String(step.id || ""),
+                name: String(step.name || step.id || ""),
                 assigneeName:
-                  nameBySlug.get(subtask.assigneeSlug) || subtask.assigneeSlug,
-                cardId: started?.[index]?.cardId || "",
-                dependsOn: [],
+                  nameBySlug.get(step.assigneeSlug) || step.assigneeSlug,
+                cardId: cardByStep.get(step.id) || "",
+                dependsOn: Array.isArray(step.dependsOn)
+                  ? step.dependsOn.map(String)
+                  : [],
               }),
             );
             return runCardResult(
               {
                 teamId,
+                runId,
                 boardId,
                 parentCardId,
                 title: body.task,
