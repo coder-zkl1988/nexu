@@ -37,6 +37,7 @@ import {
   readFilesAsDataUrls,
 } from "./canvas-ingest";
 import { CanvasMinimap } from "./canvas-minimap";
+import { pushCanvasMirror, scheduleCanvasMirrorPush } from "./canvas-mirror";
 import {
   type CanvasNode,
   type CanvasViewport,
@@ -327,6 +328,19 @@ export function CanvasSurface({ className }: { className?: string }) {
   useEffect(() => {
     void hydrateCanvasFromStorage();
   }, []);
+
+  // S8 mirror push: keep the controller mirror in sync so the agent's
+  // canvas_read sees reality. Push once on mount, then a debounced push on any
+  // nodes/connections/viewport/selection change. The debounce (canvas-mirror)
+  // absorbs drag bursts — this stays off the rAF gesture path. Failures are
+  // swallowed inside the pusher; a mirror outage never disrupts the canvas.
+  useEffect(() => {
+    void pushCanvasMirror();
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: push on any board change
+  useEffect(() => {
+    scheduleCanvasMirrorPush();
+  }, [nodes, connections, viewport, selectedNodeIds]);
 
   // Stable: reads the live viewport from the store, never from a closure.
   const toWorld = useCallback((clientX: number, clientY: number) => {

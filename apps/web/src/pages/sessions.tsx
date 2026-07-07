@@ -9,6 +9,11 @@ import { A2UIRenderer } from "@/lib/a2ui";
 import type { A2UIMessage } from "@/lib/a2ui";
 import { useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
+import {
+  type CanvasOpBatchView,
+  CanvasOpCard,
+} from "@/lib/canvas/canvas-op-card";
+import { parseCanvasOpBlock } from "@/lib/canvas/canvas-ops-executor";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
@@ -167,6 +172,20 @@ function stripA2UIBlock(text: string): {
   return { cleanText, a2uiMessages };
 }
 
+/**
+ * Strip ```canvas-op fenced blocks from text and parse the FIRST one into a
+ * canvas-op batch (client-side re-validated through canvasOpBatchSchema). The
+ * agent's raw JSON never renders — it becomes the CanvasOpCard instead.
+ */
+function stripCanvasOpBlock(text: string): {
+  cleanText: string;
+  canvasOpBatch: CanvasOpBatchView | null;
+} {
+  const canvasOpBatch = parseCanvasOpBlock(text);
+  const cleanText = text.replace(/```canvas-op\n[\s\S]*?```/g, "");
+  return { cleanText, canvasOpBatch };
+}
+
 interface ImageBlockInfo {
   mimeType: string;
   /** Inline base64 payload (OpenClaw flat blocks / Anthropic source blocks). */
@@ -199,6 +218,8 @@ interface ExtractedMessage {
   /** Machine round-trip A2UI action (e.g. XHSEditor publish) — shown as a chip,
    * never as raw JSON/base64. */
   a2uiAction: { actionName: string } | null;
+  /** S8 chat-drives-canvas: a validated canvas-op batch → renders a confirm card. */
+  canvasOpBatch: CanvasOpBatchView | null;
   images: ImageBlockInfo[];
   fileCards: FileCardInfo[];
 }
@@ -212,6 +233,9 @@ const A2UI_TOOL_NAMES = new Set([
   "team_run_workflow",
   "expert_run_auto",
 ]);
+
+/** Tools whose toolResult text carries a fenced ```canvas-op``` batch (S8). */
+const CANVAS_OP_TOOL_NAMES = new Set(["canvas_op"]);
 
 /** Complex editor components — their surfaces always open in the side panel. */
 const SIDEBAR_DOC_COMPONENT_TYPES = new Set(["MarkdownEditor", "XHSEditor"]);
@@ -411,6 +435,12 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     raw = textParts.join("\n");
   }
 
+  // S8: strip any fenced ```canvas-op``` block from the display text and capture
+  // the first validated batch (parallel to the a2ui strip above).
+  const strippedCanvasOp = stripCanvasOpBlock(raw);
+  raw = strippedCanvasOp.cleanText;
+  const canvasOpBatch = strippedCanvasOp.canvasOpBatch;
+
   const senderName = msg.role === "user" ? extractSenderName(raw) : null;
   const sanitizedText =
     msg.role === "assistant"
@@ -438,6 +468,7 @@ function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     a2uiMessages,
     sidebarA2UI: null,
     a2uiAction,
+    canvasOpBatch: a2uiAction ? null : canvasOpBatch,
     images: a2uiAction ? [] : images,
     fileCards: a2uiAction ? [] : [...fileCards, ...parsedFiles.fileCards],
   };
@@ -899,6 +930,7 @@ function ChatBubble({
     a2uiMessages,
     sidebarA2UI,
     a2uiAction,
+    canvasOpBatch,
     images,
     fileCards,
   } = resolvedExtracted;
@@ -970,6 +1002,7 @@ function ChatBubble({
         {isBot && sidebarA2UI && onOpenSidebar && (
           <SidebarA2UIButton payload={sidebarA2UI} onOpen={onOpenSidebar} />
         )}
+        {isBot && canvasOpBatch && <CanvasOpCard batch={canvasOpBatch} />}
         {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
     </div>
@@ -1415,12 +1448,27 @@ export function SessionsPage() {
   // ChatBubble only renders A2UI for assistant (bot) messages.
   // Inject the A2UI into the assistant message that called render_a2ui.
   const a2uiFromToolResults = new Map<string, A2UIMessage[]>();
+  // S8: canvas_op toolResults carry a fenced ```canvas-op``` batch — collect it
+  // by toolCallId so it can render on the parent assistant message.
+  const canvasOpFromToolResults = new Map<string, CanvasOpBatchView>();
   for (const m of displayMessages) {
     const rm = m as unknown as Record<string, unknown>;
     if (rm.role === "toolResult" && A2UI_TOOL_NAMES.has(String(rm.toolName))) {
       const te = extractMessage(rm);
       if (te.a2uiMessages?.length) {
         a2uiFromToolResults.set(String(rm.toolCallId ?? ""), te.a2uiMessages);
+      }
+    }
+    if (
+      rm.role === "toolResult" &&
+      CANVAS_OP_TOOL_NAMES.has(String(rm.toolName))
+    ) {
+      const te = extractMessage(rm);
+      if (te.canvasOpBatch) {
+        canvasOpFromToolResults.set(
+          String(rm.toolCallId ?? ""),
+          te.canvasOpBatch,
+        );
       }
     }
   }
@@ -1471,6 +1519,26 @@ export function SessionsPage() {
         }
       }
 
+      // S8: inject the canvas-op batch from the matching canvas_op toolResult
+      // onto the assistant message that called it (parallel to the a2ui path).
+      if (rm.role === "assistant" && !extracted.canvasOpBatch) {
+        const content = rm.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (
+              block?.type === "toolCall" &&
+              CANVAS_OP_TOOL_NAMES.has(String(block?.name))
+            ) {
+              const batch = canvasOpFromToolResults.get(String(block.id ?? ""));
+              if (batch) {
+                extracted.canvasOpBatch = batch;
+                break;
+              }
+            }
+          }
+        }
+      }
+
       return { msg, extracted };
     })
     .filter(({ msg, extracted }) => {
@@ -1482,11 +1550,19 @@ export function SessionsPage() {
       ) {
         return false;
       }
+      // Hide canvas_op toolResults — the confirm card shows on the parent msg.
+      if (
+        rm.role === "toolResult" &&
+        CANVAS_OP_TOOL_NAMES.has(String(rm.toolName))
+      ) {
+        return false;
+      }
       if (extracted.text.trim().length > 0) return true;
       if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
       if (extracted.hasToolCall) return true;
       if (extracted.sidebarA2UI) return true;
       if (extracted.a2uiAction) return true;
+      if (extracted.canvasOpBatch) return true;
       if (extracted.images.length > 0) return true;
       if (extracted.fileCards.length > 0) return true;
       return false;

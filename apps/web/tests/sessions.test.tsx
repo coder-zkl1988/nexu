@@ -877,4 +877,95 @@ describe("SessionsPage", () => {
     expect(markup).toContain("卖点分析");
     expect(markup).not.toContain("```a2ui");
   });
+
+  it("renders the CanvasOpCard from a canvas_op tool result and strips the raw block", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["session-meta", "sess-canvas-op"], {
+      id: "sess-canvas-op",
+      title: "画布助手",
+      channelType: "web",
+      messageCount: 3,
+      lastMessageAt: "2026-07-07T03:32:00.000Z",
+      metadata: {},
+    });
+    // Mirrors the nexu-canvas plugin transcript: the fenced ```canvas-op```
+    // JSON rides in the canvas_op toolResult text.
+    const canvasOpBlock = [
+      "```canvas-op",
+      JSON.stringify({
+        ops: [
+          { op: "add_node", ref: "n1", nodeType: "text", title: "标题" },
+          { op: "connect", from: "ref:n1", to: "ref:n1" },
+        ],
+        summary: "加一个文本节点",
+      }),
+      "```",
+    ].join("\n");
+    queryClient.setQueryData(["chat-history", "sess-canvas-op"], {
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "在画布上加个标题节点",
+          timestamp: new Date("2026-07-07T03:32:00.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:00.000Z",
+        },
+        {
+          id: "msg-2",
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call_canvas_1",
+              name: "canvas_op",
+              arguments: {},
+            },
+          ],
+          timestamp: new Date("2026-07-07T03:32:05.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:05.000Z",
+        },
+        {
+          id: "msg-3",
+          role: "toolResult",
+          toolName: "canvas_op",
+          toolCallId: "call_canvas_1",
+          content: [{ type: "text", text: canvasOpBlock }],
+          timestamp: new Date("2026-07-07T03:32:06.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:06.000Z",
+        },
+        {
+          id: "msg-4",
+          role: "assistant",
+          content: "已经准备好画布操作，请确认。",
+          timestamp: new Date("2026-07-07T03:32:08.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:08.000Z",
+        },
+      ],
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-canvas-op"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    // The confirm card renders inline on the parent assistant message; the raw
+    // fenced block must never leak as text.
+    expect(markup).toContain("data-canvas-op-card");
+    expect(markup).toContain("加一个文本节点");
+    expect(markup).toContain("data-canvas-op-apply");
+    expect(markup).not.toContain("```canvas-op");
+    expect(markup).not.toContain('"add_node"');
+  });
 });
