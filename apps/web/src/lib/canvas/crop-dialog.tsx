@@ -17,7 +17,8 @@ import { Crop } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type CanvasDialogState, closeCanvasDialog } from "./canvas-dialogs";
-import { addNode, getCanvasState } from "./canvas-store";
+import { applyCrop } from "./canvas-image-ops";
+import { getCanvasState } from "./canvas-store";
 import {
   type CropBox,
   type CropHandle,
@@ -171,41 +172,15 @@ export function CropDialog({
     dragRef.current = null;
   }, []);
 
-  // ── Confirm: draw offscreen canvas, produce dataURL, add node ───
+  // ── Confirm: delegate to the headless applier, then toast + close ───
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     if (!bitmap) return;
-    const offscreen = document.createElement("canvas");
-    offscreen.width = Math.round(box.width);
-    offscreen.height = Math.round(box.height);
-    const ctx = offscreen.getContext("2d");
-    if (!ctx) {
+    const created = await applyCrop(nodeId, box);
+    if (!created) {
       toast.error("裁剪失败");
       return;
     }
-    ctx.drawImage(
-      bitmap,
-      Math.round(box.x),
-      Math.round(box.y),
-      Math.round(box.width),
-      Math.round(box.height),
-      0,
-      0,
-      Math.round(box.width),
-      Math.round(box.height),
-    );
-    const dataUrl = offscreen.toDataURL("image/png");
-    // Read node live so a title rename between dialog-open and confirm is reflected.
-    const src = getCanvasState().nodes.find((n) => n.id === nodeId);
-    const liveTitle = src?.title ?? "图片";
-    addNode({
-      type: "image",
-      title: `${liveTitle} 裁剪`,
-      position: src
-        ? { x: src.position.x + src.size.width + 40, y: src.position.y }
-        : undefined,
-      metadata: { content: dataUrl },
-    });
     closeCanvasDialog();
     toast.success("已生成裁剪节点");
   }, [bitmap, box, nodeId]);

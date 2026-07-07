@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
 import { enhanceImageIntoNode } from "./canvas-generation";
+import { applyUpscaleInterpolate } from "./canvas-image-ops";
 import { addNode, getCanvasState } from "./canvas-store";
 import { loadImageBitmap } from "./load-image-bitmap";
 import { servableSourceOf } from "./prompt-panel-utils";
@@ -145,7 +146,7 @@ export function UpscaleDialog({
     }
   }, [bitmap, target]);
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = useCallback(async () => {
     if (!bitmap || !currentTargetSize) return;
 
     if (upscaleMode === "ai") {
@@ -172,41 +173,14 @@ export function UpscaleDialog({
       return;
     }
 
-    // Interpolation path (existing)
+    // Interpolation path: delegate to the headless applier, then toast + close
     const { width: outW, height: outH } = currentTargetSize;
-    const offscreen = document.createElement("canvas");
-    offscreen.width = outW;
-    offscreen.height = outH;
-    const ctx = offscreen.getContext("2d");
-    if (!ctx) {
+    const algorithm = smoothing === "none" ? "pixel" : smoothing;
+    const created = await applyUpscaleInterpolate(nodeId, target, algorithm);
+    if (!created) {
       toast.error("放大失败");
       return;
     }
-
-    // Apply smoothing settings
-    if (smoothing === "none") {
-      ctx.imageSmoothingEnabled = false;
-    } else {
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = smoothing === "high" ? "high" : "low";
-    }
-
-    ctx.drawImage(bitmap, 0, 0, outW, outH);
-    const dataUrl = offscreen.toDataURL("image/png");
-
-    const src = getCanvasState().nodes.find((n) => n.id === nodeId);
-    const liveTitle = src?.title ?? "图片";
-    const srcSize = src?.size ?? { width: 340, height: 240 };
-
-    addNode({
-      type: "image",
-      title: `${liveTitle} 放大${longEdgeLabel(target)}`,
-      position: src
-        ? { x: src.position.x + src.size.width + 40, y: src.position.y }
-        : undefined,
-      size: srcSize,
-      metadata: { content: dataUrl },
-    });
 
     closeCanvasDialog();
     toast.success(`已放大至 ${outW}×${outH} 并生成节点`);

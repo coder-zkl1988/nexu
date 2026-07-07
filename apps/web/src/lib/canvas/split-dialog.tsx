@@ -23,10 +23,11 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
-import { addNode, getCanvasState } from "./canvas-store";
+import { applySplit } from "./canvas-image-ops";
+import { getCanvasState } from "./canvas-store";
 import { fitScale } from "./crop-geometry";
 import { loadImageBitmap } from "./load-image-bitmap";
-import { gridPieceRects, splitChildLayout } from "./split-upscale-math";
+import { gridPieceRects } from "./split-upscale-math";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -117,59 +118,10 @@ export function SplitDialog({
   const pieceW = firstPiece?.width ?? 0;
   const pieceH = firstPiece?.height ?? 0;
 
-  // Confirm: draw each piece, create child nodes
-  const handleConfirm = useCallback(() => {
+  // Confirm: delegate to the headless applier, then toast + close
+  const handleConfirm = useCallback(async () => {
     if (!bitmap) return;
-
-    const pieces = gridPieceRects(bitmap.width, bitmap.height, rows, cols);
-    const pieceAspect =
-      pieces[0] && pieces[0].height > 0
-        ? pieces[0].width / pieces[0].height
-        : 1;
-
-    // Read node live so a title rename between dialog-open and confirm is reflected
-    const src = getCanvasState().nodes.find((n) => n.id === nodeId);
-    const liveTitle = src?.title ?? "图片";
-    const srcPos = src
-      ? {
-          x: src.position.x,
-          y: src.position.y,
-          width: src.size.width,
-          height: src.size.height,
-        }
-      : { x: 0, y: 0, width: 0, height: 0 };
-
-    const layouts = splitChildLayout(srcPos, rows, cols, pieceAspect);
-
-    for (const piece of pieces) {
-      const offscreen = document.createElement("canvas");
-      offscreen.width = piece.width;
-      offscreen.height = piece.height;
-      const ctx = offscreen.getContext("2d");
-      if (!ctx) continue;
-      ctx.drawImage(
-        bitmap,
-        piece.x,
-        piece.y,
-        piece.width,
-        piece.height,
-        0,
-        0,
-        piece.width,
-        piece.height,
-      );
-      const dataUrl = offscreen.toDataURL("image/png");
-      const layout = layouts[piece.row * cols + piece.col];
-      if (!layout) continue;
-      addNode({
-        type: "image",
-        title: `${liveTitle} 拆分 ${piece.row + 1}-${piece.col + 1}`,
-        position: { x: layout.x, y: layout.y },
-        size: { width: layout.width, height: layout.height },
-        metadata: { content: dataUrl },
-      });
-    }
-
+    await applySplit(nodeId, rows, cols);
     closeCanvasDialog();
     toast.success(`已拆分为 ${totalPieces} 个节点`);
   }, [bitmap, rows, cols, nodeId, totalPieces]);
