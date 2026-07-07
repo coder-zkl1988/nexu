@@ -83,4 +83,43 @@ describe("renderMirror (canvas_read rendering)", () => {
     });
     expect(text).toContain("(no nodes yet)");
   });
+
+  it("appends an asset-library section when assets are present", () => {
+    const text = renderMirror({
+      boardId: "sidebar",
+      nodes: [],
+      connections: [],
+      viewport: { x: 0, y: 0, scale: 1 },
+      selectedNodeIds: [],
+      assets: [
+        { id: "asset-1", kind: "image", title: "Logo" },
+        { id: "asset-2", kind: "text", title: "Bio" },
+      ],
+    });
+    expect(text).toContain("assets (use insert_asset with the id):");
+    expect(text).toContain('# asset-1 [image] "Logo"');
+    expect(text).toContain('# asset-2 [text] "Bio"');
+  });
+
+  it("renders no asset section for a mirror without assets (back-compat)", () => {
+    const text = renderMirror({
+      boardId: "sidebar",
+      nodes: [
+        {
+          id: "node-1",
+          type: "text",
+          title: "n",
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          hasContent: false,
+        },
+      ],
+      connections: [],
+      viewport: { x: 0, y: 0, scale: 1 },
+      selectedNodeIds: [],
+    });
+    expect(text).not.toContain("assets (use insert_asset");
+  });
 });

@@ -93,4 +93,19 @@ describe("CanvasOpCard", () => {
     expect(markup).toContain("多角度");
     expect(markup).toContain("反推提示词");
   });
+
+  it("renders labels for the asset-library ops (W7)", () => {
+    const markup = renderToStaticMarkup(
+      <CanvasOpCard
+        batch={{
+          ops: [
+            { op: "save_asset", target: "n1" },
+            { op: "insert_asset", assetId: "asset-1" },
+          ],
+        }}
+      />,
+    );
+    expect(markup).toContain("存入素材库");
+    expect(markup).toContain("从素材库插入");
+  });
 });

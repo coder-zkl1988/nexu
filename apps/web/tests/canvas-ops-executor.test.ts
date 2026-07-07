@@ -53,7 +53,20 @@ vi.mock("../src/lib/canvas/canvas-image-ops", () => ({
 vi.mock("../src/lib/canvas/config-node-logic", () => ({
   runConfigGeneration: vi.fn(() => Promise.resolve(true)),
 }));
+// Asset-library seams. saveNodeAsAsset is deferred (async storage write);
+// insertAssetToCanvas is synchronous. The insert mock creates a REAL store node
+// (via addNode) so the executor's ref registration, moveNode and one-undo
+// coalescing can be asserted against real state; the default returns null so the
+// unknown-asset error path can be exercised per-test with mockReturnValueOnce.
+vi.mock("../src/lib/canvas/canvas-assets", () => ({
+  saveNodeAsAsset: vi.fn(() => Promise.resolve(true)),
+  insertAssetToCanvas: vi.fn(() => null),
+}));
 
+import {
+  insertAssetToCanvas,
+  saveNodeAsAsset,
+} from "../src/lib/canvas/canvas-assets";
 import {
   describeImageSource,
   enhanceImageIntoNode,
@@ -89,6 +102,8 @@ const mockApplyCrop = vi.mocked(applyCrop);
 const mockApplySplit = vi.mocked(applySplit);
 const mockApplyUpscale = vi.mocked(applyUpscaleInterpolate);
 const mockRunConfig = vi.mocked(runConfigGeneration);
+const mockSaveAsset = vi.mocked(saveNodeAsAsset);
+const mockInsertAsset = vi.mocked(insertAssetToCanvas);
 
 // Servable state-file URL vs. non-servable dataURL — servableSourceOf keys on
 // this exact shape (the real helper is used, not mocked).
@@ -508,6 +523,112 @@ describe("applyCanvasOps — image-editing ops (image-ops B)", () => {
     expect(getCanvasState().nodes.length).toBe(preNodeCount + 1);
     __flushCanvasHistoryForTests();
     undo();
+    expect(getCanvasState().nodes.length).toBe(preNodeCount);
+  });
+});
+
+describe("applyCanvasOps — asset-library ops", () => {
+  it("save_asset on a real node defers saveNodeAsAsset(id) after the sync loop", () => {
+    const node = addNode({
+      type: "text",
+      title: "note",
+      metadata: { content: "hello" },
+    });
+    const result = applyCanvasOps({
+      ops: [{ op: "save_asset", target: node.id }],
+    });
+    expect(result.applied).toBe(1);
+    expect(result.errors).toEqual([]);
+    expect(mockSaveAsset).toHaveBeenCalledTimes(1);
+    expect(mockSaveAsset).toHaveBeenCalledWith(node.id);
+  });
+
+  it("save_asset on an unknown target errors and does not call saveNodeAsAsset", () => {
+    const result = applyCanvasOps({
+      ops: [{ op: "save_asset", target: "does-not-exist" }],
+    });
+    expect(result.applied).toBe(0);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain("does-not-exist");
+    expect(mockSaveAsset).not.toHaveBeenCalled();
+  });
+
+  it("save_asset can target a same-batch ref:x node", () => {
+    const result = applyCanvasOps({
+      ops: [
+        { op: "add_node", ref: "a", nodeType: "text", content: "x" },
+        { op: "save_asset", target: "ref:a" },
+      ],
+    });
+    expect(result.applied).toBe(2);
+    expect(result.errors).toEqual([]);
+    const created = getCanvasState().nodes[0];
+    expect(mockSaveAsset).toHaveBeenCalledWith(created?.id);
+  });
+
+  it("insert_asset inserts a node synchronously and registers it (ref-able)", () => {
+    // Mock returns a REAL store node so ref wiring can target it downstream.
+    mockInsertAsset.mockImplementationOnce(() =>
+      addNode({ type: "image", title: "from library" }),
+    );
+    const result = applyCanvasOps({
+      ops: [
+        { op: "insert_asset", assetId: "asset-1", ref: "ins" },
+        { op: "add_node", ref: "b", nodeType: "text", title: "B" },
+        { op: "connect", from: "ref:ins", to: "ref:b" },
+      ],
+    });
+    expect(result.applied).toBe(3);
+    expect(result.errors).toEqual([]);
+    expect(mockInsertAsset).toHaveBeenCalledWith("asset-1");
+
+    const state = getCanvasState();
+    const inserted = state.nodes.find((n) => n.title === "from library");
+    const b = state.nodes.find((n) => n.title === "B");
+    // The connect via ref:ins proves the inserted node was registered.
+    expect(state.connections).toHaveLength(1);
+    expect(state.connections[0]?.fromNodeId).toBe(inserted?.id);
+    expect(state.connections[0]?.toNodeId).toBe(b?.id);
+  });
+
+  it("insert_asset with x/y moves the inserted node", () => {
+    mockInsertAsset.mockImplementationOnce(() =>
+      addNode({ type: "image", title: "placed", position: { x: 5, y: 6 } }),
+    );
+    applyCanvasOps({
+      ops: [{ op: "insert_asset", assetId: "asset-1", x: 300, y: 400 }],
+    });
+    const node = getCanvasState().nodes.find((n) => n.title === "placed");
+    expect(node?.position).toEqual({ x: 300, y: 400 });
+  });
+
+  it("insert_asset for an unknown asset (mock null) errors and adds no node", () => {
+    const before = getCanvasState().nodes.length;
+    const result = applyCanvasOps({
+      ops: [{ op: "insert_asset", assetId: "asset-missing" }],
+    });
+    expect(result.applied).toBe(0);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain("asset-missing");
+    expect(getCanvasState().nodes.length).toBe(before);
+  });
+
+  it("insert_asset mixed with add_node coalesces into a single undo step", () => {
+    mockInsertAsset.mockImplementationOnce(() =>
+      addNode({ type: "image", title: "lib" }),
+    );
+    __flushCanvasHistoryForTests();
+    const preNodeCount = getCanvasState().nodes.length;
+    applyCanvasOps({
+      ops: [
+        { op: "add_node", ref: "a", nodeType: "text", title: "A" },
+        { op: "insert_asset", assetId: "asset-1" },
+      ],
+    });
+    expect(getCanvasState().nodes.length).toBe(preNodeCount + 2);
+    __flushCanvasHistoryForTests();
+    undo();
+    // ONE undo reverts BOTH the add_node and the insert_asset node.
     expect(getCanvasState().nodes.length).toBe(preNodeCount);
   });
 });

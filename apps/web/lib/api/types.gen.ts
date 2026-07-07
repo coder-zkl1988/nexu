@@ -6563,6 +6563,11 @@ export type GetApiV1CanvasMirrorResponses = {
             scale: number;
         };
         selectedNodeIds: Array<string>;
+        assets?: Array<{
+            id: string;
+            kind: 'text' | 'image' | 'video' | 'audio';
+            title: string;
+        }>;
     };
 };
 
@@ -6592,6 +6597,11 @@ export type PostApiV1CanvasMirrorData = {
             scale: number;
         };
         selectedNodeIds: Array<string>;
+        assets?: Array<{
+            id: string;
+            kind: 'text' | 'image' | 'video' | 'audio';
+            title: string;
+        }>;
     };
     path?: never;
     query?: never;

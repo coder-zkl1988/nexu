@@ -128,6 +128,22 @@ export const canvasOpSchema = z.discriminatedUnion("op", [
     op: z.literal("describe_image"),
     target: z.string().min(1),
   }),
+  // ── Asset-library ops (W7) ─────────────────────────────────────
+  // save_asset stores a node's content in the asset library (async storage
+  // write → the executor DEFERS it after the sync loop, like run_generation).
+  // insert_asset places a saved asset back on the canvas as a new node; it is
+  // SYNCHRONOUS so the created node is ref-able and joins the one-undo batch.
+  z.object({
+    op: z.literal("save_asset"),
+    target: z.string().min(1),
+  }),
+  z.object({
+    op: z.literal("insert_asset"),
+    assetId: z.string().min(1),
+    ref: z.string().min(1).max(64).optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+  }),
 ]);
 export type CanvasOp = z.infer<typeof canvasOpSchema>;
 
@@ -153,6 +169,7 @@ const MIRROR_ID_MAX = 200;
 const MIRROR_TITLE_MAX = 1000;
 const MIRROR_NODES_MAX = 5000;
 const MIRROR_CONNECTIONS_MAX = 10000;
+const MIRROR_ASSETS_MAX = 2000;
 
 export const canvasMirrorNodeSchema = z.object({
   id: z.string().max(MIRROR_ID_MAX),
@@ -175,6 +192,18 @@ export type CanvasMirrorConnection = z.infer<
   typeof canvasMirrorConnectionSchema
 >;
 
+/**
+ * One saved asset in the compact mirror. Only id/kind/title are surfaced so the
+ * agent can reference an asset with insert_asset — the asset content itself is
+ * never leaked into the mirror.
+ */
+export const canvasMirrorAssetSchema = z.object({
+  id: z.string().max(MIRROR_ID_MAX),
+  kind: z.enum(["text", "image", "video", "audio"]),
+  title: z.string().max(MIRROR_TITLE_MAX),
+});
+export type CanvasMirrorAsset = z.infer<typeof canvasMirrorAssetSchema>;
+
 /** Compact snapshot of the active canvas board. Single active board only. */
 export const canvasMirrorSchema = z.object({
   boardId: z.string().max(MIRROR_ID_MAX),
@@ -188,5 +217,9 @@ export const canvasMirrorSchema = z.object({
     scale: z.number(),
   }),
   selectedNodeIds: z.array(z.string().max(MIRROR_ID_MAX)).max(MIRROR_NODES_MAX),
+  // Saved asset library (id/kind/title only). `.default([])` keeps back-compat:
+  // an older frontend push (or the empty default) that omits `assets` parses to
+  // an empty array rather than failing validation.
+  assets: z.array(canvasMirrorAssetSchema).max(MIRROR_ASSETS_MAX).default([]),
 });
 export type CanvasMirror = z.infer<typeof canvasMirrorSchema>;

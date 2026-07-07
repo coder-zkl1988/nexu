@@ -19716,6 +19716,38 @@
                       "maxLength": 200
                     },
                     "maxItems": 5000
+                  },
+                  "assets": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "maxLength": 200
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "text",
+                            "image",
+                            "video",
+                            "audio"
+                          ]
+                        },
+                        "title": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "title"
+                      ]
+                    },
+                    "maxItems": 2000,
+                    "default": []
                   }
                 },
                 "required": [
@@ -19884,6 +19916,38 @@
                         "maxLength": 200
                       },
                       "maxItems": 5000
+                    },
+                    "assets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "text",
+                              "image",
+                              "video",
+                              "audio"
+                            ]
+                          },
+                          "title": {
+                            "type": "string",
+                            "maxLength": 1000
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "title"
+                        ]
+                      },
+                      "maxItems": 2000,
+                      "default": []
                     }
                   },
                   "required": [

@@ -40,6 +40,10 @@ vi.mock("../lib/api/sdk.gen", () => ({
 
 import { postApiV1CanvasMirror } from "../lib/api/sdk.gen";
 import {
+  __resetCanvasAssetsForTests,
+  saveNodeAsAsset,
+} from "../src/lib/canvas/canvas-assets";
+import {
   attachBatchChildren,
   toggleBatchExpanded,
 } from "../src/lib/canvas/canvas-batch";
@@ -49,6 +53,7 @@ import {
   pushCanvasMirror,
   scheduleCanvasMirrorPush,
 } from "../src/lib/canvas/canvas-mirror";
+import { __setAssetStorageForTests } from "../src/lib/canvas/canvas-persistence";
 import {
   __resetCanvasForTests,
   addNode,
@@ -61,6 +66,8 @@ const mockPush = vi.mocked(postApiV1CanvasMirror);
 beforeEach(() => {
   __resetCanvasForTests();
   __resetCanvasMirrorForTests();
+  __resetCanvasAssetsForTests();
+  __setAssetStorageForTests(null);
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -116,6 +123,29 @@ describe("buildCanvasMirror", () => {
     expect(mirror.viewport).toEqual({ x: 7, y: 8, scale: 1.25 });
     // addNode selects the created node — B is the last added.
     expect(mirror.selectedNodeIds).toEqual([b.id]);
+  });
+
+  it("includes the saved asset library (id/kind/title only, no content)", async () => {
+    // Populate the asset store by saving a node as an asset (in-memory storage).
+    const node = addNode({
+      type: "text",
+      title: "Saved note",
+      metadata: { content: "secret asset body" },
+    });
+    expect(await saveNodeAsAsset(node.id)).toBe(true);
+
+    const mirror = buildCanvasMirror();
+    expect(mirror.assets).toHaveLength(1);
+    const asset = mirror.assets[0];
+    expect(asset).toMatchObject({ kind: "text", title: "Saved note" });
+    expect(typeof asset?.id).toBe("string");
+    // Content is NEVER leaked into the mirror.
+    expect(JSON.stringify(asset)).not.toContain("secret asset body");
+    expect(asset).not.toHaveProperty("content");
+  });
+
+  it("assets is an empty array when the library is empty", () => {
+    expect(buildCanvasMirror().assets).toEqual([]);
   });
 
   it("excludes hidden batch children (collapsed root)", () => {

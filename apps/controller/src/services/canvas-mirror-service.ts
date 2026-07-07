@@ -17,6 +17,7 @@ function emptyMirror(): CanvasMirror {
     connections: [],
     viewport: { x: 0, y: 0, scale: 1 },
     selectedNodeIds: [],
+    assets: [],
   };
 }
 

@@ -67,6 +67,15 @@ function renderMirror(mirror) {
   for (const conn of connections) {
     lines.push(`  ~ ${conn.id}: ${conn.from} -> ${conn.to}`);
   }
+  const assets = Array.isArray(mirror?.assets) ? mirror.assets : [];
+  if (assets.length > 0) {
+    lines.push("assets (use insert_asset with the id):");
+    for (const asset of assets) {
+      lines.push(
+        `  # ${asset.id} [${asset.kind}] ${JSON.stringify(String(asset.title || ""))}`,
+      );
+    }
+  }
   return lines.join("\n");
 }
 
@@ -113,15 +122,19 @@ function buildCanvasOpResult(ops, summary) {
   };
 }
 
-const CANVAS_READ_DESCRIPTION = `Read a compact snapshot of the Nexu canvas (the visual workbench in the sidebar): every node's id, type, title, position and whether it has content, plus connections, viewport and selection. NO arguments.
+const CANVAS_READ_DESCRIPTION = `Read a compact snapshot of the Nexu canvas (the visual workbench in the sidebar): every node's id, type, title, position and whether it has content, plus connections, viewport and selection. It ALSO returns the saved asset library (each asset's id / kind / title) — pass one of those ids to insert_asset to place a saved asset back on the canvas. NO arguments.
 
 ALWAYS call this before canvas_op so you target real node ids and place new nodes where they fit. Returns a short "canvas unavailable" line if the canvas can't be read (then skip canvas edits).`;
 
-const CANVAS_OP_DESCRIPTION = `Emit a batch of canvas operations to edit the Nexu canvas (add/update/delete nodes, connect/disconnect, set viewport, select, run generation). The batch is PROPOSED to the user as a confirm card and, once confirmed, applied as ONE undoable step.
+const CANVAS_OP_DESCRIPTION = `Emit a batch of canvas operations to edit the Nexu canvas (structural edits, image editing, and asset-library save/insert). The batch is PROPOSED to the user as a confirm card and, once confirmed, applied as ONE undoable step.
 
-READ FIRST: call canvas_read to get current node ids before referencing them.
-WIRING NEW NODES: give each add_node a client-chosen "ref" handle; later ops in the SAME batch target that new node with "ref:<name>" (e.g. add_node ref "a", then connect from "ref:a" to an existing node id). update_node / delete_node / connect / run_generation targets accept a real node id OR "ref:<name>".
-Ops: add_node{ref,nodeType,title?,x?,y?,content?}; update_node{target,title?,x?,y?,content?}; delete_node{target}; connect{from,to}; delete_connection{connectionId}; set_viewport{x,y,scale}; select{targets[]}; run_generation{target,prompt?}. nodeType ∈ text|image|video|audio|config.
+READ FIRST: call canvas_read to get current node ids (and saved asset ids) before referencing them.
+WIRING NEW NODES: give each add_node (or insert_asset) a client-chosen "ref" handle; later ops in the SAME batch target that new node with "ref:<name>" (e.g. add_node ref "a", then connect from "ref:a" to an existing node id). target / from / to accept a real node id OR "ref:<name>".
+Ops:
+- structural: add_node{ref,nodeType,title?,x?,y?,content?}; update_node{target,title?,x?,y?,w?,h?,content?}; delete_node{target}; connect{from,to}; delete_connection{connectionId}; set_viewport{x,y,scale}; select{targets[]}; run_generation{target,prompt?}. nodeType ∈ text|image|video|audio|config.
+- image editing (on an existing image node): crop_image{target,x,y,w,h}; split_image{target,rows,cols}; upscale_image{target,targetLongEdge:1024|2048|4096,algorithm:high|low|pixel}; enhance_image{target,operation:super-resolve|multi-angle,targetLongEdge?,horizontalDeg?,pitchDeg?,distance?,wideAngle?,prompt?}; describe_image{target}.
+- asset library: save_asset{target} (store a node's content as a reusable asset); insert_asset{assetId,ref?,x?,y?} (assetId comes from canvas_read's asset list).
+enhance_image / describe_image need a servable image (a generated/served image, not a freshly uploaded dataURL).
 Keep batches focused (≤50 ops). After calling, reply with one short confirmation — do not restate the ops.`;
 
 const plugin = {
@@ -163,7 +176,7 @@ const plugin = {
             ops: {
               type: "array",
               description:
-                "The batch of canvas operations. Each item has a string `op` discriminator (add_node, update_node, delete_node, connect, delete_connection, set_viewport, select, run_generation).",
+                "The batch of canvas operations. Each item has a string `op` discriminator — structural (add_node, update_node, delete_node, connect, delete_connection, set_viewport, select, run_generation), image editing (crop_image, split_image, upscale_image, enhance_image, describe_image), or asset library (save_asset, insert_asset). See the tool description for each op's fields.",
               items: { type: "object" },
             },
             summary: {
@@ -192,7 +205,7 @@ const plugin = {
             return textResult(
               JSON.stringify({
                 error:
-                  "each canvas op must be an object with a string `op` field (add_node, update_node, delete_node, connect, delete_connection, set_viewport, select, run_generation).",
+                  "each canvas op must be an object with a string `op` field (a structural, image-editing, or asset-library op — see the canvas_op tool description for the full menu).",
               }),
               true,
             );

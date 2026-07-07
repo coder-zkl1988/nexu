@@ -22,6 +22,7 @@
  */
 
 import { type CanvasOp, canvasOpBatchSchema } from "@nexu/shared";
+import { insertAssetToCanvas, saveNodeAsAsset } from "./canvas-assets";
 import {
   describeImageSource,
   enhanceImageIntoNode,
@@ -323,6 +324,34 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
               }
             }),
         );
+        applied += 1;
+        break;
+      }
+      case "save_asset": {
+        // Deferred like run_generation — the storage write is async and must not
+        // split the coalesced undo step.
+        const id = resolveTarget(op.target);
+        if (!id) break;
+        deferredGenerations.push(() => void saveNodeAsAsset(id));
+        applied += 1;
+        break;
+      }
+      case "insert_asset": {
+        // Synchronous structural op: insertAssetToCanvas adds the node inline so
+        // it is ref-able and joins the one-undo batch, exactly like add_node.
+        const node = insertAssetToCanvas(op.assetId);
+        if (!node) {
+          errors.push(`未找到素材：${op.assetId}`);
+          break;
+        }
+        if (op.x !== undefined || op.y !== undefined) {
+          moveNode(node.id, {
+            x: op.x ?? node.position.x,
+            y: op.y ?? node.position.y,
+          });
+        }
+        if (op.ref) refs.set(op.ref, node.id);
+        liveNodeIds.add(node.id);
         applied += 1;
         break;
       }

@@ -16,6 +16,7 @@
 
 import type { CanvasMirror } from "@nexu/shared";
 import { postApiV1CanvasMirror } from "../../../lib/api/sdk.gen";
+import { getCanvasAssets } from "./canvas-assets";
 import { isHiddenBatchChild } from "./canvas-batch";
 import { getCanvasBoards } from "./canvas-boards";
 import { getCanvasState } from "./canvas-store";
@@ -61,6 +62,11 @@ export function buildCanvasMirror(): CanvasMirror {
       scale: state.viewport.scale,
     },
     selectedNodeIds: [...state.selectedNodeIds],
+    // Compact asset list (id/kind/title only — no content) so the agent can
+    // reference saved assets with insert_asset.
+    assets: getCanvasAssets()
+      .assets.slice(0, 2000)
+      .map((asset) => ({ id: asset.id, kind: asset.kind, title: asset.title })),
   };
 }
 

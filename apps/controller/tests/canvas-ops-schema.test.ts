@@ -191,6 +191,45 @@ describe("canvasOpSchema — image-editing ops (image-ops B)", () => {
   });
 });
 
+describe("canvasOpSchema — asset-library ops", () => {
+  it("parses save_asset with a target", () => {
+    expect(
+      canvasOpSchema.safeParse({ op: "save_asset", target: "node-1" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects save_asset with an empty target", () => {
+    expect(
+      canvasOpSchema.safeParse({ op: "save_asset", target: "" }).success,
+    ).toBe(false);
+  });
+
+  it("parses insert_asset with just an assetId", () => {
+    expect(
+      canvasOpSchema.safeParse({ op: "insert_asset", assetId: "asset-1" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("parses insert_asset with ref + x/y", () => {
+    expect(
+      canvasOpSchema.safeParse({
+        op: "insert_asset",
+        assetId: "asset-1",
+        ref: "a",
+        x: 10,
+        y: 20,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects insert_asset with an empty assetId", () => {
+    expect(
+      canvasOpSchema.safeParse({ op: "insert_asset", assetId: "" }).success,
+    ).toBe(false);
+  });
+});
+
 describe("canvasOpBatchSchema", () => {
   const validOp = { op: "delete_node", target: "n1" } as const;
 
@@ -255,6 +294,7 @@ describe("canvasMirrorSchema", () => {
       connections: [{ id: "c1", from: "node-1", to: "node-2" }],
       viewport: { x: 12, y: -8, scale: 0.75 },
       selectedNodeIds: ["node-1"],
+      assets: [],
     };
     const parsed = canvasMirrorSchema.parse(mirror);
     expect(parsed).toEqual(mirror);
@@ -324,5 +364,50 @@ describe("canvasMirrorSchema", () => {
     expect(
       canvasMirrorSchema.safeParse({ ...base, nodes: [node] }).success,
     ).toBe(true);
+  });
+});
+
+describe("canvasMirrorSchema — asset list", () => {
+  const base = {
+    boardId: "sidebar",
+    nodes: [],
+    connections: [],
+    viewport: { x: 0, y: 0, scale: 1 },
+    selectedNodeIds: [],
+  };
+
+  it("round-trips an assets array with all four kinds", () => {
+    const assets = [
+      { id: "a1", kind: "text", title: "Note" },
+      { id: "a2", kind: "image", title: "Cat" },
+      { id: "a3", kind: "video", title: "Clip" },
+      { id: "a4", kind: "audio", title: "Tune" },
+    ];
+    const parsed = canvasMirrorSchema.parse({ ...base, assets });
+    expect(parsed.assets).toEqual(assets);
+  });
+
+  it("defaults assets to [] when omitted (back-compat with older pushes)", () => {
+    const parsed = canvasMirrorSchema.parse(base);
+    expect(parsed.assets).toEqual([]);
+  });
+
+  it("rejects an over-cap assets array (2001)", () => {
+    const asset = { id: "a", kind: "text" as const, title: "t" };
+    expect(
+      canvasMirrorSchema.safeParse({
+        ...base,
+        assets: Array.from({ length: 2001 }, () => asset),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects an asset with a bad kind", () => {
+    expect(
+      canvasMirrorSchema.safeParse({
+        ...base,
+        assets: [{ id: "a", kind: "sticker", title: "t" }],
+      }).success,
+    ).toBe(false);
   });
 });

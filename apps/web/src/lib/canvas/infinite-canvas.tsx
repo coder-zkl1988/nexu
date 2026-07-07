@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ensureAssetsLoaded, useCanvasAssets } from "./canvas-assets";
 import {
   isHiddenBatchChild,
   setBatchPrimary,
@@ -302,6 +303,9 @@ export function CanvasSurface({ className }: { className?: string }) {
     selectedConnectionId,
   } = useCanvas();
   const { gridMode } = useCanvasUiPrefs();
+  // Subscribe to the asset library so the mirror push re-fires when the saved
+  // asset set changes (agent sees new assets without opening the picker).
+  const { assets } = useCanvasAssets();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const pointerRef = useRef({ x: 0, y: 0 });
@@ -327,6 +331,9 @@ export function CanvasSurface({ className }: { className?: string }) {
   // Hydrate canvas content from IndexedDB on mount (once).
   useEffect(() => {
     void hydrateCanvasFromStorage();
+    // Hydrate the saved asset library too so the first mirror push already
+    // carries any assets the agent can insert.
+    void ensureAssetsLoaded();
   }, []);
 
   // S8 mirror push: keep the controller mirror in sync so the agent's
@@ -340,7 +347,7 @@ export function CanvasSurface({ className }: { className?: string }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: push on any board change
   useEffect(() => {
     scheduleCanvasMirrorPush();
-  }, [nodes, connections, viewport, selectedNodeIds]);
+  }, [nodes, connections, viewport, selectedNodeIds, assets]);
 
   // Stable: reads the live viewport from the store, never from a closure.
   const toWorld = useCallback((clientX: number, clientY: number) => {

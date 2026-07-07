@@ -56,6 +56,10 @@ function opLabel(op: CanvasOp): string {
       return op.operation === "multi-angle" ? "多角度" : "超分";
     case "describe_image":
       return "反推提示词";
+    case "save_asset":
+      return "存入素材库";
+    case "insert_asset":
+      return "从素材库插入";
   }
 }
 
