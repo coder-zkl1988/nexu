@@ -28,6 +28,7 @@ import {
   pasteClipboard,
 } from "./canvas-clipboard";
 import { createConnectedNode } from "./canvas-create";
+import { CanvasDialogs } from "./canvas-dialogs-mount";
 import { FloatingMenu, clampMenuPosition } from "./canvas-floating-menu";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import {
@@ -57,7 +58,6 @@ import {
 } from "./canvas-store";
 import { CanvasToolbar } from "./canvas-toolbar";
 import { applyConnectionEffects } from "./connection-effects";
-import { CanvasDialogs } from "./crop-dialog";
 import { HoverToolbar } from "./hover-toolbar";
 import { NodeBody } from "./node-views";
 import { PromptPanel } from "./prompt-panel";

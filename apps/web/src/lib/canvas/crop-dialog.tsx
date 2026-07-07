@@ -1,24 +1,10 @@
 /**
- * crop-dialog.tsx — interactive crop dialog + CanvasDialogs mount point (W3.2).
+ * crop-dialog.tsx — interactive crop dialog (W3.2, W4.0).
  *
- * CanvasDialogs is mounted ONCE inside CanvasSurface (screen-space, after menus).
- * It switches on useCanvasDialog().kind to render the appropriate dialog.
+ * CanvasDialogs mount point has moved to canvas-dialogs-mount.tsx (W4.0).
  *
- * Media bytes loading strategy:
- *   fetch(url) → blob() → createImageBitmap(blob)
- *   This sidesteps canvas cross-origin taint: drawing a cross-origin <img> via
- *   drawImage would cause canvas.toDataURL() to throw SecurityError.  Fetching
- *   the bytes first + createImageBitmap avoids CORS taint entirely.
- *   NOTE: This is a media-bytes fetch, NOT an API call. The raw-fetch ban applies
- *   to API data only (SDK-only); media blob loading via fetch is the sanctioned
- *   approach per the brief.
- *   dataURLs are also passed through fetch() — the browser supports data: URLs.
- *
- * Servable URLs like /api/v1/media/state-file?path=... are relative to the web
- * origin when running inside Vite dev (proxied to controller). In Electron, the
- * web app resolves against the same origin (controller base URL injected via
- * VITE_API_BASE_URL or left relative). We resolve them against the SDK client's
- * configured baseUrl so the same code works in both environments.
+ * Media bytes loading strategy: uses the shared loadImageBitmap helper from
+ * ./load-image-bitmap (fetch → blob → createImageBitmap + objectUrl).
  */
 
 import {
@@ -30,12 +16,7 @@ import {
 import { Crop } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AngleDialog } from "./angle-dialog";
-import {
-  type CanvasDialogState,
-  closeCanvasDialog,
-  useCanvasDialog,
-} from "./canvas-dialogs";
+import { type CanvasDialogState, closeCanvasDialog } from "./canvas-dialogs";
 import { addNode, getCanvasState } from "./canvas-store";
 import {
   type CropBox,
@@ -43,10 +24,7 @@ import {
   applyCropDrag,
   fitScale,
 } from "./crop-geometry";
-import { resolveMediaUrl } from "./load-image-bitmap";
-import { MaskDialog } from "./mask-dialog";
-import { SplitDialog } from "./split-dialog";
-import { UpscaleDialog } from "./upscale-dialog";
+import { loadImageBitmap } from "./load-image-bitmap";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -54,23 +32,9 @@ const PREVIEW_MAX_W = 640;
 const PREVIEW_MAX_H = 400;
 const HANDLE_SIZE = 10; // px, visual dot
 
-// ── CanvasDialogs — the single mount point ─────────────────────────────────
-
-/** Mount once inside CanvasSurface. Switches on dialog kind. */
-export function CanvasDialogs() {
-  const dialog = useCanvasDialog();
-  if (!dialog) return null;
-  if (dialog.kind === "crop") return <CropDialog state={dialog} />;
-  if (dialog.kind === "split") return <SplitDialog state={dialog} />;
-  if (dialog.kind === "upscale") return <UpscaleDialog state={dialog} />;
-  if (dialog.kind === "mask") return <MaskDialog state={dialog} />;
-  if (dialog.kind === "angle") return <AngleDialog state={dialog} />;
-  return null;
-}
-
 // ── CropDialog ─────────────────────────────────────────────────────────────
 
-function CropDialog({
+export function CropDialog({
   state,
 }: {
   state: NonNullable<CanvasDialogState> & { kind: "crop" };
@@ -107,25 +71,25 @@ function CropDialog({
     }
 
     let cancelled = false;
-    let createdObjUrl: string | null = null;
+    let loaded: { bitmap: ImageBitmap; objectUrl: string } | null = null;
 
     (async () => {
       try {
-        const resolvedUrl = resolveMediaUrl(srcUrl);
-        const resp = await fetch(resolvedUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        if (cancelled) return;
-
-        const bm = await createImageBitmap(blob);
+        const result = await loadImageBitmap(srcUrl);
         if (cancelled) {
-          bm.close();
+          result.bitmap.close();
+          URL.revokeObjectURL(result.objectUrl);
           return;
         }
-        createdObjUrl = URL.createObjectURL(blob);
-        setBitmap(bm);
-        setObjUrl(createdObjUrl);
-        setBox({ x: 0, y: 0, width: bm.width, height: bm.height });
+        loaded = result;
+        setBitmap(result.bitmap);
+        setObjUrl(result.objectUrl);
+        setBox({
+          x: 0,
+          y: 0,
+          width: result.bitmap.width,
+          height: result.bitmap.height,
+        });
       } catch {
         if (cancelled) return;
         toast.error("图片加载失败");
@@ -137,7 +101,10 @@ function CropDialog({
 
     return () => {
       cancelled = true;
-      if (createdObjUrl) URL.revokeObjectURL(createdObjUrl);
+      if (loaded) {
+        loaded.bitmap.close();
+        URL.revokeObjectURL(loaded.objectUrl);
+      }
     };
   }, [srcUrl]);
 
