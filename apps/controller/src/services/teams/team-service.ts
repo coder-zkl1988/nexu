@@ -1,8 +1,5 @@
 import type {
-  AutoRunTeamTaskRequest,
-  AutoRunTeamTaskResponse,
   CreateTeamRequest,
-  RunDefaultTeamTaskResponse,
   RunTeamTaskRequest,
   RunTeamTaskResponse,
   TeamBoardResponse,
@@ -15,7 +12,6 @@ import { logger } from "../../lib/logger.js";
 import type { ExpertLedger } from "../experthub/types.js";
 import type { OpenClawGatewayService } from "../openclaw-gateway-service.js";
 import type { TeamLedgerStore } from "./team-ledger.js";
-import type { TeamPlanner, TeamPlannerMember } from "./team-planner.js";
 
 /** Cap the member persona block so notes stay within the worker-context budget. */
 const MAX_PERSONA_CHARS = 3_000;
@@ -43,13 +39,6 @@ export class TeamAssigneeNotMemberError extends Error {
   constructor(public readonly slug: string) {
     super(`Subtask assignee is not a team member: ${slug}`);
     this.name = "TeamAssigneeNotMemberError";
-  }
-}
-
-export class TeamPlanFailedError extends Error {
-  constructor(public readonly teamId: string) {
-    super(`The lead could not produce a task plan for team: ${teamId}`);
-    this.name = "TeamPlanFailedError";
   }
 }
 
@@ -102,17 +91,10 @@ export type TeamServiceDeps = {
   getGlobalModelId: () => Promise<string>;
   genId: () => string;
   genBotSlug: (base: string) => string;
-  /** Agentic decomposition (Phase 2): the lead agent plans the subtasks. */
-  planner: Pick<TeamPlanner, "planSubtasks">;
-  /** Resolve a member expert's short description (used in the planning roster). */
+  /** Resolve a member expert's short description (used in the lead's roster). */
   resolveExpertDescription: (slug: string) => Promise<string | null>;
   /** Cascade-delete the team's workflows when the team is removed. */
   removeTeamWorkflows: (teamId: string) => Promise<number>;
-  /**
-   * Shortlist catalog experts for a task (teamless auto-dispatch). Returns a
-   * planner roster drawn from the WHOLE catalog, not a team's member set.
-   */
-  recallExperts: (task: string) => Promise<TeamPlannerMember[]>;
   /**
    * Send one chat turn to a (possibly brand-new) subagent lane. Same
    * controller-driven execution primitive as the SOP engine (design doc
@@ -401,84 +383,6 @@ export class TeamService {
     const marked: TeamResponse = { ...created, isDefault: true };
     await this.deps.ledger.upsert(marked);
     return marked;
-  }
-
-  /**
-   * Teamless auto-dispatch: plan against a catalog-wide shortlist, enroll
-   * (auto-installing) whatever experts the plan assigns into the default
-   * team, then dispatch like a normal auto run. The chat entry point for
-   * "just pull the right experts for this" without creating a team first.
-   *
-   * TODO(dag-cleanup): dead for the auto path — `/teams/default/run-auto` now
-   * routes through TeamWorkflowService.autoComposeAndRun (DAG engine). Kept
-   * (with runTaskAuto + planSubtasks) pending removal in a follow-up.
-   */
-  async runTaskAutoDefault(
-    input: AutoRunTeamTaskRequest,
-  ): Promise<RunDefaultTeamTaskResponse> {
-    const team = await this.ensureDefaultTeam();
-
-    const candidates = await this.deps.recallExperts(input.task);
-    const plan = await this.deps.planner.planSubtasks({
-      task: input.task,
-      members: candidates,
-      agentId: team.leadBotId,
-      maxSubtasks: input.maxSubtasks,
-    });
-    if (plan.length === 0) {
-      throw new TeamPlanFailedError(team.id);
-    }
-
-    // Enroll every assigned expert that isn't a member yet (auto-installs).
-    const assigned = [...new Set(plan.map((subtask) => subtask.assigneeSlug))];
-    const current = new Set(team.members.map((member) => member.expertSlug));
-    const missing = assigned.filter((slug) => !current.has(slug));
-    const effectiveTeam =
-      missing.length > 0
-        ? await this.updateTeam(team.id, {
-            memberSlugs: [...current, ...missing],
-          })
-        : team;
-
-    const result = await this.dispatchSubtasks(effectiveTeam, input.task, plan);
-    return { ...result, plan, teamId: team.id };
-  }
-
-  /**
-   * Phase 2: the lead's model decomposes the task; the controller dispatches.
-   *
-   * TODO(dag-cleanup): dead for the auto path — `/teams/{id}/run-auto` now
-   * routes through TeamWorkflowService.autoComposeAndRun (DAG engine). Kept
-   * pending removal in a follow-up (dispatchSubtasks stays live via runTask).
-   */
-  async runTaskAuto(
-    teamId: string,
-    input: AutoRunTeamTaskRequest,
-  ): Promise<AutoRunTeamTaskResponse> {
-    const team = this.requireTeam(teamId);
-
-    const roster: TeamPlannerMember[] = await Promise.all(
-      team.members.map(async (member) => ({
-        slug: member.expertSlug,
-        name: member.name ?? member.expertSlug,
-        description:
-          (await this.deps.resolveExpertDescription(member.expertSlug)) ?? "",
-      })),
-    );
-
-    const plan = await this.deps.planner.planSubtasks({
-      task: input.task,
-      members: roster,
-      // The planning turn runs AS the lead agent (its own configured model).
-      agentId: team.leadBotId,
-      maxSubtasks: input.maxSubtasks,
-    });
-    if (plan.length === 0) {
-      throw new TeamPlanFailedError(teamId);
-    }
-
-    const result = await this.dispatchSubtasks(team, input.task, plan);
-    return { ...result, plan };
   }
 
   private requireTeam(teamId: string): TeamResponse {

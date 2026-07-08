@@ -73,8 +73,6 @@ function buildDeps(
       updateTeam: vi.fn(),
       deleteTeam: vi.fn(),
       runTask: vi.fn(),
-      runTaskAuto: vi.fn(),
-      runTaskAutoDefault: vi.fn(),
       ensureDefaultTeam: overrides.ensureDefaultTeam ?? vi.fn(async () => TEAM),
     },
     teamWorkflowService: {

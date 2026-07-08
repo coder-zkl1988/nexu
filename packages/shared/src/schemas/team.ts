@@ -107,23 +107,6 @@ export const autoRunTeamTaskRequestSchema = z.object({
   maxSubtasks: z.number().int().min(1).max(20).optional(),
 });
 
-export const autoRunTeamTaskResponseSchema = runTeamTaskResponseSchema.extend({
-  /** The subtask breakdown the lead produced. */
-  plan: z.array(teamSubtaskInputSchema),
-});
-
-/**
- * Teamless entry point: dispatch a task without pre-creating a team. The
- * controller lazily creates (or reuses) the system default team, plans
- * against the whole expert catalog, auto-enrolls (and auto-installs) the
- * experts the plan assigns, then dispatches as a normal auto run.
- */
-export const runDefaultTeamTaskResponseSchema =
-  autoRunTeamTaskResponseSchema.extend({
-    /** The default team the run landed on (lazily created). */
-    teamId: z.string(),
-  });
-
 /**
  * Auto team run response (DAG engine). Both auto endpoints
  * (`/teams/default/run-auto`, `/teams/{id}/run-auto`) compose a workflow DAG
@@ -176,12 +159,6 @@ export type RunTeamTaskRequest = z.infer<typeof runTeamTaskRequestSchema>;
 export type RunTeamTaskResponse = z.infer<typeof runTeamTaskResponseSchema>;
 export type AutoRunTeamTaskRequest = z.infer<
   typeof autoRunTeamTaskRequestSchema
->;
-export type AutoRunTeamTaskResponse = z.infer<
-  typeof autoRunTeamTaskResponseSchema
->;
-export type RunDefaultTeamTaskResponse = z.infer<
-  typeof runDefaultTeamTaskResponseSchema
 >;
 export type RunAutoTeamTaskResponse = z.infer<
   typeof runAutoTeamTaskResponseSchema

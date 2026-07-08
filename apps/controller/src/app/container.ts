@@ -59,13 +59,11 @@ import { ScheduleService } from "../services/schedule-service.js";
 import { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.js";
 import { SessionService } from "../services/session-service.js";
 import { SkillhubService } from "../services/skillhub-service.js";
-import { recallExperts } from "../services/teams/expert-recall.js";
 import {
   readLastAssistantReply,
   readSubagentSessionEntry,
 } from "../services/teams/subagent-session-reader.js";
 import { TeamLedgerStore } from "../services/teams/team-ledger.js";
-import { TeamPlanner } from "../services/teams/team-planner.js";
 import { TeamService } from "../services/teams/team-service.js";
 import { WorkflowComposer } from "../services/teams/team-workflow-composer.js";
 import { TeamWorkflowLedgerStore } from "../services/teams/team-workflow-ledger.js";
@@ -378,10 +376,6 @@ export async function createContainer(): Promise<ControllerContainer> {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 32)}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
-    planner: new TeamPlanner({
-      gatewayBaseUrl: env.openclawBaseUrl,
-      gatewayToken: env.openclawGatewayToken ?? null,
-    }),
     resolveExpertDescription: async (slug) => {
       const resolved = await experthubCatalogManager.resolveExpert(slug);
       return resolved?.manifest.description ?? null;
@@ -395,9 +389,6 @@ export async function createContainer(): Promise<ControllerContainer> {
     readSessionEntry: (botId, sessionKey) =>
       readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
     readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
-    // Teamless dispatch shortlists candidates from the WHOLE catalog.
-    recallExperts: async (task) =>
-      recallExperts(await experthubCatalogManager.listExperts(), task),
   });
 
   const mediaGenerationService = new MediaGenerationService({

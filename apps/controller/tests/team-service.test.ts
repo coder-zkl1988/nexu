@@ -7,7 +7,6 @@ import { TeamLedgerStore } from "../src/services/teams/team-ledger.js";
 import {
   TeamAssigneeNotMemberError,
   TeamMemberNotInstalledError,
-  TeamPlanFailedError,
   TeamService,
   type TeamServiceDeps,
 } from "../src/services/teams/team-service.js";
@@ -54,12 +53,10 @@ describe("TeamService", () => {
   let createBot: ReturnType<typeof vi.fn>;
   let updateBotSystemPrompt: ReturnType<typeof vi.fn>;
   let applyLeadPersona: ReturnType<typeof vi.fn>;
-  let planSubtasks: ReturnType<typeof vi.fn>;
   let installExpert: ReturnType<typeof vi.fn>;
   let sendChat: ReturnType<typeof vi.fn>;
   let readSessionEntry: ReturnType<typeof vi.fn>;
   let readAssistantReply: ReturnType<typeof vi.fn>;
-  let recallExperts: ReturnType<typeof vi.fn>;
   let mockExpertLedger: ExpertLedger;
 
   function buildService(overrides: Partial<TeamServiceDeps> = {}): TeamService {
@@ -83,13 +80,11 @@ describe("TeamService", () => {
         getGlobalModelId: async () => "link/default",
         genId: () => "team-id-1",
         genBotSlug: (base) => `${base}-slug`,
-        planner: { planSubtasks },
         resolveExpertDescription: async (slug) => `desc of ${slug}`,
         removeTeamWorkflows: vi.fn(async () => 0),
         sendChat,
         readSessionEntry,
         readAssistantReply,
-        recallExperts,
         ...overrides,
       },
       { pollIntervalMs: 1, stepTimeoutMs: 500, emptyDoneTimeoutMs: 50 },
@@ -142,9 +137,6 @@ describe("TeamService", () => {
     createBot = vi.fn(async () => ({ id: "bot-lead" }));
     updateBotSystemPrompt = vi.fn(async () => undefined);
     applyLeadPersona = vi.fn(async () => undefined);
-    planSubtasks = vi.fn(async () => [
-      { title: "Review the diff", assigneeSlug: "reviewer" },
-    ]);
     sendChat = vi.fn(async () => ({ status: "started" }));
     // Every lane is "done" on the first poll by default (fast, deterministic tests).
     readSessionEntry = vi.fn(async () => ({
@@ -152,10 +144,6 @@ describe("TeamService", () => {
       sessionFile: "/fake/session.jsonl",
     }));
     readAssistantReply = vi.fn(async () => "the deliverable");
-    recallExperts = vi.fn(async () => [
-      { slug: "reviewer", name: "Code Reviewer", description: "reviews" },
-      { slug: "writer", name: "Tech Writer", description: "writes" },
-    ]);
   });
 
   afterEach(() => {
@@ -466,51 +454,6 @@ describe("TeamService", () => {
     expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
   });
 
-  it("runTaskAuto plans via the lead agent then dispatches the plan", async () => {
-    const service = buildService();
-    const team = await service.createTeam({
-      name: "Docs Squad",
-      memberSlugs: ["reviewer", "writer"],
-    });
-
-    const result = await service.runTaskAuto(team.id, {
-      task: "Ship the release notes",
-    });
-
-    // The planner is called with the team roster, running as the lead agent.
-    expect(planSubtasks).toHaveBeenCalledTimes(1);
-    const plannerArg = planSubtasks.mock.calls[0][0];
-    expect(plannerArg.task).toBe("Ship the release notes");
-    expect(plannerArg.agentId).toBe("bot-lead");
-    expect(plannerArg.members.map((m: { slug: string }) => m.slug)).toEqual([
-      "reviewer",
-      "writer",
-    ]);
-
-    // The generated plan is dispatched with persona injected into notes.
-    const decomposeArg = gateway.workboardCardDecompose.mock.calls[0][0];
-    expect(decomposeArg.children[0].agentId).toBe("bot-reviewer");
-    expect(decomposeArg.children[0].notes).toContain("Code Sentinel");
-    expect(result.plan).toEqual([
-      { title: "Review the diff", assigneeSlug: "reviewer" },
-    ]);
-    expect(result.started).toHaveLength(1);
-  });
-
-  it("runTaskAuto throws when the lead returns an empty plan", async () => {
-    planSubtasks.mockResolvedValueOnce([]);
-    const service = buildService();
-    const team = await service.createTeam({
-      name: "Docs Squad",
-      memberSlugs: ["reviewer"],
-    });
-
-    await expect(
-      service.runTaskAuto(team.id, { task: "vague" }),
-    ).rejects.toBeInstanceOf(TeamPlanFailedError);
-    expect(gateway.workboardCardCreate).not.toHaveBeenCalled();
-  });
-
   it("getBoard maps cards and resolves assignee names by bot id", async () => {
     gateway.workboardCardsList.mockResolvedValueOnce({
       cards: [
@@ -619,40 +562,5 @@ describe("TeamService", () => {
     expect(second.id).toBe(first.id);
     expect(createBot).toHaveBeenCalledTimes(1); // one lead, not two
     expect(ledger.list().filter((team) => team.isDefault)).toHaveLength(1);
-  });
-
-  it("runTaskAutoDefault plans on catalog candidates and auto-enrolls assigned experts", async () => {
-    // The planner picks `writer`, which is NOT a member yet (default team
-    // starts empty) — it must be enrolled (auto-installed) before dispatch.
-    planSubtasks.mockResolvedValueOnce([
-      { title: "Draft the notes", assigneeSlug: "writer" },
-    ]);
-    let nextId = 0;
-    const service = buildService({ genId: () => `team-id-${++nextId}` });
-
-    const result = await service.runTaskAutoDefault({
-      task: "Ship the release notes",
-    });
-
-    // Planner received the CATALOG shortlist, not team members (empty team).
-    const plannerArg = planSubtasks.mock.calls[0][0];
-    expect(recallExperts).toHaveBeenCalledWith("Ship the release notes");
-    expect(plannerArg.members.map((m: { slug: string }) => m.slug)).toEqual([
-      "reviewer",
-      "writer",
-    ]);
-
-    // The assigned expert was enrolled into the default team before dispatch.
-    const team = service.getTeam(result.teamId);
-    expect(team?.isDefault).toBe(true);
-    expect(team?.members.map((m) => m.expertSlug)).toEqual(["writer"]);
-
-    // Dispatch went to the member bot on the default team's board.
-    const decomposeArg = gateway.workboardCardDecompose.mock.calls[0][0];
-    expect(decomposeArg.children[0].agentId).toBe("bot-writer");
-    expect(result.plan).toEqual([
-      { title: "Draft the notes", assigneeSlug: "writer" },
-    ]);
-    expect(result.boardId).toBe(team?.boardId);
   });
 });

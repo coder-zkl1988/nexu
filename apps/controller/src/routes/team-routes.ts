@@ -35,8 +35,6 @@ export type TeamRoutesDeps = {
     | "updateTeam"
     | "deleteTeam"
     | "runTask"
-    | "runTaskAuto"
-    | "runTaskAutoDefault"
     | "ensureDefaultTeam"
   >;
   teamWorkflowService: Pick<TeamWorkflowService, "autoComposeAndRun">;
