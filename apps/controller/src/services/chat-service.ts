@@ -5,6 +5,11 @@ import {
 } from "./attachment-extractor.js";
 import type { AttachmentStore } from "./attachment-store.js";
 import type { OpenClawGatewayService } from "./openclaw-gateway-service.js";
+import {
+  SessionBusyError,
+  type SessionRunRegistry,
+  isSessionLockedError,
+} from "./session-run-registry.js";
 
 export interface LocalChatMessageMetadata {
   width?: number;
@@ -95,6 +100,7 @@ export class ChatService {
   constructor(
     private readonly gatewayService: OpenClawGatewayService,
     private readonly attachmentStore: AttachmentStore,
+    private readonly runRegistry: SessionRunRegistry,
   ) {}
 
   /**
@@ -112,6 +118,50 @@ export class ChatService {
   ): Promise<LocalChatMessageOutput> {
     const effectiveSessionKey = sessionKey ?? `agent:${botId}:main`;
 
+    // Per-session serialization: OpenClaw guards each session transcript with a
+    // 60s-timeout file lock that a turn holds for its whole duration (a
+    // multi-device tool can block the agent for minutes). Submitting a second
+    // turn while one is active makes OpenClaw's lock acquisition time out and
+    // fail with "session file locked" → "Agent failed before reply". Reject fast
+    // with a friendly signal instead of hanging 60s then surfacing the raw error.
+    if (this.runRegistry.isBusy(effectiveSessionKey)) {
+      logger.info(
+        { botId, effectiveSessionKey },
+        "chat.local: rejected — a run is already active for this session",
+      );
+      throw new SessionBusyError(effectiveSessionKey);
+    }
+    // Optimistic mark closes the tiny window between the busy-check and the
+    // send. A terminal chat event clears it on normal completion; the catch
+    // below releases it if this turn never actually got going.
+    this.runRegistry.markStarted(effectiveSessionKey);
+    try {
+      return await this.deliverLocalMessage(
+        botId,
+        message,
+        effectiveSessionKey,
+      );
+    } catch (err) {
+      this.runRegistry.markFinished(effectiveSessionKey);
+      if (isSessionLockedError(err)) {
+        // Backstop: our tracker missed an in-flight run (e.g. a background /
+        // automation turn) and OpenClaw rejected with the raw lock error.
+        // Surface the same friendly busy signal, not "Agent failed before reply".
+        logger.info(
+          { botId, effectiveSessionKey },
+          "chat.local: gateway reported session file locked — mapping to busy",
+        );
+        throw new SessionBusyError(effectiveSessionKey);
+      }
+      throw err;
+    }
+  }
+
+  private async deliverLocalMessage(
+    botId: string,
+    message: LocalChatMessageInput,
+    effectiveSessionKey: string,
+  ): Promise<LocalChatMessageOutput> {
     const incomingAttachments = message.attachments ?? [];
     const imageAttachments: LocalChatAttachment[] = [];
     const fileAttachments: LocalChatAttachment[] = [];

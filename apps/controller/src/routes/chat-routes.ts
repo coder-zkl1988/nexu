@@ -6,6 +6,7 @@ import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
 import { logger } from "../lib/logger.js";
 import { ChatService } from "../services/chat-service.js";
+import { SessionBusyError } from "../services/session-run-registry.js";
 import type { ControllerBindings } from "../types.js";
 import {
   LOCAL_CHAT_SESSION_DISCOVERY_INTERVAL_MS,
@@ -71,6 +72,12 @@ const localChatMessageOutputSchema = z.object({
   createdAt: z.string().nullable(),
 });
 
+// Returned when a turn is already running for the target session. A long turn
+// (e.g. a multi-device tool) holds OpenClaw's session write-lock for minutes, so
+// a concurrently-submitted message would time out on the lock and hard-fail with
+// "session file locked". We reject fast with this friendly notice instead.
+const SESSION_BUSY_MESSAGE = "上一条消息还在处理中，请等当前任务完成后再发送。";
+
 export function registerChatRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
@@ -78,6 +85,7 @@ export function registerChatRoutes(
   const chatService = new ChatService(
     container.gatewayService,
     container.attachmentStore,
+    container.sessionRunRegistry,
   );
 
   // GET /api/v1/chat/session - Resolve a named sessionKey to a real session
@@ -145,6 +153,12 @@ export function registerChatRoutes(
             },
           },
         },
+        409: {
+          description: "A run is already active for this session",
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+        },
       },
     }),
     async (c) => {
@@ -152,11 +166,21 @@ export function registerChatRoutes(
       const { botId, message, sessionKey } = c.req.valid("json");
       const lookupKey = sessionKey || `agent:${botId}:main`;
 
-      const messageResult = await chatService.sendLocalMessage(
-        botId,
-        message,
-        lookupKey,
-      );
+      let messageResult: Awaited<
+        ReturnType<typeof chatService.sendLocalMessage>
+      >;
+      try {
+        messageResult = await chatService.sendLocalMessage(
+          botId,
+          message,
+          lookupKey,
+        );
+      } catch (err) {
+        if (err instanceof SessionBusyError) {
+          return c.json({ message: SESSION_BUSY_MESSAGE }, 409);
+        }
+        throw err;
+      }
       const session = await container.sessionService.getSessionBySessionKey(
         botId,
         lookupKey,
@@ -173,11 +197,14 @@ export function registerChatRoutes(
         "chat.local: run accepted",
       );
 
-      return c.json({
-        sessionKey: lookupKey,
-        session,
-        message: messageResult,
-      });
+      return c.json(
+        {
+          sessionKey: lookupKey,
+          session,
+          message: messageResult,
+        },
+        200,
+      );
     },
   );
 
@@ -208,17 +235,33 @@ export function registerChatRoutes(
             },
           },
         },
+        409: {
+          description: "A run is already active for this session",
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+        },
       },
     }),
     async (c) => {
       const { botId, message, sessionKey } = c.req.valid("json");
       const lookupKey = sessionKey || `agent:${botId}:main`;
 
-      const messageResult = await chatService.sendLocalMessage(
-        botId,
-        message,
-        lookupKey,
-      );
+      let messageResult: Awaited<
+        ReturnType<typeof chatService.sendLocalMessage>
+      >;
+      try {
+        messageResult = await chatService.sendLocalMessage(
+          botId,
+          message,
+          lookupKey,
+        );
+      } catch (err) {
+        if (err instanceof SessionBusyError) {
+          return c.json({ message: SESSION_BUSY_MESSAGE }, 409);
+        }
+        throw err;
+      }
 
       // OpenClaw acknowledges chat.send before the session index is written.
       // Wait long enough to cover cold run initialization, while the frontend
@@ -252,7 +295,10 @@ export function registerChatRoutes(
         );
       }
 
-      return c.json({ session: discovery.session, message: messageResult });
+      return c.json(
+        { session: discovery.session, message: messageResult },
+        200,
+      );
     },
   );
 
