@@ -1258,6 +1258,24 @@ export function SessionsPage() {
             message: msgContent,
           },
         });
+        if (result.error) {
+          // Send was rejected before a run started — most commonly 409 "a run
+          // is already active for this session" (OpenClaw holds the session
+          // write-lock for the whole in-flight turn, so a concurrent turn can't
+          // start). Roll the optimistic bubble back and show a friendly notice
+          // instead of leaving the composer stuck "waiting".
+          activeRunIdRef.current = null;
+          setWaitingForReply(false);
+          setPendingMessages((prev) =>
+            prev.filter((m) => m.id !== optimisticId),
+          );
+          toast.info(
+            t("sessions.chat.sessionBusy", {
+              defaultValue: "上一条消息还在处理中，请等当前任务完成后再发送。",
+            }),
+          );
+          return;
+        }
         // Remember our run id so SSE final/aborted/error events from OTHER
         // runs in this session don't prematurely re-enable the composer.
         activeRunIdRef.current = result.data?.message?.runId ?? null;
