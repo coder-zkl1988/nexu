@@ -24,6 +24,7 @@ import {
   WorkflowInputError,
   WorkflowValidationError,
 } from "../services/teams/team-workflow-service.js";
+import { teamRunUpstreamFailure } from "./team-route-helpers.js";
 
 export type TeamRoutesDeps = {
   teamService: Pick<
@@ -146,6 +147,10 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
           content: { "application/json": { schema: errorSchema } },
           description: "No usable plan could be produced",
         },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Upstream run/compose failure",
+        },
       },
     }),
     async (c) => {
@@ -161,7 +166,7 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
         if (isAutoRunBadRequest(error)) {
           return c.json({ message: (error as Error).message }, 400);
         }
-        throw error;
+        return c.json(teamRunUpstreamFailure(error), 502);
       }
     },
   );
@@ -377,6 +382,10 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
           content: { "application/json": { schema: errorSchema } },
           description: "Team not found",
         },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Upstream run/compose failure",
+        },
       },
     }),
     async (c) => {
@@ -395,7 +404,7 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
         if (isAutoRunBadRequest(error)) {
           return c.json({ message: (error as Error).message }, 400);
         }
-        throw error;
+        return c.json(teamRunUpstreamFailure(error), 502);
       }
     },
   );

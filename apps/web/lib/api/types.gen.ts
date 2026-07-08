@@ -4592,6 +4592,12 @@ export type PostApiV1TeamsDefaultRunAutoErrors = {
     400: {
         message: string;
     };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
+        message: string;
+    };
 };
 
 export type PostApiV1TeamsDefaultRunAutoError = PostApiV1TeamsDefaultRunAutoErrors[keyof PostApiV1TeamsDefaultRunAutoErrors];
@@ -4858,6 +4864,12 @@ export type PostApiV1TeamsByIdRunAutoErrors = {
      * Team not found
      */
     404: {
+        message: string;
+    };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
         message: string;
     };
 };
@@ -5210,6 +5222,12 @@ export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors = {
     404: {
         message: string;
     };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
+        message: string;
+    };
 };
 
 export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunError = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors];
@@ -5313,6 +5331,12 @@ export type PostApiV1TeamsByIdWorkflowsComposeErrors = {
      * Team not found
      */
     404: {
+        message: string;
+    };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
         message: string;
     };
 };

@@ -13953,6 +13953,24 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Upstream run/compose failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -14660,6 +14678,24 @@
           },
           "404": {
             "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream run/compose failure",
             "content": {
               "application/json": {
                 "schema": {
@@ -15845,6 +15881,24 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Upstream run/compose failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
           }
         }
       }
@@ -16242,6 +16296,24 @@
           },
           "404": {
             "description": "Team not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Upstream run/compose failure",
             "content": {
               "application/json": {
                 "schema": {

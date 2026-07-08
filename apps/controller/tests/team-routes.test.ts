@@ -124,6 +124,28 @@ describe("POST /teams/default/run-auto", () => {
       message: "composed draft is malformed",
     });
   });
+
+  it("degrades an upstream compose/gateway failure to 502", async () => {
+    const autoComposeAndRun = vi.fn(async () => {
+      throw new Error(
+        "workflow compose completion failed: 503 Service Unavailable",
+      );
+    });
+    const app = buildTeamRoutes(buildDeps({ autoComposeAndRun }));
+
+    const res = await app.request("/default/run-auto", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ task: "调研并写报告" }),
+    });
+
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe("运行启动失败，请稍后重试");
+    // The raw upstream error/status must never reach the client.
+    expect(body.message).not.toContain("503");
+    expect(body.message).not.toContain("compose completion failed");
+  });
 });
 
 describe("POST /teams/{id}/run-auto", () => {
@@ -175,5 +197,27 @@ describe("POST /teams/{id}/run-auto", () => {
     expect(await res.json()).toEqual({
       message: "dependency cycle involving: a, b",
     });
+  });
+
+  it("degrades an upstream compose/gateway failure to 502", async () => {
+    const autoComposeAndRun = vi.fn(async () => {
+      throw new Error(
+        "workflow compose completion failed: 503 Service Unavailable",
+      );
+    });
+    const app = buildTeamRoutes(buildDeps({ autoComposeAndRun }));
+
+    const res = await app.request("/my-team/run-auto", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ task: "x" }),
+    });
+
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe("运行启动失败，请稍后重试");
+    // The raw upstream error/status must never reach the client.
+    expect(body.message).not.toContain("503");
+    expect(body.message).not.toContain("compose completion failed");
   });
 });
