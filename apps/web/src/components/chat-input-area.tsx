@@ -1,5 +1,6 @@
 import { ChatInput, ChatInputAttachButton } from "@/components/chat-input";
 import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import { isImeComposing } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -443,7 +444,8 @@ export function ChatInputArea({
   }, []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Enter while an IME is composing commits the candidate — never sends.
+    if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
       e.preventDefault();
       handleSend();
     }

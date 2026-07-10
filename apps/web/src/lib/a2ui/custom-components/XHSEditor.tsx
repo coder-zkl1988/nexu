@@ -1,3 +1,4 @@
+import { isImeComposing } from "@/lib/keyboard";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
@@ -429,7 +430,8 @@ export function XHSEditor({ comp }: XHSEditorProps) {
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  // Enter mid-composition picks the IME candidate, not the tag.
+                  if (e.key === "Enter" && !isImeComposing(e)) {
                     e.preventDefault();
                     addHashtag();
                   }

@@ -1,4 +1,6 @@
 /** Canvas bottom toolbar extracted from infinite-canvas.tsx (W3.0). */
+
+import { isImeComposing } from "@/lib/keyboard";
 import {
   AudioLines,
   ChevronDown,
@@ -345,7 +347,11 @@ function BoardSwitcher() {
                       onChange={(event) => setDraftName(event.target.value)}
                       onBlur={commitRename}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") commitRename();
+                        // Board names are Chinese — don't commit on the IME's
+                        // candidate-confirming Enter.
+                        if (event.key === "Enter" && !isImeComposing(event)) {
+                          commitRename();
+                        }
                         if (event.key === "Escape") {
                           setRenamingId(null);
                           setDraftName("");

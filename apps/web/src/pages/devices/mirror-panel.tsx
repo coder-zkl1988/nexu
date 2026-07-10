@@ -1,3 +1,4 @@
+import { isImeComposing } from "@/lib/keyboard";
 import { type DeviceMessage, TouchAction } from "@nexu/shared";
 import { RefreshCw, Send, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -569,7 +570,9 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleSendText();
+                // Enter mid-composition confirms the IME candidate — sending
+                // then would push half-typed pinyin to the phone.
+                if (e.key === "Enter" && !isImeComposing(e)) handleSendText();
                 if (e.key === "Escape") setTextInput("");
               }}
               placeholder="输入文字发送到手机…"

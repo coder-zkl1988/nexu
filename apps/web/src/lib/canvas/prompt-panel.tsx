@@ -13,6 +13,7 @@
  *   `usableReferencePaths(collectUpstream(nodeId).images)` at generate time.
  */
 
+import { isImeComposing } from "@/lib/keyboard";
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -174,6 +175,8 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (!mentionActive || filteredCandidates.length === 0) return;
+      // While an IME composes, arrows/Enter drive its candidate list, not ours.
+      if (isImeComposing(e)) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setMentionHighlight((h) =>

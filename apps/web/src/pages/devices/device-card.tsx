@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { isImeComposing } from "@/lib/keyboard";
 import { Pencil } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -120,7 +121,9 @@ export function DeviceCard({
                 onInput={(e) => setNameDraft(e.currentTarget.textContent ?? "")}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  // Device names are Chinese — Enter mid-composition confirms
+                  // the IME candidate and must not commit the rename.
+                  if (e.key === "Enter" && !isImeComposing(e)) {
                     e.preventDefault();
                     commitRename();
                   }
