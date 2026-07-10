@@ -1395,6 +1395,9 @@ const zhCN = {
   "devices.mirror.title": "屏幕镜像",
   "devices.mirror.close": "关闭",
   "devices.mirror.waitingFrame": "已连接 — 等待屏幕数据…",
+  "devices.mirror.awaitingAuthorization":
+    "画质受限 · 请在手机上完成录屏授权以获得流畅画面",
+  "devices.mirror.switching": "切换设备中…",
   "devices.mirror.statusConnecting": "连接中",
   "devices.mirror.statusClosed": "已断开",
   "devices.mirror.statusOpen": "已连接",

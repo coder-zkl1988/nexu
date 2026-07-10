@@ -91,7 +91,13 @@ export function DeviceCard({
         <div className="shrink-0 w-[120px] bg-surface-2 flex items-center justify-center">
           {snapshot ? (
             <img
-              src={`data:image/png;base64,${snapshot}`}
+              // useDeviceSnapshot always produces JPEG: the STABLE/accessibility
+              // path sends raw JPEG bytes as-is, and the H.264 decode path
+              // re-encodes decoded frames via canvas.toDataURL("image/jpeg", ...).
+              // A "png" label here makes Chromium invoke the PNG decoder on JPEG
+              // bytes, which rejects them as malformed — the <img> silently fails
+              // to render regardless of which path produced the snapshot.
+              src={`data:image/jpeg;base64,${snapshot}`}
               alt=""
               className="w-full h-full object-cover"
             />

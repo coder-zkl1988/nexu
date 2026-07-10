@@ -9,13 +9,21 @@ type Channel = "video" | "control" | "audio" | "unknown";
 interface ParsedChannel {
   deviceId: string;
   channel: Channel;
+  /**
+   * Requested video fps, from a `?fps=` query param on the /mirror endpoint.
+   * Only meaningful for channel "video" — undefined means "caller didn't specify,
+   * use bridgeVideo's default." Lets callers distinguish a passive device-list
+   * thumbnail (low fps) from an explicitly opened live mirror view (high fps) —
+   * both hit the same /mirror endpoint and were previously indistinguishable.
+   */
+  fps?: number;
 }
 
 /**
- * Parse the request URL into { deviceId, channel }.
+ * Parse the request URL into { deviceId, channel, fps }.
  *
  * Expected paths:
- *   /api/v1/devices/{deviceId}/mirror   → video channel
+ *   /api/v1/devices/{deviceId}/mirror   → video channel (optional ?fps=N)
  *   /api/v1/devices/{deviceId}/control  → control channel
  *
  * Returns null when the URL doesn't match either pattern.
@@ -24,12 +32,21 @@ function parseChannel(url: string): ParsedChannel | null {
   const prefix = "/api/v1/devices/";
   if (!url.startsWith(prefix)) return null;
 
-  const rest = url.slice(prefix.length);
+  const queryIdx = url.indexOf("?");
+  const pathname = queryIdx === -1 ? url : url.slice(0, queryIdx);
+  const query = queryIdx === -1 ? "" : url.slice(queryIdx + 1);
+  const fpsParam = new URLSearchParams(query).get("fps");
+  const fps =
+    fpsParam !== null && Number.isFinite(Number(fpsParam))
+      ? Number(fpsParam)
+      : undefined;
+
+  const rest = pathname.slice(prefix.length);
 
   if (rest.endsWith("/mirror")) {
     const deviceId = rest.slice(0, rest.length - "/mirror".length);
     if (deviceId === "" || deviceId.includes("/")) return null;
-    return { deviceId, channel: "video" };
+    return { deviceId, channel: "video", fps };
   }
 
   if (rest.endsWith("/control")) {
@@ -76,11 +93,11 @@ export class DeviceMirrorProxy {
     const parsed = parseChannel(url);
     if (parsed === null) return false;
 
-    const { deviceId, channel } = parsed;
+    const { deviceId, channel, fps } = parsed;
 
     this.wss.handleUpgrade(req, socket, head, (clientWs) => {
       if (channel === "video") {
-        void this.bridgeVideo(clientWs, deviceId);
+        void this.bridgeVideo(clientWs, deviceId, fps);
       } else if (channel === "audio") {
         void this.bridgeAudio(clientWs, deviceId);
       } else {
@@ -93,13 +110,18 @@ export class DeviceMirrorProxy {
   /**
    * Bridge the video stream:
    *   - Connects upstream to the tabby-control `/mirror` endpoint
-   *   - Subscribes with `{ deviceId, fps: 30 }`
+   *   - Subscribes with `{ deviceId, fps }` — fps defaults to 30 (full live-view
+   *     quality) unless the caller passed a lower value via `?fps=` on the
+   *     upgrade URL (e.g. the device-list thumbnail asks for a cheap low-fps
+   *     preview so the phone doesn't need to treat it as a real mirror-view
+   *     open request)
    *   - Forwards ALL upstream messages (binary H.264 frames + JSON notifications) to client
    *   - Ignores client messages (they go through the control channel)
    */
   private async bridgeVideo(
     clientWs: WebSocket,
     deviceId: string,
+    fps?: number,
   ): Promise<void> {
     const config = await this.configStore.getConfig();
     if (!config.deviceControl.enabled) {
@@ -114,19 +136,40 @@ export class DeviceMirrorProxy {
 
     upstream.on("open", () => {
       // Subscribe to mirror stream for this device
-      upstream.send(JSON.stringify({ deviceId, fps: 30, adaptive: true }));
+      upstream.send(
+        JSON.stringify({ deviceId, fps: fps ?? 30, adaptive: true }),
+      );
     });
 
     // Forward upstream→client:
-    //   - String messages → forward as-is (JSON notifications)
+    //   - Text frames → forward as text (JSON notifications AND STABLE-mode
+    //     JPEG frames — the phone streams `{"channel":"mirror","type":"realtime",
+    //     "screenshot":...}` as WS text when it has no MediaProjection)
     //   - Binary frames: only forward H.264 video (frameType 0x01, always >100B)
     //     Skip CLIPBOARD (0x00), audio (0x02), and small 0x01 frames (ACK device messages)
     //     — those belong on the control/audio channels
-    upstream.on("message", (data) => {
+    //
+    // Text detection MUST use the isBinary flag: the Node `ws` library never
+    // delivers text frames as JS strings (they arrive as Buffer/ArrayBuffer
+    // like everything else), so a `typeof data === "string"` check silently
+    // classifies every JSON frame as binary — and its first byte '{' (0x7B)
+    // then fails the 0x01 H.264 filter, dropping the entire STABLE stream.
+    upstream.on("message", (data, isBinary) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      if (typeof data === "string") {
-        clientWs.send(data);
-      } else if (
+      if (!isBinary) {
+        // Re-send as a string so the browser receives a TEXT frame — sending
+        // the raw Buffer would flip it to binary and break the client's
+        // `event.data instanceof ArrayBuffer` H.264-vs-JSON dispatch.
+        const text =
+          typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : Buffer.from(data as ArrayBuffer).toString("utf8");
+        clientWs.send(text);
+        return;
+      }
+      if (
         (Buffer.isBuffer(data) || data instanceof ArrayBuffer) &&
         (Buffer.isBuffer(data) ? data : Buffer.from(data)).length > 0
       ) {
@@ -182,13 +225,21 @@ export class DeviceMirrorProxy {
     });
 
     // Forward upstream→client:
-    //   - String messages → forward as-is (JSON notifications)
+    //   - Text frames → forward as text (JSON notifications). Detected via the
+    //     isBinary flag — the `ws` library never delivers text frames as JS
+    //     strings, so a typeof check would misroute them into the binary filter.
     //   - Binary frames with frameType === 0x02 (audio/Opus) → forward
     //   - Other binary frames → discard
-    upstream.on("message", (data) => {
+    upstream.on("message", (data, isBinary) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      if (typeof data === "string") {
-        clientWs.send(data);
+      if (!isBinary) {
+        const text =
+          typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : Buffer.from(data as ArrayBuffer).toString("utf8");
+        clientWs.send(text);
       } else if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
         const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
         // Binary frame: byte 0 is frameType (0x02 = Opus audio)
@@ -244,16 +295,25 @@ export class DeviceMirrorProxy {
     });
 
     // Forward upstream→client:
-    //   - String messages → forward as-is (JSON device messages)
+    //   - Text frames → forward as text (JSON device messages). Detected via
+    //     the isBinary flag — the `ws` library never delivers text frames as
+    //     JS strings, so a typeof check would misroute them into the binary
+    //     filter and drop them.
     //   - Binary frames: use byte-0 frameType + size to distinguish device control from video
     //     - CLIPBOARD (0x00): always forward regardless of size
     //     - ACK (0x01): only if small (<100B) — video frames also start with 0x01 but are always large
     //   - Large binary frames >100B with 0x01 → discard (video goes through video bridge)
-    upstream.on("message", (data) => {
+    upstream.on("message", (data, isBinary) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
-      if (typeof data === "string") {
-        // JSON device messages — forward
-        clientWs.send(data);
+      if (!isBinary) {
+        // JSON device messages — forward as a TEXT frame
+        const text =
+          typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : Buffer.from(data as ArrayBuffer).toString("utf8");
+        clientWs.send(text);
       } else if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
         const buf = data instanceof ArrayBuffer ? Buffer.from(data) : data;
         if (buf.length > 0) {
@@ -271,9 +331,12 @@ export class DeviceMirrorProxy {
     // Forward client→upstream: control actions
     //   - Text (JSON) → wrapped in channel envelope and sent upstream
     //     tabby-control expects: { channel: "mirror", type, deviceId, params }
+    //     Detected via the isBinary flag — `ws` delivers browser TEXT frames
+    //     as Buffers, so a typeof check would misroute JSON actions (input_text,
+    //     swipe, set_clipboard...) into the raw-binary passthrough.
     //   - Binary → forward as-is (binary control protocol frames).
     //     tabby-control will forward them to the Android device.
-    clientWs.on("message", (raw) => {
+    clientWs.on("message", (raw, isBinary) => {
       if (upstream.readyState !== WebSocket.OPEN) {
         logger.warn(
           { deviceId, upstreamState: upstream.readyState },
@@ -282,9 +345,15 @@ export class DeviceMirrorProxy {
         return;
       }
 
-      if (typeof raw === "string") {
+      if (!isBinary) {
         try {
-          const parsed: Record<string, unknown> = JSON.parse(raw);
+          const text =
+            typeof raw === "string"
+              ? raw
+              : Buffer.isBuffer(raw)
+                ? raw.toString("utf8")
+                : Buffer.from(raw as ArrayBuffer).toString("utf8");
+          const parsed: Record<string, unknown> = JSON.parse(text);
           upstream.send(
             JSON.stringify({
               channel: "mirror",
