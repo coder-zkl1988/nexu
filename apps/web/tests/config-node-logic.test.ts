@@ -136,6 +136,88 @@ describe("buildConfigGenerationPlan", () => {
     expect(result.count).toBe(2);
   });
 
+  it("image mode: carries model/quality/aspectRatio/size hints from config", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "a cat" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: {
+        config: {
+          mode: "image",
+          model: "seedream-4",
+          quality: "high",
+          aspectRatio: "16:9",
+          size: "2K",
+        },
+      },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result) throw new Error("expected plan");
+    if (result.kind !== "image") throw new Error("expected image plan");
+    expect(result.model).toBe("seedream-4");
+    expect(result.quality).toBe("high");
+    expect(result.aspectRatio).toBe("16:9");
+    expect(result.size).toBe("2K");
+  });
+
+  it("prepends the composer's composedPrompt before upstream prompts", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "a cat" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: {
+        config: { mode: "image", composedPrompt: "  cinematic base  " },
+      },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result) throw new Error("expected plan");
+    expect(result.prompt).toBe("cinematic base\n\na cat");
+  });
+
+  it("composedPrompt alone (no upstream text) satisfies the no-prompt guard", () => {
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "image", composedPrompt: "solo prompt" } },
+    });
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result) throw new Error("expected plan");
+    expect(result.prompt).toBe("solo prompt");
+  });
+
+  it("text mode: plan carries the assembled prompt + model", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "write a poem" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "text", model: "gpt-x" } },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result) throw new Error("expected plan");
+    if (result.kind !== "text") throw new Error("expected text plan");
+    expect(result.prompt).toBe("write a poem");
+    expect(result.model).toBe("gpt-x");
+  });
+
   it("image mode: dataURL upstream images are excluded from referenceImages (not usable)", () => {
     const text = addNode({
       type: "text",

@@ -181,3 +181,118 @@ export function upstreamSummary(
 
   return parts.length === 0 ? "无上游输入" : parts.join(" · ");
 }
+
+// ── generation option builders (W5) ────────────────────────────
+//
+// Map the panel's per-mode settings state into the `generate*IntoNode` opts.
+// All new params are best-effort HINTS: a control left at its default (auto /
+// 默认 / empty / count 1 / speed 1 / unchecked) is OMITTED so the backend
+// picks its own default rather than being pinned. Pure + unit-testable — the
+// no-DOM test env can't fire the generate button, so this is the seam the
+// forward tests exercise.
+
+export type ImageQuality = "auto" | "high" | "medium" | "low";
+export type AudioFormat = "mp3" | "wav" | "m4a" | "ogg" | "flac";
+
+export type ImageGenSettings = {
+  /** Absolute upstream reference paths (already resolved), or undefined. */
+  referenceImages?: string[];
+  /** 1..12; 1 = omit. */
+  count: number;
+  /** Model id hint; "" = default model = omit. */
+  model: string;
+  /** "auto" = omit. */
+  quality: ImageQuality;
+  /** e.g. "1:1"; "" = omit. */
+  aspectRatio: string;
+  /** "1K" | "2K" | "4K"; "" = omit. */
+  size: string;
+};
+
+export type ImageGenOpts = {
+  referenceImages?: string[];
+  count?: number;
+  model?: string;
+  quality?: ImageQuality;
+  aspectRatio?: string;
+  size?: string;
+};
+
+export function buildImageGenOpts(s: ImageGenSettings): ImageGenOpts {
+  return {
+    ...(s.referenceImages && s.referenceImages.length > 0
+      ? { referenceImages: s.referenceImages }
+      : {}),
+    ...(s.count > 1 ? { count: s.count } : {}),
+    ...(s.model !== "" ? { model: s.model } : {}),
+    ...(s.quality !== "auto" ? { quality: s.quality } : {}),
+    ...(s.aspectRatio !== "" ? { aspectRatio: s.aspectRatio } : {}),
+    ...(s.size !== "" ? { size: s.size } : {}),
+  };
+}
+
+export type VideoGenSettings = {
+  durationSeconds: number;
+  resolution: "720p" | "1080p";
+  /** e.g. "16:9"; "" = omit. */
+  aspectRatio: string;
+  /** unchecked (false) = omit. */
+  generateAudio: boolean;
+  /** unchecked (false) = omit. */
+  watermark: boolean;
+  /** Model id hint; "" = omit. */
+  model: string;
+};
+
+export type VideoGenOpts = {
+  durationSeconds?: number;
+  resolution?: "720p" | "1080p";
+  model?: string;
+  aspectRatio?: string;
+  generateAudio?: boolean;
+  watermark?: boolean;
+};
+
+export function buildVideoGenOpts(s: VideoGenSettings): VideoGenOpts {
+  return {
+    durationSeconds: s.durationSeconds,
+    resolution: s.resolution,
+    ...(s.model !== "" ? { model: s.model } : {}),
+    ...(s.aspectRatio !== "" ? { aspectRatio: s.aspectRatio } : {}),
+    ...(s.generateAudio ? { generateAudio: true } : {}),
+    ...(s.watermark ? { watermark: true } : {}),
+  };
+}
+
+export type AudioGenSettings = {
+  /** Voice identifier; "" (after trim) = omit. */
+  voice: string;
+  /** 1 = omit. */
+  speed: number;
+  /** Model id hint; "" = omit. */
+  model: string;
+  /** "" = default = omit. */
+  format: AudioFormat | "";
+  /** Extra voice direction; "" (after trim) = omit. */
+  instructions: string;
+};
+
+export type AudioGenOpts = {
+  voice?: string;
+  speed?: number;
+  model?: string;
+  format?: AudioFormat;
+  instructions?: string;
+};
+
+export function buildAudioGenOpts(s: AudioGenSettings): AudioGenOpts {
+  const voice = s.voice.trim();
+  const instructions = s.instructions.trim();
+  return {
+    ...(voice !== "" ? { voice } : {}),
+    ...(s.speed !== 1 ? { speed: s.speed } : {}),
+    ...(s.model !== "" ? { model: s.model } : {}),
+    ...(s.format !== "" ? { format: s.format } : {}),
+    ...(instructions !== "" ? { instructions } : {}),
+  };
+}

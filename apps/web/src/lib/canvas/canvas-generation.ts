@@ -12,6 +12,7 @@ import {
   postApiV1MediaEnhanceImage,
   postApiV1MediaGenerateAudio,
   postApiV1MediaGenerateImage,
+  postApiV1MediaGenerateText,
   postApiV1MediaGenerateVideo,
 } from "../../../lib/api/sdk.gen";
 import { attachBatchChildren } from "./canvas-batch";
@@ -38,6 +39,10 @@ export async function generateImageIntoNode(
     count?: number;
     sourceImage?: string;
     maskDataUrl?: string;
+    model?: string;
+    quality?: "auto" | "high" | "medium" | "low";
+    aspectRatio?: string;
+    size?: string;
   },
 ): Promise<boolean> {
   const retry = {
@@ -71,6 +76,12 @@ export async function generateImageIntoNode(
         ...(opts?.maskDataUrl !== undefined
           ? { maskDataUrl: opts.maskDataUrl }
           : {}),
+        ...(opts?.model !== undefined ? { model: opts.model } : {}),
+        ...(opts?.quality !== undefined ? { quality: opts.quality } : {}),
+        ...(opts?.aspectRatio !== undefined
+          ? { aspectRatio: opts.aspectRatio }
+          : {}),
+        ...(opts?.size !== undefined ? { size: opts.size } : {}),
       },
     });
 
@@ -118,10 +129,82 @@ export async function generateImageIntoNode(
  * Lifecycle mirrors generateImageIntoNode: generating → content=url + clear / error+retry.
  * Returns `true` on success, `false` on failure.
  */
+// ── Text ───────────────────────────────────────────────────────
+
+/**
+ * Generate (or rewrite) text into a text `nodeId`. On success writes the
+ * result to `metadata.content` (TextNodeContent renders it). Lifecycle mirrors
+ * generateImageIntoNode: generating → content + clear / error+retry.
+ */
+export async function generateTextIntoNode(
+  nodeId: string,
+  prompt: string,
+  opts?: { sourceText?: string; model?: string },
+): Promise<boolean> {
+  const retry = {
+    kind: "text" as const,
+    prompt,
+    ...(opts?.sourceText !== undefined ? { sourceText: opts.sourceText } : {}),
+    ...(opts?.model !== undefined ? { model: opts.model } : {}),
+  };
+
+  setNodeTask(nodeId, { status: "generating", retry });
+
+  try {
+    const { data, error } = await postApiV1MediaGenerateText({
+      body: {
+        prompt,
+        ...(opts?.sourceText !== undefined
+          ? { sourceText: opts.sourceText }
+          : {}),
+        ...(opts?.model !== undefined ? { model: opts.model } : {}),
+      },
+    });
+
+    const stillExists = getCanvasState().nodes.some((n) => n.id === nodeId);
+    if (!stillExists) return false;
+
+    if (!data || error) {
+      setNodeTask(nodeId, {
+        status: "error",
+        error: "生成失败，请重试",
+        retry,
+      });
+      return false;
+    }
+
+    updateNode(nodeId, {
+      title: prompt.slice(0, 30),
+      metadata: { content: data.text },
+    });
+    setNodeTask(nodeId, null);
+    return true;
+  } catch {
+    const stillExists = getCanvasState().nodes.some((n) => n.id === nodeId);
+    if (!stillExists) return false;
+
+    setNodeTask(nodeId, {
+      status: "error",
+      error: "生成失败，请重试",
+      retry,
+    });
+    return false;
+  }
+}
+
+// ── Video ──────────────────────────────────────────────────────
+
 export async function generateVideoIntoNode(
   nodeId: string,
   prompt: string,
-  opts?: { durationSeconds?: number; resolution?: "720p" | "1080p" },
+  opts?: {
+    durationSeconds?: number;
+    resolution?: "720p" | "1080p";
+    model?: string;
+    aspectRatio?: string;
+    generateAudio?: boolean;
+    watermark?: boolean;
+  },
 ): Promise<boolean> {
   const retry = {
     kind: "video" as const,
@@ -144,6 +227,14 @@ export async function generateVideoIntoNode(
         ...(opts?.resolution !== undefined
           ? { resolution: opts.resolution }
           : {}),
+        ...(opts?.model !== undefined ? { model: opts.model } : {}),
+        ...(opts?.aspectRatio !== undefined
+          ? { aspectRatio: opts.aspectRatio }
+          : {}),
+        ...(opts?.generateAudio !== undefined
+          ? { generateAudio: opts.generateAudio }
+          : {}),
+        ...(opts?.watermark !== undefined ? { watermark: opts.watermark } : {}),
       },
     });
 
@@ -189,7 +280,13 @@ export async function generateVideoIntoNode(
 export async function generateAudioIntoNode(
   nodeId: string,
   prompt: string,
-  opts?: { voice?: string; speed?: number },
+  opts?: {
+    voice?: string;
+    speed?: number;
+    model?: string;
+    format?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
+    instructions?: string;
+  },
 ): Promise<boolean> {
   const retry = {
     kind: "audio" as const,
@@ -206,6 +303,11 @@ export async function generateAudioIntoNode(
         prompt,
         ...(opts?.voice !== undefined ? { voice: opts.voice } : {}),
         ...(opts?.speed !== undefined ? { speed: opts.speed } : {}),
+        ...(opts?.model !== undefined ? { model: opts.model } : {}),
+        ...(opts?.format !== undefined ? { format: opts.format } : {}),
+        ...(opts?.instructions !== undefined
+          ? { instructions: opts.instructions }
+          : {}),
       },
     });
 
@@ -362,6 +464,11 @@ export function retryNodeTask(nodeId: string): void {
     void generateAudioIntoNode(nodeId, retry.prompt, {
       voice: retry.voice,
       speed: retry.speed,
+    });
+  } else if (retry.kind === "text") {
+    void generateTextIntoNode(nodeId, retry.prompt, {
+      sourceText: retry.sourceText,
+      model: retry.model,
     });
   } else if (retry.kind === "enhance") {
     void enhanceImageIntoNode(nodeId, {

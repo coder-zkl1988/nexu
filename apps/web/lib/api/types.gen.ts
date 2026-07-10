@@ -6361,6 +6361,10 @@ export type PostApiV1MediaGenerateImageData = {
         prompt: string;
         referenceImages?: Array<string>;
         count?: number;
+        model?: string;
+        quality?: 'auto' | 'high' | 'medium' | 'low';
+        aspectRatio?: string;
+        size?: string;
         sourceImage?: string;
         maskDataUrl?: string;
     };
@@ -6407,6 +6411,10 @@ export type PostApiV1MediaGenerateVideoData = {
         prompt: string;
         durationSeconds?: number;
         resolution?: '720p' | '1080p';
+        model?: string;
+        aspectRatio?: string;
+        generateAudio?: boolean;
+        watermark?: boolean;
     };
     path?: never;
     query?: never;
@@ -6445,6 +6453,9 @@ export type PostApiV1MediaGenerateAudioData = {
         prompt: string;
         voice?: string;
         speed?: number;
+        model?: string;
+        format?: 'mp3' | 'wav' | 'm4a' | 'ogg' | 'flac';
+        instructions?: string;
     };
     path?: never;
     query?: never;
@@ -6563,6 +6574,39 @@ export type PostApiV1MediaDescribeImageResponses = {
 };
 
 export type PostApiV1MediaDescribeImageResponse = PostApiV1MediaDescribeImageResponses[keyof PostApiV1MediaDescribeImageResponses];
+
+export type PostApiV1MediaGenerateTextData = {
+    body?: {
+        prompt: string;
+        sourceText?: string;
+        model?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-text';
+};
+
+export type PostApiV1MediaGenerateTextErrors = {
+    /**
+     * Text generation failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateTextError = PostApiV1MediaGenerateTextErrors[keyof PostApiV1MediaGenerateTextErrors];
+
+export type PostApiV1MediaGenerateTextResponses = {
+    /**
+     * Text generated — returns the resulting text
+     */
+    200: {
+        text: string;
+    };
+};
+
+export type PostApiV1MediaGenerateTextResponse = PostApiV1MediaGenerateTextResponses[keyof PostApiV1MediaGenerateTextResponses];
 
 export type GetApiV1CanvasMirrorData = {
     body?: never;

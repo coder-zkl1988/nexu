@@ -48,13 +48,12 @@ export type CanvasNodeMetadata = {
   freeResize?: boolean;
   /**
    * Config node: generation settings (params mirror channel capabilities).
-   *
-   * NOTE: model/aspect-ratio pickers are intentionally absent here — the
-   * channels do not accept those params yet. Add them when the channels do.
+   * Model/quality/aspect/size and friends are best-effort hints — the channel
+   * forwards them to the generation agent, which honors what it supports.
    */
   config?: {
-    mode: "image" | "video" | "audio";
-    /** image: number of outputs, 1–4 */
+    mode: "image" | "video" | "audio" | "text";
+    /** image: number of outputs, 1–12 */
     count?: number;
     /** video: duration in seconds, 1–60 */
     durationSeconds?: number;
@@ -64,6 +63,24 @@ export type CanvasNodeMetadata = {
     voice?: string;
     /** audio: playback speed, 0.5–2 */
     speed?: number;
+    /** all modes: preferred generation model (best-effort hint) */
+    model?: string;
+    /** image: quality hint */
+    quality?: "auto" | "high" | "medium" | "low";
+    /** image/video: aspect-ratio hint, e.g. "1:1", "16:9" */
+    aspectRatio?: string;
+    /** image: output size hint, e.g. "1K", "2K", "4K" */
+    size?: string;
+    /** video: also generate an audio track (hint) */
+    generateAudio?: boolean;
+    /** video: add a watermark (hint) */
+    watermark?: boolean;
+    /** audio: output format hint */
+    format?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
+    /** audio: extra voice/style instructions (hint) */
+    instructions?: string;
+    /** composer: base prompt prepended to the upstream prompt */
+    composedPrompt?: string;
   };
   /** batch group: root carries childIds+expanded; children carry rootId. */
   batch?: { childIds?: string[]; expanded?: boolean; rootId?: string };
@@ -113,6 +130,12 @@ export type CanvasNodeMetadata = {
           resolution?: "720p" | "1080p";
         }
       | { kind: "audio"; prompt: string; voice?: string; speed?: number }
+      | {
+          kind: "text";
+          prompt: string;
+          sourceText?: string;
+          model?: string;
+        }
       | {
           kind: "enhance";
           sourceImage: string;

@@ -112,6 +112,8 @@ export type EnhanceMediaResult = {
 
 export type DescribeMediaResult = { prompt: string };
 
+export type GenerateTextResult = { text: string };
+
 export class MediaGenerationService {
   private readonly pollIntervalMs: number;
   private readonly timeoutMsByKind: Record<MediaKind | "enhance", number>;
@@ -143,6 +145,10 @@ export class MediaGenerationService {
     count?: number;
     sourceImage?: string;
     maskDataUrl?: string;
+    model?: string;
+    quality?: "auto" | "high" | "medium" | "low";
+    aspectRatio?: string;
+    size?: string;
   }): Promise<GenerateMediaResult> {
     const mediaRoot = path.resolve(this.deps.openclawStateDir, "media");
 
@@ -202,6 +208,27 @@ export class MediaGenerationService {
           `Source image (edit/transform it rather than generating from scratch): ${input.sourceImage}`,
         );
       }
+    }
+
+    const imageHints: string[] = [];
+    if (input.model !== undefined) {
+      imageHints.push(`Preferred model: ${input.model}`);
+    }
+    if (input.quality !== undefined) {
+      imageHints.push(`Quality: ${input.quality}`);
+    }
+    if (input.aspectRatio !== undefined) {
+      imageHints.push(`Aspect ratio: ${input.aspectRatio}`);
+    }
+    if (input.size !== undefined) {
+      imageHints.push(`Size: ${input.size}`);
+    }
+    if (imageHints.length > 0) {
+      lines.push(
+        "",
+        "Generation hints (honor if your tool/skill supports them; else ignore):",
+        ...imageHints,
+      );
     }
 
     lines.push(
@@ -382,10 +409,80 @@ export class MediaGenerationService {
     return { prompt: trimmed };
   }
 
+  async generateText(input: {
+    prompt: string;
+    sourceText?: string;
+    model?: string;
+  }): Promise<GenerateTextResult> {
+    const botId = await this.deps.pickUtilityBotId();
+    if (!botId) {
+      throw new ImageGenerationFailedError(
+        "no active bot available to run text generation",
+      );
+    }
+
+    const sessionKey = `agent:${botId}:subagent:textgen-${this.deps.genId()}`;
+
+    const lines: string[] =
+      input.sourceText !== undefined
+        ? [
+            "[TASK] Rewrite/transform the text below per the instruction.",
+            `Instruction: ${input.prompt}`,
+            "",
+            "Text:",
+            input.sourceText,
+          ]
+        : [
+            "[TASK] Write text per the instruction.",
+            `Instruction: ${input.prompt}`,
+          ];
+
+    if (input.model !== undefined) {
+      lines.push("", `Preferred model: ${input.model}`);
+    }
+
+    lines.push(
+      "",
+      "Reply with ONLY the resulting text — no preamble, no quotes, no markdown fences, and do NOT render UI (no render_a2ui). If you cannot, reply ONLY UNAVAILABLE.",
+    );
+
+    const message = lines.join("\n");
+    await this.deps.sendChat({ botId, sessionKey, message });
+
+    // Text is a fast turn; cap at min(configured image timeout, 120s) like describe.
+    const timeoutMs = Math.min(this.timeoutMsByKind.image, 120_000);
+    const reply = await this.awaitLaneReplyWithTimeout(
+      botId,
+      sessionKey,
+      timeoutMs,
+      true,
+    );
+
+    if (/\bUNAVAILABLE\b/.test(reply)) {
+      throw new ImageGenerationFailedError(
+        "text generation backend is not configured",
+      );
+    }
+
+    const trimmed = reply.trim().slice(0, 8_000);
+    if (!trimmed) {
+      throw new ImageGenerationFailedError(
+        "text generation finished but returned empty text",
+      );
+    }
+
+    logger.info({ chars: trimmed.length }, "media generation: text ready");
+    return { text: trimmed };
+  }
+
   async generateVideo(input: {
     prompt: string;
     durationSeconds?: number;
     resolution?: "720p" | "1080p";
+    model?: string;
+    aspectRatio?: string;
+    generateAudio?: boolean;
+    watermark?: boolean;
   }): Promise<GenerateMediaResult> {
     const botId = await this.deps.pickUtilityBotId();
     if (!botId) {
@@ -401,6 +498,18 @@ export class MediaGenerationService {
     }
     if (input.resolution !== undefined) {
       hints.push(`Resolution: ${input.resolution}`);
+    }
+    if (input.aspectRatio !== undefined) {
+      hints.push(`Aspect ratio: ${input.aspectRatio}`);
+    }
+    if (input.model !== undefined) {
+      hints.push(`Preferred model: ${input.model}`);
+    }
+    if (input.generateAudio) {
+      hints.push("Also generate an audio track");
+    }
+    if (input.watermark) {
+      hints.push("Add a watermark");
     }
 
     const lines: string[] = [
@@ -444,6 +553,9 @@ export class MediaGenerationService {
     prompt: string;
     voice?: string;
     speed?: number;
+    model?: string;
+    format?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
+    instructions?: string;
   }): Promise<GenerateMediaResult> {
     const botId = await this.deps.pickUtilityBotId();
     if (!botId) {
@@ -459,6 +571,15 @@ export class MediaGenerationService {
     }
     if (input.speed !== undefined) {
       hints.push(`Speed: ${input.speed}`);
+    }
+    if (input.format !== undefined) {
+      hints.push(`Format: ${input.format}`);
+    }
+    if (input.model !== undefined) {
+      hints.push(`Preferred model: ${input.model}`);
+    }
+    if (input.instructions !== undefined) {
+      hints.push(`Voice/style instructions: ${input.instructions}`);
     }
 
     const lines: string[] = [

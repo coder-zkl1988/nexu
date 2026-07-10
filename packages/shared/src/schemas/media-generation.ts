@@ -27,9 +27,21 @@ export const generateImageRequestSchema = z
      */
     referenceImages: z.array(z.string().min(1)).max(4).optional(),
     /**
-     * Number of images to generate. Defaults to 1. Up to 4.
+     * Number of images to generate. Defaults to 1. Up to 12 (agent-loop
+     * driven — high counts are slow). Passed as a hint.
      */
-    count: z.number().int().min(1).max(4).optional(),
+    count: z.number().int().min(1).max(12).optional(),
+    /**
+     * Preferred generation model — a best-effort hint. The utility lane honors
+     * it only if the active image tool/skill supports model selection.
+     */
+    model: z.string().max(120).optional(),
+    /** Output quality hint (auto/high/medium/low). Best-effort. */
+    quality: z.enum(["auto", "high", "medium", "low"]).optional(),
+    /** Aspect-ratio hint, e.g. "1:1", "16:9", "3:4". Best-effort. */
+    aspectRatio: z.string().max(16).optional(),
+    /** Output size hint, e.g. "1024x1024", "2K", "4K". Best-effort. */
+    size: z.string().max(32).optional(),
     /**
      * Source image for inpaint / img2img. Servable absolute path under the
      * OpenClaw media dir. When provided the agent edits this image rather
@@ -63,6 +75,14 @@ export const generateVideoRequestSchema = z.object({
   durationSeconds: z.number().int().min(1).max(60).optional(),
   /** Optional output resolution hint. */
   resolution: z.enum(["720p", "1080p"]).optional(),
+  /** Preferred generation model — best-effort hint. */
+  model: z.string().max(120).optional(),
+  /** Aspect-ratio hint, e.g. "16:9", "9:16", "1:1". Best-effort. */
+  aspectRatio: z.string().max(16).optional(),
+  /** Ask the backend to also generate an audio track. Best-effort. */
+  generateAudio: z.boolean().optional(),
+  /** Ask the backend to add a watermark. Best-effort. */
+  watermark: z.boolean().optional(),
 });
 
 export const generateVideoResponseSchema = z.object({
@@ -77,6 +97,12 @@ export const generateAudioRequestSchema = z.object({
   voice: z.string().max(100).optional(),
   /** Optional playback speed multiplier (0.5–2). */
   speed: z.number().min(0.5).max(2).optional(),
+  /** Preferred generation model — best-effort hint. */
+  model: z.string().max(120).optional(),
+  /** Output format hint. Best-effort. */
+  format: z.enum(["mp3", "wav", "m4a", "ogg", "flac"]).optional(),
+  /** Extra voice/style instructions for the TTS backend. Best-effort. */
+  instructions: z.string().max(1_000).optional(),
 });
 
 export const generateAudioResponseSchema = z.object({
@@ -133,6 +159,27 @@ export const describeImageResponseSchema = z.object({
   prompt: z.string(),
 });
 
+/**
+ * Generate-text channel: write new text, or rewrite/transform existing text,
+ * via the utility lane. Returns the resulting text (no media file). May work
+ * today with any chat-capable model.
+ */
+export const generateTextRequestSchema = z.object({
+  /** The instruction / prompt. */
+  prompt: z.string().min(1).max(4_000),
+  /** Optional existing text to rewrite/transform (rewrite mode). */
+  sourceText: z.string().max(8_000).optional(),
+  /** Preferred model — best-effort hint. */
+  model: z.string().max(120).optional(),
+});
+
+export const generateTextResponseSchema = z.object({
+  /** The generated / rewritten text. */
+  text: z.string(),
+});
+
+export type GenerateTextRequest = z.infer<typeof generateTextRequestSchema>;
+export type GenerateTextResponse = z.infer<typeof generateTextResponseSchema>;
 export type GeneratedMediaItem = z.infer<typeof generatedMediaItemSchema>;
 export type GenerateImageRequest = z.infer<typeof generateImageRequestSchema>;
 export type GenerateImageResponse = z.infer<typeof generateImageResponseSchema>;

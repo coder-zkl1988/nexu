@@ -19193,7 +19193,28 @@
                   "count": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 4
+                    "maximum": 12
+                  },
+                  "model": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "quality": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "high",
+                      "medium",
+                      "low"
+                    ]
+                  },
+                  "aspectRatio": {
+                    "type": "string",
+                    "maxLength": 16
+                  },
+                  "size": {
+                    "type": "string",
+                    "maxLength": 32
                   },
                   "sourceImage": {
                     "type": "string",
@@ -19320,6 +19341,20 @@
                       "720p",
                       "1080p"
                     ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "aspectRatio": {
+                    "type": "string",
+                    "maxLength": 16
+                  },
+                  "generateAudio": {
+                    "type": "boolean"
+                  },
+                  "watermark": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -19417,6 +19452,24 @@
                     "type": "number",
                     "minimum": 0.5,
                     "maximum": 2
+                  },
+                  "model": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "mp3",
+                      "wav",
+                      "m4a",
+                      "ogg",
+                      "flac"
+                    ]
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "maxLength": 1000
                   }
                 },
                 "required": [
@@ -19709,6 +19762,78 @@
           },
           "502": {
             "description": "Description failed or timed out (including UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/generate-text": {
+      "post": {
+        "tags": [
+          "Media"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "sourceText": {
+                    "type": "string",
+                    "maxLength": 8000
+                  },
+                  "model": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "prompt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Text generated — returns the resulting text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Text generation failed or timed out (including UNAVAILABLE)",
             "content": {
               "application/json": {
                 "schema": {

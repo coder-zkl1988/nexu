@@ -10,6 +10,8 @@ import {
   generateAudioResponseSchema,
   generateImageRequestSchema,
   generateImageResponseSchema,
+  generateTextRequestSchema,
+  generateTextResponseSchema,
   generateVideoRequestSchema,
   generateVideoResponseSchema,
 } from "@nexu/shared";
@@ -93,6 +95,10 @@ export function registerMediaRoutes(
           count: input.count,
           sourceImage: input.sourceImage,
           maskDataUrl: input.maskDataUrl,
+          model: input.model,
+          quality: input.quality,
+          aspectRatio: input.aspectRatio,
+          size: input.size,
         });
         return c.json(result, 200);
       } catch (error) {
@@ -144,6 +150,10 @@ export function registerMediaRoutes(
           prompt: input.prompt,
           durationSeconds: input.durationSeconds,
           resolution: input.resolution,
+          model: input.model,
+          aspectRatio: input.aspectRatio,
+          generateAudio: input.generateAudio,
+          watermark: input.watermark,
         });
         return c.json(result, 200);
       } catch (error) {
@@ -190,6 +200,9 @@ export function registerMediaRoutes(
           prompt: input.prompt,
           voice: input.voice,
           speed: input.speed,
+          model: input.model,
+          format: input.format,
+          instructions: input.instructions,
         });
         return c.json(result, 200);
       } catch (error) {
@@ -302,6 +315,51 @@ export function registerMediaRoutes(
         if (error instanceof InvalidMediaReferenceError) {
           return c.json({ message: error.message }, 400);
         }
+        if (error instanceof ImageGenerationFailedError) {
+          return c.json({ message: error.message }, 502);
+        }
+        return c.json(mediaGenerationFailure(error), 502);
+      }
+    },
+  );
+
+  // POST /api/v1/media/generate-text — write or rewrite text via the utility
+  // lane. UNAVAILABLE-first; works today with any chat-capable model.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/media/generate-text",
+      tags: ["Media"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: generateTextRequestSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: generateTextResponseSchema },
+          },
+          description: "Text generated — returns the resulting text",
+        },
+        502: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description:
+            "Text generation failed or timed out (including UNAVAILABLE)",
+        },
+      },
+    }),
+    async (c) => {
+      const input = c.req.valid("json");
+      try {
+        const result =
+          await container.mediaGenerationService.generateText(input);
+        return c.json(result, 200);
+      } catch (error) {
         if (error instanceof ImageGenerationFailedError) {
           return c.json({ message: error.message }, 502);
         }

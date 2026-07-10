@@ -26,9 +26,15 @@ import {
   generateImageIntoNode,
   generateVideoIntoNode,
 } from "./canvas-generation";
+import { useCanvasModelOptions } from "./canvas-model-options";
 import type { CanvasNode } from "./canvas-store";
 import { getDraft, setDraft } from "./prompt-drafts";
 import {
+  type AudioFormat,
+  type ImageQuality,
+  buildAudioGenOpts,
+  buildImageGenOpts,
+  buildVideoGenOpts,
   mentionQueryAt,
   upstreamSummary,
   usableReferencePaths,
@@ -67,6 +73,24 @@ export function PromptPanel({ node }: PromptPanelProps) {
   );
   const [audioVoice, setAudioVoice] = useState<string>("");
   const [audioSpeed, setAudioSpeed] = useState<number>(1);
+
+  // W5 settings — all ephemeral local state (no persistence, matching above).
+  // Shared across modes: model hint ("" = default model).
+  const [model, setModel] = useState<string>("");
+  // Image-only
+  const [imageQuality, setImageQuality] = useState<ImageQuality>("auto");
+  const [imageAspect, setImageAspect] = useState<string>("");
+  const [imageSize, setImageSize] = useState<string>("");
+  // Video-only
+  const [videoAspect, setVideoAspect] = useState<string>("");
+  const [videoGenerateAudio, setVideoGenerateAudio] = useState<boolean>(false);
+  const [videoWatermark, setVideoWatermark] = useState<boolean>(false);
+  // Audio-only
+  const [audioFormat, setAudioFormat] = useState<AudioFormat | "">("");
+  const [audioInstructions, setAudioInstructions] = useState<string>("");
+
+  // Available models for the picker (shared ["models"] cache).
+  const models = useCanvasModelOptions();
 
   // @-mention dropdown state
   const [mentionActive, setMentionActive] = useState(false);
@@ -175,20 +199,43 @@ export function PromptPanel({ node }: PromptPanelProps) {
     const trimmed = prompt.trim();
     if (!trimmed || isGenerating) return;
     if (node.type === "image") {
-      void generateImageIntoNode(nodeId, trimmed, {
-        referenceImages: usablePaths.length > 0 ? usablePaths : undefined,
-        count: imageCount > 1 ? imageCount : undefined,
-      });
+      void generateImageIntoNode(
+        nodeId,
+        trimmed,
+        buildImageGenOpts({
+          referenceImages: usablePaths.length > 0 ? usablePaths : undefined,
+          count: imageCount,
+          model,
+          quality: imageQuality,
+          aspectRatio: imageAspect,
+          size: imageSize,
+        }),
+      );
     } else if (node.type === "video") {
-      void generateVideoIntoNode(nodeId, trimmed, {
-        durationSeconds: videoDuration,
-        resolution: videoResolution,
-      });
+      void generateVideoIntoNode(
+        nodeId,
+        trimmed,
+        buildVideoGenOpts({
+          durationSeconds: videoDuration,
+          resolution: videoResolution,
+          aspectRatio: videoAspect,
+          generateAudio: videoGenerateAudio,
+          watermark: videoWatermark,
+          model,
+        }),
+      );
     } else if (node.type === "audio") {
-      void generateAudioIntoNode(nodeId, trimmed, {
-        voice: audioVoice.trim() || undefined,
-        speed: audioSpeed !== 1 ? audioSpeed : undefined,
-      });
+      void generateAudioIntoNode(
+        nodeId,
+        trimmed,
+        buildAudioGenOpts({
+          voice: audioVoice,
+          speed: audioSpeed,
+          model,
+          format: audioFormat,
+          instructions: audioInstructions,
+        }),
+      );
     }
   }, [
     prompt,
@@ -196,11 +243,20 @@ export function PromptPanel({ node }: PromptPanelProps) {
     node.type,
     nodeId,
     usablePaths,
+    model,
     imageCount,
+    imageQuality,
+    imageAspect,
+    imageSize,
     videoDuration,
     videoResolution,
+    videoAspect,
+    videoGenerateAudio,
+    videoWatermark,
     audioVoice,
     audioSpeed,
+    audioFormat,
+    audioInstructions,
   ]);
 
   return (
@@ -266,10 +322,58 @@ export function PromptPanel({ node }: PromptPanelProps) {
         ) : null}
       </div>
 
-      {/* Per-type params row */}
+      {/* Per-type params row — best-effort generation hints */}
       <div className="mt-1.5 flex flex-wrap gap-1 items-center">
         {node.type === "image" ? (
           <>
+            <label className="flex items-center gap-1 text-text-secondary">
+              质量
+              <select
+                value={imageQuality}
+                onChange={(e) =>
+                  setImageQuality(e.target.value as ImageQuality)
+                }
+                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              >
+                <option value="auto">auto</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              比例
+              <select
+                value={imageAspect}
+                onChange={(e) => setImageAspect(e.target.value)}
+                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              >
+                <option value="">默认</option>
+                {["1:1", "3:4", "4:3", "9:16", "16:9"].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              尺寸
+              <select
+                value={imageSize}
+                onChange={(e) => setImageSize(e.target.value)}
+                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              >
+                <option value="">默认</option>
+                {["1K", "2K", "4K"].map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="flex items-center gap-1 text-text-secondary">
               数量
               <select
@@ -278,7 +382,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
                 className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
                 onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
               >
-                {[1, 2, 3, 4].map((n) => (
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>
@@ -314,6 +418,40 @@ export function PromptPanel({ node }: PromptPanelProps) {
                 <option value="1080p">1080p</option>
               </select>
             </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              比例
+              <select
+                value={videoAspect}
+                onChange={(e) => setVideoAspect(e.target.value)}
+                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              >
+                <option value="">默认</option>
+                {["16:9", "9:16", "1:1"].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              <input
+                type="checkbox"
+                checked={videoGenerateAudio}
+                onChange={(e) => setVideoGenerateAudio(e.target.checked)}
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              />
+              生成声音
+            </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              <input
+                type="checkbox"
+                checked={videoWatermark}
+                onChange={(e) => setVideoWatermark(e.target.checked)}
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              />
+              水印
+            </label>
           </>
         ) : node.type === "audio" ? (
           <>
@@ -343,8 +481,57 @@ export function PromptPanel({ node }: PromptPanelProps) {
                 ))}
               </select>
             </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              格式
+              <select
+                value={audioFormat}
+                onChange={(e) =>
+                  setAudioFormat(e.target.value as AudioFormat | "")
+                }
+                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              >
+                <option value="">默认</option>
+                {["mp3", "wav", "m4a", "ogg", "flac"].map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-text-secondary">
+              声音指令
+              <input
+                type="text"
+                value={audioInstructions}
+                onChange={(e) => setAudioInstructions(e.target.value)}
+                placeholder="可选"
+                className="w-28 rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+              />
+            </label>
           </>
         ) : null}
+      </div>
+
+      {/* Model picker + generate row (model is a shared best-effort hint) */}
+      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+        <label className="flex items-center gap-1 text-text-secondary">
+          模型
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            className="max-w-[140px] rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+          >
+            <option value="">默认模型</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
         {/* Generate button — flex-pushed to end */}
         <div className="ml-auto">

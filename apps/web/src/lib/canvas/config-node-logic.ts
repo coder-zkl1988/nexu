@@ -4,15 +4,14 @@
  * Pure plan builder for the config generation node (W2.4).
  *
  * Reads the config node's metadata.config + upstream resources, assembles a
- * typed plan, then dispatches to the matching generation seam.
- *
- * NOTE: model/aspect-ratio pickers are intentionally absent — the channels
- * do not accept those params yet. Add them when the channels do.
+ * typed plan, then dispatches to the matching generation seam. Per-mode
+ * generation params (model/quality/aspect/size/…) are best-effort hints.
  */
 
 import {
   generateAudioIntoNode,
   generateImageIntoNode,
+  generateTextIntoNode,
   generateVideoIntoNode,
 } from "./canvas-generation";
 import { addNode, connectNodes, getCanvasState } from "./canvas-store";
@@ -27,18 +26,34 @@ export type ConfigGenerationPlan =
       prompt: string;
       referenceImages: string[];
       count?: number;
+      model?: string;
+      quality?: "auto" | "high" | "medium" | "low";
+      aspectRatio?: string;
+      size?: string;
     }
   | {
       kind: "video";
       prompt: string;
       durationSeconds?: number;
       resolution?: "720p" | "1080p";
+      model?: string;
+      aspectRatio?: string;
+      generateAudio?: boolean;
+      watermark?: boolean;
     }
   | {
       kind: "audio";
       prompt: string;
       voice?: string;
       speed?: number;
+      model?: string;
+      format?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
+      instructions?: string;
+    }
+  | {
+      kind: "text";
+      prompt: string;
+      model?: string;
     };
 
 type PlanError = { error: "no-config" | "no-prompt" };
@@ -63,10 +78,11 @@ export function buildConfigGenerationPlan(
   const cfg = node.metadata.config;
   const upstream = collectUpstream(nodeId);
 
-  // Join trimmed upstream text items with double newline.
-  const prompt = upstream.prompts
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0)
+  // Prompt = the composer's base prompt (if any) followed by the trimmed,
+  // non-empty upstream text items, joined with a double newline.
+  const composed = cfg.composedPrompt?.trim();
+  const prompt = [composed, ...upstream.prompts.map((p) => p.trim())]
+    .filter((p): p is string => p !== undefined && p.length > 0)
     .join("\n\n");
 
   if (prompt.length === 0) return { error: "no-prompt" };
@@ -78,6 +94,12 @@ export function buildConfigGenerationPlan(
       prompt,
       referenceImages,
       ...(cfg.count !== undefined ? { count: cfg.count } : {}),
+      ...(cfg.model !== undefined ? { model: cfg.model } : {}),
+      ...(cfg.quality !== undefined ? { quality: cfg.quality } : {}),
+      ...(cfg.aspectRatio !== undefined
+        ? { aspectRatio: cfg.aspectRatio }
+        : {}),
+      ...(cfg.size !== undefined ? { size: cfg.size } : {}),
     };
   }
 
@@ -89,6 +111,22 @@ export function buildConfigGenerationPlan(
         ? { durationSeconds: cfg.durationSeconds }
         : {}),
       ...(cfg.resolution !== undefined ? { resolution: cfg.resolution } : {}),
+      ...(cfg.model !== undefined ? { model: cfg.model } : {}),
+      ...(cfg.aspectRatio !== undefined
+        ? { aspectRatio: cfg.aspectRatio }
+        : {}),
+      ...(cfg.generateAudio !== undefined
+        ? { generateAudio: cfg.generateAudio }
+        : {}),
+      ...(cfg.watermark !== undefined ? { watermark: cfg.watermark } : {}),
+    };
+  }
+
+  if (cfg.mode === "text") {
+    return {
+      kind: "text",
+      prompt,
+      ...(cfg.model !== undefined ? { model: cfg.model } : {}),
     };
   }
 
@@ -98,6 +136,11 @@ export function buildConfigGenerationPlan(
     prompt,
     ...(cfg.voice !== undefined ? { voice: cfg.voice } : {}),
     ...(cfg.speed !== undefined ? { speed: cfg.speed } : {}),
+    ...(cfg.model !== undefined ? { model: cfg.model } : {}),
+    ...(cfg.format !== undefined ? { format: cfg.format } : {}),
+    ...(cfg.instructions !== undefined
+      ? { instructions: cfg.instructions }
+      : {}),
   };
 }
 
@@ -140,6 +183,12 @@ export function runConfigGeneration(
     return generateImageIntoNode(resultNode.id, plan.prompt, {
       referenceImages: plan.referenceImages,
       ...(plan.count !== undefined ? { count: plan.count } : {}),
+      ...(plan.model !== undefined ? { model: plan.model } : {}),
+      ...(plan.quality !== undefined ? { quality: plan.quality } : {}),
+      ...(plan.aspectRatio !== undefined
+        ? { aspectRatio: plan.aspectRatio }
+        : {}),
+      ...(plan.size !== undefined ? { size: plan.size } : {}),
     });
   }
 
@@ -149,6 +198,20 @@ export function runConfigGeneration(
         ? { durationSeconds: plan.durationSeconds }
         : {}),
       ...(plan.resolution !== undefined ? { resolution: plan.resolution } : {}),
+      ...(plan.model !== undefined ? { model: plan.model } : {}),
+      ...(plan.aspectRatio !== undefined
+        ? { aspectRatio: plan.aspectRatio }
+        : {}),
+      ...(plan.generateAudio !== undefined
+        ? { generateAudio: plan.generateAudio }
+        : {}),
+      ...(plan.watermark !== undefined ? { watermark: plan.watermark } : {}),
+    });
+  }
+
+  if (plan.kind === "text") {
+    return generateTextIntoNode(resultNode.id, plan.prompt, {
+      ...(plan.model !== undefined ? { model: plan.model } : {}),
     });
   }
 
@@ -156,5 +219,10 @@ export function runConfigGeneration(
   return generateAudioIntoNode(resultNode.id, plan.prompt, {
     ...(plan.voice !== undefined ? { voice: plan.voice } : {}),
     ...(plan.speed !== undefined ? { speed: plan.speed } : {}),
+    ...(plan.model !== undefined ? { model: plan.model } : {}),
+    ...(plan.format !== undefined ? { format: plan.format } : {}),
+    ...(plan.instructions !== undefined
+      ? { instructions: plan.instructions }
+      : {}),
   });
 }

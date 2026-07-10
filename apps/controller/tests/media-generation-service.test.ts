@@ -258,6 +258,40 @@ describe("MediaGenerationService", () => {
   });
 
   // -----------------------------------------------------------------------
+  // generateImage + W5 generation hints (model/quality/aspectRatio/size)
+  // -----------------------------------------------------------------------
+  it("includes model/quality/aspectRatio/size hints in the image contract", async () => {
+    const out = makeMediaFile("tool-image-generation/out.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().generateImage({
+      prompt: "a cat",
+      model: "seedream-4",
+      quality: "high",
+      aspectRatio: "16:9",
+      size: "2K",
+    });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("Preferred model: seedream-4");
+    expect(message).toContain("Quality: high");
+    expect(message).toContain("Aspect ratio: 16:9");
+    expect(message).toContain("Size: 2K");
+  });
+
+  it("omits the hints block entirely when no W5 params are given", async () => {
+    const out = makeMediaFile("tool-image-generation/plain.png");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().generateImage({ prompt: "a dog" });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).not.toContain("Generation hints");
+  });
+
+  // -----------------------------------------------------------------------
   // generateVideo
   // -----------------------------------------------------------------------
   it("generateVideo UNAVAILABLE reply → error /not configured/", async () => {
@@ -293,6 +327,26 @@ describe("MediaGenerationService", () => {
     ).rejects.toThrow();
     const call = sendChat.mock.calls[0]?.[0] as { sessionKey: string };
     expect(call.sessionKey).toContain("videogen");
+  });
+
+  it("includes model/aspectRatio/generateAudio/watermark hints in the video contract", async () => {
+    const out = makeMediaFile("tool-video-generation/hint.mp4");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().generateVideo({
+      prompt: "a sunset",
+      model: "seedance-1",
+      aspectRatio: "9:16",
+      generateAudio: true,
+      watermark: true,
+    });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("Preferred model: seedance-1");
+    expect(message).toContain("Aspect ratio: 9:16");
+    expect(message).toContain("Also generate an audio track");
+    expect(message).toContain("Add a watermark");
   });
 
   // -----------------------------------------------------------------------
@@ -331,6 +385,64 @@ describe("MediaGenerationService", () => {
     ).rejects.toThrow();
     const call = sendChat.mock.calls[0]?.[0] as { sessionKey: string };
     expect(call.sessionKey).toContain("audiogen");
+  });
+
+  it("includes model/format/instructions hints in the audio contract", async () => {
+    const out = makeMediaFile("tool-audio-generation/hint.wav");
+    readAssistantReply.mockResolvedValue(out);
+
+    await buildService().generateAudio({
+      prompt: "calm music",
+      model: "tts-1",
+      format: "wav",
+      instructions: "warm female voice",
+    });
+
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("Preferred model: tts-1");
+    expect(message).toContain("Format: wav");
+    expect(message).toContain("Voice/style instructions: warm female voice");
+  });
+
+  // -----------------------------------------------------------------------
+  // generateText (W5.7)
+  // -----------------------------------------------------------------------
+  it("generateText returns the trimmed reply text", async () => {
+    readAssistantReply.mockResolvedValue("  Hello world  ");
+    const result = await buildService().generateText({ prompt: "greet" });
+    expect(result.text).toBe("Hello world");
+    const call = sendChat.mock.calls[0]?.[0] as { sessionKey: string };
+    expect(call.sessionKey).toContain("textgen");
+  });
+
+  it("generateText UNAVAILABLE reply → error /not configured/", async () => {
+    readAssistantReply.mockResolvedValue("UNAVAILABLE");
+    await expect(buildService().generateText({ prompt: "x" })).rejects.toThrow(
+      /not configured/,
+    );
+  });
+
+  it("generateText empty reply → error /empty/", async () => {
+    readAssistantReply.mockResolvedValue("   ");
+    await expect(buildService().generateText({ prompt: "x" })).rejects.toThrow(
+      /empty/,
+    );
+  });
+
+  it("generateText includes source text (rewrite) + model hint in the contract", async () => {
+    readAssistantReply.mockResolvedValue("rewritten");
+    await buildService().generateText({
+      prompt: "make it formal",
+      sourceText: "hey there",
+      model: "gpt-x",
+    });
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("Rewrite/transform");
+    expect(message).toContain("make it formal");
+    expect(message).toContain("hey there");
+    expect(message).toContain("Preferred model: gpt-x");
   });
 
   // -----------------------------------------------------------------------
