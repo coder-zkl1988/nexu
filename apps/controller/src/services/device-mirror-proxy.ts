@@ -64,6 +64,37 @@ function parseChannel(url: string): ParsedChannel | null {
   return null;
 }
 
+/** Marker every mirror-channel text frame starts with. */
+const MIRROR_CHANNEL_MARKER = '"channel":"mirror"';
+
+/**
+ * Only the head of the payload is scanned. STABLE's JPEG-over-JSON fallback
+ * frames are hundreds of KB of base64; decoding one in full just to classify it
+ * is exactly the cost this check exists to avoid.
+ */
+const MIRROR_MARKER_SCAN_BYTES = 64;
+
+/**
+ * True when a TEXT frame belongs to the video (mirror) channel rather than the
+ * control channel.
+ *
+ * The plugin emits every mirror-channel message as `{"channel":"mirror",…}`
+ * (tabby-control `ws-server.ts` always puts `channel` first and spreads the
+ * payload after it), while control traffic is either binary or a channel-less
+ * `{"type":"error",…}`.
+ *
+ * Fails OPEN: if the marker is not found within the scanned head the frame is
+ * treated as a control message and forwarded. Dropping a real control message
+ * would be worse than forwarding a video frame.
+ */
+export function isMirrorChannelTextFrame(data: string | Buffer): boolean {
+  const head =
+    typeof data === "string"
+      ? data.slice(0, MIRROR_MARKER_SCAN_BYTES)
+      : data.subarray(0, MIRROR_MARKER_SCAN_BYTES).toString("utf8");
+  return head.includes(MIRROR_CHANNEL_MARKER);
+}
+
 /**
  * DeviceMirrorProxy manages WebSocket connections between the Nexu web frontend
  * and the upstream tabby-control plugin (port 18790 by default).
@@ -73,8 +104,9 @@ function parseChannel(url: string): ParsedChannel | null {
  *   - `/control` → control messages (bidirectional JSON/binary)
  *
  * Upstream, both channels connect to the tabby-control plugin's single `/mirror`
- * endpoint. The control bridge filters out binary (video) frames so they only
- * flow through the video bridge.
+ * endpoint. The control bridge therefore sees the video channel's traffic too,
+ * and filters it out — binary H.264 by frame type, and mirror-channel TEXT
+ * frames (STABLE's JPEG-over-JSON fallback) by `isMirrorChannelTextFrame`.
  */
 export class DeviceMirrorProxy {
   private readonly wss: WebSocketServer;
@@ -299,6 +331,12 @@ export class DeviceMirrorProxy {
     //     the isBinary flag — the `ws` library never delivers text frames as
     //     JS strings, so a typeof check would misroute them into the binary
     //     filter and drop them.
+    //     Mirror-channel text frames are skipped: the upstream is the plugin's
+    //     single /mirror socket, so this bridge also sees STABLE's
+    //     JPEG-over-JSON video fallback. Those belong to the video bridge —
+    //     forwarding them here would make the browser JSON.parse a few hundred
+    //     KB of base64 per frame only for useMirrorControl to drop it, on the
+    //     exact awaiting-authorization path that is already the slowest.
     //   - Binary frames: use byte-0 frameType + size to distinguish device control from video
     //     - CLIPBOARD (0x00): always forward regardless of size
     //     - ACK (0x01): only if small (<100B) — video frames also start with 0x01 but are always large
@@ -306,14 +344,17 @@ export class DeviceMirrorProxy {
     upstream.on("message", (data, isBinary) => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
       if (!isBinary) {
-        // JSON device messages — forward as a TEXT frame
-        const text =
+        // Classify before decoding: isMirrorChannelTextFrame only reads the head.
+        const payload =
           typeof data === "string"
             ? data
             : Buffer.isBuffer(data)
-              ? data.toString("utf8")
-              : Buffer.from(data as ArrayBuffer).toString("utf8");
-        clientWs.send(text);
+              ? data
+              : Buffer.from(data as ArrayBuffer);
+        if (isMirrorChannelTextFrame(payload)) return;
+        clientWs.send(
+          typeof payload === "string" ? payload : payload.toString("utf8"),
+        );
       } else if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
         const buf = data instanceof ArrayBuffer ? Buffer.from(data) : data;
         if (buf.length > 0) {
