@@ -133,7 +133,11 @@ export const teamBoardCardSchema = z.object({
   id: z.string(),
   title: z.string(),
   status: z.string(),
-  /** Member bot id this card is assigned to (null for the orchestration card). */
+  /**
+   * The lead bot's id for a run's orchestration (parent) card; the assignee bot
+   * id for a member step card. Null only when the workboard card carries no
+   * assignee.
+   */
   agentId: z.string().nullable(),
   /** Display name of the assigned member, when resolvable. */
   assigneeName: z.string().nullable(),

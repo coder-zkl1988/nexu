@@ -305,6 +305,120 @@ describe("TeamRunCard", () => {
     // Still running — no export affordance yet.
     expect(markup).not.toContain("导出 Markdown");
   });
+
+  it("reads 团队执行中 (not 已完成) while the root step still runs", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // Live auto run mid-flight: the workboard already flipped the PARENT card
+    // to `done` on decompose, the root step is running, the next step waits.
+    // The run card must roll up from the children, not the parent.
+    queryClient.setQueryData(["teams", TEAM.id, "board"], {
+      boardId: TEAM.boardId,
+      cards: [
+        {
+          id: "card-a",
+          title: "初稿",
+          status: "running",
+          agentId: null,
+          assigneeName: null,
+          output: null,
+        },
+        {
+          id: "card-b",
+          title: "审核",
+          status: "todo",
+          agentId: null,
+          assigneeName: null,
+          output: null,
+        },
+      ],
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <TeamRunCard {...customProps(RUN)} />
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("团队执行中");
+    expect(markup).not.toContain("已完成");
+    expect(markup).not.toContain("导出 Markdown");
+  });
+
+  it("reads 团队执行中 (running dominates blocked) when a sibling still runs", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    // A step is blocked while a sibling still runs. rollupRunStatus makes
+    // `running` dominate `blocked` (anyBlocked = blocked AND nothing running),
+    // so the card must read 团队执行中, not 有步骤受阻.
+    queryClient.setQueryData(["teams", TEAM.id, "board"], {
+      boardId: TEAM.boardId,
+      cards: [
+        {
+          id: "card-a",
+          title: "初稿",
+          status: "running",
+          agentId: null,
+          assigneeName: null,
+          output: null,
+        },
+        {
+          id: "card-b",
+          title: "审核",
+          status: "blocked",
+          agentId: null,
+          assigneeName: null,
+          output: null,
+        },
+      ],
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <TeamRunCard {...customProps(RUN)} />
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("团队执行中");
+    expect(markup).not.toContain("有步骤受阻");
+  });
+
+  it("reads 已完成 only once every child card is done", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["teams", TEAM.id, "board"], {
+      boardId: TEAM.boardId,
+      cards: [
+        {
+          id: "card-a",
+          title: "初稿",
+          status: "done",
+          agentId: null,
+          assigneeName: null,
+          output: "A",
+        },
+        {
+          id: "card-b",
+          title: "审核",
+          status: "done",
+          agentId: null,
+          assigneeName: null,
+          output: "B",
+        },
+      ],
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <TeamRunCard {...customProps(RUN)} />
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("已完成");
+  });
 });
 
 describe("TeamRunPanel", () => {
@@ -320,5 +434,39 @@ describe("TeamRunPanel", () => {
     expect(markup).toContain('data-dag-status="done"');
     expect(markup).toContain('data-dag-status="running"');
     expect(markup).toContain("等待人工审批");
+  });
+
+  it("reads 运行中 (not 有步骤受阻) when a step is blocked but a sibling still runs", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["teams", TEAM.id, "board"], {
+      boardId: TEAM.boardId,
+      cards: [
+        {
+          id: "card-a",
+          title: "初稿",
+          status: "running",
+          agentId: null,
+          assigneeName: null,
+          output: null,
+        },
+        {
+          id: "card-b",
+          title: "审核",
+          status: "blocked",
+          agentId: null,
+          assigneeName: null,
+          output: null,
+        },
+      ],
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <TeamRunPanel {...customProps(RUN)} />
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain("运行中");
+    expect(markup).not.toContain("有步骤受阻");
   });
 });

@@ -4,6 +4,7 @@ import {
   useWorkflowApprovals,
 } from "@/hooks/use-team-workflows";
 import { useTeamBoard } from "@/hooks/use-teams";
+import { rollupRunStatus } from "@/lib/team-run-status";
 import { useState } from "react";
 import type { CustomComponentProps } from "./registry";
 
@@ -59,12 +60,13 @@ export function useTeamRunStatus(run: TeamRunInfo | null) {
     statusByStepId[step.id] = cardsById.get(step.cardId)?.status;
   }
   const steps = run?.steps ?? [];
-  const allDone =
-    steps.length > 0 &&
-    steps.every((step) => statusByStepId[step.id] === "done");
-  const anyBlocked = steps.some(
-    (step) => statusByStepId[step.id] === "blocked",
+  // Overall status is a rollup of the child step cards, NOT the parent
+  // orchestration card (which the workboard marks `done` on decompose).
+  const runStatus = rollupRunStatus(
+    steps.map((step) => statusByStepId[step.id]),
   );
+  const allDone = runStatus === "done";
+  const anyBlocked = runStatus === "blocked";
   if (board && allDone && !settled) {
     setSettled(true);
   }

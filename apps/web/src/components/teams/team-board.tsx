@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { useTeamBoard } from "@/hooks/use-teams";
+import { useTeam, useTeamBoard } from "@/hooks/use-teams";
+import { rollupColumnKey, rollupRunStatus } from "@/lib/team-run-status";
 import { cn } from "@/lib/utils";
 import type { TeamBoardCard } from "@nexu/shared";
 import { Loader2 } from "lucide-react";
@@ -29,9 +30,58 @@ function columnKeyFor(status: string): string {
   return match?.key ?? "todo";
 }
 
+/**
+ * The column a run's orchestration (parent) card rolls up to from its children,
+ * or null when the board cannot attribute children to a single parent. The
+ * board accumulates cards across runs with no per-run parent↔child linkage, so
+ * the rollup is only sound when there is exactly ONE orchestration card on the
+ * board (then every non-lead card is that run's child). With 0 or ≥2, return
+ * null and let each card fall back to its own status.
+ */
+export function orchestrationColumnFor(
+  cards: readonly Pick<TeamBoardCard, "agentId" | "status">[],
+  leadBotId: string | null,
+): string | null {
+  if (leadBotId === null) return null;
+  const orchestrationCount = cards.filter(
+    (c) => c.agentId === leadBotId,
+  ).length;
+  if (orchestrationCount !== 1) return null;
+  return rollupColumnKey(
+    rollupRunStatus(
+      cards.filter((c) => c.agentId !== leadBotId).map((c) => c.status),
+    ),
+  );
+}
+
+/**
+ * Column for one board card. The parent orchestration card (assigned to the
+ * team lead) is placed by `orchestrationColumn` — a rollup of its child cards —
+ * instead of its own status: the workboard flips the parent to `done` the
+ * instant it decomposes, which would otherwise strand a still-running run in
+ * the Done column. When `orchestrationColumn` is null (the board holds 0 or ≥2
+ * runs' parents, so children can't be attributed to one parent), the parent
+ * falls back to its own status like every other card.
+ */
+export function boardColumnKeyForCard(
+  card: Pick<TeamBoardCard, "agentId" | "status">,
+  leadBotId: string | null,
+  orchestrationColumn: string | null,
+): string {
+  if (
+    orchestrationColumn !== null &&
+    leadBotId !== null &&
+    card.agentId === leadBotId
+  ) {
+    return orchestrationColumn;
+  }
+  return columnKeyFor(card.status);
+}
+
 export function TeamBoard({ teamId }: { teamId: string }) {
   const { t } = useTranslation();
   const { data, isLoading, isError } = useTeamBoard(teamId);
+  const { data: team } = useTeam(teamId);
 
   if (isLoading) {
     return (
@@ -46,11 +96,18 @@ export function TeamBoard({ teamId }: { teamId: string }) {
   }
 
   const cards = data.cards;
+  const leadBotId = team?.leadBotId ?? null;
+  // Roll the parent orchestration card up from its children (see
+  // boardColumnKeyForCard). Only sound when the board holds exactly one run's
+  // orchestration card; otherwise null → each card uses its own status.
+  const orchestrationColumn = orchestrationColumnFor(cards, leadBotId);
   const byColumn = new Map<string, TeamBoardCard[]>(
     COLUMNS.map((c) => [c.key, []]),
   );
   for (const card of cards) {
-    byColumn.get(columnKeyFor(card.status))?.push(card);
+    byColumn
+      .get(boardColumnKeyForCard(card, leadBotId, orchestrationColumn))
+      ?.push(card);
   }
 
   if (cards.length === 0) {
