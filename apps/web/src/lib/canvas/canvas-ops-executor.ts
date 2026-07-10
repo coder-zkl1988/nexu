@@ -62,7 +62,12 @@ export interface ApplyResult {
   errors: string[];
 }
 
-/** Default node title per type when the agent omits one. */
+/**
+ * Default node title per type when the agent omits one. Keyed by the full
+ * CanvasNodeType for completeness; `group` is present only to satisfy the
+ * exhaustive Record — the agent op surface (canvasOpNodeTypeSchema) does not
+ * include "group", so add_node never actually creates a group node.
+ */
 const DEFAULT_TITLE: Record<CanvasNodeType, string> = {
   a2ui: "组件",
   text: "文本",
@@ -71,6 +76,7 @@ const DEFAULT_TITLE: Record<CanvasNodeType, string> = {
   audio: "音频",
   "team-step": "步骤",
   config: "生成配置",
+  group: "组",
 };
 
 /**

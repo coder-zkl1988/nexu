@@ -19893,7 +19893,8 @@
                               "type": "string",
                               "enum": [
                                 "a2ui",
-                                "team-step"
+                                "team-step",
+                                "group"
                               ]
                             }
                           ]
@@ -20093,7 +20094,8 @@
                                 "type": "string",
                                 "enum": [
                                   "a2ui",
-                                  "team-step"
+                                  "team-step",
+                                  "group"
                                 ]
                               }
                             ]

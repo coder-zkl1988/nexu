@@ -77,8 +77,13 @@ export function HoverToolbar({
 }) {
   const [describePending, setDescribePending] = useState(false);
 
-  // a2ui and team-step nodes keep minimal chrome — no toolbar.
-  if (node.type === "a2ui" || node.type === "team-step") {
+  // a2ui, team-step and group nodes keep minimal chrome — no toolbar (groups
+  // are inert containers with no image ops, lock, or font controls).
+  if (
+    node.type === "a2ui" ||
+    node.type === "team-step" ||
+    node.type === "group"
+  ) {
     return null;
   }
 

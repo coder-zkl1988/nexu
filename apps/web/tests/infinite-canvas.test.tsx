@@ -443,6 +443,46 @@ describe("CanvasSurface", () => {
   });
 });
 
+describe("group node markup", () => {
+  it("renders a group's inert body, NOT the image upload/generate UI (node-views trap)", () => {
+    const group = addNode({ type: "group", title: "组" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    // Group frame + inert container body are present…
+    expect(markup).toContain(`data-canvas-node="${group.id}"`);
+    expect(markup).toContain('data-canvas-group-body="true"');
+    // …and it must NOT fall through to the empty-image upload/generate node.
+    expect(markup).not.toContain(`data-canvas-generate-image="${group.id}"`);
+    expect(markup).not.toContain("上传或在下方生成");
+  });
+
+  it("renders group nodes before (behind) other nodes regardless of store order", () => {
+    // Add a non-group node FIRST, then the group — store order is [text, group].
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      position: { x: 900, y: 0 },
+    });
+    const group = addNode({
+      type: "group",
+      title: "组",
+      position: { x: 0, y: 0 },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    const groupAt = markup.indexOf(`data-canvas-node="${group.id}"`);
+    const textAt = markup.indexOf(`data-canvas-node="${text.id}"`);
+    expect(groupAt).toBeGreaterThanOrEqual(0);
+    expect(textAt).toBeGreaterThanOrEqual(0);
+    // Earlier in the markup = painted first = behind.
+    expect(groupAt).toBeLessThan(textAt);
+  });
+
+  it("gives a group minimal chrome — no hover toolbar", () => {
+    const group = addNode({ type: "group", title: "组" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain(`data-canvas-hover-toolbar="${group.id}"`);
+  });
+});
+
 describe("PromptPanel visibility", () => {
   it("single selected image node renders data-canvas-prompt-panel with 生成 button", () => {
     // addNode selects the newest node automatically

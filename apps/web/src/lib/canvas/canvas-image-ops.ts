@@ -15,6 +15,8 @@ import { type CanvasNode, addNode, getCanvasState } from "./canvas-store";
 import type { CropBox } from "./crop-geometry";
 import { loadImageBitmap } from "./load-image-bitmap";
 import {
+  type PieceRect,
+  cutPieceRects,
   gridPieceRects,
   splitChildLayout,
   upscaleTargetSize,
@@ -101,9 +103,78 @@ export async function applyCrop(
 // ── applySplit ───────────────────────────────────────────────────────────────
 
 /**
+ * Shared tail of both split appliers. Given the pre-computed piece rects (from
+ * `gridPieceRects` for the uniform path or `cutPieceRects` for the draggable-cut
+ * path) plus the grid shape (`rows`/`cols`, for child layout and the `r-c`
+ * titles), draw each piece to an offscreen canvas and add a titled child image
+ * node. Reads the source node live so a title rename between op-issue and apply
+ * is reflected. Returns the created child nodes.
+ */
+function addSplitPieceNodes(
+  nodeId: string,
+  bitmap: ImageBitmap,
+  pieces: PieceRect[],
+  rows: number,
+  cols: number,
+): CanvasNode[] {
+  const pieceAspect =
+    pieces[0] && pieces[0].height > 0 ? pieces[0].width / pieces[0].height : 1;
+
+  // Read node live so a title rename between op-issue and apply is reflected.
+  const src = getCanvasState().nodes.find((n) => n.id === nodeId);
+  const liveTitle = src?.title ?? "图片";
+  const srcPos = src
+    ? {
+        x: src.position.x,
+        y: src.position.y,
+        width: src.size.width,
+        height: src.size.height,
+      }
+    : { x: 0, y: 0, width: 0, height: 0 };
+
+  const layouts = splitChildLayout(srcPos, rows, cols, pieceAspect);
+
+  const created: CanvasNode[] = [];
+  for (const piece of pieces) {
+    const offscreen = document.createElement("canvas");
+    offscreen.width = piece.width;
+    offscreen.height = piece.height;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) continue;
+    ctx.drawImage(
+      bitmap,
+      piece.x,
+      piece.y,
+      piece.width,
+      piece.height,
+      0,
+      0,
+      piece.width,
+      piece.height,
+    );
+    const dataUrl = offscreen.toDataURL("image/png");
+    const layout = layouts[piece.row * cols + piece.col];
+    if (!layout) continue;
+    created.push(
+      addNode({
+        type: "image",
+        title: `${liveTitle} 拆分 ${piece.row + 1}-${piece.col + 1}`,
+        position: { x: layout.x, y: layout.y },
+        size: { width: layout.width, height: layout.height },
+        metadata: { content: dataUrl },
+      }),
+    );
+  }
+  return created;
+}
+
+/**
  * Split the source node's image into a `rows`×`cols` grid (each clamped to
  * [1,12]) of child image nodes titled `${title} 拆分 r-c`. Returns the created
  * child nodes (empty array on missing node/content).
+ *
+ * This is the uniform-grid path and the agent `split_image` op path — its
+ * signature is a contract; do not change it.
  */
 export async function applySplit(
   nodeId: string,
@@ -125,62 +196,42 @@ export async function applySplit(
       clampedRows,
       clampedCols,
     );
-    const pieceAspect =
-      pieces[0] && pieces[0].height > 0
-        ? pieces[0].width / pieces[0].height
-        : 1;
+    return addSplitPieceNodes(nodeId, bitmap, pieces, clampedRows, clampedCols);
+  } finally {
+    bitmap.close();
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 
-    // Read node live so a title rename between op-issue and apply is reflected.
-    const src = getCanvasState().nodes.find((n) => n.id === nodeId);
-    const liveTitle = src?.title ?? "图片";
-    const srcPos = src
-      ? {
-          x: src.position.x,
-          y: src.position.y,
-          width: src.size.width,
-          height: src.size.height,
-        }
-      : { x: 0, y: 0, width: 0, height: 0 };
+/**
+ * Split the source node's image at explicit interior cut positions (image px)
+ * into non-uniform child image nodes titled `${title} 拆分 r-c`. Derives the grid
+ * shape from the cut counts (`rows = yCuts.length + 1`, `cols = xCuts.length + 1`)
+ * and delegates tiling to `cutPieceRects`. Returns the created child nodes (empty
+ * array on missing node/content).
+ *
+ * This is the interactive split dialog's draggable-line path. The uniform agent
+ * op path stays on {@link applySplit}.
+ */
+export async function applySplitAtCuts(
+  nodeId: string,
+  xCuts: number[],
+  yCuts: number[],
+): Promise<CanvasNode[]> {
+  const node = getCanvasState().nodes.find((n) => n.id === nodeId);
+  const content = node?.metadata.content;
+  if (!node || !content) return [];
 
-    const layouts = splitChildLayout(
-      srcPos,
-      clampedRows,
-      clampedCols,
-      pieceAspect,
+  const { bitmap, objectUrl } = await loadImageBitmap(content);
+  try {
+    const pieces = cutPieceRects(bitmap.width, bitmap.height, xCuts, yCuts);
+    return addSplitPieceNodes(
+      nodeId,
+      bitmap,
+      pieces,
+      yCuts.length + 1,
+      xCuts.length + 1,
     );
-
-    const created: CanvasNode[] = [];
-    for (const piece of pieces) {
-      const offscreen = document.createElement("canvas");
-      offscreen.width = piece.width;
-      offscreen.height = piece.height;
-      const ctx = offscreen.getContext("2d");
-      if (!ctx) continue;
-      ctx.drawImage(
-        bitmap,
-        piece.x,
-        piece.y,
-        piece.width,
-        piece.height,
-        0,
-        0,
-        piece.width,
-        piece.height,
-      );
-      const dataUrl = offscreen.toDataURL("image/png");
-      const layout = layouts[piece.row * clampedCols + piece.col];
-      if (!layout) continue;
-      created.push(
-        addNode({
-          type: "image",
-          title: `${liveTitle} 拆分 ${piece.row + 1}-${piece.col + 1}`,
-          position: { x: layout.x, y: layout.y },
-          size: { width: layout.width, height: layout.height },
-          metadata: { content: dataUrl },
-        }),
-      );
-    }
-    return created;
   } finally {
     bitmap.close();
     URL.revokeObjectURL(objectUrl);

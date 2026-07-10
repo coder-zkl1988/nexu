@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  cutPieceRects,
   gridPieceRects,
   splitChildLayout,
   upscaleTargetSize,
@@ -190,6 +191,158 @@ describe("gridPieceRects", () => {
       const colRects = rects.filter((r) => r.col === col);
       const totalH = colRects.reduce((sum, r) => sum + r.height, 0);
       expect(totalH).toBe(90);
+    }
+  });
+});
+
+// ── cutPieceRects ─────────────────────────────────────────────────────────────
+
+describe("cutPieceRects", () => {
+  it("no cuts → single full-image piece", () => {
+    const rects = cutPieceRects(200, 150, [], []);
+    expect(rects).toHaveLength(1);
+    expect(rects[0]).toEqual({
+      row: 0,
+      col: 0,
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 150,
+    });
+  });
+
+  it("one vertical cut, no horizontal cut → 1 row × 2 cols", () => {
+    const rects = cutPieceRects(100, 80, [40], []);
+    expect(rects).toHaveLength(2);
+    expect(rects[0]).toEqual({
+      row: 0,
+      col: 0,
+      x: 0,
+      y: 0,
+      width: 40,
+      height: 80,
+    });
+    expect(rects[1]).toEqual({
+      row: 0,
+      col: 1,
+      x: 40,
+      y: 0,
+      width: 60,
+      height: 80,
+    });
+  });
+
+  it("one vertical + one horizontal cut → 2×2, row-major with row/col indices", () => {
+    const rects = cutPieceRects(100, 80, [40], [30]);
+    expect(rects).toHaveLength(4);
+    expect(rects[0]).toEqual({
+      row: 0,
+      col: 0,
+      x: 0,
+      y: 0,
+      width: 40,
+      height: 30,
+    });
+    expect(rects[1]).toEqual({
+      row: 0,
+      col: 1,
+      x: 40,
+      y: 0,
+      width: 60,
+      height: 30,
+    });
+    expect(rects[2]).toEqual({
+      row: 1,
+      col: 0,
+      x: 0,
+      y: 30,
+      width: 40,
+      height: 50,
+    });
+    expect(rects[3]).toEqual({
+      row: 1,
+      col: 1,
+      x: 40,
+      y: 30,
+      width: 60,
+      height: 50,
+    });
+  });
+
+  it("rounds fractional cuts to integers", () => {
+    const rects = cutPieceRects(100, 50, [29.6], [24.4]);
+    // 29.6 → 30, 24.4 → 24
+    expect(rects[0]).toMatchObject({ x: 0, y: 0, width: 30, height: 24 });
+    expect(rects[3]).toMatchObject({ x: 30, y: 24, width: 70, height: 26 });
+  });
+
+  it("sorts, dedupes, and drops out-of-range cuts", () => {
+    // 70, 30, dup 30, -5 (<=0), 100 (>=imgW), 150 (>=imgW) → sanitized [30, 70]
+    const rects = cutPieceRects(100, 100, [70, 30, 30, -5, 100, 150], []);
+    expect(rects).toHaveLength(3); // 1 row × 3 cols
+    expect(rects.map((r) => r.x)).toEqual([0, 30, 70]);
+    expect(rects.map((r) => r.width)).toEqual([30, 40, 30]);
+  });
+
+  it("a duplicate after rounding collapses to a single boundary", () => {
+    // 30 and 30.4 both round to 30 → one cut, not two
+    const rects = cutPieceRects(100, 20, [30, 30.4], []);
+    expect(rects).toHaveLength(2);
+    expect(rects.map((r) => r.width)).toEqual([30, 70]);
+  });
+
+  it("pieces tile exactly — areas sum to imgW*imgH, no gaps, edges reached", () => {
+    const imgW = 103;
+    const imgH = 97;
+    const rects = cutPieceRects(imgW, imgH, [33, 70], [40]);
+    expect(rects).toHaveLength(6); // 2 rows × 3 cols
+
+    // Total area is exactly the image area (⇒ gapless + no overlap given the
+    // grid structure).
+    const totalArea = rects.reduce((sum, r) => sum + r.width * r.height, 0);
+    expect(totalArea).toBe(imgW * imgH);
+
+    // Per-row widths sum to imgW; per-col heights sum to imgH.
+    for (let row = 0; row < 2; row++) {
+      const rowRects = rects.filter((r) => r.row === row);
+      expect(rowRects.reduce((s, r) => s + r.width, 0)).toBe(imgW);
+    }
+    for (let col = 0; col < 3; col++) {
+      const colRects = rects.filter((r) => r.col === col);
+      expect(colRects.reduce((s, r) => s + r.height, 0)).toBe(imgH);
+    }
+
+    // Last column reaches the right edge; last row reaches the bottom edge.
+    for (const r of rects.filter((r) => r.col === 2)) {
+      expect(r.x + r.width).toBe(imgW);
+    }
+    for (const r of rects.filter((r) => r.row === 1)) {
+      expect(r.y + r.height).toBe(imgH);
+    }
+  });
+
+  it("pieces are contiguous — each x/y equals the sum of preceding sizes", () => {
+    const rects = cutPieceRects(120, 90, [30, 80], [50]);
+    const row0 = rects.filter((r) => r.row === 0).sort((a, b) => a.col - b.col);
+    expect(row0[0].x).toBe(0);
+    expect(row0[1].x).toBe(row0[0].width);
+    expect(row0[2].x).toBe(row0[0].width + row0[1].width);
+    const col0 = rects.filter((r) => r.col === 0).sort((a, b) => a.row - b.row);
+    expect(col0[0].y).toBe(0);
+    expect(col0[1].y).toBe(col0[0].height);
+  });
+
+  it("non-uniform cuts give non-uniform widths", () => {
+    const rects = cutPieceRects(100, 10, [20], []);
+    expect(rects.map((r) => r.width)).toEqual([20, 80]);
+    expect(rects[0].width).not.toBe(rects[1].width);
+  });
+
+  it("every piece has strictly positive width and height", () => {
+    const rects = cutPieceRects(100, 100, [1, 99], [50]);
+    for (const r of rects) {
+      expect(r.width).toBeGreaterThan(0);
+      expect(r.height).toBeGreaterThan(0);
     }
   });
 });

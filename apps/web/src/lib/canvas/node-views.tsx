@@ -105,6 +105,22 @@ function EmptyMediaHint({
   );
 }
 
+/**
+ * Group container body — intentionally inert. The node frame (border + title
+ * header, drawn by CanvasNodeView) is the visible container; this body is an
+ * empty translucent zone. Member nodes are separate canvas nodes painted on
+ * top of the group, so the group never renders its children inside itself.
+ */
+function GroupNodeContent() {
+  return (
+    <div
+      data-canvas-group-body="true"
+      aria-hidden="true"
+      className="h-full w-full rounded-xl bg-surface-2/20"
+    />
+  );
+}
+
 function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   if (node.type === "team-step") {
     return <TeamStepNodeContent node={node} />;
@@ -114,6 +130,15 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   // (the RESULT node carries the task, not the config node).
   if (node.type === "config") {
     return <ConfigNodeContent node={node} />;
+  }
+
+  // Group nodes are inert containers. This early branch is LOAD-BEARING: the
+  // function falls through to the image renderer at the bottom, so a "group"
+  // node without an explicit branch would render as an empty image node
+  // (upload/generate UI). Members are separate nodes painted on top — the group
+  // never renders its children inside itself.
+  if (node.type === "group") {
+    return <GroupNodeContent />;
   }
 
   // Task status overlay: applies before per-type media rendering for image/video/audio.

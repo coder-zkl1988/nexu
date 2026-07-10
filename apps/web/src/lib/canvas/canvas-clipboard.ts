@@ -13,6 +13,7 @@
 import {
   type CanvasConnection,
   type CanvasNode,
+  type CanvasNodeMetadata,
   addNode,
   connectNodes,
   genId,
@@ -29,6 +30,7 @@ const COPYABLE_TYPES = new Set<CanvasNode["type"]>([
   "video",
   "audio",
   "config",
+  "group",
 ]);
 
 type ClipboardEntry = {
@@ -47,7 +49,9 @@ let clipboard: ClipboardEntry | null = null;
 function deepCopyNode(node: CanvasNode): CanvasNode {
   // Omit surfaceId to prevent two nodes sharing the same a2ui payload
   // (a2ui payloads are keyed by surfaceId and deleted on node removal).
-  // Omit batch so copied nodes become independent images (no group linkage).
+  // Omit batch so copied nodes become independent images (no batch linkage).
+  // groupId is KEPT here — the paste path decides per-node whether to remap it
+  // (group copied too) or drop it (lone member), like importCanvas does.
   const {
     surfaceId: _omitted,
     batch: _batchOmitted,
@@ -59,6 +63,24 @@ function deepCopyNode(node: CanvasNode): CanvasNode {
     size: { ...node.size },
     metadata: { ...metadata },
   };
+}
+
+/**
+ * Remap a copied node's `groupId` through the paste id map:
+ *  - the group was copied too (its old id is in the map) → point at the new
+ *    group id (group + members round-trip as a unit);
+ *  - the group was NOT copied (a lone member) → drop groupId (independent node).
+ * Group nodes carry no groupId, so they pass through untouched.
+ */
+function remapGroupId(
+  metadata: CanvasNodeMetadata,
+  idMap: ReadonlyMap<string, string>,
+): CanvasNodeMetadata {
+  const { groupId } = metadata;
+  if (groupId === undefined) return { ...metadata };
+  const mapped = idMap.get(groupId);
+  const { groupId: _dropped, ...rest } = metadata;
+  return mapped ? { ...rest, groupId: mapped } : { ...rest };
 }
 
 /**
@@ -133,20 +155,21 @@ export function pasteClipboard(at?: { x: number; y: number }): number {
     dy = shift;
   }
 
-  // Create new nodes with fresh ids; build old→new id map
+  // Pre-assign fresh ids for every copied node so groupId remap sees the full
+  // map even when a member is created before its group in the loop below.
   const idMap = new Map<string, string>();
-  const newNodes: CanvasNode[] = [];
+  for (const src of srcNodes) idMap.set(src.id, genId(src.type));
 
+  const newNodes: CanvasNode[] = [];
   for (const src of srcNodes) {
-    const newId = genId(src.type);
-    idMap.set(src.id, newId);
+    const newId = idMap.get(src.id) as string;
     const newNode = addNode({
       id: newId,
       type: src.type,
       title: src.title,
       position: { x: src.position.x + dx, y: src.position.y + dy },
       size: { ...src.size },
-      metadata: { ...src.metadata },
+      metadata: remapGroupId(src.metadata, idMap),
     });
     newNodes.push(newNode);
   }
@@ -183,13 +206,16 @@ export function duplicateNodes(ids: readonly string[]): number {
     (c) => srcIds.has(c.fromNodeId) && srcIds.has(c.toNodeId),
   );
 
+  // Pre-assign fresh ids so groupId remap sees the full map regardless of the
+  // order group vs. members are created in the loop below.
   const idMap = new Map<string, string>();
-  const newNodes: CanvasNode[] = [];
+  for (const src of srcNodes) idMap.set(src.id, genId(src.type));
 
+  const newNodes: CanvasNode[] = [];
   for (const src of srcNodes) {
-    const newId = genId(src.type);
-    idMap.set(src.id, newId);
-    // Strip surfaceId and batch so duplicates become independent nodes.
+    const newId = idMap.get(src.id) as string;
+    // Strip surfaceId and batch so duplicates become independent nodes; remap
+    // (or drop) groupId depending on whether the group was duplicated too.
     const { surfaceId: _s, batch: _b, ...cleanMeta } = src.metadata;
     const newNode = addNode({
       id: newId,
@@ -197,7 +223,7 @@ export function duplicateNodes(ids: readonly string[]): number {
       title: src.title,
       position: { x: src.position.x + 36, y: src.position.y + 36 },
       size: { ...src.size },
-      metadata: { ...cleanMeta },
+      metadata: remapGroupId(cleanMeta, idMap),
     });
     newNodes.push(newNode);
   }

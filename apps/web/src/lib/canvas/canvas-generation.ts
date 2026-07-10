@@ -45,6 +45,9 @@ export async function generateImageIntoNode(
     size?: string;
   },
 ): Promise<boolean> {
+  // The retry payload is persisted with the node, so a retry — even after an
+  // app restart — reproduces the generation with the same parameters instead of
+  // silently falling back to defaults.
   const retry = {
     kind: "image" as const,
     prompt,
@@ -58,6 +61,12 @@ export async function generateImageIntoNode(
     ...(opts?.maskDataUrl !== undefined
       ? { maskDataUrl: opts.maskDataUrl }
       : {}),
+    ...(opts?.model !== undefined ? { model: opts.model } : {}),
+    ...(opts?.quality !== undefined ? { quality: opts.quality } : {}),
+    ...(opts?.aspectRatio !== undefined
+      ? { aspectRatio: opts.aspectRatio }
+      : {}),
+    ...(opts?.size !== undefined ? { size: opts.size } : {}),
   };
 
   setNodeTask(nodeId, { status: "generating", retry });
@@ -213,6 +222,14 @@ export async function generateVideoIntoNode(
       ? { durationSeconds: opts.durationSeconds }
       : {}),
     ...(opts?.resolution !== undefined ? { resolution: opts.resolution } : {}),
+    ...(opts?.model !== undefined ? { model: opts.model } : {}),
+    ...(opts?.aspectRatio !== undefined
+      ? { aspectRatio: opts.aspectRatio }
+      : {}),
+    ...(opts?.generateAudio !== undefined
+      ? { generateAudio: opts.generateAudio }
+      : {}),
+    ...(opts?.watermark !== undefined ? { watermark: opts.watermark } : {}),
   };
 
   setNodeTask(nodeId, { status: "generating", retry });
@@ -293,6 +310,11 @@ export async function generateAudioIntoNode(
     prompt,
     ...(opts?.voice !== undefined ? { voice: opts.voice } : {}),
     ...(opts?.speed !== undefined ? { speed: opts.speed } : {}),
+    ...(opts?.model !== undefined ? { model: opts.model } : {}),
+    ...(opts?.format !== undefined ? { format: opts.format } : {}),
+    ...(opts?.instructions !== undefined
+      ? { instructions: opts.instructions }
+      : {}),
   };
 
   setNodeTask(nodeId, { status: "generating", retry });
@@ -454,16 +476,27 @@ export function retryNodeTask(nodeId: string): void {
       count: retry.count,
       sourceImage: retry.sourceImage,
       maskDataUrl: retry.maskDataUrl,
+      model: retry.model,
+      quality: retry.quality,
+      aspectRatio: retry.aspectRatio,
+      size: retry.size,
     });
   } else if (retry.kind === "video") {
     void generateVideoIntoNode(nodeId, retry.prompt, {
       durationSeconds: retry.durationSeconds,
       resolution: retry.resolution,
+      model: retry.model,
+      aspectRatio: retry.aspectRatio,
+      generateAudio: retry.generateAudio,
+      watermark: retry.watermark,
     });
   } else if (retry.kind === "audio") {
     void generateAudioIntoNode(nodeId, retry.prompt, {
       voice: retry.voice,
       speed: retry.speed,
+      model: retry.model,
+      format: retry.format,
+      instructions: retry.instructions,
     });
   } else if (retry.kind === "text") {
     void generateTextIntoNode(nodeId, retry.prompt, {

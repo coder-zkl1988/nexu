@@ -5,6 +5,7 @@ import {
   AudioLines,
   ChevronDown,
   Clapperboard,
+  Group,
   ImagePlus,
   Library,
   Map as MapIcon,
@@ -171,6 +172,12 @@ export function CanvasToolbar({
           }
         >
           <SlidersHorizontal size={14} />
+        </ToolButton>
+        <ToolButton
+          label="编组"
+          onClick={() => addNode({ type: "group", title: "组" })}
+        >
+          <Group size={14} />
         </ToolButton>
         <button
           type="button"

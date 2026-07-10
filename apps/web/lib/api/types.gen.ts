@@ -6623,7 +6623,7 @@ export type GetApiV1CanvasMirrorResponses = {
         boardId: string;
         nodes: Array<{
             id: string;
-            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step');
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
             title: string;
             x: number;
             y: number;
@@ -6657,7 +6657,7 @@ export type PostApiV1CanvasMirrorData = {
         boardId: string;
         nodes: Array<{
             id: string;
-            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step');
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
             title: string;
             x: number;
             y: number;

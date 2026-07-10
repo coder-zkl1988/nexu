@@ -55,6 +55,61 @@ export function gridPieceRects(
   return result;
 }
 
+// ── cutPieceRects ───────────────────────────────────────────────────────────
+
+/**
+ * Sanitize interior cut positions for one axis: round to integers, drop anything
+ * on or outside the edges (`<= 0` or `>= limit`), dedupe, sort ascending. The
+ * image edges (0 and `limit`) are implicit and never part of the input.
+ */
+function sanitizeCuts(cuts: number[], limit: number): number[] {
+  const seen = new Set<number>();
+  for (const raw of cuts) {
+    const v = Math.round(raw);
+    if (v <= 0 || v >= limit) continue;
+    seen.add(v);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+/**
+ * Compute integer-exact tiling rectangles from explicit interior cut positions —
+ * the non-uniform counterpart to gridPieceRects.
+ *
+ * `xCuts` / `yCuts` are interior grid-line positions in image pixels (vertical
+ * and horizontal lines respectively). Both are sanitized via {@link sanitizeCuts}
+ * (round, drop out-of-range, dedupe, sort) before tiling, so callers may pass raw
+ * drag values.
+ *
+ * The result is a `(yCuts + 1)` rows × `(xCuts + 1)` cols grid in row-major order
+ * with `row`/`col` filled in. Pieces tile the whole image exactly once — no gaps,
+ * no overlap — with the last column/row running to the far edge. Because dupes
+ * and out-of-range cuts are dropped, no piece is ever zero-width or zero-height.
+ * With no cuts on an axis, that axis is a single full-extent band.
+ */
+export function cutPieceRects(
+  imgW: number,
+  imgH: number,
+  xCuts: number[],
+  yCuts: number[],
+): PieceRect[] {
+  const xBounds = [0, ...sanitizeCuts(xCuts, imgW), imgW];
+  const yBounds = [0, ...sanitizeCuts(yCuts, imgH), imgH];
+
+  const result: PieceRect[] = [];
+  for (let row = 0; row < yBounds.length - 1; row++) {
+    const y = yBounds[row] ?? 0;
+    const height = (yBounds[row + 1] ?? imgH) - y;
+    for (let col = 0; col < xBounds.length - 1; col++) {
+      const x = xBounds[col] ?? 0;
+      const width = (xBounds[col + 1] ?? imgW) - x;
+      result.push({ row, col, x, y, width, height });
+    }
+  }
+
+  return result;
+}
+
 // ── splitChildLayout ────────────────────────────────────────────────────────
 
 export interface ChildLayoutItem {

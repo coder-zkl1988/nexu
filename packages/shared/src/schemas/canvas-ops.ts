@@ -156,8 +156,11 @@ export type CanvasOpBatch = z.infer<typeof canvasOpBatchSchema>;
 
 /**
  * One node in the compact mirror the frontend pushes. `type` widens the base
- * op node types with the two runtime-only node kinds the canvas also renders
- * (`a2ui`, `team-step`) so the mirror can faithfully report the whole board.
+ * op node types with the runtime-only node kinds the canvas also renders
+ * (`a2ui`, `team-step`, `group`) so the mirror can faithfully report the whole
+ * board. This widening is MIRROR-ONLY: `group` is deliberately absent from
+ * `canvasOpNodeTypeSchema` (the agent's add_node surface) — the agent reads
+ * groups via the mirror but does not create them.
  */
 /**
  * Defense-in-depth caps for the mirror. The POST /api/v1/canvas/mirror route is
@@ -173,7 +176,7 @@ const MIRROR_ASSETS_MAX = 2000;
 
 export const canvasMirrorNodeSchema = z.object({
   id: z.string().max(MIRROR_ID_MAX),
-  type: canvasOpNodeTypeSchema.or(z.enum(["a2ui", "team-step"])),
+  type: canvasOpNodeTypeSchema.or(z.enum(["a2ui", "team-step", "group"])),
   title: z.string().max(MIRROR_TITLE_MAX),
   x: z.number(),
   y: z.number(),

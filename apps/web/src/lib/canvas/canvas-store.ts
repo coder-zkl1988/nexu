@@ -32,7 +32,8 @@ export type CanvasNodeType =
   | "video"
   | "audio"
   | "team-step"
-  | "config";
+  | "config"
+  | "group";
 
 export type CanvasNodeMetadata = {
   /** a2ui: surfaceId into the runtime payload map. */
@@ -84,6 +85,13 @@ export type CanvasNodeMetadata = {
   };
   /** batch group: root carries childIds+expanded; children carry rootId. */
   batch?: { childIds?: string[]; expanded?: boolean; rootId?: string };
+  /**
+   * Group membership: set on a member node; points at its group node's id.
+   * Groups never nest — a group node never carries a groupId. Distinct from
+   * `batch` (image multi-result groups): batch and group are independent
+   * concepts, each with its own cascade in removeNodes.
+   */
+  groupId?: string;
   /** team-step: one step of a live team run (board card is the truth). */
   step?: {
     teamId: string;
@@ -122,14 +130,30 @@ export type CanvasNodeMetadata = {
           count?: number;
           sourceImage?: string;
           maskDataUrl?: string;
+          model?: string;
+          quality?: "auto" | "high" | "medium" | "low";
+          aspectRatio?: string;
+          size?: string;
         }
       | {
           kind: "video";
           prompt: string;
           durationSeconds?: number;
           resolution?: "720p" | "1080p";
+          model?: string;
+          aspectRatio?: string;
+          generateAudio?: boolean;
+          watermark?: boolean;
         }
-      | { kind: "audio"; prompt: string; voice?: string; speed?: number }
+      | {
+          kind: "audio";
+          prompt: string;
+          voice?: string;
+          speed?: number;
+          model?: string;
+          format?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
+          instructions?: string;
+        }
       | {
           kind: "text";
           prompt: string;
@@ -185,6 +209,7 @@ export const NODE_DEFAULT_SIZES: Record<
   audio: { width: 340, height: 120 },
   "team-step": { width: 300, height: 200 },
   config: { width: 320, height: 240 },
+  group: { width: 760, height: 480 },
 };
 
 // ── Store internals ────────────────────────────────────────────
@@ -467,6 +492,33 @@ export function moveNodes(
   });
 }
 
+/**
+ * Reassign group membership after a drag (drop-to-join). Each entry sets a
+ * node's `metadata.groupId`; `undefined` clears it (the node left every group).
+ * Applied in ONE setState so the whole reassignment is a single history entry —
+ * and because it lands inside the drag's history debounce window it folds into
+ * the same undo step as the move. Callers pass only non-group nodes and only
+ * entries that actually change (so this never records a stray no-op step).
+ */
+export function setGroupMemberships(
+  assignments: ReadonlyArray<{ id: string; groupId: string | undefined }>,
+): void {
+  if (assignments.length === 0) return;
+  recordHistory();
+  const byId = new Map(assignments.map((a) => [a.id, a.groupId]));
+  setState({
+    nodes: state.nodes.map((node) => {
+      if (!byId.has(node.id)) return node;
+      const groupId = byId.get(node.id);
+      if (groupId === undefined) {
+        const { groupId: _cleared, ...rest } = node.metadata;
+        return { ...node, metadata: rest };
+      }
+      return { ...node, metadata: { ...node.metadata, groupId } };
+    }),
+  });
+}
+
 export function resizeNode(
   id: string,
   size: { width: number; height: number },
@@ -503,6 +555,17 @@ export function removeNodes(ids: readonly string[]): void {
     }
   }
 
+  // Group unbind (distinct from the batch cascade above): deleting a group node
+  // does NOT delete its members — they survive with their groupId cleared.
+  // Collect the removed group ids so the surviving-nodes pass can strip stale
+  // groupId references.
+  const removedGroupIds = new Set<string>();
+  for (const node of state.nodes) {
+    if (gone.has(node.id) && node.type === "group") {
+      removedGroupIds.add(node.id);
+    }
+  }
+
   // Cleanup a2ui payloads for deleted nodes
   for (const node of state.nodes) {
     if (gone.has(node.id) && node.metadata.surfaceId) {
@@ -510,23 +573,39 @@ export function removeNodes(ids: readonly string[]): void {
     }
   }
 
-  // When a batch child is removed (but NOT its root), clean the root's childIds.
+  // Surviving nodes get two independent fixups:
+  //  - batch: a surviving root whose some children were removed cleans childIds;
+  //  - group: a surviving member whose group was removed loses its groupId.
   const survivingNodes = state.nodes
     .filter((node) => !gone.has(node.id))
     .map((node) => {
       const childIds = node.metadata.batch?.childIds;
-      if (!childIds) return node;
-      const remaining = childIds.filter((childId) => !gone.has(childId));
-      if (remaining.length === childIds.length) return node;
-      // Root is surviving but some children were removed — clean childIds
-      const newBatch =
-        remaining.length > 0
-          ? { ...node.metadata.batch, childIds: remaining }
-          : undefined; // no children left → strip batch entirely
-      return {
-        ...node,
-        metadata: { ...node.metadata, batch: newBatch },
-      };
+      const remaining = childIds
+        ? childIds.filter((childId) => !gone.has(childId))
+        : undefined;
+      const batchChanged =
+        childIds !== undefined &&
+        remaining !== undefined &&
+        remaining.length !== childIds.length;
+      const groupRemoved =
+        node.metadata.groupId !== undefined &&
+        removedGroupIds.has(node.metadata.groupId);
+
+      if (!batchChanged && !groupRemoved) return node;
+
+      let metadata: CanvasNodeMetadata = node.metadata;
+      if (groupRemoved) {
+        const { groupId: _cleared, ...rest } = metadata;
+        metadata = rest;
+      }
+      if (batchChanged) {
+        const newBatch =
+          remaining && remaining.length > 0
+            ? { ...node.metadata.batch, childIds: remaining }
+            : undefined; // no children left → strip batch entirely
+        metadata = { ...metadata, batch: newBatch };
+      }
+      return { ...node, metadata };
     });
 
   setState({

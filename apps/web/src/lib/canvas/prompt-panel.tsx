@@ -76,8 +76,18 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const [audioSpeed, setAudioSpeed] = useState<number>(1);
 
   // W5 settings — all ephemeral local state (no persistence, matching above).
-  // Shared across modes: model hint ("" = default model).
+  // Model hint ("" = default model). A model picked for one modality is
+  // meaningless for another, and our model list carries no capability metadata
+  // to validate it against — so the hint is dropped whenever the selected
+  // node's type changes, and never leaks image → audio. (React's "adjust state
+  // during render when a prop changes" pattern; an effect would lint-fail and
+  // render one stale frame first.)
   const [model, setModel] = useState<string>("");
+  const [modelNodeType, setModelNodeType] = useState(node.type);
+  if (modelNodeType !== node.type) {
+    setModelNodeType(node.type);
+    setModel("");
+  }
   // Image-only
   const [imageQuality, setImageQuality] = useState<ImageQuality>("auto");
   const [imageAspect, setImageAspect] = useState<string>("");

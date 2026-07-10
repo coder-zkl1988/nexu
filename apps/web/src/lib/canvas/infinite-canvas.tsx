@@ -32,6 +32,7 @@ import { createConnectedNode } from "./canvas-create";
 import { CanvasDialogs } from "./canvas-dialogs-mount";
 import { FloatingMenu, clampMenuPosition } from "./canvas-floating-menu";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
+import { groupIdForPoint, memberIdsOf } from "./canvas-groups";
 import {
   ingestFilesAsNodes,
   ingestTextAsNode,
@@ -55,6 +56,7 @@ import {
   selectAll,
   selectConnection,
   selectNodes,
+  setGroupMemberships,
   setViewport,
   undo,
   useCanvas,
@@ -285,6 +287,11 @@ function connectMenuIcon(
   }
 }
 
+/** Render-order rank: group nodes (0) sort before all other nodes (1). */
+function groupRank(node: CanvasNode): number {
+  return node.type === "group" ? 0 : 1;
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -437,9 +444,37 @@ export function CanvasSurface({ className }: { className?: string }) {
       setGestureActive(false);
       pointerRef.current = { x: event.clientX, y: event.clientY };
 
-      if (gesture.kind === "node" || gesture.kind === "resize") {
+      if (gesture.kind === "resize") {
         // Commit the exact release position (a pending frame may be stale).
         applyGesture(gesture);
+        return;
+      }
+      if (gesture.kind === "node") {
+        // Commit the exact release position first (a pending frame may be stale).
+        applyGesture(gesture);
+        // Drop-to-join: recompute membership for every moved non-group node. The
+        // reassignment is one setState (setGroupMemberships) and lands inside the
+        // drag's history debounce window, so it folds into the same undo step as
+        // the move — one history entry per drag, not one per node.
+        const liveNodes = getCanvasState().nodes;
+        const groups = liveNodes.filter((node) => node.type === "group");
+        const movedIds = new Set(gesture.origins.map((origin) => origin.id));
+        const assignments: Array<{
+          id: string;
+          groupId: string | undefined;
+        }> = [];
+        for (const node of liveNodes) {
+          if (node.type === "group" || !movedIds.has(node.id)) continue;
+          const center = {
+            x: node.position.x + node.size.width / 2,
+            y: node.position.y + node.size.height / 2,
+          };
+          const groupId = groupIdForPoint(center, groups);
+          if (groupId !== node.metadata.groupId) {
+            assignments.push({ id: node.id, groupId });
+          }
+        }
+        setGroupMemberships(assignments);
         return;
       }
       if (gesture.kind === "connect") {
@@ -563,8 +598,19 @@ export function CanvasSurface({ className }: { className?: string }) {
         selectNodes([nodeId], event.shiftKey);
       }
       const after = getCanvasState();
+      // Origins = the selection PLUS every member of any selected group, deduped
+      // by id. Building a Set of ids first means a member that is also selected
+      // appears once, so it moves once (never twice) under the same delta.
+      const originIds = new Set(after.selectedNodeIds);
+      for (const node of after.nodes) {
+        if (node.type === "group" && originIds.has(node.id)) {
+          for (const memberId of memberIdsOf(node.id, after.nodes)) {
+            originIds.add(memberId);
+          }
+        }
+      }
       const origins = after.nodes
-        .filter((node) => after.selectedNodeIds.includes(node.id))
+        .filter((node) => originIds.has(node.id))
         .map((node) => ({
           id: node.id,
           x: node.position.x,
@@ -899,9 +945,13 @@ export function CanvasSurface({ className }: { className?: string }) {
           ) : null}
         </svg>
 
-        {/* Nodes — hidden batch children are skipped (collapsed group). */}
+        {/* Nodes — hidden batch children are skipped (collapsed group).
+            Group nodes render first so they sit behind everything else; the
+            stable sort keeps each partition's relative order (so the topmost
+            group is the last group in node order — matching groupIdForPoint). */}
         {nodes
           .filter((node) => !isHiddenBatchChild(node, nodes))
+          .sort((a, b) => groupRank(a) - groupRank(b))
           .map((node) => (
             <CanvasNodeView
               key={node.id}
@@ -1069,6 +1119,11 @@ const CanvasNodeView = memo(function CanvasNodeView({
     ((node.type === "image" || node.type === "video") &&
       Boolean(node.metadata.content));
 
+  // Groups are inert containers: a translucent body plus a z-0 tier so they stay
+  // BEHIND their members (rendered on top) even when the group itself is
+  // selected — "groups render behind everything else" must hold in every state.
+  const isGroup = node.type === "group";
+
   // Batch group state
   const batchChildIds = node.metadata.batch?.childIds;
   const isBatchRoot = batchChildIds !== undefined && batchChildIds.length > 0;
@@ -1081,10 +1136,14 @@ const CanvasNodeView = memo(function CanvasNodeView({
       data-canvas-node={node.id}
       data-canvas-node-selected={selected || undefined}
       className={cn(
-        "group absolute flex flex-col rounded-2xl border-2 bg-surface-1 transition-shadow duration-200",
+        "group absolute flex flex-col rounded-2xl border-2 transition-shadow duration-200",
+        isGroup ? "bg-surface-1/40" : "bg-surface-1",
         selected
-          ? "z-50 border-sky-500 shadow-xl shadow-sky-500/10"
-          : "z-10 border-border shadow-lg shadow-black/5",
+          ? "border-sky-500 shadow-xl shadow-sky-500/10"
+          : "border-border shadow-lg shadow-black/5",
+        // Groups sit behind at z-0 in every state; others use the normal
+        // z-10 / z-50 (selected) tiers.
+        isGroup ? "z-0" : selected ? "z-50" : "z-10",
       )}
       style={{
         transform: `translate3d(${node.position.x}px, ${node.position.y}px, 0)`,

@@ -164,6 +164,71 @@ describe("generateImageIntoNode", () => {
     });
   });
 
+  it("retry payload carries the generation hints (so a retry is not silently reset to defaults)", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockGenerateImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "fail" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+
+    await generateImageIntoNode(node.id, "blue sky", {
+      model: "seedream-4",
+      quality: "high",
+      aspectRatio: "16:9",
+      size: "2K",
+    });
+
+    const updated = getCanvasState().nodes.find((n) => n.id === node.id);
+    expect(updated?.metadata.task?.retry).toEqual({
+      kind: "image",
+      prompt: "blue sky",
+      model: "seedream-4",
+      quality: "high",
+      aspectRatio: "16:9",
+      size: "2K",
+    });
+  });
+
+  it("retryNodeTask replays the generation hints into the request body", async () => {
+    const node = addNode({ type: "image", title: "图片" });
+    mockGenerateImage.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "fail" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+    await generateImageIntoNode(node.id, "blue sky", {
+      model: "seedream-4",
+      quality: "high",
+      aspectRatio: "16:9",
+    });
+
+    mockGenerateImage.mockResolvedValueOnce({
+      data: {
+        url: "http://localhost/img/retry.png",
+        path: "/img/retry.png",
+        items: [
+          { url: "http://localhost/img/retry.png", path: "/img/retry.png" },
+        ],
+      },
+      error: undefined,
+      response: new Response(),
+    } as never);
+
+    retryNodeTask(node.id);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(mockGenerateImage).toHaveBeenCalledTimes(2);
+    const retriedBody = (
+      mockGenerateImage.mock.calls[1]?.[0] as {
+        body: Record<string, unknown>;
+      }
+    ).body;
+    expect(retriedBody.model).toBe("seedream-4");
+    expect(retriedBody.quality).toBe("high");
+    expect(retriedBody.aspectRatio).toBe("16:9");
+  });
+
   it("b. failure (error response): task = error with retry payload, resolves false", async () => {
     const node = addNode({ type: "image", title: "图片" });
 

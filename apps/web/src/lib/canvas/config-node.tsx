@@ -50,8 +50,10 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
     e.stopPropagation();
   }
 
-  // Switching mode drops mode-specific params but keeps the cross-mode
-  // composedPrompt + model.
+  // Switching mode drops every mode-specific param and the model hint — a model
+  // picked for images means nothing for audio, and our model list carries no
+  // capability metadata to check it against, so fall back to the default. Only
+  // the modality-agnostic composedPrompt survives.
   function setMode(newMode: "image" | "video" | "audio" | "text") {
     updateNode(node.id, {
       metadata: {
@@ -60,7 +62,6 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
           ...(cfg?.composedPrompt !== undefined
             ? { composedPrompt: cfg.composedPrompt }
             : {}),
-          ...(cfg?.model !== undefined ? { model: cfg.model } : {}),
         },
       },
     });
