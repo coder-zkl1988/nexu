@@ -26,7 +26,11 @@ export interface A2UISidebarApi {
     surfaceId: string,
     messages: A2UIMessage[],
     onAction: A2UIActionHandler,
-    opts?: { title?: string },
+    opts?: {
+      title?: string;
+      position?: { x: number; y: number };
+      size?: { width: number; height: number };
+    },
   ) => void;
   /** Collapse the workbench panel; nodes stay for the next open. */
   close: () => void;
@@ -63,6 +67,7 @@ export function useA2UISidebar(): A2UISidebarApi {
           opts?.title ?? humanizeSurfaceId(surfaceId),
           messages,
           onAction,
+          { position: opts?.position, size: opts?.size },
         );
       },
       close: () => setPanelOpen(false),

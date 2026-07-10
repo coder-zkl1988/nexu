@@ -185,8 +185,14 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
         </p>
       );
     }
+    // Stretch the surface chain to the node body height so editor surfaces
+    // (XHSEditor/MarkdownEditor, height:100% + flex content) fill the node —
+    // and grow when the node is resized taller. The DOM is
+    // body(flex-1) → this wrapper → .a2ui-surfaces → .a2ui-surface → editor.
     return (
-      <A2UIRenderer messages={payload.messages} onAction={payload.onAction} />
+      <div className="h-full [&_.a2ui-surface]:h-full [&_.a2ui-surfaces]:h-full">
+        <A2UIRenderer messages={payload.messages} onAction={payload.onAction} />
+      </div>
     );
   }
   if (node.type === "text") {

@@ -1060,10 +1060,14 @@ const CanvasNodeView = memo(function CanvasNodeView({
   onResizeDown: ResizeGestureHandler;
   onConnectDown: NodeGestureHandler;
 }) {
-  // Media with content renders full-bleed like the reference cards.
+  // Media with content renders full-bleed like the reference cards. a2ui
+  // editor surfaces (XHSEditor/MarkdownEditor) are self-contained cards too —
+  // no p-3 gap, so the editor sits flush against the node chrome (no double
+  // border) and fills the node height.
   const fullBleed =
-    (node.type === "image" || node.type === "video") &&
-    Boolean(node.metadata.content);
+    node.type === "a2ui" ||
+    ((node.type === "image" || node.type === "video") &&
+      Boolean(node.metadata.content));
 
   // Batch group state
   const batchChildIds = node.metadata.batch?.childIds;

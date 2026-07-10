@@ -631,6 +631,10 @@ export function upsertA2UINode(
   title: string,
   messages: A2UIMessage[],
   onAction: (name: string, context: Record<string, unknown>) => void,
+  opts?: {
+    position?: { x: number; y: number };
+    size?: { width: number; height: number };
+  },
 ): void {
   a2uiPayloads.set(surfaceId, { messages, onAction });
   const existing = state.nodes.find(
@@ -644,6 +648,8 @@ export function upsertA2UINode(
   addNode({
     type: "a2ui",
     title,
+    ...(opts?.position ? { position: opts.position } : {}),
+    ...(opts?.size ? { size: opts.size } : {}),
     metadata: { surfaceId },
   });
 }
