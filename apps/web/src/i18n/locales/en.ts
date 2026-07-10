@@ -1489,6 +1489,9 @@ const en = {
   "devices.mirror.title": "Screen mirror",
   "devices.mirror.close": "Close",
   "devices.mirror.waitingFrame": "Connected — waiting for screen data…",
+  "devices.mirror.awaitingAuthorization":
+    "Limited quality · authorize screen recording on the phone for smooth video",
+  "devices.mirror.switching": "Switching device…",
   "devices.mirror.statusConnecting": "connecting",
   "devices.mirror.statusClosed": "closed",
   "devices.mirror.statusOpen": "connected",
