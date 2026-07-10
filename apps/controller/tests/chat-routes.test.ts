@@ -2,14 +2,17 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerContainer } from "../src/app/container.js";
 import { registerChatRoutes } from "../src/routes/chat-routes.js";
+import { SessionRunRegistry } from "../src/services/session-run-registry.js";
 import type { ControllerBindings } from "../src/types.js";
 
 function createChatRoutesApp({
   sendToMainSession,
   getSessionBySessionKey,
+  sessionRunRegistry = new SessionRunRegistry(),
 }: {
   sendToMainSession: ControllerContainer["gatewayService"]["sendToMainSession"];
   getSessionBySessionKey: ControllerContainer["sessionService"]["getSessionBySessionKey"];
+  sessionRunRegistry?: SessionRunRegistry;
 }) {
   const app = new OpenAPIHono<ControllerBindings>();
   registerChatRoutes(app, {
@@ -26,12 +29,13 @@ function createChatRoutesApp({
     sessionService: {
       getSessionBySessionKey,
     },
+    sessionRunRegistry,
     wsClient: {
       onChatEvent: () => () => {},
       onChatSideResult: () => () => {},
     },
   } as unknown as ControllerContainer);
-  return app;
+  return { app, sessionRunRegistry };
 }
 
 describe("chat routes", () => {
@@ -42,7 +46,7 @@ describe("chat routes", () => {
       content: null,
     }));
     const getSessionBySessionKey = vi.fn(async () => null);
-    const app = createChatRoutesApp({
+    const { app } = createChatRoutesApp({
       sendToMainSession,
       getSessionBySessionKey,
     });
@@ -82,5 +86,37 @@ describe("chat routes", () => {
       "bot-1",
       "agent:bot-1:main",
     );
+  });
+
+  it("returns 409 without re-sending when a run is already active", async () => {
+    const sendToMainSession = vi.fn(async () => ({
+      runId: "run-1",
+      messageId: "message-1",
+      content: null,
+    }));
+    const getSessionBySessionKey = vi.fn(async () => null);
+    const { app, sessionRunRegistry } = createChatRoutesApp({
+      sendToMainSession,
+      getSessionBySessionKey,
+    });
+    // A turn is already in flight for this session.
+    sessionRunRegistry.markStarted("agent:bot-1:main");
+
+    const response = await app.request("/api/v1/chat/local", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        botId: "bot-1",
+        sessionKey: "agent:bot-1:main",
+        message: { type: "text", content: "is it done yet?" },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      message: expect.any(String),
+    });
+    // The busy session must not be hit with a second concurrent turn.
+    expect(sendToMainSession).not.toHaveBeenCalled();
   });
 });

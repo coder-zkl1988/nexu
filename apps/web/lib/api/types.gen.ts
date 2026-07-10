@@ -2535,6 +2535,17 @@ export type PostApiV1ChatLocalStartData = {
     url: '/api/v1/chat/local/start';
 };
 
+export type PostApiV1ChatLocalStartErrors = {
+    /**
+     * A run is already active for this session
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1ChatLocalStartError = PostApiV1ChatLocalStartErrors[keyof PostApiV1ChatLocalStartErrors];
+
 export type PostApiV1ChatLocalStartResponses = {
     /**
      * Local chat run started
@@ -2602,6 +2613,17 @@ export type PostApiV1ChatLocalData = {
     query?: never;
     url: '/api/v1/chat/local';
 };
+
+export type PostApiV1ChatLocalErrors = {
+    /**
+     * A run is already active for this session
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1ChatLocalError = PostApiV1ChatLocalErrors[keyof PostApiV1ChatLocalErrors];
 
 export type PostApiV1ChatLocalResponses = {
     /**

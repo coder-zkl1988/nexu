@@ -57,6 +57,7 @@ import { RuntimeConfigService } from "../services/runtime-config-service.js";
 import { RuntimeModelStateService } from "../services/runtime-model-state-service.js";
 import { ScheduleService } from "../services/schedule-service.js";
 import { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.js";
+import { SessionRunRegistry } from "../services/session-run-registry.js";
 import { SessionService } from "../services/session-service.js";
 import { SkillhubService } from "../services/skillhub-service.js";
 import {
@@ -130,6 +131,7 @@ export interface ControllerContainer {
   deviceNameStore: DeviceNameStore;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
+  sessionRunRegistry: SessionRunRegistry;
   scheduleService: ScheduleService;
   runtimeState: ControllerRuntimeState;
   startBackgroundLoops: () => () => void;
@@ -168,6 +170,15 @@ export async function createContainer(): Promise<ControllerContainer> {
   const watchTrigger = new OpenClawWatchTrigger(env, openclawProcess);
   const wsClient = new OpenClawWsClient(env);
   const gatewayService = new OpenClawGatewayService(wsClient);
+  // Tracks in-flight webchat turns per session so the chat send path can reject
+  // fast (friendly "busy") instead of submitting a second turn that would time
+  // out on OpenClaw's session file lock. Fed by the gateway's chat lifecycle
+  // events; subscribed once here for the app's lifetime (listeners survive WS
+  // reconnects — only wsClient.stop() clears them).
+  const sessionRunRegistry = new SessionRunRegistry();
+  wsClient.onChatEvent((payload) =>
+    sessionRunRegistry.handleChatEvent(payload),
+  );
   const controlPlaneHealth = new ControlPlaneHealthService(
     gatewayService,
     wsClient,
@@ -738,6 +749,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     deviceNameStore: new DeviceNameStore(env.deviceNamesPath),
     wsClient,
     gatewayService,
+    sessionRunRegistry,
     configStore,
     scheduleService,
     runtimeState,
