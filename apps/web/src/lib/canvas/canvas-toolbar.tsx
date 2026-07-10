@@ -3,7 +3,6 @@ import {
   AudioLines,
   ChevronDown,
   Clapperboard,
-  Download,
   ImagePlus,
   Library,
   Map as MapIcon,
@@ -20,7 +19,6 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
   createBoard,
   deleteBoard,
@@ -31,13 +29,10 @@ import {
 import { openCanvasDialog } from "./canvas-dialogs";
 import { ingestFilesAsNodes, readFilesAsDataUrls } from "./canvas-ingest";
 import {
-  type CanvasExportFile,
   type CanvasViewport,
   addNode,
   clearCanvas,
   deleteSelection,
-  exportCanvas,
-  importCanvas,
   redo,
   setViewport,
   switchCanvasBoard,
@@ -203,57 +198,6 @@ export function CanvasToolbar({
               void readFilesAsDataUrls(files).then((inputs) => {
                 ingestFilesAsNodes(inputs, { x: 32, y: 32 });
               });
-            }}
-          />
-        </label>
-        <ToolButton
-          label="导出画布"
-          onClick={() => {
-            const file = exportCanvas();
-            const json = JSON.stringify(file, null, 2);
-            const blob = new Blob([json], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const now = new Date();
-            const pad = (n: number) => String(n).padStart(2, "0");
-            const filename = `nexu-canvas-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.json`;
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-        >
-          <Download size={14} />
-        </ToolButton>
-        <label
-          title="导入画布"
-          className="cursor-pointer rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-        >
-          <Upload size={14} />
-          <input
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = () => {
-                try {
-                  const parsed = JSON.parse(
-                    String(reader.result),
-                  ) as CanvasExportFile;
-                  importCanvas(parsed);
-                } catch {
-                  toast.error("导入失败：不是有效的画布文件");
-                }
-                event.target.value = "";
-              };
-              reader.onerror = () => {
-                toast.error("导入失败：不是有效的画布文件");
-                event.target.value = "";
-              };
-              reader.readAsText(file);
             }}
           />
         </label>

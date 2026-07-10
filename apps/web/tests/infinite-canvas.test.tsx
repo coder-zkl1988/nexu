@@ -396,12 +396,6 @@ describe("CanvasSurface", () => {
     expect(markup).not.toContain("data-canvas-lock-toggle");
   });
 
-  it("toolbar contains export and import buttons", () => {
-    const markup = renderToStaticMarkup(<CanvasSurface />);
-    expect(markup).toContain("导出画布");
-    expect(markup).toContain("导入画布");
-  });
-
   it("a node with task.status=generating renders data-canvas-node-generating", () => {
     addNode({
       type: "image",
