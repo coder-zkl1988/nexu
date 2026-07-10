@@ -1,101 +1,77 @@
 import {
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-} from "react";
+  setPanelOpen,
+  upsertA2UINode,
+  useCanvas,
+} from "@/lib/canvas/canvas-store";
+import { useMemo } from "react";
 import type { A2UIMessage } from "./a2ui-types";
 
-// ── Types ──────────────────────────────────────────────────────
+/**
+ * Compatibility bridge over the canvas-v2 store (design doc
+ * 2026-07-03-infinite-canvas-sidebar.md). Historically this context owned the
+ * right sidebar's single A2UI surface; the workbench store now owns nodes,
+ * and this hook keeps the long-standing `openWith` call sites working —
+ * each surface becomes (or refreshes) a canvas node.
+ */
 
-export interface A2UISidebarState {
+export type A2UIActionHandler = (
+  actionName: string,
+  context: Record<string, unknown>,
+) => void;
+
+export interface A2UISidebarApi {
   isOpen: boolean;
-  surfaceId: string | null;
-  messages: A2UIMessage[];
-  onAction:
-    | ((actionName: string, context: Record<string, unknown>) => void)
-    | null;
-}
-
-export interface A2UISidebarActions {
-  /** Open sidebar with given A2UI messages and action handler */
+  /** Pin a surface onto the canvas workbench (and open the panel). */
   openWith: (
     surfaceId: string,
     messages: A2UIMessage[],
-    onAction: (actionName: string, context: Record<string, unknown>) => void,
+    onAction: A2UIActionHandler,
+    opts?: {
+      title?: string;
+      position?: { x: number; y: number };
+      size?: { width: number; height: number };
+    },
   ) => void;
-  /** Close sidebar and clear state */
+  /** Collapse the workbench panel; nodes stay for the next open. */
   close: () => void;
 }
 
-interface A2UISidebarContextValue
-  extends A2UISidebarState,
-    A2UISidebarActions {}
-
-// ── Context ────────────────────────────────────────────────────
-
-const A2UISidebarContext = createContext<A2UISidebarContextValue | null>(null);
-
-// ── Provider ───────────────────────────────────────────────────
-
-export function A2UISidebarProvider({
-  children,
-}: { children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [surfaceId, setSurfaceId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<A2UIMessage[]>([]);
-  // Store action handler in a ref to avoid re-renders on callback changes
-  const onActionRef = useRef<
-    ((actionName: string, context: Record<string, unknown>) => void) | null
-  >(null);
-
-  const openWith = useCallback(
-    (
-      sid: string,
-      msgs: A2UIMessage[],
-      onAction: (actionName: string, context: Record<string, unknown>) => void,
-    ) => {
-      setSurfaceId(sid);
-      setMessages(msgs);
-      onActionRef.current = onAction;
-      setIsOpen(true);
-    },
-    [],
-  );
-
-  const close = useCallback(() => {
-    setIsOpen(false);
-    // Delay clearing so closing animation can complete
-    setTimeout(() => {
-      setSurfaceId(null);
-      setMessages([]);
-      onActionRef.current = null;
-    }, 200);
-  }, []);
-
-  return (
-    <A2UISidebarContext.Provider
-      value={{
-        isOpen,
-        surfaceId,
-        messages,
-        onAction: onActionRef.current,
-        openWith,
-        close,
-      }}
-    >
-      {children}
-    </A2UISidebarContext.Provider>
-  );
+/** "sidebar:xhs-editor-1" → "xhs editor 1" — fallback node title. */
+export function humanizeSurfaceId(surfaceId: string): string {
+  return surfaceId
+    .replace(/^sidebar:/, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
 }
 
-// ── Hook ───────────────────────────────────────────────────────
+/**
+ * Provider retained for tree compatibility (tests and layout wrap with it);
+ * state itself lives in the module-level canvas store.
+ */
+export function A2UISidebarProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <>{children}</>;
+}
 
-export function useA2UISidebar() {
-  const ctx = useContext(A2UISidebarContext);
-  if (!ctx) {
-    throw new Error("useA2UISidebar must be used within A2UISidebarProvider");
-  }
-  return ctx;
+export function useA2UISidebar(): A2UISidebarApi {
+  const { panelOpen } = useCanvas();
+  return useMemo(
+    () => ({
+      isOpen: panelOpen,
+      openWith: (surfaceId, messages, onAction, opts) => {
+        upsertA2UINode(
+          surfaceId,
+          opts?.title ?? humanizeSurfaceId(surfaceId),
+          messages,
+          onAction,
+          { position: opts?.position, size: opts?.size },
+        );
+      },
+      close: () => setPanelOpen(false),
+    }),
+    [panelOpen],
+  );
 }

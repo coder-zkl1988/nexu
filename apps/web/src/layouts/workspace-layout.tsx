@@ -9,12 +9,13 @@ import {
 } from "@/hooks/use-desktop-budget-guard";
 import { useDesktopCloudStatus } from "@/hooks/use-desktop-cloud-status";
 import { useDesktopRewardsStatus } from "@/hooks/use-desktop-rewards";
-import { A2UIRenderer } from "@/lib/a2ui";
 import {
   A2UISidebarProvider,
   useA2UISidebar,
 } from "@/lib/a2ui/a2ui-sidebar-context";
 import { authClient } from "@/lib/auth-client";
+import { useCanvas } from "@/lib/canvas/canvas-store";
+import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
 import { openExternalUrl } from "@/lib/desktop-links";
 import {
   isMacDesktopPlatform,
@@ -36,7 +37,9 @@ import {
   Info,
   LogOut,
   Mail,
+  Maximize2,
   MessageSquare,
+  Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
@@ -45,6 +48,7 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -434,9 +438,13 @@ function WorkspaceLayoutContent() {
   const SIDEBAR_MIN = 160;
   const SIDEBAR_MAX = 320;
   const SIDEBAR_DEFAULT = 192;
-  const MAIN_MIN = 480;
+  const MAIN_MIN = 500;
+  // One-click canvas expand leaves the chat column a bit roomier than the
+  // hard drag floor so the composer stays comfortable.
+  const MAIN_MIN_MAXIMIZED = 600;
   const RIGHT_SIDEBAR_MIN = 320;
-  const RIGHT_SIDEBAR_MAX = 560;
+  // Loose hard cap — the effective limit is keeping the chat area >= MAIN_MIN.
+  const RIGHT_SIDEBAR_MAX = 2400;
   const RIGHT_SIDEBAR_DEFAULT = 420;
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_sidebar_width");
@@ -445,12 +453,9 @@ function WorkspaceLayoutContent() {
       : SIDEBAR_DEFAULT;
   });
   const isResizing = useRef(false);
-  const {
-    isOpen: rightSidebarOpen,
-    messages: rightSidebarMessages,
-    onAction: rightSidebarOnAction,
-    close: closeRightSidebar,
-  } = useA2UISidebar();
+  const { isOpen: rightSidebarOpen, close: closeRightSidebar } =
+    useA2UISidebar();
+  const { nodes: canvasNodes } = useCanvas();
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
     return saved
@@ -458,6 +463,27 @@ function WorkspaceLayoutContent() {
       : RIGHT_SIDEBAR_DEFAULT;
   });
   const isRightResizing = useRef(false);
+  // One-click workbench expand: grow the canvas until the chat main area is
+  // exactly MAIN_MIN_MAXIMIZED wide; toggling back restores the previous width.
+  const [rightSidebarMaximized, setRightSidebarMaximized] = useState(false);
+  const preMaximizeWidthRef = useRef(RIGHT_SIDEBAR_DEFAULT);
+  const toggleRightSidebarMaximize = useCallback(() => {
+    setRightSidebarMaximized((maximized) => {
+      if (maximized) {
+        setRightSidebarWidth(preMaximizeWidthRef.current);
+        return false;
+      }
+      preMaximizeWidthRef.current = rightSidebarWidth;
+      const leftWidth = collapsed ? 0 : sidebarWidth;
+      setRightSidebarWidth(
+        Math.max(
+          RIGHT_SIDEBAR_MIN,
+          window.innerWidth - leftWidth - MAIN_MIN_MAXIMIZED,
+        ),
+      );
+      return true;
+    });
+  }, [rightSidebarWidth, collapsed, sidebarWidth]);
 
   const handleRightResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -675,6 +701,7 @@ function WorkspaceLayoutContent() {
   const isRewardsPage = location.pathname.includes("/rewards");
   const isSkillsPage = location.pathname.includes("/skills");
   const isExpertsPage = location.pathname.includes("/experts");
+  const isTeamsPage = location.pathname.includes("/teams");
   const isLocalChatPage = location.pathname === "/workspace/chat";
   const isModelsPage =
     location.pathname.includes("/models") ||
@@ -728,6 +755,7 @@ function WorkspaceLayoutContent() {
     !isRewardsPage &&
     !isSkillsPage &&
     !isExpertsPage &&
+    !isTeamsPage &&
     !isModelsPage &&
     !isDevicesPage &&
     !isLocalChatPage &&
@@ -894,13 +922,15 @@ function WorkspaceLayoutContent() {
 
         {isWindowsDesktopClient && <div className="h-8 shrink-0" />}
 
-        {/* Main nav + conversations */}
+        {/* Main nav + conversations. The nav stays fixed; only the
+            conversation list scrolls (long session lists used to scroll the
+            whole sidebar, hiding the nav). */}
         <div
-          className="flex-1 overflow-y-auto"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           {/* Nav items */}
-          <div className="px-2 pt-3 pb-1">
+          <div className="shrink-0 px-2 pt-3 pb-1">
             <Link
               to="/workspace/home"
               onClick={() => {
@@ -975,6 +1005,19 @@ function WorkspaceLayoutContent() {
               {t("layout.nav.agents")}
             </Link>
             <Link
+              to="/workspace/teams"
+              onClick={() => {
+                track("workspace_sidebar_click", { target: "teams" });
+              }}
+              className={cn(
+                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                isTeamsPage && "nav-item-active",
+              )}
+            >
+              <UsersRound size={16} className="shrink-0" />
+              {t("layout.nav.teams")}
+            </Link>
+            <Link
               to="/workspace/devices"
               onClick={() => {
                 track("workspace_sidebar_click", { target: "devices" });
@@ -990,11 +1033,11 @@ function WorkspaceLayoutContent() {
           </div>
 
           {/* Conversations section */}
-          <div className="px-2 pt-6">
-            <div className="sidebar-section-label whitespace-nowrap">
+          <div className="flex min-h-0 flex-1 flex-col px-2 pt-6">
+            <div className="sidebar-section-label shrink-0 whitespace-nowrap">
               {t("layout.conversations")}
             </div>
-            <div className="space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
               {(() => {
                 // Split sessions into regular and scheduled
                 const regularSessions = sessions.filter(
@@ -1642,7 +1685,7 @@ function WorkspaceLayoutContent() {
       </div>
 
       {/* Right sidebar resize handle */}
-      {rightSidebarOpen && isSessionRoute && (
+      {rightSidebarOpen && (
         <div
           onMouseDown={handleRightResizeStart}
           className="hidden md:block w-px shrink-0 cursor-col-resize group relative z-10"
@@ -1657,10 +1700,10 @@ function WorkspaceLayoutContent() {
         </div>
       )}
 
-      {/* Right A2UI sidebar */}
-      {rightSidebarOpen && isSessionRoute && (
+      {/* Right canvas workbench (all sidebar surfaces live here as nodes) */}
+      {rightSidebarOpen && (
         <div
-          className="hidden md:flex shrink-0 flex-col border-l border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]"
+          className="hidden md:flex shrink-0 flex-col bg-[var(--color-surface-1)]"
           style={
             {
               width: rightSidebarWidth,
@@ -1672,40 +1715,66 @@ function WorkspaceLayoutContent() {
             } as React.CSSProperties
           }
         >
-          {/* Title-bar clearance so the header isn't under the inset traffic-bar */}
-          {isDesktopClient && <div className="shrink-0 h-8" />}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
+          {/* Header band matches the chat header's top clearance + height so the
+              two border-b dividers line up: pt compensates the chat column's
+              md:p-3 top pad (12px) on top of its md:pt-7 (28px); min-h matches
+              the chat header's badge row. */}
+          <div className="flex min-h-[34px] items-center justify-between border-b border-[var(--color-border-subtle)] px-4 pb-2 pt-2 md:pt-[40px]">
             <span className="text-sm font-medium text-[var(--color-text-heading)]">
-              内容预览
+              工作台
+              {canvasNodes.length > 0 ? (
+                <span className="ml-2 text-xs font-normal text-[var(--color-text-tertiary)]">
+                  {canvasNodes.length}
+                </span>
+              ) : null}
             </span>
-            <button
-              type="button"
-              onClick={closeRightSidebar}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-              className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-            >
-              <svg
-                aria-hidden="true"
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={toggleRightSidebarMaximize}
+                title={rightSidebarMaximized ? "还原宽度" : "展开画布"}
+                aria-label={
+                  rightSidebarMaximized ? "restore canvas" : "maximize canvas"
+                }
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
               >
-                <path
-                  d="M4 4L12 12M12 4L4 12"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+                {rightSidebarMaximized ? (
+                  <Minimize2 size={14} />
+                ) : (
+                  <Maximize2 size={14} />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={closeRightSidebar}
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+              >
+                <svg
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                >
+                  <path
+                    d="M4 4L12 12M12 4L4 12"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
-          <div className="a2ui-sidebar-host flex-1 min-h-0 overflow-y-auto p-4">
-            {rightSidebarMessages.length > 0 && (
-              <A2UIRenderer
-                messages={rightSidebarMessages}
-                onAction={rightSidebarOnAction ?? (() => {})}
-              />
+          <div className="a2ui-sidebar-host flex-1 min-h-0">
+            {canvasNodes.length === 0 ? (
+              <p className="p-4 text-xs text-[var(--color-text-tertiary)]">
+                暂无内容 — 运行卡、编辑器等会作为节点出现在这里。
+              </p>
+            ) : (
+              <CanvasSurface />
             )}
           </div>
         </div>

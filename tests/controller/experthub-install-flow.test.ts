@@ -31,7 +31,7 @@ type Overrides = Partial<{
   fs: Partial<InstallExpertDeps["fs"]>;
   agentsDir: string;
   genBotSlug: InstallExpertDeps["genBotSlug"];
-  defaultModelId: InstallExpertDeps["defaultModelId"];
+  getGlobalModelId: InstallExpertDeps["getGlobalModelId"];
 }>;
 
 function buildDeps(overrides: Overrides = {}): InstallExpertDeps {
@@ -81,7 +81,10 @@ function buildDeps(overrides: Overrides = {}): InstallExpertDeps {
     },
     agentsDir: overrides.agentsDir ?? "/state/agents",
     genBotSlug: overrides.genBotSlug ?? genBotSlug,
-    defaultModelId: overrides.defaultModelId ?? "openai/gpt-5",
+    // installExpert resolves the *current* global default model rather than a
+    // static value, so the fake is a function too.
+    getGlobalModelId:
+      overrides.getGlobalModelId ?? (async () => "openai/gpt-5"),
   };
 }
 

@@ -1,0 +1,21 @@
+{
+  "id": "find-expert",
+  "name": "Nexu Find Expert",
+  "description": "Registers the find_expert tool that searches the Nexu expert catalog for a domain specialist matching the user's request (retrieval only; delegation is native).",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "controllerUrl": {
+        "type": "string",
+        "description": "Base URL of the Nexu controller (loopback) for catalog + install calls."
+      }
+    }
+  },
+  "contracts": {
+    "tools": ["find_expert", "propose_expert_install", "install_expert"]
+  },
+  "activation": {
+    "onStartup": true
+  }
+}

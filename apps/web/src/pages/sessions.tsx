@@ -9,7 +9,22 @@ import { A2UIRenderer } from "@/lib/a2ui";
 import type { A2UIMessage } from "@/lib/a2ui";
 import { useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
+import {
+  type CanvasOpBatchView,
+  CanvasOpCard,
+} from "@/lib/canvas/canvas-op-card";
+import { bindSessionToBoard } from "@/lib/canvas/canvas-session-binding";
 import { getChannelChatUrl } from "@/lib/channel-links";
+import {
+  A2UI_TOOL_NAMES,
+  CANVAS_OP_TOOL_NAMES,
+  type ExtractedMessage,
+  type FileCardInfo,
+  type ImageBlockInfo,
+  type SidebarA2UIPayload,
+  extractMessage,
+  stripMediaMarkerLines,
+} from "@/lib/chat/chat-message-extract";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,158 +59,6 @@ const USER_AVATAR = "/images/tabby-avatar.png";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Strip OpenClaw-injected metadata blocks from user message text.
- *
- * OpenClaw prepends each user message with "Conversation info (untrusted
- * metadata)" and "Sender (untrusted metadata)" JSON blocks followed by a
- * `[message_id: ...]` line and `senderName: actualMessage`. We extract
- * only the real user text after the last metadata marker.
- */
-/** Controller-injected skill directive (chat-service.ts).  Hidden from the
- * user's own bubble — they picked the skill via the composer, so echoing the
- * directive text back is noise. */
-const SKILL_DIRECTIVE_PATTERN = /^\[请使用「[^」]*」技能完成本次请求\]\s*/u;
-
-function stripMetadata(rawInput: string): string {
-  // Drop the controller-injected skill directive before any other parsing.
-  const raw = rawInput.replace(SKILL_DIRECTIVE_PATTERN, "");
-  const withoutConversationMeta = raw.replace(
-    /Conversation info \(untrusted metadata\):\s*```json\s*[\s\S]*?```\s*/g,
-    "",
-  );
-  const withoutSenderMeta = withoutConversationMeta.replace(
-    /Sender \(untrusted metadata\):\s*```json\s*[\s\S]*?```\s*/g,
-    "",
-  );
-  const withoutReplyMeta = withoutSenderMeta.replace(
-    /Replied message \(untrusted, for context\):\s*```json\s*[\s\S]*?```\s*/g,
-    "",
-  );
-
-  // Pattern 1 (Feishu/Slack): [message_id: ...]\nsenderName: actualMessage
-  const markerMatch = raw.match(
-    /\[message_id:\s*[^\]]+\](?:\n|\\n)(.+?):\s*([\s\S]*)$/,
-  );
-  if (markerMatch?.[2] != null) {
-    return markerMatch[2].trim();
-  }
-  // Pattern 2 (webchat): [Thu 2026-03-19 21:05 GMT+8] actualMessage
-  const tsMatch = raw.match(
-    /^\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+GMT[+-]\d+\]\s*([\s\S]*)$/,
-  );
-  if (tsMatch?.[1] != null) {
-    return tsMatch[1].trim();
-  }
-  if (withoutReplyMeta !== raw) {
-    return withoutReplyMeta.trim();
-  }
-  return raw;
-}
-
-function stripAssistantReplyPrefix(raw: string): string {
-  return raw
-    .replace(/^\s*\[\[reply_to_current\]\]\s*/u, "")
-    .replace(/<final>\s*/giu, "")
-    .replace(/\s*<\/final>/giu, "");
-}
-
-/**
- * Hide `MEDIA:<path>` delivery directives from streamed assistant text.
- * The controller strips them from persisted history; this covers the live
- * SSE delta view so raw markers never flash mid-stream.
- */
-function stripMediaMarkerLines(raw: string): string {
-  return raw
-    .replace(/^MEDIA:\S[^\n]*$/gmu, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-/**
- * Extract sender name from raw message text metadata.
- *
- * Looks for the `[message_id: ...]\nsenderName: actualMessage` pattern
- * and returns the sender name portion.
- */
-function extractSenderName(raw: string): string | null {
-  const markerMatch = raw.match(
-    /\[message_id:\s*[^\]]+\](?:\n|\\n)(.+?):\s*[\s\S]*$/,
-  );
-  if (markerMatch?.[1] != null) {
-    return markerMatch[1].trim();
-  }
-  return null;
-}
-
-/** Strip ```a2ui fenced code blocks from text, extracting A2UI JSONL messages. */
-function stripA2UIBlock(text: string): {
-  cleanText: string;
-  a2uiMessages: A2UIMessage[];
-} {
-  const a2uiMessages: A2UIMessage[] = [];
-  const a2uiBlockRegex = /```a2ui\n([\s\S]*?)```/g;
-  const cleanText = text.replace(a2uiBlockRegex, (_match, content: string) => {
-    for (const line of content.split("\n")) {
-      try {
-        const parsed = JSON.parse(line.trim());
-        if (
-          parsed?.version === "v0.9" &&
-          (parsed.createSurface ||
-            parsed.updateComponents ||
-            parsed.updateDataModel ||
-            parsed.deleteSurface)
-        ) {
-          a2uiMessages.push(parsed as A2UIMessage);
-        }
-      } catch {
-        // skip non-JSON lines (blank lines, malformed)
-      }
-    }
-    return "";
-  });
-  return { cleanText, a2uiMessages };
-}
-
-interface ImageBlockInfo {
-  mimeType: string;
-  /** Inline base64 payload (OpenClaw flat blocks / Anthropic source blocks). */
-  data?: string;
-  /** Controller-served media URL (transcript MediaPaths / MEDIA: markers). */
-  url?: string;
-}
-
-interface FileCardInfo {
-  name: string;
-  mimeType: string;
-  size?: number;
-}
-
-interface SidebarA2UIPayload {
-  surfaceId: string;
-  messages: A2UIMessage[];
-}
-
-interface ExtractedMessage {
-  text: string;
-  replyContextText: string | null;
-  senderName: string | null;
-  hasToolCall: boolean;
-  toolCallSummary: string | null;
-  hasA2UI: boolean;
-  a2uiMessages: A2UIMessage[] | null;
-  /** Sidebar-bound A2UI rendered as a jump button instead of inline. */
-  sidebarA2UI: SidebarA2UIPayload | null;
-  /** Machine round-trip A2UI action (e.g. XHSEditor publish) — shown as a chip,
-   * never as raw JSON/base64. */
-  a2uiAction: { actionName: string } | null;
-  images: ImageBlockInfo[];
-  fileCards: FileCardInfo[];
-}
-
-/** Tools whose toolResult payloads carry renderable A2UI JSONL. */
-const A2UI_TOOL_NAMES = new Set(["render_a2ui", "render_skill_confirmation"]);
 
 /** Complex editor components — their surfaces always open in the side panel. */
 const SIDEBAR_DOC_COMPONENT_TYPES = new Set(["MarkdownEditor", "XHSEditor"]);
@@ -238,218 +101,6 @@ function isPendingMessageOnServer(
   return serverMediaOnlyTimes.some((t) => t >= pm.timestamp - 60_000);
 }
 
-function extractReplyContextPrefix(raw: string): {
-  text: string;
-  replyContextText: string | null;
-} {
-  const englishMatch = raw.match(
-    /^\[Replying to:\s*(?:"([\s\S]*?)"|([^\]]+))\]\s*(?:(?:\r?\n)|\\n)+([\s\S]*)$/u,
-  );
-  if (englishMatch) {
-    return {
-      replyContextText: (englishMatch[1] ?? englishMatch[2] ?? "").trim(),
-      text: (englishMatch[3] ?? "").trim(),
-    };
-  }
-
-  const chineseMatch = raw.match(
-    /^\[引用:\s*([\s\S]*?)\]\s*(?:(?:\r?\n)|\\n)+([\s\S]*)$/u,
-  );
-  if (chineseMatch) {
-    return {
-      replyContextText: (chineseMatch[1] ?? "").trim(),
-      text: (chineseMatch[2] ?? "").trim(),
-    };
-  }
-
-  return {
-    text: raw,
-    replyContextText: null,
-  };
-}
-
-/** Extract display text, sender name, tool call info, and A2UI messages from various message content formats. */
-function parseFileBlocksFromText(text: string): {
-  cleanText: string;
-  fileCards: FileCardInfo[];
-} {
-  const fileCards: FileCardInfo[] = [];
-  const fileRegex = /<file\s+([^>]*)>([\s\S]*?)<\/file>/g;
-  let cleanText = text;
-  let match = fileRegex.exec(text);
-  while (match !== null) {
-    const attrs = match[1] ?? "";
-    const innerText = match[2] ?? "";
-    const nameMatch = attrs.match(/name="([^"]*)"/);
-    const mimeMatch = attrs.match(/mime="([^"]*)"/);
-    const sizeMatch = attrs.match(/size="([^"]*)"/);
-    if (nameMatch?.[1]) {
-      fileCards.push({
-        name: nameMatch[1],
-        mimeType: mimeMatch?.[1] ?? "application/octet-stream",
-        size: sizeMatch?.[1] ? Number(sizeMatch[1]) : undefined,
-      });
-    }
-    cleanText = cleanText.replace(match[0], innerText);
-    match = fileRegex.exec(text);
-  }
-  return { cleanText, fileCards };
-}
-
-/** Extract display text, sender name, and tool call info from various message content formats. */
-function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
-  let raw = "";
-  let replyContextText: string | null = null;
-  let hasToolCall = false;
-  let toolCallSummary: string | null = null;
-  let hasA2UI = false;
-  let a2uiMessages: A2UIMessage[] | null = null;
-  const images: ImageBlockInfo[] = [];
-  const fileCards: FileCardInfo[] = [];
-
-  // Format 1: msg.text (shorthand)
-  if (typeof msg.text === "string") {
-    const stripped = stripA2UIBlock(msg.text);
-    raw = stripped.cleanText;
-    if (stripped.a2uiMessages.length > 0) {
-      hasA2UI = true;
-      if (!a2uiMessages) a2uiMessages = [];
-      a2uiMessages.push(...stripped.a2uiMessages);
-    }
-  } else if (typeof msg.content === "string") {
-    // Format 2: msg.content (string)
-    const stripped = stripA2UIBlock(msg.content);
-    raw = stripped.cleanText;
-    if (stripped.a2uiMessages.length > 0) {
-      hasA2UI = true;
-      if (!a2uiMessages) a2uiMessages = [];
-      a2uiMessages.push(...stripped.a2uiMessages);
-    }
-  } else if (Array.isArray(msg.content)) {
-    // Format 3: msg.content (array of blocks)
-    const blocks = msg.content as Record<string, unknown>[];
-    const textParts: string[] = [];
-    for (const b of blocks) {
-      if (b?.type === "text") {
-        const textContent = String(b?.text ?? "");
-        const stripped = stripA2UIBlock(textContent);
-        textParts.push(stripped.cleanText);
-        if (stripped.a2uiMessages.length > 0) {
-          hasA2UI = true;
-          if (!a2uiMessages) a2uiMessages = [];
-          a2uiMessages.push(...stripped.a2uiMessages);
-        }
-      } else if (b?.type === "replyContext") {
-        const candidate = String(b?.text ?? "").trim();
-        if (candidate.length > 0) {
-          replyContextText = candidate;
-        }
-      } else if (b?.type === "toolCall" || b?.type === "tool_use") {
-        hasToolCall = true;
-        const name = String(b?.name ?? b?.toolName ?? "tool");
-        toolCallSummary = name;
-      } else if (b?.type === "a2ui" && typeof b.data === "object" && b.data) {
-        hasA2UI = true;
-        if (!a2uiMessages) a2uiMessages = [];
-        a2uiMessages.push(b.data as A2UIMessage);
-      } else if (b?.type === "image") {
-        // Three shapes: controller-served {url, mimeType}, OpenClaw flat
-        // {data, mimeType}, Anthropic {source: {data, media_type}}.
-        const url = typeof b?.url === "string" ? b.url : "";
-        const source = b?.source as Record<string, unknown> | undefined;
-        const sourceData = typeof source?.data === "string" ? source.data : "";
-        const flatData = typeof b?.data === "string" ? b.data : "";
-        const rawData = sourceData || flatData;
-        if (url.length > 0) {
-          images.push({
-            mimeType: String(b?.mimeType ?? "image/png"),
-            url,
-          });
-        } else if (rawData.length > 0) {
-          const mimeType = String(
-            source?.media_type ?? b?.mimeType ?? "image/png",
-          );
-          const base64 = rawData.includes(",")
-            ? rawData.slice(rawData.indexOf(",") + 1)
-            : rawData;
-          images.push({ mimeType, data: base64 });
-        }
-      } else if (b?.type === "file") {
-        const metadata = (b?.metadata ?? b) as Record<string, unknown>;
-        const filename =
-          typeof metadata?.filename === "string"
-            ? metadata.filename
-            : typeof b?.filename === "string"
-              ? b.filename
-              : "file";
-        fileCards.push({
-          name: filename,
-          mimeType:
-            typeof metadata?.mimeType === "string"
-              ? metadata.mimeType
-              : "application/octet-stream",
-          size: typeof metadata?.size === "number" ? metadata.size : undefined,
-        });
-      }
-    }
-    raw = textParts.join("\n");
-  }
-
-  const senderName = msg.role === "user" ? extractSenderName(raw) : null;
-  const sanitizedText =
-    msg.role === "assistant"
-      ? stripAssistantReplyPrefix(stripMetadata(raw))
-      : stripMetadata(raw);
-  const extractedReply = extractReplyContextPrefix(sanitizedText);
-  const text = extractedReply.text;
-  replyContextText ??= extractedReply.replyContextText;
-
-  // Detect machine A2UI action round-trips (e.g. XHSEditor publish). These are
-  // sent as a JSON text message carrying the full payload (including base64
-  // images); render a friendly chip instead of dumping raw JSON/base64.
-  const a2uiAction = parseA2UIAction(text);
-
-  // Parse <file> XML blocks from text so they render as file cards instead of raw markup
-  const parsedFiles = parseFileBlocksFromText(text);
-
-  return {
-    text: a2uiAction ? "" : parsedFiles.cleanText,
-    replyContextText,
-    senderName,
-    hasToolCall,
-    toolCallSummary,
-    hasA2UI,
-    a2uiMessages,
-    sidebarA2UI: null,
-    a2uiAction,
-    images: a2uiAction ? [] : images,
-    fileCards: a2uiAction ? [] : [...fileCards, ...parsedFiles.fileCards],
-  };
-}
-
-/**
- * Detect an `a2ui_action` machine message (the JSON round-trip an A2UI button
- * click posts back to the agent). Returns the action name, or null.
- */
-function parseA2UIAction(text: string): { actionName: string } | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith("{") || !trimmed.includes("a2ui_action")) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(trimmed) as {
-      type?: string;
-      actionName?: string;
-    };
-    if (parsed?.type === "a2ui_action") {
-      return { actionName: String(parsed.actionName ?? "") };
-    }
-  } catch {
-    // not JSON — fall through
-  }
-  return null;
-}
-
 /** Friendly label for a known A2UI action chip. */
 function a2uiActionLabel(actionName: string): string {
   switch (actionName) {
@@ -457,6 +108,10 @@ function a2uiActionLabel(actionName: string): string {
       return "已提交小红书发布";
     case "skill_confirmation":
       return "已确认操作";
+    case "install_expert":
+      return "已确认安装专家";
+    case "install_expert_cancel":
+      return "已取消安装";
     default:
       return "已提交操作";
   }
@@ -879,6 +534,7 @@ function ChatBubble({
     a2uiMessages,
     sidebarA2UI,
     a2uiAction,
+    canvasOpBatch,
     images,
     fileCards,
   } = resolvedExtracted;
@@ -950,6 +606,7 @@ function ChatBubble({
         {isBot && sidebarA2UI && onOpenSidebar && (
           <SidebarA2UIButton payload={sidebarA2UI} onOpen={onOpenSidebar} />
         )}
+        {isBot && canvasOpBatch && <CanvasOpCard batch={canvasOpBatch} />}
         {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
       </div>
     </div>
@@ -1083,6 +740,19 @@ export function SessionsPage() {
       client.disconnect();
     };
   }, [id, session?.botId, session?.sessionKey, queryClient]);
+
+  // Bind this session to its own canvas board (W5): opening a session switches
+  // the global canvas to that session's board, lazily creating one on first
+  // visit. Keyed on sessionKey so it fires once per focused session, not per
+  // render (title is read only to name a freshly-created board — a later title
+  // change must not re-bind, so it is intentionally not a dependency).
+  // bindSessionToBoard routes through the reviewed switchCanvasBoard
+  // (flush-save-first) so no board content is ever lost or mixed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionKey keys the bind; title is a creation-only label
+  useEffect(() => {
+    if (!session?.sessionKey) return;
+    void bindSessionToBoard(session.sessionKey, session.title ?? undefined);
+  }, [session?.sessionKey]);
 
   const { data: channelsData } = useQuery({
     queryKey: ["channels"],
@@ -1413,12 +1083,27 @@ export function SessionsPage() {
   // ChatBubble only renders A2UI for assistant (bot) messages.
   // Inject the A2UI into the assistant message that called render_a2ui.
   const a2uiFromToolResults = new Map<string, A2UIMessage[]>();
+  // S8: canvas_op toolResults carry a fenced ```canvas-op``` batch — collect it
+  // by toolCallId so it can render on the parent assistant message.
+  const canvasOpFromToolResults = new Map<string, CanvasOpBatchView>();
   for (const m of displayMessages) {
     const rm = m as unknown as Record<string, unknown>;
     if (rm.role === "toolResult" && A2UI_TOOL_NAMES.has(String(rm.toolName))) {
       const te = extractMessage(rm);
       if (te.a2uiMessages?.length) {
         a2uiFromToolResults.set(String(rm.toolCallId ?? ""), te.a2uiMessages);
+      }
+    }
+    if (
+      rm.role === "toolResult" &&
+      CANVAS_OP_TOOL_NAMES.has(String(rm.toolName))
+    ) {
+      const te = extractMessage(rm);
+      if (te.canvasOpBatch) {
+        canvasOpFromToolResults.set(
+          String(rm.toolCallId ?? ""),
+          te.canvasOpBatch,
+        );
       }
     }
   }
@@ -1469,6 +1154,26 @@ export function SessionsPage() {
         }
       }
 
+      // S8: inject the canvas-op batch from the matching canvas_op toolResult
+      // onto the assistant message that called it (parallel to the a2ui path).
+      if (rm.role === "assistant" && !extracted.canvasOpBatch) {
+        const content = rm.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (
+              block?.type === "toolCall" &&
+              CANVAS_OP_TOOL_NAMES.has(String(block?.name))
+            ) {
+              const batch = canvasOpFromToolResults.get(String(block.id ?? ""));
+              if (batch) {
+                extracted.canvasOpBatch = batch;
+                break;
+              }
+            }
+          }
+        }
+      }
+
       return { msg, extracted };
     })
     .filter(({ msg, extracted }) => {
@@ -1480,11 +1185,19 @@ export function SessionsPage() {
       ) {
         return false;
       }
+      // Hide canvas_op toolResults — the confirm card shows on the parent msg.
+      if (
+        rm.role === "toolResult" &&
+        CANVAS_OP_TOOL_NAMES.has(String(rm.toolName))
+      ) {
+        return false;
+      }
       if (extracted.text.trim().length > 0) return true;
       if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
       if (extracted.hasToolCall) return true;
       if (extracted.sidebarA2UI) return true;
       if (extracted.a2uiAction) return true;
+      if (extracted.canvasOpBatch) return true;
       if (extracted.images.length > 0) return true;
       if (extracted.fileCards.length > 0) return true;
       return false;
@@ -1585,7 +1298,7 @@ export function SessionsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-7">
+      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-3">
         <div className="flex items-center justify-between">
           <div className="flex gap-3 items-center">
             <SessionPlatformBadge

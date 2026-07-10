@@ -7,7 +7,7 @@ Nexu uses a controller-first local runtime model. In desktop/local mode, a singl
 ```
 Desktop Shell / Browser
         ↓
-Web (React + Ant Design + Vite)
+Web (React + Radix UI + Tailwind CSS 4 + Vite)
         ↓
 Controller (Hono + Zod OpenAPI + lowdb-backed local store)
         ↓
@@ -22,7 +22,7 @@ OpenClaw Runtime → Slack / Discord / Feishu API
 | Local persistence        | lowdb + JSON config under `~/.nexu/`        |
 | Validation               | Zod (single source of truth)                |
 | Local auth compatibility | Controller-managed local auth/session shims |
-| Frontend                 | React + Ant Design + Vite                   |
+| Frontend                 | React + Radix UI + Tailwind CSS 4 + Vite   |
 | Frontend SDK             | @hey-api/openapi-ts (auto-generated)        |
 | State                    | React Query (@tanstack/react-query)         |
 | Lint/Format              | Biome                                       |

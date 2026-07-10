@@ -37,13 +37,16 @@ import {
   DEFAULT_EXPERT_SLUGS,
   type InstallExpertResult,
   createCustomExpert,
+  foldPersonaIntoAgents,
   installDefaultExperts,
   installExpert,
   updateExpertSkills,
 } from "../services/experthub/install-flow.js";
+import { ensureExpertPersonaFolds } from "../services/experthub/persona-fold-migration.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
+import { MediaGenerationService } from "../services/media-generation-service.js";
 import { ModelProviderService } from "../services/model-provider-service.js";
 import { OpenClawAuthService } from "../services/openclaw-auth-service.js";
 import { OpenClawCronGateway } from "../services/openclaw-cron-gateway.js";
@@ -57,6 +60,15 @@ import { ScheduleWorkspaceWriter } from "../services/schedule-workspace-writer.j
 import { SessionRunRegistry } from "../services/session-run-registry.js";
 import { SessionService } from "../services/session-service.js";
 import { SkillhubService } from "../services/skillhub-service.js";
+import {
+  readLastAssistantReply,
+  readSubagentSessionEntry,
+} from "../services/teams/subagent-session-reader.js";
+import { TeamLedgerStore } from "../services/teams/team-ledger.js";
+import { TeamService } from "../services/teams/team-service.js";
+import { WorkflowComposer } from "../services/teams/team-workflow-composer.js";
+import { TeamWorkflowLedgerStore } from "../services/teams/team-workflow-ledger.js";
+import { TeamWorkflowService } from "../services/teams/team-workflow-service.js";
 import { TemplateService } from "../services/template-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
@@ -86,6 +98,9 @@ export interface ControllerContainer {
   attachmentStore: AttachmentStore;
   templateService: TemplateService;
   skillhubService: SkillhubService;
+  teamService: TeamService;
+  mediaGenerationService: MediaGenerationService;
+  teamWorkflowService: TeamWorkflowService;
   experthubCatalogManager: ExperthubCatalogManager;
   installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
   installDefaultExpertsFn: () => Promise<{
@@ -187,6 +202,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       return config.bots.map((b) => b.id);
     },
   });
+  const teamLedgerStore = new TeamLedgerStore(env.teamDbPath);
   const openclawSyncService = new OpenClawSyncService(
     env,
     configStore,
@@ -203,6 +219,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     gatewayService,
     skillhubService.skillDb,
     skillhubService.workspaceSkillScanner,
+    teamLedgerStore,
   );
   syncService = openclawSyncService;
   const cronGateway = new OpenClawCronGateway(wsClient, env);
@@ -276,9 +293,190 @@ export async function createContainer(): Promise<ControllerContainer> {
     },
   });
 
+  // Back-fill the SOUL.md -> AGENTS.md persona fold for experts installed before
+  // in-chat delegation existed, so they keep their persona when delegated to.
+  // Idempotent + fire-and-forget so startup isn't blocked by disk I/O.
+  void ensureExpertPersonaFolds({
+    readLedger: () => experthubCatalogManager.readLedger(),
+    agentsDir: path.join(env.openclawStateDir, "agents"),
+  })
+    .then((updated) => {
+      if (updated > 0) {
+        logger.info({ updated }, "expert persona fold migration applied");
+      }
+    })
+    .catch((error) => {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "expert persona fold migration failed",
+      );
+    });
+
   // AgentService is used by both the return block and the experthub install
   // flow. Construct it once so both paths share the same cache/syncAll semantics.
   const agentService = new AgentService(configStore, openclawSyncService);
+
+  const teamWorkflowLedgerStore = new TeamWorkflowLedgerStore(
+    env.teamWorkflowDbPath,
+  );
+  const teamService = new TeamService({
+    ledger: teamLedgerStore,
+    gateway: gatewayService,
+    resolveExpertPersona: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      if (!resolved) {
+        return null;
+      }
+      // SOUL.md is the canonical persona file; fall back to the systemPrompt.
+      return (
+        resolved.manifest.workspaceFiles["SOUL.md"] ??
+        resolved.manifest.systemPrompt ??
+        null
+      );
+    },
+    resolveExpertName: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      return resolved?.manifest.name ?? null;
+    },
+    readExpertLedger: () => experthubCatalogManager.readLedger(),
+    // Auto-install uninstalled experts when they are added to a team.
+    // installExpertFn is declared below; only invoked at request time.
+    installExpert: async (slug) => {
+      await installExpertFn({ slug });
+    },
+    botService: {
+      createBot: async (input) => {
+        const bot = await agentService.createBot({
+          name: input.name,
+          slug: input.slug,
+          modelId: input.modelId,
+          systemPrompt: input.systemPrompt,
+        });
+        return { id: bot.id };
+      },
+      updateBotSystemPrompt: async (botId, systemPrompt) => {
+        await agentService.updateBot(botId, { systemPrompt });
+      },
+      deleteBot: (botId) => agentService.deleteBot(botId),
+    },
+    applyLeadPersona: async (leadBotId, persona) => {
+      const agentsPath = path.join(
+        env.openclawStateDir,
+        "agents",
+        leadBotId,
+        "AGENTS.md",
+      );
+      let agents = "";
+      try {
+        agents = await fsp.readFile(agentsPath, "utf8");
+      } catch {
+        // No AGENTS.md yet (platform templates not seeded) — synthesize one.
+      }
+      const next = foldPersonaIntoAgents(agents, persona);
+      if (next !== agents) {
+        await fsp.writeFile(agentsPath, next);
+      }
+    },
+    syncAll: () => openclawSyncService.syncAll(),
+    getGlobalModelId: async () =>
+      (await configStore.getConfig()).runtime.defaultModelId,
+    genId: () => randomUUID(),
+    genBotSlug: (base) =>
+      `${base
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 32)}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
+    resolveExpertDescription: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      return resolved?.manifest.description ?? null;
+    },
+    removeTeamWorkflows: (teamId) =>
+      teamWorkflowLedgerStore.removeByTeam(teamId),
+    // Same controller-driven completion primitive as the workflow (SOP)
+    // engine below (design doc §10.3/§10.4) — completion is decided by
+    // polling the session, not by the worker's tool-call compliance.
+    sendChat: (input) => gatewayService.sendToMainSession(input),
+    readSessionEntry: (botId, sessionKey) =>
+      readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
+    readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
+  });
+
+  const mediaGenerationService = new MediaGenerationService({
+    // Any active bot can run the utility lane; prefer the default agent
+    // (first active bot, mirroring compileAgentList ordering).
+    pickUtilityBotId: async () => {
+      const config = await configStore.getConfig();
+      const bot = config.bots
+        .filter((candidate) => candidate.status === "active")
+        .sort((left, right) => left.slug.localeCompare(right.slug))[0];
+      return bot?.id ?? null;
+    },
+    sendChat: (input) => gatewayService.sendToMainSession(input),
+    readSessionEntry: (botId, sessionKey) =>
+      readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
+    readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
+    openclawStateDir: env.openclawStateDir,
+    genId: () => randomUUID(),
+  });
+
+  const teamWorkflowService = new TeamWorkflowService({
+    workflows: teamWorkflowLedgerStore,
+    getTeam: (teamId) => teamLedgerStore.get(teamId),
+    gateway: gatewayService,
+    resolveExpertPersona: async (slug) => {
+      const resolved = await experthubCatalogManager.resolveExpert(slug);
+      if (!resolved) {
+        return null;
+      }
+      return (
+        resolved.manifest.workspaceFiles["SOUL.md"] ??
+        resolved.manifest.systemPrompt ??
+        null
+      );
+    },
+    // Same chat.send path normal expert chat uses — the lane worker runs with
+    // the member's own configured model (design doc §10.3).
+    sendChat: (input) => gatewayService.sendToMainSession(input),
+    readSessionEntry: (botId, sessionKey) =>
+      readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
+    readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
+    ensureTeamMembers: async (teamId, memberSlugs) => {
+      const team = teamLedgerStore.get(teamId);
+      if (!team) {
+        throw new Error(`Team not found: ${teamId}`);
+      }
+      const current = new Set(team.members.map((m) => m.expertSlug));
+      const missing = memberSlugs.filter((slug) => !current.has(slug));
+      if (missing.length === 0) {
+        return team;
+      }
+      // updateTeam auto-installs uninstalled experts.
+      return teamService.updateTeam(teamId, {
+        memberSlugs: [...current, ...missing],
+      });
+    },
+    composeDraft: async (team, description) => {
+      const composer = new WorkflowComposer({
+        gatewayBaseUrl: env.openclawBaseUrl,
+        gatewayToken: env.openclawGatewayToken ?? null,
+      });
+      const experts = await experthubCatalogManager.listExperts();
+      return composer.compose({
+        description,
+        // The gateway's OpenAI-compatible endpoint runs a full agent turn and
+        // only accepts `openclaw/<agentId>` — the lead composes for its team
+        // with its own configured model.
+        model: `openclaw/${team.leadBotId}`,
+        catalog: experts.map((expert) => ({
+          slug: expert.slug,
+          name: expert.name,
+          description: expert.description ?? "",
+        })),
+      });
+    },
+    genId: () => randomUUID(),
+  });
 
   const installExpertFn = (args: { slug: string }) =>
     installExpert({
@@ -320,7 +518,8 @@ export async function createContainer(): Promise<ControllerContainer> {
         agentsDir: path.join(env.openclawStateDir, "agents"),
         genBotSlug: (expertSlug) =>
           `${expertSlug}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
-        defaultModelId: env.defaultModelId,
+        getGlobalModelId: async () =>
+          (await configStore.getConfig()).runtime.defaultModelId,
       },
     });
 
@@ -371,7 +570,8 @@ export async function createContainer(): Promise<ControllerContainer> {
     agentsDir: path.join(env.openclawStateDir, "agents"),
     genBotSlug: (expertSlug: string) =>
       `${expertSlug}-${randomUUID().replace(/-/g, "").slice(0, 8)}`,
-    defaultModelId: env.defaultModelId,
+    getGlobalModelId: async () =>
+      (await configStore.getConfig()).runtime.defaultModelId,
   };
 
   const installDefaultExpertsFn = () =>
@@ -530,6 +730,9 @@ export async function createContainer(): Promise<ControllerContainer> {
     attachmentStore,
     templateService: new TemplateService(configStore, openclawSyncService),
     skillhubService,
+    teamService,
+    mediaGenerationService,
+    teamWorkflowService,
     experthubCatalogManager,
     installExpertFn,
     installDefaultExpertsFn,

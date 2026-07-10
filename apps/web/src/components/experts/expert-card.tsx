@@ -4,7 +4,7 @@ import {
 } from "@/hooks/use-experthub-catalog";
 import type { MinimalExpert } from "@nexu/shared";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -141,6 +141,116 @@ function BarcodeLines({ color }: { color: string }) {
   );
 }
 
+// ── Shared visual face ─────────────────────────────────────────────────────
+
+/**
+ * The trading-card visual (image zone + info zone + footer chrome), shared by
+ * the experts page card and the in-chat expert-install card so the two styles
+ * cannot drift. `footerActions` fills the footer's action slot.
+ */
+export function ExpertCardFace({
+  expert,
+  avatarUrl,
+  footerActions,
+}: {
+  expert: MinimalExpert;
+  avatarUrl?: string;
+  footerActions?: ReactNode;
+}) {
+  // biome-ignore lint/style/noNonNullAssertion: THEMES is fixed-length, index bounded 0–9
+  const theme = THEMES[expert.slug.charCodeAt(0) % THEMES.length]!;
+
+  return (
+    <div className="w-full h-full rounded-[20px] overflow-hidden flex flex-col border-2 border-white/10">
+      {/* Image zone */}
+      <div
+        className="w-full h-48 relative overflow-hidden shrink-0"
+        style={{ background: theme.gradient }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)",
+            backgroundSize: "13px 13px",
+          }}
+        />
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt=""
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[96%] w-auto object-contain object-bottom z-[2]"
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[72px] leading-none z-[2]"
+          >
+            {expert.emoji}
+          </span>
+        )}
+        {expert.category && (
+          <span className="absolute top-3 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/35 backdrop-blur-[6px] border border-white/20 text-white text-[9px] font-black tracking-[2px] uppercase px-3 py-1 rounded-[20px] z-10">
+            {expert.category}
+          </span>
+        )}
+      </div>
+
+      {/* Info zone */}
+      <div
+        className="px-3.5 pt-[30px] pb-3 flex flex-col items-center gap-[7px] -mt-[30px] relative z-[4] flex-1"
+        style={{
+          background: `linear-gradient(to bottom, transparent 0px, ${theme.infoBg} 30px)`,
+        }}
+      >
+        <div
+          className="text-sm font-black tracking-[0.5px] text-center"
+          style={{ color: "#111" }}
+        >
+          {expert.name}
+        </div>
+        {expert.description && (
+          <p
+            className="text-[11px] text-[#666] text-center leading-[1.5] px-1 line-clamp-2"
+            title={expert.description}
+          >
+            {expert.description}
+          </p>
+        )}
+        {expert.tags && expert.tags.length > 0 && (
+          <div className="flex gap-1 mt-0.5 overflow-x-auto no-scrollbar max-w-full">
+            {expert.tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="text-[9px] font-extrabold px-2 py-[3px] rounded-[20px] tracking-[0.2px] shrink-0"
+                style={{
+                  background: theme.tagBg,
+                  color: theme.tagText,
+                  border: `1.5px solid ${theme.tagBorder}`,
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div
+        className="border-t border-black/[0.07] px-3.5 py-2 flex items-center justify-between gap-1.5 relative z-[4]"
+        style={{ background: theme.footerBg }}
+      >
+        <span className="text-[9px] font-extrabold text-[#999] tracking-[0.4px]">
+          {expert.category ?? ""}
+        </span>
+        <BarcodeLines color={theme.barcodeColor} />
+        {footerActions}
+      </div>
+    </div>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function ExpertCard({
@@ -167,8 +277,6 @@ export function ExpertCard({
   >(null);
 
   const isMutating = pendingAction !== null;
-  // biome-ignore lint/style/noNonNullAssertion: THEMES is fixed-length, index bounded 0–9
-  const theme = THEMES[expert.slug.charCodeAt(0) % THEMES.length]!;
   const avatarUrl = customAvatarUrl || expert.avatarDataUrl;
 
   async function handleInstall() {
@@ -209,90 +317,10 @@ export function ExpertCard({
       draggable={false}
       className="flex flex-col items-center h-full filter drop-shadow-[0_16px_32px_rgba(0,0,0,0.45)] transition-transform duration-250 ease-[cubic-bezier(.34,1.56,.64,1)] hover:-translate-y-2 hover:scale-[1.02]"
     >
-      <div className="w-full h-full rounded-[20px] overflow-hidden flex flex-col border-2 border-white/10">
-        {/* Image zone */}
-        <div
-          className="w-full h-48 relative overflow-hidden shrink-0"
-          style={{ background: theme.gradient }}
-        >
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)",
-              backgroundSize: "13px 13px",
-            }}
-          />
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[96%] w-auto object-contain object-bottom z-[2]"
-            />
-          ) : (
-            <span
-              aria-hidden
-              className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[72px] leading-none z-[2]"
-            >
-              {expert.emoji}
-            </span>
-          )}
-          {expert.category && (
-            <span className="absolute top-3 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/35 backdrop-blur-[6px] border border-white/20 text-white text-[9px] font-black tracking-[2px] uppercase px-3 py-1 rounded-[20px] z-10">
-              {expert.category}
-            </span>
-          )}
-        </div>
-
-        {/* Info zone */}
-        <div
-          className="px-3.5 pt-[30px] pb-3 flex flex-col items-center gap-[7px] -mt-[30px] relative z-[4] flex-1"
-          style={{
-            background: `linear-gradient(to bottom, transparent 0px, ${theme.infoBg} 30px)`,
-          }}
-        >
-          <div
-            className="text-sm font-black tracking-[0.5px] text-center"
-            style={{ color: "#111" }}
-          >
-            {expert.name}
-          </div>
-          {expert.description && (
-            <p
-              className="text-[11px] text-[#666] text-center leading-[1.5] px-1 line-clamp-2"
-              title={expert.description}
-            >
-              {expert.description}
-            </p>
-          )}
-          {expert.tags && expert.tags.length > 0 && (
-            <div className="flex gap-1 mt-0.5 overflow-x-auto no-scrollbar max-w-full">
-              {expert.tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="text-[9px] font-extrabold px-2 py-[3px] rounded-[20px] tracking-[0.2px] shrink-0"
-                  style={{
-                    background: theme.tagBg,
-                    color: theme.tagText,
-                    border: `1.5px solid ${theme.tagBorder}`,
-                  }}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div
-          className="border-t border-black/[0.07] px-3.5 py-2 flex items-center justify-between gap-1.5 relative z-[4]"
-          style={{ background: theme.footerBg }}
-        >
-          <span className="text-[9px] font-extrabold text-[#999] tracking-[0.4px]">
-            {expert.category ?? ""}
-          </span>
-          <BarcodeLines color={theme.barcodeColor} />
+      <ExpertCardFace
+        expert={expert}
+        avatarUrl={avatarUrl}
+        footerActions={
           <div
             className="flex items-center gap-1 shrink-0"
             onClick={(e) => {
@@ -367,8 +395,8 @@ export function ExpertCard({
               </button>
             )}
           </div>
-        </div>
-      </div>
+        }
+      />
     </Link>
   );
 }

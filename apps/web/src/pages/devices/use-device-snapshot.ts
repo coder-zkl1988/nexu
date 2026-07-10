@@ -25,10 +25,13 @@ export function useDeviceSnapshot(
 
     // When wsPort is provided, use direct mode (for remote/external access).
     // Otherwise, proxy through the controller's DeviceMirrorProxy.
+    // fps=3 marks this as a passive thumbnail preview (as opposed to
+    // useMirrorSocket's fps=30 live view) — the phone side uses this to decide
+    // whether opening this connection alone should prompt for MediaProjection.
     const url =
       wsPort !== undefined
         ? `ws://${window.location.hostname}:${wsPort}/mirror`
-        : `ws://${window.location.host}/api/v1/devices/${encodeURIComponent(deviceId)}/mirror`;
+        : `ws://${window.location.host}/api/v1/devices/${encodeURIComponent(deviceId)}/mirror?fps=3`;
 
     const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";

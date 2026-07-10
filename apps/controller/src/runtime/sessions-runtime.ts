@@ -144,6 +144,16 @@ const SynthesizedUserMessagePatterns: readonly RegExp[] = [
 const SurfacedToolResultNames = new Set([
   "render_a2ui",
   "render_skill_confirmation",
+  // Expert install card (in-chat auto-route).
+  "propose_expert_install",
+  // Team run cards (chat-first team operations) — the tool result carries
+  // the TeamRunCard A2UI payload the web chat renders inline.
+  "team_run_auto",
+  "team_run_workflow",
+  "expert_run_auto",
+  // Canvas op batch (S8 chat-drives-canvas) — the tool result carries the
+  // fenced ```canvas-op``` payload the web chat turns into a confirm card.
+  "canvas_op",
 ]);
 
 /**
@@ -443,7 +453,13 @@ export class SessionsRuntime {
           }
           fileNameToIndexKey.set(fileName, indexKey);
           activeFileNames.add(fileName);
-          if (indexKey.includes(":subagent:")) {
+          // ":openai:" sessions are gateway /v1/chat/completions turns run AS
+          // the agent (e.g. the team planner's planning turn) — internal
+          // machinery, not user conversations, same as subagent lanes.
+          if (
+            indexKey.includes(":subagent:") ||
+            indexKey.includes(":openai:")
+          ) {
             subagentFileNames.add(fileName);
           }
           // Skip heartbeat sessions — OpenClaw sends a "heartbeat" message

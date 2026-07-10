@@ -610,18 +610,30 @@ export function useMirrorSocket(
   const [status, setStatus] = useState<MirrorStatus>(
     deviceId === null ? "closed" : "connecting",
   );
+  // Which wire format the most recent frame came over. "json" means the phone
+  // hasn't been granted MediaProjection yet and is falling back to STABLE's
+  // low-fps JPEG-over-JSON preview; "binary" means real H.264 frames are
+  // flowing. MirrorPanel uses this to show an "authorize on your phone" hint
+  // instead of presenting the low-fi fallback as if it were the final quality.
+  const [frameSource, setFrameSource] = useState<"binary" | "json" | null>(
+    null,
+  );
   const [reconnectKey, setReconnectKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // fps=30 marks this as a live mirror-view open (as opposed to
+  // useDeviceSnapshot's fps=3 passive thumbnail) — the phone side uses this to
+  // decide whether to prompt for MediaProjection.
   const url =
     wsHost !== undefined || wsPort !== undefined
       ? `ws://${wsHost ?? window.location.hostname}:${wsPort ?? 18790}/mirror`
-      : `ws://${window.location.host}/api/v1/devices/${deviceId === null ? "" : encodeURIComponent(deviceId)}/mirror`;
+      : `ws://${window.location.host}/api/v1/devices/${deviceId === null ? "" : encodeURIComponent(deviceId)}/mirror?fps=30`;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey intentionally triggers reconnection
   useEffect(() => {
     if (deviceId === null) {
       setFrame(null);
+      setFrameSource(null);
       setStatus("closed");
       wsRef.current = null;
       return;
@@ -655,6 +667,7 @@ export function useMirrorSocket(
         rafId = null;
       }
       setFrame(null);
+      setFrameSource(null);
     }
 
     ws.onopen = () => {
@@ -692,6 +705,7 @@ export function useMirrorSocket(
           header.screenHeight,
         );
         setStatus("open");
+        setFrameSource("binary");
         return;
       }
 
@@ -729,6 +743,7 @@ export function useMirrorSocket(
           pendingFrame = frame;
           if (rafId === null) rafId = requestAnimationFrame(flushFrame);
           setStatus("open");
+          setFrameSource("json");
         }
       } catch {
         // ignore malformed messages
@@ -752,9 +767,10 @@ export function useMirrorSocket(
     // Increment reconnectKey to trigger the useEffect re-run,
     // which cleans up the old WS and creates a new one.
     setFrame(null);
+    setFrameSource(null);
     setStatus("connecting");
     setReconnectKey((k) => k + 1);
   }, []);
 
-  return { frame, status, reconnect };
+  return { frame, status, frameSource, reconnect };
 }

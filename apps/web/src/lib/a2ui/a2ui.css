@@ -537,16 +537,19 @@
 
 /* ── MarkdownEditor ──────────────────────────────────────────── */
 .a2ui-markdown-editor {
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-12);
+  /* Flush inside the canvas node frame: no own border/radius/shadow (the node
+     chrome provides them) — avoids the double border. Fills the node height. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--color-surface-1);
-  box-shadow: var(--shadow-rest);
   overflow: hidden;
 }
 .a2ui-markdown-editor__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
   padding: 8px 14px;
   border-bottom: 1px solid var(--color-border-subtle);
   background: var(--color-surface-2);
@@ -578,6 +581,9 @@
   color: var(--color-text-primary);
 }
 .a2ui-markdown-editor__preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px;
 }
 .a2ui-markdown-editor__content {

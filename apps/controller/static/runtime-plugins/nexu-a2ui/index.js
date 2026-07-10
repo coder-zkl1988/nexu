@@ -521,7 +521,7 @@ WHEN TO USE:
 - Showing generic copywriting / markdown / plain generated text that is NOT a Xiaohongshu post — use MarkdownEditor component
 - Writing Xiaohongshu/RedNote post(s) — ALWAYS render with XHS components, NEVER MarkdownEditor or a plain-text list:
     • exactly ONE post → XHSEditor
-    • TWO OR MORE posts → a SINGLE XHSBatchTable holding all of them (one row per post). Do not emit multiple XHSEditors or a text list for multiple posts.
+    • TWO OR MORE posts → a SINGLE XHSBatchTable holding all of them (one row per post). MANDATORY: never place multiple XHSEditor components in one surface, never emit several XHSEditor surfaces, and never a plain-text list. The XHSBatchTable renders inline in the chat thread and carries an "在画布中编辑" button that fans each post out to its own editor node on the canvas — so you do NOT open the editors yourself.
     • CONTENT FORMAT: title and body are SEPARATE fields. Write the body as PLAIN TEXT — Xiaohongshu does not render Markdown. No \`#\` headings, no \`**bold**\`, no \`-\`/\`*\` bullets, and NEVER repeat the title as a \`# heading\` on the first body line. Emojis and line breaks are encouraged.
     • Images are OPTIONAL and are NOT a prerequisite for publishing: render the post(s) immediately with images:[] and let the user add images afterwards. NEVER stall, loop, or refuse to render just because there are no images yet.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
@@ -562,7 +562,7 @@ CUSTOM COMPONENTS:
 - PhonePreview: Show connected phone devices with name, model, status, and screenshot.
 - MarkdownEditor: Display markdown/copywriting content with a copy button.
 - XHSEditor: Xiaohongshu/RedNote content editor card with title, body, image upload preview, hashtags, and a device picker + publish button.
-- XHSBatchTable: Inline table for batch-publishing multiple XHS posts (fixed height, max ~5 rows). Each row shows thumbnail/title/preview/target-phone/status; clicking a row opens that post in an XHSEditor side panel; a "全部发布" button fans out all posts to their assigned phones. Pass each post's title/content/images/hashtags; omit deviceId to auto-assign phones round-robin.
+- XHSBatchTable: Inline chat table for multiple XHS posts (fixed height, max ~5 rows). Each row shows thumbnail/title/preview/target-phone/status; clicking a row opens that post in an XHSEditor node; an "在画布中编辑" button fans every post out to its own editor node on the canvas; a "全部发布" button publishes all posts to their assigned phones. Pass each post's title/content/images/hashtags; omit deviceId to auto-assign phones round-robin.
 Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, or XHSBatchTable.`,
 
             parameters: {

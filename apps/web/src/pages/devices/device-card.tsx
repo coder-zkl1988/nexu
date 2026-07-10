@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { isImeComposing } from "@/lib/keyboard";
 import { Pencil } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -90,7 +91,13 @@ export function DeviceCard({
         <div className="shrink-0 w-[120px] bg-surface-2 flex items-center justify-center">
           {snapshot ? (
             <img
-              src={`data:image/png;base64,${snapshot}`}
+              // useDeviceSnapshot always produces JPEG: the STABLE/accessibility
+              // path sends raw JPEG bytes as-is, and the H.264 decode path
+              // re-encodes decoded frames via canvas.toDataURL("image/jpeg", ...).
+              // A "png" label here makes Chromium invoke the PNG decoder on JPEG
+              // bytes, which rejects them as malformed — the <img> silently fails
+              // to render regardless of which path produced the snapshot.
+              src={`data:image/jpeg;base64,${snapshot}`}
               alt=""
               className="w-full h-full object-cover"
             />
@@ -120,7 +127,9 @@ export function DeviceCard({
                 onInput={(e) => setNameDraft(e.currentTarget.textContent ?? "")}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  // Device names are Chinese — Enter mid-composition confirms
+                  // the IME candidate and must not commit the rename.
+                  if (e.key === "Enter" && !isImeComposing(e)) {
                     e.preventDefault();
                     commitRename();
                   }

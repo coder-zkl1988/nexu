@@ -10,7 +10,7 @@ Bot 管理前端。
 
 ## 技术栈
 
-- **React** + **Ant Design** + **Vite**
+- **React** + **Radix UI** + **Tailwind CSS 4** + **Vite**
 - **React Query** (@tanstack/react-query)
 - **@hey-api/openapi-ts** 生成的 type-safe API SDK
 

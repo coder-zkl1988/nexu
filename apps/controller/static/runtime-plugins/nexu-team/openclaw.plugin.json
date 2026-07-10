@@ -1,0 +1,26 @@
+{
+  "id": "nexu-team",
+  "name": "Nexu Team Operations",
+  "description": "Registers team_run_auto / team_list_workflows / team_run_workflow so a team lead agent can drive the structured team board engine (decompose, SOP runs, live run cards) directly from chat.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "controllerUrl": {
+        "type": "string",
+        "description": "Base URL of the Nexu controller (loopback) for team + workflow calls."
+      }
+    }
+  },
+  "contracts": {
+    "tools": [
+      "team_run_auto",
+      "team_list_workflows",
+      "team_run_workflow",
+      "expert_run_auto"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  }
+}

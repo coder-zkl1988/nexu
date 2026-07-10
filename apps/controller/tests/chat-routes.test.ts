@@ -23,6 +23,9 @@ function createChatRoutesApp({
       sendToMainSession,
     },
     attachmentStore: {},
+    teamService: {
+      listTeams: () => [],
+    },
     sessionService: {
       getSessionBySessionKey,
     },
@@ -74,7 +77,8 @@ describe("chat routes", () => {
       expect.objectContaining({
         botId: "bot-1",
         sessionKey: "agent:bot-1:main",
-        message: "hello",
+        // The expert-routing nudge is prepended to the user content.
+        message: expect.stringContaining("hello"),
       }),
     );
     expect(getSessionBySessionKey).toHaveBeenCalledTimes(1);

@@ -342,6 +342,32 @@ export function resolveModelId(
   return rawModelId;
 }
 
+/**
+ * Native sub-agent tools added to delegation-capable chat bots. The default tool
+ * profile may not expose these, so we add them explicitly (see OpenClaw
+ * docs/tools/subagents.md). Spiked working in the live runtime 2026-06-30.
+ */
+const SUBAGENT_DELEGATION_TOOLS = [
+  "sessions_spawn",
+  "sessions_yield",
+  "subagents",
+];
+
+/**
+ * Workboard's worker-completion protocol tools. Without these, a Workboard
+ * dispatch worker's LLM turn finishes correctly but has no way to signal it —
+ * the card sits in "running" forever even though the model already answered.
+ * Verified live 2026-07-01: a worker without these tools replied correctly in
+ * plain text instead of calling workboard_complete, per buildWorkerPrompt's
+ * "Heartbeat with workboard_heartbeat ... call workboard_complete ... If
+ * blocked, call workboard_block" instructions.
+ */
+const WORKBOARD_WORKER_TOOLS = [
+  "workboard_heartbeat",
+  "workboard_complete",
+  "workboard_block",
+];
+
 function compileAgentList(
   config: NexuConfig,
   env: ControllerEnv,
@@ -364,6 +390,11 @@ function compileAgentList(
         new Set([...sharedSlugs, ...workspaceSlugs]),
       ).sort((left, right) => left.localeCompare(right));
 
+      // Chat assistants (not installed experts) can delegate one turn to an
+      // expert bot via native sub-agents (in-chat auto-routing). OpenClaw's
+      // sub-agent tool policy strips these tools from spawned children, so a
+      // delegated expert cannot recurse. See
+      // specs/design-docs/2026-06-30-in-chat-expert-auto-route.md.
       return {
         id: bot.id,
         name: bot.name,
@@ -373,6 +404,10 @@ function compileAgentList(
           ? { primary: resolveModelId(config, env, bot.modelId, oauthState) }
           : undefined,
         ...(merged.length > 0 ? { skills: merged } : {}),
+        tools: {
+          alsoAllow: [...SUBAGENT_DELEGATION_TOOLS, ...WORKBOARD_WORKER_TOOLS],
+        },
+        subagents: { allowAgents: ["*"] },
       };
     });
 }
@@ -380,6 +415,7 @@ function compileAgentList(
 function compilePlugins(
   config: NexuConfig,
   env: ControllerEnv,
+  hasTeams: boolean,
 ): OpenClawConfig["plugins"] {
   const resolvedMiniMaxOauth = listModelProviderRuntimeDescriptors(config).some(
     (descriptor) =>
@@ -416,6 +452,9 @@ function compilePlugins(
     "langfuse-tracer",
     "nexu-a2ui",
     "nexu-toolcall-guard",
+    "find-expert",
+    "nexu-team",
+    "nexu-canvas",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -431,6 +470,10 @@ function compilePlugins(
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
       ...(deviceControlEnabled ? ["tabby-control"] : []),
+      // Workboard backs the team task board (decompose / dependencies /
+      // dispatch). Bundled but disabled by default; enabling it adds a
+      // plugin to plugins.allow which triggers a one-time gateway restart.
+      ...(hasTeams ? ["workboard"] : []),
     ]),
   ).sort();
 
@@ -496,12 +539,43 @@ function compilePlugins(
       "nexu-a2ui": {
         enabled: true,
       },
+      "find-expert": {
+        enabled: true,
+        config: {
+          // The plugin runs in the OpenClaw process and reaches the controller
+          // on loopback to read the expert catalog + trigger installs.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+      },
+      "nexu-team": {
+        enabled: true,
+        config: {
+          // Same loopback pattern as find-expert: the plugin resolves the
+          // caller's team by leadBotId and drives the team board engine.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+      },
+      "nexu-canvas": {
+        enabled: true,
+        config: {
+          // Same loopback pattern: canvas_read GETs the canvas mirror the web
+          // frontend pushes. canvas_op is a pure courier and needs no URL.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+      },
       "nexu-toolcall-guard": {
         enabled: true,
         hooks: {
           allowConversationAccess: true,
         },
       },
+      ...(hasTeams
+        ? {
+            workboard: {
+              enabled: true,
+            },
+          }
+        : {}),
       ...(resolvedMiniMaxOauth
         ? {
             "minimax-portal-auth": {
@@ -531,6 +605,7 @@ export function compileOpenClawConfig(
   oauthState: OAuthConnectionState = EMPTY_OAUTH_CONNECTION_STATE,
   installedSkillSlugs?: readonly string[],
   workspaceSkillsByAgent?: ReadonlyMap<string, readonly string[]>,
+  hasTeams = false,
 ): OpenClawConfig {
   const disableMdnsDiscovery = process.env.CI === "true";
   const activeBots = config.bots.filter((bot) => bot.status === "active");
@@ -685,7 +760,7 @@ export function compileOpenClawConfig(
       gatewayToken: env.openclawGatewayToken,
     }),
     bindings: compileChannelBindings(config.bots, config.channels),
-    plugins: compilePlugins(config, env),
+    plugins: compilePlugins(config, env, hasTeams),
     skills: {
       load: {
         watch: true,

@@ -1,5 +1,7 @@
 import { ChatInput, ChatInputAttachButton } from "@/components/chat-input";
 import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import { useTeams } from "@/hooks/use-teams";
+import { isImeComposing } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,6 +14,7 @@ import {
   Plus,
   Presentation,
   Sparkles,
+  Users,
   X,
   Zap,
 } from "lucide-react";
@@ -201,6 +204,13 @@ function AttachmentTray({
 // Bot selector dropdown
 // ---------------------------------------------------------------------------
 
+/**
+ * Picks the chat target. A team's lead bot is a real bot, so it would otherwise
+ * sit in the same flat list as the individual experts — the two are split into
+ * tabs instead, and picking a team selects its lead (the orchestrator that
+ * delegates to the members). The list scrolls inside the dropdown so a long
+ * roster never grows the popover past the viewport.
+ */
 function BotSelector({
   bots,
   selected,
@@ -215,6 +225,7 @@ function BotSelector({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"experts" | "teams">("experts");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -227,19 +238,44 @@ function BotSelector({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const { data: teamsData } = useTeams();
+  const teams = teamsData?.teams ?? [];
+
   const activeBots = bots.filter((b) => b.status === "active");
+  const leadBotIds = new Set(teams.map((team) => team.leadBotId));
+  const expertBots = activeBots.filter((b) => !leadBotIds.has(b.id));
+  const botById = new Map(bots.map((b) => [b.id, b]));
+
+  // When a lead bot is selected, label the trigger with its team ("默认专家团")
+  // rather than the bot ("默认专家团 队长").
+  const selectedTeam = selected
+    ? teams.find((team) => team.leadBotId === selected.id)
+    : undefined;
+  const triggerLabel =
+    selectedTeam?.name ?? selected?.name ?? t("localChat.selectBot");
+
+  const rowClass = (isSelected: boolean) =>
+    cn(
+      "flex items-center gap-2 w-full px-3 py-2 text-left text-[13px] transition-colors hover:bg-surface-2",
+      isSelected && "font-medium text-accent",
+    );
 
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          const next = !open;
+          // Reopen on the tab the current selection lives in.
+          if (next) setTab(selectedTeam ? "teams" : "experts");
+          setOpen(next);
+        }}
         className={cn(
           "flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm",
           open && "bg-[var(--color-tabby-canvas)]",
         )}
       >
-        {(selected?.name ?? t("localChat.selectBot")).slice(0, 8)}
+        {triggerLabel.slice(0, 8)}
         <ChevronDown
           size={13}
           className={cn("transition-transform", open && "rotate-180")}
@@ -247,42 +283,108 @@ function BotSelector({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 min-w-[180px] rounded-xl border border-border bg-surface-1 py-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
-          {activeBots.length === 0 ? (
-            <div className="px-3 py-2 text-[12px] text-text-muted">
-              {t("localChat.noBots")}
-            </div>
-          ) : (
-            activeBots.map((bot) => (
+        <div className="absolute left-0 top-full z-50 mt-1.5 flex max-h-[320px] w-[220px] flex-col rounded-xl border border-border bg-surface-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
+          <div className="flex shrink-0 border-b border-border">
+            {(
+              [
+                {
+                  key: "experts",
+                  label: t("localChat.tabExperts", { defaultValue: "专家" }),
+                },
+                {
+                  key: "teams",
+                  label: t("localChat.tabTeams", { defaultValue: "团队" }),
+                },
+              ] as const
+            ).map(({ key, label }) => (
               <button
-                key={bot.id}
+                key={key}
                 type="button"
-                onClick={() => {
-                  onSelect(bot);
-                  setOpen(false);
-                }}
+                onClick={() => setTab(key)}
                 className={cn(
-                  "flex items-center gap-2 w-full px-3 py-2 text-left text-[13px] transition-colors hover:bg-surface-2",
-                  selected?.id === bot.id && "font-medium text-accent",
+                  "flex-1 px-3 py-1.5 text-[12px] transition-colors",
+                  tab === key
+                    ? "border-b-2 border-accent font-medium text-text-primary"
+                    : "text-text-muted hover:text-text-secondary",
                 )}
               >
-                <Sparkles size={13} className="shrink-0 text-text-muted" />
-                <span className="truncate">{bot.name}</span>
+                {label}
               </button>
-            ))
-          )}
+            ))}
+          </div>
+
+          {/* Scrolls inside the popover — never grows the page. */}
+          <div className="min-h-0 flex-1 overflow-y-auto py-1">
+            {tab === "experts" ? (
+              expertBots.length === 0 ? (
+                <div className="px-3 py-2 text-[12px] text-text-muted">
+                  {t("localChat.noBots")}
+                </div>
+              ) : (
+                expertBots.map((bot) => (
+                  <button
+                    key={bot.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(bot);
+                      setOpen(false);
+                    }}
+                    className={rowClass(selected?.id === bot.id)}
+                  >
+                    <Sparkles size={13} className="shrink-0 text-text-muted" />
+                    <span className="truncate">{bot.name}</span>
+                  </button>
+                ))
+              )
+            ) : teams.length === 0 ? (
+              <div className="px-3 py-2 text-[12px] text-text-muted">
+                {t("localChat.noTeams", { defaultValue: "暂无团队" })}
+              </div>
+            ) : (
+              teams.map((team) => {
+                // Chatting with a team means chatting with its lead, which
+                // orchestrates the members. Skip a team whose lead is gone.
+                const lead = botById.get(team.leadBotId);
+                if (!lead) return null;
+                return (
+                  <button
+                    key={team.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(lead);
+                      setOpen(false);
+                    }}
+                    className={rowClass(selected?.id === lead.id)}
+                  >
+                    <Users size={13} className="shrink-0 text-text-muted" />
+                    <span className="truncate">{team.name}</span>
+                    <span className="ml-auto shrink-0 text-[11px] text-text-muted">
+                      {team.members.length}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
           {showAdd && (
-            <div className="border-t border-border mt-1 pt-1">
+            <div className="shrink-0 border-t border-border">
               <button
                 type="button"
                 onClick={() => {
                   setOpen(false);
-                  navigate("/workspace/experts/custom");
+                  navigate(
+                    tab === "teams"
+                      ? "/workspace/teams"
+                      : "/workspace/experts/custom",
+                  );
                 }}
-                className="flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:bg-surface-2 rounded-b-lg transition-colors"
+                className="flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:bg-surface-2 rounded-b-xl transition-colors"
               >
                 <Plus size={13} className="shrink-0" />
-                {t("localChat.addBot", { defaultValue: "添加伙伴" })}
+                {tab === "teams"
+                  ? t("localChat.addTeam", { defaultValue: "新建团队" })
+                  : t("localChat.addBot", { defaultValue: "添加伙伴" })}
               </button>
             </div>
           )}
@@ -443,7 +545,8 @@ export function ChatInputArea({
   }, []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Enter while an IME is composing commits the candidate — never sends.
+    if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
       e.preventDefault();
       handleSend();
     }

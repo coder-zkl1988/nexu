@@ -863,3 +863,8 @@
     cursor: pointer;
   }
 }
+
+/* Canvas space-pan cursor: while space is held, nodes yield to grab cursor. */
+[data-space-pan] [data-canvas-node] {
+  cursor: grab;
+}

@@ -1,4 +1,11 @@
-import { cp, mkdir, readdir, stat } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import type { ControllerEnv } from "../app/env.js";
 import { logger } from "../lib/logger.js";
@@ -8,6 +15,27 @@ interface BotInfo {
   status: string;
   /** ISO language code (e.g. "en", "zh-CN"). Defaults to "en". */
   lang?: string;
+}
+
+const TIMEZONE_LINE_RE = /^-\s+\*\*(Timezone:|时区：)\*\*\s*$/;
+
+/**
+ * Fill the empty Timezone/时区 placeholder in a freshly-seeded USER.md with the
+ * controller's own system timezone. Nexu is desktop-first — the controller runs
+ * on the same machine as the user, so its IANA timezone is the user's, and there
+ * is no need to ask (AGENTS.md's "首次接触"/"First Contact" flow only asks as a
+ * fallback when USER.md still has no timezone recorded).
+ */
+export function injectTimezone(content: string, timezone: string): string {
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const match = (lines[i]?.trim() ?? "").match(TIMEZONE_LINE_RE);
+    if (match) {
+      lines[i] = `- **${match[1]}** ${timezone}`;
+      return lines.join("\n");
+    }
+  }
+  return content;
 }
 
 export class WorkspaceTemplateWriter {
@@ -122,6 +150,10 @@ export class WorkspaceTemplateWriter {
           },
           "platform_template_file_decision",
         );
+
+        if (entry.name === "USER.md") {
+          await this.seedTimezone(targetPath);
+        }
       }
 
       logger.debug(
@@ -132,6 +164,22 @@ export class WorkspaceTemplateWriter {
       logger.error(
         { botId, sourceDir, error: err instanceof Error ? err.message : err },
         "failed to seed platform templates",
+      );
+    }
+  }
+
+  private async seedTimezone(userMdPath: string): Promise<void> {
+    try {
+      const content = await readFile(userMdPath, "utf8");
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const next = injectTimezone(content, timezone);
+      if (next !== content) {
+        await writeFile(userMdPath, next);
+      }
+    } catch (err) {
+      logger.debug(
+        { userMdPath, error: err instanceof Error ? err.message : err },
+        "failed to seed timezone into USER.md",
       );
     }
   }

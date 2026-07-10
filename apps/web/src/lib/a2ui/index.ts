@@ -20,8 +20,11 @@ export {
 } from "./custom-components/registry";
 export type { CustomComponentProps } from "./custom-components/registry";
 
+import { ExpertInstallCard } from "./custom-components/ExpertInstallCard";
 import { MarkdownEditor } from "./custom-components/MarkdownEditor";
 import { PhonePreview } from "./custom-components/PhonePreview";
+import { TeamRunCard } from "./custom-components/TeamRunCard";
+import { TeamRunPanel } from "./custom-components/TeamRunPanel";
 import { XHSBatchTable } from "./custom-components/XHSBatchTable";
 import { XHSEditor } from "./custom-components/XHSEditor";
 // ── Register Nexu custom components ───────────────────────────
@@ -29,7 +32,10 @@ import { registerCustomComponent } from "./custom-components/registry";
 
 const NEXU_CATALOG = "https://nexu.app/a2ui/custom-catalog.json";
 
+registerCustomComponent(NEXU_CATALOG, "ExpertInstallCard", ExpertInstallCard);
 registerCustomComponent(NEXU_CATALOG, "MarkdownEditor", MarkdownEditor);
 registerCustomComponent(NEXU_CATALOG, "PhonePreview", PhonePreview);
+registerCustomComponent(NEXU_CATALOG, "TeamRunCard", TeamRunCard);
+registerCustomComponent(NEXU_CATALOG, "TeamRunPanel", TeamRunPanel);
 registerCustomComponent(NEXU_CATALOG, "XHSEditor", XHSEditor);
 registerCustomComponent(NEXU_CATALOG, "XHSBatchTable", XHSBatchTable);

@@ -157,6 +157,17 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("emits sub-agent delegation config on every agent (in-chat auto-routing)", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.agents.list.length).toBeGreaterThan(0);
+    for (const agent of result.agents.list) {
+      expect(agent.tools).toMatchObject({
+        alsoAllow: expect.arrayContaining(["sessions_spawn", "sessions_yield"]),
+      });
+      expect(agent.subagents).toEqual({ allowAgents: ["*"] });
+    }
+  });
+
   it("builds OpenClaw config with provider and channel parity defaults", () => {
     // Provide canonical models.providers so the compiler can resolve provider
     // descriptors (legacy config.providers is not read by the compiler).
@@ -1342,5 +1353,26 @@ describe("resolveControlUiRoot", () => {
     expect(result.gateway.controlUi?.root).toBe(
       "/app/node_modules/openclaw/dist/control-ui",
     );
+  });
+});
+
+describe("compileOpenClawConfig > workboard (teams) gating", () => {
+  it("omits the workboard plugin when no teams exist (hasTeams unset)", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.plugins?.allow).not.toContain("workboard");
+    expect(result.plugins?.entries?.workboard).toBeUndefined();
+  });
+
+  it("enables the workboard plugin when hasTeams is true", () => {
+    const result = compileOpenClawConfig(
+      createConfig(),
+      createEnv(),
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+    expect(result.plugins?.allow).toContain("workboard");
+    expect(result.plugins?.entries?.workboard).toEqual({ enabled: true });
   });
 });

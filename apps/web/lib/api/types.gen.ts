@@ -4522,6 +4522,989 @@ export type GetApiV1ExperthubPlatformTemplatesByFilenameResponses = {
 
 export type GetApiV1ExperthubPlatformTemplatesByFilenameResponse = GetApiV1ExperthubPlatformTemplatesByFilenameResponses[keyof GetApiV1ExperthubPlatformTemplatesByFilenameResponses];
 
+export type GetApiV1TeamsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/teams';
+};
+
+export type GetApiV1TeamsResponses = {
+    /**
+     * List of teams
+     */
+    200: {
+        teams: Array<{
+            id: string;
+            name: string;
+            leadBotId: string;
+            members: Array<{
+                expertSlug: string;
+                botId: string;
+                name?: string;
+            }>;
+            boardId: string;
+            isDefault?: boolean;
+            createdAt: string;
+            updatedAt: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsResponse = GetApiV1TeamsResponses[keyof GetApiV1TeamsResponses];
+
+export type PostApiV1TeamsData = {
+    body?: {
+        name: string;
+        memberSlugs: Array<string>;
+        leadModelId?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/teams';
+};
+
+export type PostApiV1TeamsErrors = {
+    /**
+     * A member expert is not installed
+     */
+    400: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsError = PostApiV1TeamsErrors[keyof PostApiV1TeamsErrors];
+
+export type PostApiV1TeamsResponses = {
+    /**
+     * Team created
+     */
+    200: {
+        id: string;
+        name: string;
+        leadBotId: string;
+        members: Array<{
+            expertSlug: string;
+            botId: string;
+            name?: string;
+        }>;
+        boardId: string;
+        isDefault?: boolean;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiV1TeamsResponse = PostApiV1TeamsResponses[keyof PostApiV1TeamsResponses];
+
+export type PostApiV1TeamsDefaultRunAutoData = {
+    body?: {
+        task: string;
+        maxSubtasks?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/teams/default/run-auto';
+};
+
+export type PostApiV1TeamsDefaultRunAutoErrors = {
+    /**
+     * No usable plan could be produced
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsDefaultRunAutoError = PostApiV1TeamsDefaultRunAutoErrors[keyof PostApiV1TeamsDefaultRunAutoErrors];
+
+export type PostApiV1TeamsDefaultRunAutoResponses = {
+    /**
+     * Task auto-composed into a DAG and run on the default team
+     */
+    200: {
+        runId: string;
+        boardId: string;
+        parentCardId: string;
+        cards: Array<{
+            stepId: string;
+            cardId: string;
+        }>;
+        teamId: string;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsDefaultRunAutoResponse = PostApiV1TeamsDefaultRunAutoResponses[keyof PostApiV1TeamsDefaultRunAutoResponses];
+
+export type DeleteApiV1TeamsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}';
+};
+
+export type DeleteApiV1TeamsByIdErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type DeleteApiV1TeamsByIdError = DeleteApiV1TeamsByIdErrors[keyof DeleteApiV1TeamsByIdErrors];
+
+export type DeleteApiV1TeamsByIdResponses = {
+    /**
+     * Team deleted
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type DeleteApiV1TeamsByIdResponse = DeleteApiV1TeamsByIdResponses[keyof DeleteApiV1TeamsByIdResponses];
+
+export type GetApiV1TeamsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}';
+};
+
+export type GetApiV1TeamsByIdErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdError = GetApiV1TeamsByIdErrors[keyof GetApiV1TeamsByIdErrors];
+
+export type GetApiV1TeamsByIdResponses = {
+    /**
+     * Team detail
+     */
+    200: {
+        id: string;
+        name: string;
+        leadBotId: string;
+        members: Array<{
+            expertSlug: string;
+            botId: string;
+            name?: string;
+        }>;
+        boardId: string;
+        isDefault?: boolean;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type GetApiV1TeamsByIdResponse = GetApiV1TeamsByIdResponses[keyof GetApiV1TeamsByIdResponses];
+
+export type PatchApiV1TeamsByIdData = {
+    body?: {
+        name?: string;
+        memberSlugs?: Array<string>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}';
+};
+
+export type PatchApiV1TeamsByIdErrors = {
+    /**
+     * A member expert could not be installed
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdError = PatchApiV1TeamsByIdErrors[keyof PatchApiV1TeamsByIdErrors];
+
+export type PatchApiV1TeamsByIdResponses = {
+    /**
+     * Team updated
+     */
+    200: {
+        id: string;
+        name: string;
+        leadBotId: string;
+        members: Array<{
+            expertSlug: string;
+            botId: string;
+            name?: string;
+        }>;
+        boardId: string;
+        isDefault?: boolean;
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdResponse = PatchApiV1TeamsByIdResponses[keyof PatchApiV1TeamsByIdResponses];
+
+export type GetApiV1TeamsByIdBoardData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/board';
+};
+
+export type GetApiV1TeamsByIdBoardErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdBoardError = GetApiV1TeamsByIdBoardErrors[keyof GetApiV1TeamsByIdBoardErrors];
+
+export type GetApiV1TeamsByIdBoardResponses = {
+    /**
+     * Team board cards
+     */
+    200: {
+        boardId: string;
+        cards: Array<{
+            id: string;
+            title: string;
+            status: string;
+            agentId: string;
+            assigneeName: string;
+            output: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsByIdBoardResponse = GetApiV1TeamsByIdBoardResponses[keyof GetApiV1TeamsByIdBoardResponses];
+
+export type PostApiV1TeamsByIdRunData = {
+    body?: {
+        task: string;
+        subtasks: Array<{
+            title: string;
+            assigneeSlug: string;
+            notes?: string;
+        }>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/run';
+};
+
+export type PostApiV1TeamsByIdRunErrors = {
+    /**
+     * A subtask assignee is not a team member
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdRunError = PostApiV1TeamsByIdRunErrors[keyof PostApiV1TeamsByIdRunErrors];
+
+export type PostApiV1TeamsByIdRunResponses = {
+    /**
+     * Task decomposed and dispatched
+     */
+    200: {
+        boardId: string;
+        parentCardId: string;
+        started: Array<{
+            cardId: string;
+            sessionKey: string;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsByIdRunResponse = PostApiV1TeamsByIdRunResponses[keyof PostApiV1TeamsByIdRunResponses];
+
+export type PostApiV1TeamsByIdRunAutoData = {
+    body?: {
+        task: string;
+        maxSubtasks?: number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/run-auto';
+};
+
+export type PostApiV1TeamsByIdRunAutoErrors = {
+    /**
+     * The task could not be composed into a usable plan
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdRunAutoError = PostApiV1TeamsByIdRunAutoErrors[keyof PostApiV1TeamsByIdRunAutoErrors];
+
+export type PostApiV1TeamsByIdRunAutoResponses = {
+    /**
+     * Task auto-composed into a DAG and run
+     */
+    200: {
+        runId: string;
+        boardId: string;
+        parentCardId: string;
+        cards: Array<{
+            stepId: string;
+            cardId: string;
+        }>;
+        teamId: string;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsByIdRunAutoResponse = PostApiV1TeamsByIdRunAutoResponses[keyof PostApiV1TeamsByIdRunAutoResponses];
+
+export type GetApiV1TeamsByIdWorkflowsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows';
+};
+
+export type GetApiV1TeamsByIdWorkflowsErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsError = GetApiV1TeamsByIdWorkflowsErrors[keyof GetApiV1TeamsByIdWorkflowsErrors];
+
+export type GetApiV1TeamsByIdWorkflowsResponses = {
+    /**
+     * Workflows owned by the team
+     */
+    200: {
+        workflows: Array<{
+            id: string;
+            teamId: string;
+            name: string;
+            description?: string;
+            inputs?: Array<{
+                name: string;
+                description?: string;
+                required?: boolean;
+                default?: string;
+            }>;
+            steps: Array<{
+                id: string;
+                type?: 'task' | 'approval';
+                assigneeSlug: string;
+                name?: string;
+                task: string;
+                output?: string;
+                dependsOn?: Array<string>;
+            }>;
+            source?: 'builtin' | 'user';
+            createdAt: string;
+            updatedAt: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsResponse = GetApiV1TeamsByIdWorkflowsResponses[keyof GetApiV1TeamsByIdWorkflowsResponses];
+
+export type PostApiV1TeamsByIdWorkflowsData = {
+    body?: {
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows';
+};
+
+export type PostApiV1TeamsByIdWorkflowsErrors = {
+    /**
+     * Invalid workflow definition
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsError = PostApiV1TeamsByIdWorkflowsErrors[keyof PostApiV1TeamsByIdWorkflowsErrors];
+
+export type PostApiV1TeamsByIdWorkflowsResponses = {
+    /**
+     * Workflow created
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsResponse = PostApiV1TeamsByIdWorkflowsResponses[keyof PostApiV1TeamsByIdWorkflowsResponses];
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdData = {
+    body?: never;
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}';
+};
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdErrors = {
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdError = DeleteApiV1TeamsByIdWorkflowsByWorkflowIdErrors[keyof DeleteApiV1TeamsByIdWorkflowsByWorkflowIdErrors];
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponses = {
+    /**
+     * Workflow deleted
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponse = DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponses[keyof DeleteApiV1TeamsByIdWorkflowsByWorkflowIdResponses];
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdData = {
+    body?: never;
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}';
+};
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdErrors = {
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdError = GetApiV1TeamsByIdWorkflowsByWorkflowIdErrors[keyof GetApiV1TeamsByIdWorkflowsByWorkflowIdErrors];
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdResponses = {
+    /**
+     * Workflow detail
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowsByWorkflowIdResponse = GetApiV1TeamsByIdWorkflowsByWorkflowIdResponses[keyof GetApiV1TeamsByIdWorkflowsByWorkflowIdResponses];
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdData = {
+    body?: {
+        name?: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps?: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+    };
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}';
+};
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdErrors = {
+    /**
+     * Invalid workflow definition
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdError = PatchApiV1TeamsByIdWorkflowsByWorkflowIdErrors[keyof PatchApiV1TeamsByIdWorkflowsByWorkflowIdErrors];
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponses = {
+    /**
+     * Workflow updated
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponse = PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponses[keyof PatchApiV1TeamsByIdWorkflowsByWorkflowIdResponses];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunData = {
+    body?: {
+        inputs?: {
+            [key: string]: string;
+        };
+    };
+    path: {
+        id: string;
+        workflowId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}/run';
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors = {
+    /**
+     * Invalid inputs or stale workflow definition
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team or workflow not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunError = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunErrors];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponses = {
+    /**
+     * Run materialized; execution continues in background
+     */
+    200: {
+        runId: string;
+        boardId: string;
+        parentCardId: string;
+        cards: Array<{
+            stepId: string;
+            cardId: string;
+        }>;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponse = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponses[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunResponses];
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateData = {
+    body?: {
+        templateId: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/from-template';
+};
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateErrors = {
+    /**
+     * Template invalid for this team
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team or template not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateError = PostApiV1TeamsByIdWorkflowsFromTemplateErrors[keyof PostApiV1TeamsByIdWorkflowsFromTemplateErrors];
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateResponses = {
+    /**
+     * Template instantiated as a team workflow
+     */
+    200: {
+        id: string;
+        teamId: string;
+        name: string;
+        description?: string;
+        inputs?: Array<{
+            name: string;
+            description?: string;
+            required?: boolean;
+            default?: string;
+        }>;
+        steps: Array<{
+            id: string;
+            type?: 'task' | 'approval';
+            assigneeSlug: string;
+            name?: string;
+            task: string;
+            output?: string;
+            dependsOn?: Array<string>;
+        }>;
+        source?: 'builtin' | 'user';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsFromTemplateResponse = PostApiV1TeamsByIdWorkflowsFromTemplateResponses[keyof PostApiV1TeamsByIdWorkflowsFromTemplateResponses];
+
+export type PostApiV1TeamsByIdWorkflowsComposeData = {
+    body?: {
+        description: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/compose';
+};
+
+export type PostApiV1TeamsByIdWorkflowsComposeErrors = {
+    /**
+     * The model could not produce a sound workflow
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Upstream run/compose failure
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsComposeError = PostApiV1TeamsByIdWorkflowsComposeErrors[keyof PostApiV1TeamsByIdWorkflowsComposeErrors];
+
+export type PostApiV1TeamsByIdWorkflowsComposeResponses = {
+    /**
+     * Composed draft workflow (not persisted)
+     */
+    200: {
+        draft: {
+            name: string;
+            description?: string;
+            inputs?: Array<{
+                name: string;
+                description?: string;
+                required?: boolean;
+                default?: string;
+            }>;
+            steps: Array<{
+                id: string;
+                type?: 'task' | 'approval';
+                assigneeSlug: string;
+                name?: string;
+                task: string;
+                output?: string;
+                dependsOn?: Array<string>;
+            }>;
+        };
+        warnings: Array<string>;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsComposeResponse = PostApiV1TeamsByIdWorkflowsComposeResponses[keyof PostApiV1TeamsByIdWorkflowsComposeResponses];
+
+export type GetApiV1TeamsByIdWorkflowApprovalsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflow-approvals';
+};
+
+export type GetApiV1TeamsByIdWorkflowApprovalsErrors = {
+    /**
+     * Team not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowApprovalsError = GetApiV1TeamsByIdWorkflowApprovalsErrors[keyof GetApiV1TeamsByIdWorkflowApprovalsErrors];
+
+export type GetApiV1TeamsByIdWorkflowApprovalsResponses = {
+    /**
+     * Pending workflow approvals for the team
+     */
+    200: {
+        approvals: Array<{
+            teamId: string;
+            workflowId: string;
+            runId: string;
+            stepId: string;
+            cardId: string;
+            prompt: string;
+        }>;
+    };
+};
+
+export type GetApiV1TeamsByIdWorkflowApprovalsResponse = GetApiV1TeamsByIdWorkflowApprovalsResponses[keyof GetApiV1TeamsByIdWorkflowApprovalsResponses];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveData = {
+    body?: never;
+    path: {
+        id: string;
+        workflowId: string;
+        runId: string;
+        stepId: string;
+    };
+    query?: never;
+    url: '/api/v1/teams/{id}/workflows/{workflowId}/runs/{runId}/steps/{stepId}/approve';
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveErrors = {
+    /**
+     * No pending approval for this run step
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveError = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveErrors[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveErrors];
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponses = {
+    /**
+     * Run released past the approval step
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponse = PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponses[keyof PostApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApproveResponses];
+
+export type GetApiV1TeamWorkflowTemplatesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/team-workflow-templates';
+};
+
+export type GetApiV1TeamWorkflowTemplatesResponses = {
+    /**
+     * Shipped starter SOP templates
+     */
+    200: {
+        templates: Array<{
+            id: string;
+            name: string;
+            description: string;
+            inputs: Array<{
+                name: string;
+                description?: string;
+                required?: boolean;
+                default?: string;
+            }>;
+            steps: Array<{
+                id: string;
+                type?: 'task' | 'approval';
+                assigneeSlug: string;
+                name?: string;
+                task: string;
+                output?: string;
+                dependsOn?: Array<string>;
+            }>;
+            requiredExperts: Array<string>;
+        }>;
+    };
+};
+
+export type GetApiV1TeamWorkflowTemplatesResponse = GetApiV1TeamWorkflowTemplatesResponses[keyof GetApiV1TeamWorkflowTemplatesResponses];
+
 export type GetApiV1MeData = {
     body?: never;
     path?: never;
@@ -5394,6 +6377,348 @@ export type GetApiV1SchedulesByScheduleIdRunsResponses = {
 };
 
 export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesByScheduleIdRunsResponses[keyof GetApiV1SchedulesByScheduleIdRunsResponses];
+
+export type PostApiV1MediaGenerateImageData = {
+    body?: {
+        prompt: string;
+        referenceImages?: Array<string>;
+        count?: number;
+        model?: string;
+        quality?: 'auto' | 'high' | 'medium' | 'low';
+        aspectRatio?: string;
+        size?: string;
+        sourceImage?: string;
+        maskDataUrl?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-image';
+};
+
+export type PostApiV1MediaGenerateImageErrors = {
+    /**
+     * Invalid reference image path
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Generation failed or timed out
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateImageError = PostApiV1MediaGenerateImageErrors[keyof PostApiV1MediaGenerateImageErrors];
+
+export type PostApiV1MediaGenerateImageResponses = {
+    /**
+     * Image generated and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaGenerateImageResponse = PostApiV1MediaGenerateImageResponses[keyof PostApiV1MediaGenerateImageResponses];
+
+export type PostApiV1MediaGenerateVideoData = {
+    body?: {
+        prompt: string;
+        durationSeconds?: number;
+        resolution?: '720p' | '1080p';
+        model?: string;
+        aspectRatio?: string;
+        generateAudio?: boolean;
+        watermark?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-video';
+};
+
+export type PostApiV1MediaGenerateVideoErrors = {
+    /**
+     * Generation failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateVideoError = PostApiV1MediaGenerateVideoErrors[keyof PostApiV1MediaGenerateVideoErrors];
+
+export type PostApiV1MediaGenerateVideoResponses = {
+    /**
+     * Video generated and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaGenerateVideoResponse = PostApiV1MediaGenerateVideoResponses[keyof PostApiV1MediaGenerateVideoResponses];
+
+export type PostApiV1MediaGenerateAudioData = {
+    body?: {
+        prompt: string;
+        voice?: string;
+        speed?: number;
+        model?: string;
+        format?: 'mp3' | 'wav' | 'm4a' | 'ogg' | 'flac';
+        instructions?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-audio';
+};
+
+export type PostApiV1MediaGenerateAudioErrors = {
+    /**
+     * Generation failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateAudioError = PostApiV1MediaGenerateAudioErrors[keyof PostApiV1MediaGenerateAudioErrors];
+
+export type PostApiV1MediaGenerateAudioResponses = {
+    /**
+     * Audio generated and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaGenerateAudioResponse = PostApiV1MediaGenerateAudioResponses[keyof PostApiV1MediaGenerateAudioResponses];
+
+export type PostApiV1MediaEnhanceImageData = {
+    body?: {
+        sourceImage: string;
+        operation: 'super-resolve' | 'multi-angle';
+        targetLongEdge?: 1024 | 2048 | 4096;
+        horizontalDeg?: number;
+        pitchDeg?: number;
+        distance?: number;
+        wideAngle?: boolean;
+        prompt?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/enhance-image';
+};
+
+export type PostApiV1MediaEnhanceImageErrors = {
+    /**
+     * Invalid source image path
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Enhancement failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaEnhanceImageError = PostApiV1MediaEnhanceImageErrors[keyof PostApiV1MediaEnhanceImageErrors];
+
+export type PostApiV1MediaEnhanceImageResponses = {
+    /**
+     * Image enhanced and servable via /media/state-file
+     */
+    200: {
+        url: string;
+        path: string;
+        items: Array<{
+            url: string;
+            path: string;
+        }>;
+    };
+};
+
+export type PostApiV1MediaEnhanceImageResponse = PostApiV1MediaEnhanceImageResponses[keyof PostApiV1MediaEnhanceImageResponses];
+
+export type PostApiV1MediaDescribeImageData = {
+    body?: {
+        sourceImage: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/describe-image';
+};
+
+export type PostApiV1MediaDescribeImageErrors = {
+    /**
+     * Invalid source image path
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Description failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaDescribeImageError = PostApiV1MediaDescribeImageErrors[keyof PostApiV1MediaDescribeImageErrors];
+
+export type PostApiV1MediaDescribeImageResponses = {
+    /**
+     * Image described — returns a text-to-image prompt
+     */
+    200: {
+        prompt: string;
+    };
+};
+
+export type PostApiV1MediaDescribeImageResponse = PostApiV1MediaDescribeImageResponses[keyof PostApiV1MediaDescribeImageResponses];
+
+export type PostApiV1MediaGenerateTextData = {
+    body?: {
+        prompt: string;
+        sourceText?: string;
+        model?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/generate-text';
+};
+
+export type PostApiV1MediaGenerateTextErrors = {
+    /**
+     * Text generation failed or timed out (including UNAVAILABLE)
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaGenerateTextError = PostApiV1MediaGenerateTextErrors[keyof PostApiV1MediaGenerateTextErrors];
+
+export type PostApiV1MediaGenerateTextResponses = {
+    /**
+     * Text generated — returns the resulting text
+     */
+    200: {
+        text: string;
+    };
+};
+
+export type PostApiV1MediaGenerateTextResponse = PostApiV1MediaGenerateTextResponses[keyof PostApiV1MediaGenerateTextResponses];
+
+export type GetApiV1CanvasMirrorData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/canvas/mirror';
+};
+
+export type GetApiV1CanvasMirrorResponses = {
+    /**
+     * Current canvas mirror
+     */
+    200: {
+        boardId: string;
+        nodes: Array<{
+            id: string;
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
+            title: string;
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+            hasContent: boolean;
+        }>;
+        connections: Array<{
+            id: string;
+            from: string;
+            to: string;
+        }>;
+        viewport: {
+            x: number;
+            y: number;
+            scale: number;
+        };
+        selectedNodeIds: Array<string>;
+        assets?: Array<{
+            id: string;
+            kind: 'text' | 'image' | 'video' | 'audio';
+            title: string;
+        }>;
+    };
+};
+
+export type GetApiV1CanvasMirrorResponse = GetApiV1CanvasMirrorResponses[keyof GetApiV1CanvasMirrorResponses];
+
+export type PostApiV1CanvasMirrorData = {
+    body?: {
+        boardId: string;
+        nodes: Array<{
+            id: string;
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
+            title: string;
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+            hasContent: boolean;
+        }>;
+        connections: Array<{
+            id: string;
+            from: string;
+            to: string;
+        }>;
+        viewport: {
+            x: number;
+            y: number;
+            scale: number;
+        };
+        selectedNodeIds: Array<string>;
+        assets?: Array<{
+            id: string;
+            kind: 'text' | 'image' | 'video' | 'audio';
+            title: string;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/canvas/mirror';
+};
+
+export type PostApiV1CanvasMirrorResponses = {
+    /**
+     * Mirror accepted
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type PostApiV1CanvasMirrorResponse = PostApiV1CanvasMirrorResponses[keyof PostApiV1CanvasMirrorResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

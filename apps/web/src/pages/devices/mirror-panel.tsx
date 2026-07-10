@@ -1,3 +1,4 @@
+import { isImeComposing } from "@/lib/keyboard";
 import { type DeviceMessage, TouchAction } from "@nexu/shared";
 import { RefreshCw, Send, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -54,6 +55,7 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
   const {
     frame,
     status: videoStatus,
+    frameSource,
     reconnect: reconnectVideo,
   } = useMirrorSocket(device.deviceId, wsHost, wsPort);
 
@@ -69,6 +71,26 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
       setIsSwitching(false);
     }
   }, [frame, isSwitching]);
+
+  // isSwitching is only cleared by an arriving frame above — if the new
+  // device's stream never produces one (connection refused, phone offline,
+  // frames dropped upstream), the "switching" overlay would sit there forever,
+  // hiding the closed/retry UI that actually tells the user what to do.
+  // Cap it: after 8s without a frame, drop back to the regular status UI
+  // (waiting spinner while connected, closed+retry otherwise).
+  useEffect(() => {
+    if (!isSwitching) return;
+    const timer = setTimeout(() => setIsSwitching(false), 8000);
+    return () => clearTimeout(timer);
+  }, [isSwitching]);
+
+  // Likewise, a dead connection is a definitive answer, not a transition —
+  // show the closed/retry UI immediately instead of the switching overlay.
+  useEffect(() => {
+    if (isSwitching && videoStatus === "closed") {
+      setIsSwitching(false);
+    }
+  }, [isSwitching, videoStatus]);
 
   // Control channel: user interactions (click, swipe, text, key)
   const {
@@ -531,10 +553,21 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
                 </button>
               </div>
             )}
+            {isConnected && !isSwitching && frameSource === "json" && (
+              // frameSource "json" means we're still on STABLE's low-fps JPEG
+              // fallback — MediaProjection hasn't been granted on the phone yet.
+              // The video above IS live (not blank), just capped at ~5fps; this
+              // banner is what tells the user why, and what to do about it.
+              <div className="absolute top-2 left-2 right-2 flex justify-center pointer-events-none">
+                <div className="px-3 py-1.5 rounded-full bg-amber-500/90 text-white text-[11px] font-medium shadow-md text-center">
+                  {t("devices.mirror.awaitingAuthorization")}
+                </div>
+              </div>
+            )}
             {isSwitching && (
               <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/20">
                 <div className="text-[11px] text-white/70">
-                  {t("devices.mirror.switching") ?? "Switching..."}
+                  {t("devices.mirror.switching")}
                 </div>
               </div>
             )}
@@ -569,7 +602,9 @@ export function MirrorPanel({ device, onClose, wsHost, wsPort }: Props) {
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleSendText();
+                // Enter mid-composition confirms the IME candidate — sending
+                // then would push half-typed pinyin to the phone.
+                if (e.key === "Enter" && !isImeComposing(e)) handleSendText();
                 if (e.key === "Escape") setTextInput("");
               }}
               placeholder="输入文字发送到手机…"

@@ -45,6 +45,19 @@ const STATUS_COLOR: Record<RowStatus, string> = {
   error: "#A32D2D",
 };
 
+/** Grid layout for fanning every post out as its own XHSEditor canvas node. */
+const FANOUT_COLS = 3;
+const FANOUT_NODE = { width: 380, height: 460 };
+const FANOUT_GAP = 24;
+function fanoutPosition(index: number): { x: number; y: number } {
+  const col = index % FANOUT_COLS;
+  const row = Math.floor(index / FANOUT_COLS);
+  return {
+    x: 32 + col * (FANOUT_NODE.width + FANOUT_GAP),
+    y: 32 + row * (FANOUT_NODE.height + FANOUT_GAP),
+  };
+}
+
 /** Build the A2UI surface that renders one post's XHSEditor in the side panel,
  * bound to the store via batchId/postId so edits sync back to this table. */
 function buildEditorSurface(
@@ -125,6 +138,25 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
     openWith(surfaceId, buildEditorSurface(surfaceId, batchId, post), () => {});
   };
 
+  // Fan out every post as its own XHSEditor canvas node (grid layout). Each
+  // node is bound to this batch via batchId/postId, so edits sync back to the
+  // table rows; re-clicking refreshes existing nodes in place (upsert).
+  const openAllInCanvas = () => {
+    posts.forEach((post, i) => {
+      const surfaceId = `sidebar:xhs-editor-${batchId}-${post.id}`;
+      openWith(
+        surfaceId,
+        buildEditorSurface(surfaceId, batchId, post),
+        () => {},
+        {
+          title: post.title || `帖子 ${i + 1}`,
+          position: fanoutPosition(i),
+          size: FANOUT_NODE,
+        },
+      );
+    });
+  };
+
   const publishOne = async (post: XHSPost) => {
     try {
       await publishXhsPost(
@@ -192,23 +224,42 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
         <span style={{ fontSize: 14, fontWeight: 500 }}>
           批量发布 · {posts.length} 篇
         </span>
-        <button
-          type="button"
-          onClick={publishAll}
-          disabled={posts.length === 0}
-          style={{
-            padding: "5px 14px",
-            borderRadius: 6,
-            border: "none",
-            background: "#bb0028",
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
-          }}
-        >
-          全部发布
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            onClick={openAllInCanvas}
+            disabled={posts.length === 0}
+            style={{
+              padding: "5px 14px",
+              borderRadius: 6,
+              border: "0.5px solid var(--color-border)",
+              background: "var(--color-surface-1, #fff)",
+              color: "var(--color-text-secondary, #666)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            在画布中编辑
+          </button>
+          <button
+            type="button"
+            onClick={publishAll}
+            disabled={posts.length === 0}
+            style={{
+              padding: "5px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: "#bb0028",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            全部发布
+          </button>
+        </div>
       </div>
 
       {/* Fixed height — shows ~5 rows, scrolls beyond. */}

@@ -1,3 +1,4 @@
+import { isImeComposing } from "@/lib/keyboard";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
@@ -154,13 +155,13 @@ export function XHSEditor({ comp }: XHSEditorProps) {
     <div
       className="xhs-editor"
       style={{
-        maxWidth: 640,
+        // Flush inside the canvas node frame: no own radius/shadow (the node
+        // chrome provides them) — avoids the double-border. Fills the node.
+        width: "100%",
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        borderRadius: 12,
         overflow: "hidden",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)",
         background: "#ffffff",
       }}
     >
@@ -429,7 +430,8 @@ export function XHSEditor({ comp }: XHSEditorProps) {
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  // Enter mid-composition picks the IME candidate, not the tag.
+                  if (e.key === "Enter" && !isImeComposing(e)) {
                     e.preventDefault();
                     addHashtag();
                   }

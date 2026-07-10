@@ -2,7 +2,7 @@
 
 ## Stack
 
-React 19 + Ant Design + Vite 6. React Router for routing, React Query for server state, better-auth client for sessions.
+React 19 + Radix UI + Tailwind CSS 4 + Vite 6. React Router for routing, React Query for server state, better-auth client for sessions.
 
 ## API client
 
@@ -75,7 +75,7 @@ Persistence flow: UI → [`useUpdateFeishuPermissions`](../apps/web/src/hooks/us
 - **State:** React Query for all server state. No manual `fetch` + `useState` patterns.
 - **Auth:** `apps/web/src/lib/auth-client.ts` for session management.
 - **Toasts:** sonner. **Icons:** lucide-react.
-- **Styling:** Tailwind CSS + Ant Design components.
+- **Styling:** Tailwind CSS 4. No component library.
 - **Components:** Reusable UI components in `src/components/ui/` (Radix UI primitives).
 
 ## Key files

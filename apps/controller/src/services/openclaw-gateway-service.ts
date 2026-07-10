@@ -142,6 +142,34 @@ function resolveOpenClawAccountId(
 }
 
 // ---------------------------------------------------------------------------
+// Public types — Workboard (team task board)
+// ---------------------------------------------------------------------------
+
+/** Minimal Workboard card shape used by team task orchestration. */
+export interface WorkboardCard {
+  id: string;
+  title: string;
+  status: string;
+  agentId?: string | null;
+  notes?: string;
+  metadata?: {
+    /** Workflow step replies are recorded as comments (newest last). */
+    comments?: Array<{ body?: string }>;
+  };
+}
+
+export interface WorkboardDispatchStarted {
+  cardId: string;
+  sessionKey: string;
+  runId?: string;
+}
+
+export interface WorkboardDispatchResult {
+  started: WorkboardDispatchStarted[];
+  startFailures?: unknown[];
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -192,6 +220,117 @@ export class OpenClawGatewayService {
         timeoutMs: opts?.timeoutMs ?? 1000,
       },
     );
+  }
+
+  // ---- Workboard (team task board) --------------------------------------
+  // workboard.* RPC requires an operator-scoped gateway connection; the
+  // controller's WS client connects with the shared gateway token. Note the
+  // dispatcher worker does NOT load the member AGENTS.md persona — member
+  // persona is injected via card.notes by TeamService.
+
+  async workboardBoardUpsert(params: {
+    id: string;
+    name?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.boards.upsert", params);
+  }
+
+  async workboardCardCreate(params: {
+    title: string;
+    /** Workboard store field is `boardId` — `board` is silently ignored. */
+    boardId: string;
+    agentId?: string;
+    notes?: string;
+    priority?: "low" | "normal" | "high" | "urgent";
+  }): Promise<{ card: WorkboardCard }> {
+    return this.wsClient.request("workboard.cards.create", params);
+  }
+
+  async workboardCardDecompose(params: {
+    id: string;
+    children: Array<{
+      title: string;
+      boardId?: string;
+      agentId?: string;
+      notes?: string;
+    }>;
+  }): Promise<{ children: WorkboardCard[] }> {
+    return this.wsClient.request("workboard.cards.decompose", params);
+  }
+
+  async workboardCardMove(params: {
+    id: string;
+    status: string;
+  }): Promise<{ card: WorkboardCard }> {
+    return this.wsClient.request("workboard.cards.move", params);
+  }
+
+  async workboardCardsList(params?: {
+    /** Filter field is `boardId` — `board` is silently ignored (returns ALL cards). */
+    boardId?: string;
+  }): Promise<{ cards: WorkboardCard[] }> {
+    return this.wsClient.request("workboard.cards.list", params ?? {});
+  }
+
+  async workboardDispatch(params?: {
+    boardId?: string;
+  }): Promise<WorkboardDispatchResult> {
+    return this.wsClient.request("workboard.cards.dispatch", params ?? {});
+  }
+
+  /** Delete one card (used for board-scoped cleanup on team delete). */
+  async workboardCardDelete(params: { id: string }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.delete", params);
+  }
+
+  /**
+   * Delete a board namespace. The store refuses while cards remain — callers
+   * must delete the board's cards first (see TeamService.deleteTeam).
+   */
+  async workboardBoardDelete(params: { id: string }): Promise<unknown> {
+    return this.wsClient.request("workboard.boards.delete", params);
+  }
+
+  /**
+   * Sibling dependency: the child card stays gated (not promotable to ready)
+   * until the parent card reaches `done`. Verified live 2026-07-01 (spike S1,
+   * design doc §10.1).
+   */
+  async workboardCardLinkDependency(params: {
+    parentId: string;
+    childId: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.linkDependency", params);
+  }
+
+  async workboardCardUpdate(params: {
+    id: string;
+    notes?: string;
+    title?: string;
+  }): Promise<{ card: WorkboardCard }> {
+    return this.wsClient.request("workboard.cards.update", params);
+  }
+
+  async workboardCardComment(params: {
+    id: string;
+    body: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.comment", params);
+  }
+
+  /** Operator-scoped completion — no worker claim token needed (spike S1). */
+  async workboardCardComplete(params: {
+    id: string;
+    summary?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.complete", params);
+  }
+
+  async workboardCardBlock(params: {
+    id: string;
+    reason?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("workboard.cards.block", params);
   }
 
   async getGatewayStatusSummary(opts?: {

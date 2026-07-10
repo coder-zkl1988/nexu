@@ -11,6 +11,32 @@ import {
   isSessionLockedError,
 } from "./session-run-registry.js";
 
+/**
+ * Per-turn nudge so the model routes specialist requests to a domain expert
+ * (in-chat auto-routing). Kept balanced so general/simple questions are still
+ * answered directly. See specs/design-docs/2026-06-30-in-chat-expert-auto-route.md.
+ */
+const EXPERT_ROUTING_HINT =
+  "[路由提示：如果本请求属于某个垂直专业领域、且有更合适的专家来处理，请先调用 find_expert 检索；" +
+  "命中已安装专家就用 sessions_spawn 委派给它并把结果转述给用户，命中未安装专家就调用 propose_expert_install 让用户确认安装；" +
+  "如果任务需要专家实际产出交付物（如成稿、方案、分析报告）或需要多位专家分工，改用 expert_run_auto 自动组织专家完成并展示运行卡；" +
+  "如果只是通用、简单或闲聊类问题，直接自己回答，不要路由。]";
+
+/**
+ * Per-turn nudge for TEAM LEAD agents: collaborative tasks go through the
+ * structured team engine (team_run_auto / team_run_workflow) instead of
+ * free-form sessions_spawn, so runs land on the board with a live run card.
+ * Replaces the expert-routing hint for leads — a lead should not be nudged
+ * into installing experts. The web UI strips any `[路由提示：…]` prefix from
+ * the user's bubble. See
+ * specs/design-docs/2026-07-02-chat-first-team-operations.md.
+ */
+const TEAM_LEAD_HINT =
+  "[路由提示：你是团队队长。需要成员产出实际工作的协作型任务，优先调用 team_run_auto（自动拆解派发）；" +
+  "用户点名要跑某个已保存的工作流/SOP 时用 team_list_workflows + team_run_workflow；" +
+  "启动后运行卡会自动展示给用户，只需一句话确认，不要复述计划。" +
+  "通用、简单或闲聊类问题直接自己回答，不要派发。]";
+
 export interface LocalChatMessageMetadata {
   width?: number;
   height?: number;
@@ -101,6 +127,8 @@ export class ChatService {
     private readonly gatewayService: OpenClawGatewayService,
     private readonly attachmentStore: AttachmentStore,
     private readonly runRegistry: SessionRunRegistry,
+    /** True when this bot is some team's lead (drives the per-turn hint). */
+    private readonly isTeamLead: (botId: string) => boolean = () => false,
   ) {}
 
   /**
@@ -252,9 +280,20 @@ export class ChatService {
     // is the message text itself.  Prepend a directive the model reliably
     // resolves to the matching skills/<slug>/SKILL.md (verified empirically).
     const skillSlug = message.skillSlug?.trim();
-    const messageContent = skillSlug
-      ? `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`
-      : bodyContent;
+    // Expert auto-routing nudge (in-chat auto-route, P4): remind the model it can
+    // route a specialist request to a domain expert. Skipped for explicit skill
+    // requests and for A2UI action round-trips (e.g. install_expert confirms),
+    // which must reach the model verbatim.
+    const isA2uiAction = bodyContent.includes('"a2ui_action"');
+    let messageContent = bodyContent;
+    if (skillSlug) {
+      messageContent = `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`;
+    } else if (!isA2uiAction) {
+      const hint = this.isTeamLead(botId)
+        ? TEAM_LEAD_HINT
+        : EXPERT_ROUTING_HINT;
+      messageContent = `${hint}\n\n${bodyContent}`;
+    }
 
     logger.info(
       {

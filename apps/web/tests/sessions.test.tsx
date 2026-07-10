@@ -2,11 +2,26 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { A2UISidebarProvider } from "../src/lib/a2ui/a2ui-sidebar-context";
 import { SessionsPage } from "../src/pages/sessions";
 
 vi.mock("@/lib/tracking", () => ({
   track: vi.fn(),
 }));
+
+// Matches apps/web/src/i18n/locales/en.ts — the session header's "Open in X"
+// deep-link button renders these platform labels via i18n, not literal text.
+const OPEN_IN_CHANNEL_LABELS: Record<string, string> = {
+  "channels.openInSlack": "Open in Slack",
+  "channels.openInFeishu": "Open in Feishu",
+  "channels.openInTelegram": "Open in Telegram",
+  "channels.openInDiscord": "Open in Discord",
+  "channels.openInWhatsApp": "Open in WhatsApp",
+  "channels.openInDingTalk": "Open in DingTalk",
+  "channels.openInWeCom": "Open in WeCom",
+  "channels.openInQQ": "Open in QQ",
+  "channels.openInWeChat": "Open in WeChat",
+};
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -25,6 +40,9 @@ vi.mock("react-i18next", () => ({
       }
       if (key === "sessions.chat.replyLabel") {
         return "Localized Reply";
+      }
+      if (key in OPEN_IN_CHANNEL_LABELS) {
+        return OPEN_IN_CHANNEL_LABELS[key];
       }
       return key;
     },
@@ -54,6 +72,7 @@ function renderSessionsPage(): string {
 
   queryClient.setQueryData(["session-meta", "sess-1"], {
     id: "sess-1",
+    channelId: "channel-slack-1",
     title: "Alex DM",
     channelType: "slack",
     messageCount: 2,
@@ -93,11 +112,13 @@ function renderSessionsPage(): string {
 
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/workspace/sessions/sess-1"]}>
-        <Routes>
-          <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-        </Routes>
-      </MemoryRouter>
+      <A2UISidebarProvider>
+        <MemoryRouter initialEntries={["/workspace/sessions/sess-1"]}>
+          <Routes>
+            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
+          </Routes>
+        </MemoryRouter>
+      </A2UISidebarProvider>
     </QueryClientProvider>,
   );
 }
@@ -158,11 +179,16 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-markdown"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-markdown"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -205,13 +231,18 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter
-          initialEntries={["/workspace/sessions/sess-markdown-image"]}
-        >
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter
+            initialEntries={["/workspace/sessions/sess-markdown-image"]}
+          >
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -253,17 +284,74 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-meta-only"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-meta-only"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
     expect(markup).toContain("测试");
     expect(markup).not.toContain("Conversation info (untrusted metadata)");
     expect(markup).not.toContain("openclaw-weixin:1774176546217-9644087e");
+  });
+
+  it("strips the controller-injected expert-routing hint before rendering user text", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    });
+
+    queryClient.setQueryData(["session-meta", "sess-routing-hint"], {
+      id: "sess-routing-hint",
+      title: "克隆龙",
+      channelType: "web",
+      messageCount: 1,
+      lastMessageAt: "2026-07-01T06:13:00.000Z",
+      metadata: {},
+    });
+    queryClient.setQueryData(["chat-history", "sess-routing-hint"], {
+      messages: [
+        {
+          id: "msg-routing-hint",
+          role: "user",
+          content:
+            "[路由提示：如果本请求属于某个垂直专业领域、且有更合适的专家来处理，请先调用 find_expert 检索；命中已安装专家就用 sessions_spawn 委派给它并把结果转述给用户，命中未安装专家就调用 propose_expert_install 让用户确认安装；如果只是通用、简单或闲聊类问题，直接自己回答，不要路由。]\n\n你是谁你能做什么",
+          timestamp: new Date("2026-07-01T06:13:00.000Z").getTime(),
+          createdAt: "2026-07-01T06:13:00.000Z",
+        },
+      ],
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter
+            initialEntries={["/workspace/sessions/sess-routing-hint"]}
+          >
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(markup).toContain("你是谁你能做什么");
+    expect(markup).not.toContain("路由提示");
+    expect(markup).not.toContain("find_expert");
   });
 
   it("renders a Feishu deep link when the backing channel config is available", () => {
@@ -316,11 +404,16 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-2"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-2"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -328,10 +421,8 @@ describe("SessionsPage", () => {
       'href="https://applink.feishu.cn/client/chat/open?openChatId=oc_41e7bdf4877cfc316136f4ccf6c32613"',
     );
     expect(markup).toContain("Open in Feishu");
-    expect(markup).toContain("Open Folder");
-    expect(markup).toContain(
-      'data-session-folder-url="file:///Users/qiyuan/.openclaw/agents/bot-feishu/sessions"',
-    );
+    // "Open Folder" (with data-session-folder-url) was removed from the page;
+    // this test used to assert it — keep only the deep-link behavior.
   });
 
   it("does not render a wrong Feishu deep link when exact chat metadata is missing", () => {
@@ -384,11 +475,16 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-3"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-3"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -448,11 +544,16 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-whatsapp"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-whatsapp"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -506,11 +607,16 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-tool"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-tool"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -568,13 +674,18 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter
-          initialEntries={["/workspace/sessions/sess-tool-fallback"]}
-        >
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter
+            initialEntries={["/workspace/sessions/sess-tool-fallback"]}
+          >
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -626,11 +737,16 @@ describe("SessionsPage", () => {
 
     const markup = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/workspace/sessions/sess-reply"]}>
-          <Routes>
-            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
-          </Routes>
-        </MemoryRouter>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-reply"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
       </QueryClientProvider>,
     );
 
@@ -642,5 +758,214 @@ describe("SessionsPage", () => {
     expect(markup).not.toContain(
       "[Replying to: &quot;[Interactive Card]&quot;]",
     );
+  });
+
+  it("renders the TeamRunCard from a team_run_auto tool result (real transcript shape)", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["session-meta", "sess-team-run"], {
+      id: "sess-team-run",
+      title: "小红书运营团队 队长",
+      channelType: "web",
+      messageCount: 3,
+      lastMessageAt: "2026-07-03T03:32:00.000Z",
+      metadata: {},
+    });
+    // Mirrors the live OpenClaw transcript exactly: the a2ui JSONL rides in
+    // the FIRST toolResult text block, the model-facing summary in the second.
+    const a2uiJsonl = [
+      JSON.stringify({
+        version: "v0.9",
+        createSurface: {
+          surfaceId: "team-run-parent-1",
+          catalogId: "https://nexu.app/a2ui/custom-catalog.json",
+        },
+      }),
+      JSON.stringify({
+        version: "v0.9",
+        updateComponents: {
+          surfaceId: "team-run-parent-1",
+          components: [
+            {
+              id: "team-run-card",
+              type: "TeamRunCard",
+              run: {
+                teamId: "team-1",
+                boardId: "team-team-1",
+                parentCardId: "parent-1",
+                title: "便携咖啡机种草笔记",
+                steps: [
+                  {
+                    id: "card-a",
+                    name: "卖点分析",
+                    assigneeName: "小红书运营专家",
+                    cardId: "card-a",
+                    dependsOn: [],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    ].join("\n");
+    queryClient.setQueryData(["chat-history", "sess-team-run"], {
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "帮团队安排任务",
+          timestamp: new Date("2026-07-03T03:32:00.000Z").getTime(),
+          createdAt: "2026-07-03T03:32:00.000Z",
+        },
+        {
+          id: "msg-2",
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call_1",
+              name: "team_run_auto",
+              arguments: { task: "写种草笔记" },
+            },
+          ],
+          timestamp: new Date("2026-07-03T03:32:05.000Z").getTime(),
+          createdAt: "2026-07-03T03:32:05.000Z",
+        },
+        {
+          id: "msg-3",
+          role: "toolResult",
+          toolName: "team_run_auto",
+          toolCallId: "call_1",
+          content: [
+            { type: "text", text: ["```a2ui", a2uiJsonl, "```"].join("\n") },
+            { type: "text", text: '{"started":true,"note":"..."}' },
+          ],
+          timestamp: new Date("2026-07-03T03:32:06.000Z").getTime(),
+          createdAt: "2026-07-03T03:32:06.000Z",
+        },
+        {
+          id: "msg-4",
+          role: "assistant",
+          content: "已安排团队开始处理。",
+          timestamp: new Date("2026-07-03T03:32:08.000Z").getTime(),
+          createdAt: "2026-07-03T03:32:08.000Z",
+        },
+      ],
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-team-run"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    // The run card must render inline on the assistant message that called
+    // the tool; the raw a2ui payload must never leak as text.
+    expect(markup).toContain('data-team-run-card="parent-1"');
+    expect(markup).toContain("便携咖啡机种草笔记");
+    expect(markup).toContain("卖点分析");
+    expect(markup).not.toContain("```a2ui");
+  });
+
+  it("renders the CanvasOpCard from a canvas_op tool result and strips the raw block", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["session-meta", "sess-canvas-op"], {
+      id: "sess-canvas-op",
+      title: "画布助手",
+      channelType: "web",
+      messageCount: 3,
+      lastMessageAt: "2026-07-07T03:32:00.000Z",
+      metadata: {},
+    });
+    // Mirrors the nexu-canvas plugin transcript: the fenced ```canvas-op```
+    // JSON rides in the canvas_op toolResult text.
+    const canvasOpBlock = [
+      "```canvas-op",
+      JSON.stringify({
+        ops: [
+          { op: "add_node", ref: "n1", nodeType: "text", title: "标题" },
+          { op: "connect", from: "ref:n1", to: "ref:n1" },
+        ],
+        summary: "加一个文本节点",
+      }),
+      "```",
+    ].join("\n");
+    queryClient.setQueryData(["chat-history", "sess-canvas-op"], {
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "在画布上加个标题节点",
+          timestamp: new Date("2026-07-07T03:32:00.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:00.000Z",
+        },
+        {
+          id: "msg-2",
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call_canvas_1",
+              name: "canvas_op",
+              arguments: {},
+            },
+          ],
+          timestamp: new Date("2026-07-07T03:32:05.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:05.000Z",
+        },
+        {
+          id: "msg-3",
+          role: "toolResult",
+          toolName: "canvas_op",
+          toolCallId: "call_canvas_1",
+          content: [{ type: "text", text: canvasOpBlock }],
+          timestamp: new Date("2026-07-07T03:32:06.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:06.000Z",
+        },
+        {
+          id: "msg-4",
+          role: "assistant",
+          content: "已经准备好画布操作，请确认。",
+          timestamp: new Date("2026-07-07T03:32:08.000Z").getTime(),
+          createdAt: "2026-07-07T03:32:08.000Z",
+        },
+      ],
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-canvas-op"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    // The confirm card renders inline on the parent assistant message; the raw
+    // fenced block must never leak as text.
+    expect(markup).toContain("data-canvas-op-card");
+    expect(markup).toContain("加一个文本节点");
+    expect(markup).toContain("data-canvas-op-apply");
+    expect(markup).not.toContain("```canvas-op");
+    expect(markup).not.toContain('"add_node"');
   });
 });
