@@ -6630,6 +6630,38 @@ export type PostApiV1MediaGenerateTextResponses = {
 
 export type PostApiV1MediaGenerateTextResponse = PostApiV1MediaGenerateTextResponses[keyof PostApiV1MediaGenerateTextResponses];
 
+export type PostApiV1MediaPromptCoverGenerateData = {
+    body?: {
+        id: string;
+        prompt: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/prompt-cover-generate';
+};
+
+export type PostApiV1MediaPromptCoverGenerateErrors = {
+    /**
+     * Generation failed or timed out
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaPromptCoverGenerateError = PostApiV1MediaPromptCoverGenerateErrors[keyof PostApiV1MediaPromptCoverGenerateErrors];
+
+export type PostApiV1MediaPromptCoverGenerateResponses = {
+    /**
+     * Cover ready (generated now or cached from an earlier call)
+     */
+    200: {
+        url: string;
+    };
+};
+
+export type PostApiV1MediaPromptCoverGenerateResponse = PostApiV1MediaPromptCoverGenerateResponses[keyof PostApiV1MediaPromptCoverGenerateResponses];
+
 export type GetApiV1CanvasMirrorData = {
     body?: never;
     path?: never;

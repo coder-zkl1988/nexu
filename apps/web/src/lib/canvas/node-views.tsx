@@ -1,9 +1,15 @@
 /** Node content views extracted from infinite-canvas.tsx (W3.0). */
 import { A2UIRenderer } from "@/lib/a2ui";
-import { AudioLines, Clapperboard, ImagePlus } from "lucide-react";
+import { AudioLines, Clapperboard, Group, ImagePlus } from "lucide-react";
 import { type ReactNode, memo, useState } from "react";
-import { generateImageIntoNode, retryNodeTask } from "./canvas-generation";
-import { type CanvasNode, getA2UIPayload, updateNode } from "./canvas-store";
+import { retryNodeTask } from "./canvas-generation";
+import { memberIdsOf } from "./canvas-groups";
+import {
+  type CanvasNode,
+  getA2UIPayload,
+  updateNode,
+  useCanvas,
+} from "./canvas-store";
 import { useCanvasUiPrefs } from "./canvas-ui-prefs";
 import { ConfigNodeContent } from "./config-node";
 import { TeamStepNodeContent } from "./team-step-node";
@@ -45,7 +51,7 @@ function TextNodeContent({ node }: { node: CanvasNode }) {
       <textarea
         // biome-ignore lint/a11y/noAutofocus: edit mode intentionally auto-focuses
         autoFocus
-        className="h-full w-full select-text resize-none bg-transparent text-sm outline-none"
+        className="h-full w-full select-text resize-none bg-transparent font-mono text-sm outline-none"
         style={{ fontSize }}
         value={content}
         onChange={(event) =>
@@ -65,7 +71,7 @@ function TextNodeContent({ node }: { node: CanvasNode }) {
   return (
     <div
       data-canvas-text-display
-      className="h-full w-full select-none overflow-hidden whitespace-pre-wrap text-sm"
+      className="h-full w-full select-none overflow-hidden whitespace-pre-wrap font-mono text-sm"
       style={{ fontSize }}
       onDoubleClick={() => setEditing(true)}
     >
@@ -95,29 +101,45 @@ function EmptyMediaHint({
   icon: ReactNode;
   label: string;
 }) {
+  // Reference parity: quiet centered icon + plain text-sm label, no chip box.
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-text-tertiary">
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-surface-2">
-        <span className="opacity-40">{icon}</span>
-      </div>
-      <span className="text-[10px] tracking-[0.18em] opacity-70">{label}</span>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-text-tertiary">
+      <span className="opacity-35">{icon}</span>
+      <span className="text-sm">{label}</span>
     </div>
   );
 }
 
 /**
- * Group container body — intentionally inert. The node frame (border + title
- * header, drawn by CanvasNodeView) is the visible container; this body is an
- * empty translucent zone. Member nodes are separate canvas nodes painted on
- * top of the group, so the group never renders its children inside itself.
+ * Group container body — visually a header (icon chip + member-count pill)
+ * over a dashed drop zone (reference parity). Still functionally inert:
+ * pointer-events-none, so pointerdown falls through to the card root (drag).
+ * Member nodes are separate canvas nodes painted on top of the group — the
+ * group never renders its children inside itself.
+ *
+ * Subscribes to useCanvas for the live member count; this is the component's
+ * own subscription, so NodeBody's geometry-ignoring memo doesn't staleness it.
  */
-function GroupNodeContent() {
+function GroupNodeContent({ node }: { node: CanvasNode }) {
+  const { nodes } = useCanvas();
+  const memberCount = memberIdsOf(node.id, nodes).length;
   return (
     <div
       data-canvas-group-body="true"
       aria-hidden="true"
-      className="h-full w-full rounded-xl bg-surface-2/20"
-    />
+      className="pointer-events-none flex h-full w-full flex-col"
+    >
+      <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+        <span className="grid size-8 place-items-center rounded-xl bg-surface-2 text-text-secondary">
+          <Group size={16} />
+        </span>
+        <span>组</span>
+        <span className="ml-auto rounded-full bg-surface-2 px-2 py-1 text-[11px] font-medium text-text-secondary">
+          {memberCount} 个节点
+        </span>
+      </div>
+      <div className="mt-3 flex-1 rounded-2xl border border-dashed border-border/60 bg-surface-2/20" />
+    </div>
   );
 }
 
@@ -138,7 +160,7 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   // (upload/generate UI). Members are separate nodes painted on top — the group
   // never renders its children inside itself.
   if (node.type === "group") {
-    return <GroupNodeContent />;
+    return <GroupNodeContent node={node} />;
   }
 
   // Task status overlay: applies before per-type media rendering for image/video/audio.
@@ -186,17 +208,22 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
         className="h-full w-full bg-black object-contain"
       />
     ) : (
-      <EmptyMediaHint icon={<Clapperboard size={22} />} label="空视频节点" />
+      <EmptyMediaHint icon={<Clapperboard size={28} />} label="空视频节点" />
     );
   }
   if (node.type === "audio") {
     return node.metadata.content ? (
-      <div className="flex h-full w-full flex-col justify-center">
+      // Reference parity: labeled audio card, not a bare centered element.
+      <div className="flex h-full w-full flex-col justify-center gap-3 px-2">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
+          <AudioLines size={16} className="shrink-0" />
+          <span className="truncate">{node.title || "音频"}</span>
+        </div>
         {/* biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions */}
         <audio src={node.metadata.content} controls className="w-full" />
       </div>
     ) : (
-      <EmptyMediaHint icon={<AudioLines size={22} />} label="空音频节点" />
+      <EmptyMediaHint icon={<AudioLines size={28} />} label="空音频节点" />
     );
   }
   if (node.type === "a2ui") {
@@ -251,7 +278,9 @@ function ImageNodeContent({ node }: { node: CanvasNode }) {
       <img
         src={node.metadata.content}
         alt={node.title}
-        className="pointer-events-none h-full w-full select-none object-contain"
+        // freeResize (unlocked ratio) stretches to fill — matching the
+        // resize gesture's semantics; locked-ratio images letterbox-contain.
+        className={`pointer-events-none h-full w-full select-none ${node.metadata.freeResize ? "object-fill" : "object-contain"}`}
         draggable={false}
         onLoad={(event) => {
           const img = event.currentTarget;
@@ -277,63 +306,37 @@ function ImageNodeContent({ node }: { node: CanvasNode }) {
 }
 
 /**
- * Empty image node: upload a file OR generate one from a prompt via the S7
- * controller channel (POST /api/v1/media/generate-image).
- *
- * Generating/error state lives in node.metadata.task (store-level); this
- * component holds only the local prompt input state.
+ * Empty image node (reference-parity): a quiet soft-filled placeholder —
+ * icon chip + label, nothing else. Generation moved entirely to the
+ * PromptPanel below the selected node (model/quality/aspect/count live
+ * there); upload stays available by clicking the placeholder.
  */
 function EmptyImageNode({ node }: { node: CanvasNode }) {
-  const [prompt, setPrompt] = useState("");
-  const isGenerating = node.metadata.task?.status === "generating";
-
   return (
-    <div className="flex h-full w-full flex-col gap-2">
-      <label className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-xs text-text-tertiary hover:bg-surface-2/50">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-surface-2">
-          <ImagePlus size={22} className="opacity-40" />
-        </div>
-        <span className="text-[10px] tracking-[0.18em] opacity-70">
-          上传或在下方生成
-        </span>
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-              updateNode(node.id, {
-                title: file.name,
-                metadata: { content: String(reader.result) },
-              });
-            };
-            reader.readAsDataURL(file);
-          }}
-        />
-      </label>
-      <div className="flex shrink-0 items-center gap-1">
-        <input
-          value={prompt}
-          disabled={isGenerating}
-          placeholder="描述要生成的图片…"
-          onChange={(event) => setPrompt(event.target.value)}
-          className="min-w-0 flex-1 rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
-        />
-        <button
-          type="button"
-          disabled={isGenerating || !prompt.trim()}
-          data-canvas-generate-image={node.id}
-          onClick={() => {
-            void generateImageIntoNode(node.id, prompt.trim());
-          }}
-          className="shrink-0 rounded border border-[var(--color-accent)] bg-[var(--color-accent)] px-2 py-1 text-xs font-bold text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50"
-        >
-          生成
-        </button>
+    <label className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl bg-surface-2/60 text-text-tertiary transition-colors hover:bg-surface-2">
+      <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-2">
+        <ImagePlus size={24} className="opacity-40" />
       </div>
-    </div>
+      <span className="text-[10px] tracking-[0.18em] opacity-70">
+        空图片节点
+      </span>
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            updateNode(node.id, {
+              title: file.name,
+              metadata: { content: String(reader.result) },
+            });
+          };
+          reader.readAsDataURL(file);
+        }}
+      />
+    </label>
   );
 }

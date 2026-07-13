@@ -18,6 +18,7 @@ export type CanvasDialogState =
   | { kind: "mask"; nodeId: string }
   | { kind: "angle"; nodeId: string }
   | { kind: "assets" }
+  | { kind: "prompt-library"; nodeId: string }
   | null;
 
 // ── Store internals ────────────────────────────────────────────────────────

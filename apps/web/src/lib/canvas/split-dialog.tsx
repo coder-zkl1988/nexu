@@ -13,7 +13,7 @@
  * uniform agent op path stays on applySplit.
  *
  * Follows crop-dialog.tsx precedent:
- *   - Uses the same radix Dialog component from @/components/ui/dialog
+ *   - Uses the shared canvas-scoped CanvasModal shell (./canvas-modal)
  *   - Uses loadImageBitmap (extracted shared helper, not local fetch)
  *   - Pointer capture on the preview container so drags keep firing off the line
  *   - Adds child nodes via applySplitAtCuts + toast.success / toast.error
@@ -21,18 +21,13 @@
  *   - data-canvas-split-confirm on the confirm button
  */
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Grid3x3, Plus, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
 import { applySplitAtCuts } from "./canvas-image-ops";
+import { CanvasModal } from "./canvas-modal";
 import { getCanvasState } from "./canvas-store";
 import { fitScale } from "./crop-geometry";
 import { loadImageBitmap } from "./load-image-bitmap";
@@ -269,221 +264,207 @@ export function SplitDialog({
   }, [bitmap, xCuts, yCuts, nodeId, totalPieces]);
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeCanvasDialog();
-      }}
-    >
-      <DialogContent className="max-w-[760px] w-full" style={{ maxWidth: 760 }}>
-        <DialogHeader>
-          <DialogTitle>拆分图片</DialogTitle>
-        </DialogHeader>
-        <div data-canvas-split-dialog="true" className="px-6 pb-6">
-          {loading ? (
-            <div className="flex h-48 items-center justify-center text-text-secondary">
-              加载中…
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {/* Preview area with draggable grid lines */}
-              <div
-                ref={previewRef}
-                className="relative mx-auto overflow-hidden rounded-lg bg-surface-2"
-                style={{
-                  width: displayW,
-                  height: displayH,
-                  touchAction: "none",
-                }}
-                onPointerMove={onPreviewPointerMove}
-                onPointerUp={onPreviewPointerUp}
-                onPointerLeave={onPreviewPointerUp}
-              >
-                {objUrl ? (
-                  <img
-                    src={objUrl}
-                    alt={srcTitle}
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      width: displayW,
-                      height: displayH,
-                      userSelect: "none",
-                      pointerEvents: "none",
-                    }}
-                    draggable={false}
-                  />
-                ) : null}
+    <CanvasModal title="拆分图片" maxWidth={760} onClose={closeCanvasDialog}>
+      <div data-canvas-split-dialog="true" className="px-6 pb-6">
+        {loading ? (
+          <div className="flex h-48 items-center justify-center text-text-secondary">
+            加载中…
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* Preview area with draggable grid lines */}
+            <div
+              ref={previewRef}
+              className="relative mx-auto overflow-hidden rounded-lg bg-surface-2"
+              style={{
+                width: displayW,
+                height: displayH,
+                touchAction: "none",
+              }}
+              onPointerMove={onPreviewPointerMove}
+              onPointerUp={onPreviewPointerUp}
+              onPointerLeave={onPreviewPointerUp}
+            >
+              {objUrl ? (
+                <img
+                  src={objUrl}
+                  alt={srcTitle}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: displayW,
+                    height: displayH,
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                  draggable={false}
+                />
+              ) : null}
 
-                {/* Vertical lines (xCuts / 竖线) */}
-                {bitmap
-                  ? xCuts.map((cut, index) => {
-                      const leftPx = Math.round(cut * scale);
-                      return (
+              {/* Vertical lines (xCuts / 竖线) */}
+              {bitmap
+                ? xCuts.map((cut, index) => {
+                    const leftPx = Math.round(cut * scale);
+                    return (
+                      <div
+                        key={`x-${cut}`}
+                        className="group absolute cursor-col-resize"
+                        style={{
+                          left: leftPx - HIT / 2,
+                          top: 0,
+                          width: HIT,
+                          height: displayH,
+                        }}
+                        onPointerDown={(e) => onLinePointerDown(e, "x", index)}
+                        onDoubleClick={() => removeCut("x", index)}
+                      >
                         <div
-                          key={`x-${cut}`}
-                          className="group absolute cursor-col-resize"
+                          className="pointer-events-none absolute top-0"
                           style={{
-                            left: leftPx - HIT / 2,
-                            top: 0,
-                            width: HIT,
+                            left: HIT / 2,
+                            width: 1,
                             height: displayH,
+                            background: "rgba(255,255,255,0.85)",
+                            boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
                           }}
-                          onPointerDown={(e) =>
-                            onLinePointerDown(e, "x", index)
-                          }
-                          onDoubleClick={() => removeCut("x", index)}
+                        />
+                        <button
+                          type="button"
+                          aria-label="删除竖线"
+                          className="absolute left-1/2 top-1 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCut("x", index);
+                          }}
                         >
-                          <div
-                            className="pointer-events-none absolute top-0"
-                            style={{
-                              left: HIT / 2,
-                              width: 1,
-                              height: displayH,
-                              background: "rgba(255,255,255,0.85)",
-                              boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            aria-label="删除竖线"
-                            className="absolute left-1/2 top-1 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeCut("x", index);
-                            }}
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      );
-                    })
-                  : null}
+                          <X size={10} />
+                        </button>
+                      </div>
+                    );
+                  })
+                : null}
 
-                {/* Horizontal lines (yCuts / 横线) */}
-                {bitmap
-                  ? yCuts.map((cut, index) => {
-                      const topPx = Math.round(cut * scale);
-                      return (
+              {/* Horizontal lines (yCuts / 横线) */}
+              {bitmap
+                ? yCuts.map((cut, index) => {
+                    const topPx = Math.round(cut * scale);
+                    return (
+                      <div
+                        key={`y-${cut}`}
+                        className="group absolute cursor-row-resize"
+                        style={{
+                          top: topPx - HIT / 2,
+                          left: 0,
+                          width: displayW,
+                          height: HIT,
+                        }}
+                        onPointerDown={(e) => onLinePointerDown(e, "y", index)}
+                        onDoubleClick={() => removeCut("y", index)}
+                      >
                         <div
-                          key={`y-${cut}`}
-                          className="group absolute cursor-row-resize"
+                          className="pointer-events-none absolute left-0"
                           style={{
-                            top: topPx - HIT / 2,
-                            left: 0,
+                            top: HIT / 2,
+                            height: 1,
                             width: displayW,
-                            height: HIT,
+                            background: "rgba(255,255,255,0.85)",
+                            boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
                           }}
-                          onPointerDown={(e) =>
-                            onLinePointerDown(e, "y", index)
-                          }
-                          onDoubleClick={() => removeCut("y", index)}
+                        />
+                        <button
+                          type="button"
+                          aria-label="删除横线"
+                          className="absolute top-1/2 left-1 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCut("y", index);
+                          }}
                         >
-                          <div
-                            className="pointer-events-none absolute left-0"
-                            style={{
-                              top: HIT / 2,
-                              height: 1,
-                              width: displayW,
-                              background: "rgba(255,255,255,0.85)",
-                              boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
-                            }}
-                          />
-                          <button
-                            type="button"
-                            aria-label="删除横线"
-                            className="absolute top-1/2 left-1 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeCut("y", index);
-                            }}
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      );
-                    })
-                  : null}
-              </div>
-
-              {/* Row 1: steppers + readout */}
-              <div className="flex items-center gap-6 text-sm">
-                <label className="flex items-center gap-2 text-text-primary">
-                  行数
-                  <input
-                    type="number"
-                    min={MIN_GRID}
-                    max={MAX_GRID}
-                    value={rows}
-                    onChange={(e) =>
-                      setRowCount(Number.parseInt(e.target.value, 10) || 1)
-                    }
-                    className="w-14 rounded border border-border bg-surface-1 px-2 py-1 text-center text-text-primary"
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-text-primary">
-                  列数
-                  <input
-                    type="number"
-                    min={MIN_GRID}
-                    max={MAX_GRID}
-                    value={cols}
-                    onChange={(e) =>
-                      setColCount(Number.parseInt(e.target.value, 10) || 1)
-                    }
-                    className="w-14 rounded border border-border bg-surface-1 px-2 py-1 text-center text-text-primary"
-                  />
-                </label>
-                <span className="text-text-secondary">
-                  切片 {totalPieces} 个 · 平均约 {avgW} × {avgH} px
-                </span>
-              </div>
-
-              {/* Row 2: line ops + confirm */}
-              <div className="flex items-center gap-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => addCut("x")}
-                  className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-text-primary hover:bg-surface-2"
-                >
-                  <Plus size={14} />
-                  添加竖线
-                </button>
-                <button
-                  type="button"
-                  onClick={() => addCut("y")}
-                  className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-text-primary hover:bg-surface-2"
-                >
-                  <Plus size={14} />
-                  添加横线
-                </button>
-                <button
-                  type="button"
-                  onClick={resetCuts}
-                  className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-text-primary hover:bg-surface-2"
-                >
-                  <RotateCcw size={14} />
-                  重置
-                </button>
-
-                <button
-                  type="button"
-                  data-canvas-split-confirm="true"
-                  disabled={totalPieces === 1}
-                  onClick={handleConfirm}
-                  className="ml-auto flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Grid3x3 size={14} />
-                  拆分为 {totalPieces} 个节点
-                </button>
-              </div>
+                          <X size={10} />
+                        </button>
+                      </div>
+                    );
+                  })
+                : null}
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+            {/* Row 1: steppers + readout */}
+            <div className="flex items-center gap-6 text-sm">
+              <label className="flex items-center gap-2 text-text-primary">
+                行数
+                <input
+                  type="number"
+                  min={MIN_GRID}
+                  max={MAX_GRID}
+                  value={rows}
+                  onChange={(e) =>
+                    setRowCount(Number.parseInt(e.target.value, 10) || 1)
+                  }
+                  className="w-14 rounded border border-border bg-surface-1 px-2 py-1 text-center text-text-primary"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-text-primary">
+                列数
+                <input
+                  type="number"
+                  min={MIN_GRID}
+                  max={MAX_GRID}
+                  value={cols}
+                  onChange={(e) =>
+                    setColCount(Number.parseInt(e.target.value, 10) || 1)
+                  }
+                  className="w-14 rounded border border-border bg-surface-1 px-2 py-1 text-center text-text-primary"
+                />
+              </label>
+              <span className="text-text-secondary">
+                切片 {totalPieces} 个 · 平均约 {avgW} × {avgH} px
+              </span>
+            </div>
+
+            {/* Row 2: line ops + confirm */}
+            <div className="flex items-center gap-2 text-sm">
+              <button
+                type="button"
+                onClick={() => addCut("x")}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-text-primary hover:bg-surface-2"
+              >
+                <Plus size={14} />
+                添加竖线
+              </button>
+              <button
+                type="button"
+                onClick={() => addCut("y")}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-text-primary hover:bg-surface-2"
+              >
+                <Plus size={14} />
+                添加横线
+              </button>
+              <button
+                type="button"
+                onClick={resetCuts}
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-text-primary hover:bg-surface-2"
+              >
+                <RotateCcw size={14} />
+                重置
+              </button>
+
+              <button
+                type="button"
+                data-canvas-split-confirm="true"
+                disabled={totalPieces === 1}
+                onClick={handleConfirm}
+                className="ml-auto flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Grid3x3 size={14} />
+                拆分为 {totalPieces} 个节点
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </CanvasModal>
   );
 }

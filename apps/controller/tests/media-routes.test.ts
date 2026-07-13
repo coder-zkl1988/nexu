@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { describe, expect, it } from "vitest";
 import type { ControllerContainer } from "../src/app/container.js";
@@ -76,5 +79,179 @@ describe("media route error mapping", () => {
       body: JSON.stringify({ prompt: "cat" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("prompt-cover cache proxy", () => {
+  function buildCoverApp(nexuHomeDir: string) {
+    const app = new OpenAPIHono<ControllerBindings>();
+    registerMediaRoutes(app, {
+      mediaGenerationService: {},
+      env: { nexuHomeDir },
+    } as unknown as ControllerContainer);
+    return app;
+  }
+
+  function coverUrl(target: string) {
+    return `/api/v1/media/prompt-cover?url=${encodeURIComponent(target)}`;
+  }
+
+  it("rejects missing/invalid/non-https/foreign-host urls with 404 (SSRF gate)", async () => {
+    const app = buildCoverApp(await mkdtemp(join(tmpdir(), "covers-")));
+    for (const target of [
+      "/api/v1/media/prompt-cover",
+      coverUrl("not a url"),
+      coverUrl("http://raw.githubusercontent.com/a.png"), // https only
+      coverUrl("https://evil.example.com/a.png"),
+      coverUrl("https://raw.githubusercontent.com.evil.com/a.png"),
+      coverUrl("https://192.168.1.1/a.png"),
+    ]) {
+      const res = await app.request(target);
+      expect(res.status, target).toBe(404);
+    }
+  });
+
+  it("fetches an allowed origin once, caches to disk, serves from cache after", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "covers-"));
+    const app = buildCoverApp(dir);
+    const target = "https://raw.githubusercontent.com/repo/main/cover.png";
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+
+    let fetchCalls = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      fetchCalls += 1;
+      return new Response(bytes, {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      });
+    }) as typeof fetch;
+    try {
+      const first = await app.request(coverUrl(target));
+      expect(first.status).toBe(200);
+      expect(first.headers.get("content-type")).toBe("image/png");
+      expect(new Uint8Array(await first.arrayBuffer())).toEqual(bytes);
+      expect(fetchCalls).toBe(1);
+
+      // Second request must come from the disk cache — no second origin hit.
+      const second = await app.request(coverUrl(target));
+      expect(second.status).toBe(200);
+      expect(second.headers.get("content-type")).toBe("image/png");
+      expect(fetchCalls).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects non-image content types and maps origin failure to 502", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "covers-"));
+    const app = buildCoverApp(dir);
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async () =>
+      new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })) as typeof fetch;
+    try {
+      const res = await app.request(
+        coverUrl("https://raw.githubusercontent.com/repo/main/page"),
+      );
+      expect(res.status).toBe(404);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    globalThis.fetch = (async () => {
+      throw new Error("network down");
+    }) as typeof fetch;
+    try {
+      const res = await app.request(
+        coverUrl("https://raw.githubusercontent.com/repo/main/cover2.png"),
+      );
+      expect(res.status).toBe(502);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("prompt-cover generation", () => {
+  function buildGenApp(
+    nexuHomeDir: string,
+    generateImage: () => Promise<{ path: string }>,
+  ) {
+    const app = new OpenAPIHono<ControllerBindings>();
+    registerMediaRoutes(app, {
+      mediaGenerationService: { generateImage },
+      env: { nexuHomeDir },
+    } as unknown as ControllerContainer);
+    return app;
+  }
+
+  async function postGenerate(
+    app: OpenAPIHono<ControllerBindings>,
+    id: string,
+  ) {
+    return app.request("/api/v1/media/prompt-cover-generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, prompt: "一只在月球上的猫" }),
+    });
+  }
+
+  it("generates once, persists to disk, serves via the GET route", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gen-covers-"));
+    // Fake generated image on disk (what mediaGenerationService returns).
+    const generatedFile = join(dir, "generated.png");
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10]);
+    await writeFile(generatedFile, bytes);
+
+    let calls = 0;
+    const app = buildGenApp(dir, async () => {
+      calls += 1;
+      return { path: generatedFile };
+    });
+
+    const first = await postGenerate(app, "awesome-gpt-image-0001");
+    expect(first.status).toBe(200);
+    const { url } = (await first.json()) as { url: string };
+    expect(url).toContain("/api/v1/media/prompt-cover-generated?id=");
+    expect(calls).toBe(1);
+
+    // Second POST for the same id serves from disk — no second generation.
+    const second = await postGenerate(app, "awesome-gpt-image-0001");
+    expect(second.status).toBe(200);
+    expect(calls).toBe(1);
+
+    // The returned URL serves the cached bytes.
+    const served = await app.request(url);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("rejects malformed ids (schema) and maps generation failure to 502", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gen-covers-"));
+    const app = buildGenApp(dir, async () => {
+      throw new Error("backend down");
+    });
+
+    // Path-traversal-shaped id fails schema validation (400 from zod).
+    const bad = await app.request("/api/v1/media/prompt-cover-generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: "../escape", prompt: "x" }),
+    });
+    expect(bad.status).toBe(400);
+
+    const failed = await postGenerate(app, "ok-id-1");
+    expect(failed.status).toBe(502);
+
+    // GET with traversal id is also rejected.
+    const get = await app.request(
+      "/api/v1/media/prompt-cover-generated?id=..%2Fescape",
+    );
+    expect(get.status).toBe(404);
   });
 });

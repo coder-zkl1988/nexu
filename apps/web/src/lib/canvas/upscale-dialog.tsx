@@ -12,18 +12,12 @@
  * (IDB handles it); 4K is the hard cap in this dialog.
  *
  * Follows crop-dialog.tsx precedent exactly:
- *   - Uses the same radix Dialog component from @/components/ui/dialog
+ *   - Uses the shared canvas-scoped CanvasModal shell (./canvas-modal)
  *   - Uses loadImageBitmap (shared helper)
  *   - data-canvas-upscale-dialog on the content container
  *   - data-canvas-upscale-confirm on the confirm button
  */
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ZoomIn } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -31,6 +25,7 @@ import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
 import { enhanceImageIntoNode } from "./canvas-generation";
 import { applyUpscaleInterpolate } from "./canvas-image-ops";
+import { CanvasModal } from "./canvas-modal";
 import { addNode, getCanvasState } from "./canvas-store";
 import { loadImageBitmap } from "./load-image-bitmap";
 import { servableSourceOf } from "./prompt-panel-utils";
@@ -195,149 +190,137 @@ export function UpscaleDialog({
   ]);
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeCanvasDialog();
-      }}
-    >
-      <DialogContent className="max-w-[520px] w-full" style={{ maxWidth: 520 }}>
-        <DialogHeader>
-          <DialogTitle>放大图片</DialogTitle>
-        </DialogHeader>
-        <div data-canvas-upscale-dialog="true" className="px-6 pb-6">
-          {loading ? (
-            <div className="flex h-48 items-center justify-center text-text-secondary">
-              加载中…
-            </div>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {/* Original size readout */}
-              {bitmap ? (
-                <div className="text-sm text-text-secondary">
-                  原始尺寸：{bitmap.width} × {bitmap.height} px
-                </div>
-              ) : null}
-
-              {/* Mode radio: interpolation | AI super-resolve */}
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-text-primary">
-                  放大方式
-                </span>
-                <div
-                  data-canvas-upscale-mode="true"
-                  className="flex overflow-hidden rounded-lg border border-border"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setUpscaleMode("interpolation")}
-                    className={`flex-1 px-4 py-1.5 text-sm transition-colors ${
-                      upscaleMode === "interpolation"
-                        ? "bg-sky-500 text-white"
-                        : "bg-surface-1 text-text-primary hover:bg-surface-2"
-                    }`}
-                  >
-                    插值放大
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!sourceImage}
-                    title={sourceImage ? undefined : "需为已生成的图片"}
-                    onClick={() => setUpscaleMode("ai")}
-                    className={`flex-1 px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                      upscaleMode === "ai"
-                        ? "bg-sky-500 text-white"
-                        : "bg-surface-1 text-text-primary hover:bg-surface-2"
-                    }`}
-                  >
-                    AI 超分辨率
-                  </button>
-                </div>
+    <CanvasModal title="放大图片" maxWidth={520} onClose={closeCanvasDialog}>
+      <div data-canvas-upscale-dialog="true" className="px-6 pb-6">
+        {loading ? (
+          <div className="flex h-48 items-center justify-center text-text-secondary">
+            加载中…
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {/* Original size readout */}
+            {bitmap ? (
+              <div className="text-sm text-text-secondary">
+                原始尺寸：{bitmap.width} × {bitmap.height} px
               </div>
+            ) : null}
 
-              {/* Target size selector */}
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium text-text-primary">
-                  目标档位
-                </span>
-                {allNull ? (
-                  <div className="rounded-lg border border-border bg-surface-2 px-4 py-3 text-sm text-text-secondary">
-                    图片已达到最大档位
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    {targetOptions.map(({ le, size }) => (
-                      <button
-                        key={le}
-                        type="button"
-                        disabled={size === null}
-                        onClick={() => setTarget(le)}
-                        className={`rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          target === le && size !== null
-                            ? "border-sky-500 bg-sky-500 text-white"
-                            : "border-border bg-surface-1 text-text-primary hover:bg-surface-2"
-                        }`}
-                      >
-                        {longEdgeLabel(le)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Algorithm selector — hidden in AI mode */}
-              {upscaleMode === "interpolation" ? (
-                <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium text-text-primary">
-                    插值算法
-                  </span>
-                  <select
-                    value={smoothing}
-                    onChange={(e) =>
-                      setSmoothing(e.target.value as SmoothingMode)
-                    }
-                    className="rounded border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-primary"
-                  >
-                    {SMOOTHING_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-
-              {/* Output size readout */}
-              {currentTargetSize ? (
-                <div className="text-sm text-text-secondary">
-                  输出尺寸：{currentTargetSize.width} ×{" "}
-                  {currentTargetSize.height} px
-                </div>
-              ) : null}
-
-              {/* Confirm */}
-              <div className="flex justify-end">
+            {/* Mode radio: interpolation | AI super-resolve */}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-text-primary">
+                放大方式
+              </span>
+              <div
+                data-canvas-upscale-mode="true"
+                className="flex overflow-hidden rounded-lg border border-border"
+              >
                 <button
                   type="button"
-                  data-canvas-upscale-confirm="true"
-                  disabled={
-                    allNull ||
-                    currentTargetSize === null ||
-                    (upscaleMode === "ai" && !sourceImage)
-                  }
-                  onClick={handleConfirm}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => setUpscaleMode("interpolation")}
+                  className={`flex-1 px-4 py-1.5 text-sm transition-colors ${
+                    upscaleMode === "interpolation"
+                      ? "bg-sky-500 text-white"
+                      : "bg-surface-1 text-text-primary hover:bg-surface-2"
+                  }`}
                 >
-                  <ZoomIn size={14} />
-                  {upscaleMode === "ai"
-                    ? "AI 超分并生成节点"
-                    : "放大并生成节点"}
+                  插值放大
+                </button>
+                <button
+                  type="button"
+                  disabled={!sourceImage}
+                  title={sourceImage ? undefined : "需为已生成的图片"}
+                  onClick={() => setUpscaleMode("ai")}
+                  className={`flex-1 px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    upscaleMode === "ai"
+                      ? "bg-sky-500 text-white"
+                      : "bg-surface-1 text-text-primary hover:bg-surface-2"
+                  }`}
+                >
+                  AI 超分辨率
                 </button>
               </div>
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+            {/* Target size selector */}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-text-primary">
+                目标档位
+              </span>
+              {allNull ? (
+                <div className="rounded-lg border border-border bg-surface-2 px-4 py-3 text-sm text-text-secondary">
+                  图片已达到最大档位
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  {targetOptions.map(({ le, size }) => (
+                    <button
+                      key={le}
+                      type="button"
+                      disabled={size === null}
+                      onClick={() => setTarget(le)}
+                      className={`rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        target === le && size !== null
+                          ? "border-sky-500 bg-sky-500 text-white"
+                          : "border-border bg-surface-1 text-text-primary hover:bg-surface-2"
+                      }`}
+                    >
+                      {longEdgeLabel(le)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Algorithm selector — hidden in AI mode */}
+            {upscaleMode === "interpolation" ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-text-primary">
+                  插值算法
+                </span>
+                <select
+                  value={smoothing}
+                  onChange={(e) =>
+                    setSmoothing(e.target.value as SmoothingMode)
+                  }
+                  className="rounded border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-primary"
+                >
+                  {SMOOTHING_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            {/* Output size readout */}
+            {currentTargetSize ? (
+              <div className="text-sm text-text-secondary">
+                输出尺寸：{currentTargetSize.width} × {currentTargetSize.height}{" "}
+                px
+              </div>
+            ) : null}
+
+            {/* Confirm */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                data-canvas-upscale-confirm="true"
+                disabled={
+                  allNull ||
+                  currentTargetSize === null ||
+                  (upscaleMode === "ai" && !sourceImage)
+                }
+                onClick={handleConfirm}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ZoomIn size={14} />
+                {upscaleMode === "ai" ? "AI 超分并生成节点" : "放大并生成节点"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </CanvasModal>
   );
 }

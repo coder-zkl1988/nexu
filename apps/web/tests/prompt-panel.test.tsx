@@ -21,6 +21,7 @@ import {
   buildAudioGenOpts,
   buildImageGenOpts,
   buildVideoGenOpts,
+  imageSettingsSummary,
 } from "../src/lib/canvas/prompt-panel-utils";
 
 // Mock the SDK so importing the real client is unnecessary. getApiV1Models is
@@ -78,23 +79,40 @@ beforeEach(() => {
 });
 
 describe("PromptPanel controls per mode", () => {
-  it("image: renders 质量/比例/尺寸/数量 + model picker with seeded options", () => {
+  it("image: renders settings chip (defaults summary) + model picker with seeded options", () => {
     const node = addNode({ type: "image", title: "图" });
     const markup = renderPanel(node);
-    expect(markup).toContain("质量");
-    expect(markup).toContain("比例");
-    expect(markup).toContain("尺寸");
-    expect(markup).toContain("数量");
-    // quality union options
-    expect(markup).toContain(">high<");
-    expect(markup).toContain(">low<");
-    // count bumped 1..12
-    expect(markup).toContain('value="12"');
+    // Params live behind the settings chip (reference paradigm) — the chip
+    // shows the defaults summary; the popover itself is closed by default.
+    expect(markup).toContain("data-canvas-image-settings-toggle");
+    expect(markup).toContain("自动 · 默认 · 1 张");
+    expect(markup).not.toContain("data-canvas-image-settings-panel");
+    // reference-parity textarea placeholder
+    expect(markup).toContain("描述要生成的图片内容");
     // model picker: default + SDK-fed options
     expect(markup).toContain("模型");
     expect(markup).toContain("默认模型");
     expect(markup).toContain("GPT Image 1");
     expect(markup).toContain("Veo 3");
+  });
+
+  it("image settings summary helper reflects non-default params", () => {
+    expect(
+      imageSettingsSummary({
+        quality: "high",
+        aspectRatio: "16:9",
+        size: "2K",
+        count: 3,
+      }),
+    ).toBe("高 · 16:9 · 2K · 3 张");
+    expect(
+      imageSettingsSummary({
+        quality: "auto",
+        aspectRatio: "",
+        size: "",
+        count: 1,
+      }),
+    ).toBe("自动 · 默认 · 1 张");
   });
 
   it("video: renders 生成声音/水印/比例 (+ 时长/分辨率) + model picker", () => {
@@ -127,7 +145,13 @@ describe("PromptPanel controls per mode", () => {
     const node = addNode({ type: "image", title: "图" });
     const markup = renderPanel(node);
     expect(markup).toContain("data-canvas-panel-generate");
-    expect(markup).toContain("生成");
+    expect(markup).toContain('aria-label="生成"');
+  });
+
+  it("renders the prompt-library toggle (dialog opens via canvas-dialogs)", () => {
+    const node = addNode({ type: "image", title: "图" });
+    const markup = renderPanel(node);
+    expect(markup).toContain("data-canvas-prompt-library-toggle");
   });
 });
 

@@ -296,3 +296,34 @@ export function buildAudioGenOpts(s: AudioGenSettings): AudioGenOpts {
     ...(instructions !== "" ? { instructions } : {}),
   };
 }
+
+/** Chinese display label for an image quality value (settings chip/popover). */
+export function imageQualityLabel(quality: ImageQuality): string {
+  switch (quality) {
+    case "auto":
+      return "自动";
+    case "high":
+      return "高";
+    case "medium":
+      return "中";
+    case "low":
+      return "低";
+  }
+}
+
+/**
+ * One-line summary for the image settings chip, e.g. "自动 · 1:1 · 3 张".
+ * Aspect/size fall back to 默认 when unset; size is appended only when set
+ * so the chip stays compact in the common case.
+ */
+export function imageSettingsSummary(s: {
+  quality: ImageQuality;
+  aspectRatio: string;
+  size: string;
+  count: number;
+}): string {
+  const parts = [imageQualityLabel(s.quality), s.aspectRatio || "默认"];
+  if (s.size !== "") parts.push(s.size);
+  parts.push(`${s.count} 张`);
+  return parts.join(" · ");
+}

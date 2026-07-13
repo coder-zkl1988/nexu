@@ -7,17 +7,12 @@
  * ./load-image-bitmap (fetch → blob → createImageBitmap + objectUrl).
  */
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Crop } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type CanvasDialogState, closeCanvasDialog } from "./canvas-dialogs";
 import { applyCrop } from "./canvas-image-ops";
+import { CanvasModal } from "./canvas-modal";
 import { getCanvasState } from "./canvas-store";
 import {
   type CropBox,
@@ -304,84 +299,74 @@ export function CropDialog({
   // ── Render ───────────────────────────────────────────────────────
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeCanvasDialog();
-      }}
-    >
-      <DialogContent className="max-w-[760px] w-full" style={{ maxWidth: 760 }}>
-        <DialogHeader>
-          <DialogTitle>裁剪图片</DialogTitle>
-        </DialogHeader>
-        <div data-canvas-crop-dialog="true" className="px-6 pb-6">
-          {loading ? (
-            <div className="flex h-48 items-center justify-center text-text-secondary">
-              加载中…
+    <CanvasModal title="裁剪图片" maxWidth={760} onClose={closeCanvasDialog}>
+      <div data-canvas-crop-dialog="true" className="px-6 pb-6">
+        {loading ? (
+          <div className="flex h-48 items-center justify-center text-text-secondary">
+            加载中…
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* Preview area */}
+            <div
+              ref={previewContainerRef}
+              className="relative mx-auto overflow-hidden rounded-lg bg-surface-2"
+              style={{ width: displayW, height: displayH }}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerUp}
+            >
+              {/* Background image (objectURL for cross-origin safety) */}
+              {objUrl ? (
+                <img
+                  src={objUrl}
+                  alt={srcTitle}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: displayW,
+                    height: displayH,
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                  draggable={false}
+                />
+              ) : null}
+              {/* Mask + handles */}
+              {renderMask()}
+              {renderHandles()}
             </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {/* Preview area */}
-              <div
-                ref={previewContainerRef}
-                className="relative mx-auto overflow-hidden rounded-lg bg-surface-2"
-                style={{ width: displayW, height: displayH }}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerLeave={onPointerUp}
+
+            {/* Controls */}
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <label className="flex cursor-pointer items-center gap-2 text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={lockRatio}
+                  onChange={(e) => setLockRatio(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                锁定比例
+              </label>
+
+              <span className="text-text-secondary">
+                {Math.round(box.width)} × {Math.round(box.height)} px
+              </span>
+
+              <button
+                type="button"
+                data-canvas-crop-confirm="true"
+                onClick={handleConfirm}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600"
               >
-                {/* Background image (objectURL for cross-origin safety) */}
-                {objUrl ? (
-                  <img
-                    src={objUrl}
-                    alt={srcTitle}
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      width: displayW,
-                      height: displayH,
-                      userSelect: "none",
-                      pointerEvents: "none",
-                    }}
-                    draggable={false}
-                  />
-                ) : null}
-                {/* Mask + handles */}
-                {renderMask()}
-                {renderHandles()}
-              </div>
-
-              {/* Controls */}
-              <div className="flex items-center justify-between gap-4 text-sm">
-                <label className="flex cursor-pointer items-center gap-2 text-text-primary">
-                  <input
-                    type="checkbox"
-                    checked={lockRatio}
-                    onChange={(e) => setLockRatio(e.target.checked)}
-                    className="cursor-pointer"
-                  />
-                  锁定比例
-                </label>
-
-                <span className="text-text-secondary">
-                  {Math.round(box.width)} × {Math.round(box.height)} px
-                </span>
-
-                <button
-                  type="button"
-                  data-canvas-crop-confirm="true"
-                  onClick={handleConfirm}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600"
-                >
-                  <Crop size={14} />
-                  裁剪并生成节点
-                </button>
-              </div>
+                <Crop size={14} />
+                裁剪并生成节点
+              </button>
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+          </div>
+        )}
+      </div>
+    </CanvasModal>
   );
 }

@@ -11,6 +11,7 @@ import { AssetPickerDialog } from "./asset-picker-dialog";
 import { useCanvasDialog } from "./canvas-dialogs";
 import { CropDialog } from "./crop-dialog";
 import { MaskDialog } from "./mask-dialog";
+import { PromptLibraryDialog } from "./prompt-library-dialog";
 import { SplitDialog } from "./split-dialog";
 import { UpscaleDialog } from "./upscale-dialog";
 
@@ -24,5 +25,7 @@ export function CanvasDialogs() {
   if (dialog.kind === "mask") return <MaskDialog state={dialog} />;
   if (dialog.kind === "angle") return <AngleDialog state={dialog} />;
   if (dialog.kind === "assets") return <AssetPickerDialog />;
+  if (dialog.kind === "prompt-library")
+    return <PromptLibraryDialog nodeId={dialog.nodeId} />;
   return null;
 }

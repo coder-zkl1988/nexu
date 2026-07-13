@@ -1,34 +1,49 @@
-/** Canvas bottom toolbar extracted from infinite-canvas.tsx (W3.0). */
+/**
+ * canvas-toolbar.tsx — Bottom dock toolbar for the canvas workbench.
+ *
+ * Visual language (reference-parity, own implementation): a floating,
+ * centered dock — tall rounded pill with backdrop blur and a deep soft
+ * shadow — holding 32px icon-only buttons. Hovering a button shows an
+ * instant dark tooltip ABOVE the dock (rendered outside the scrolling
+ * dock so it never clips); groups are separated by hairline dividers;
+ * destructive actions render red. The appearance popover and board panel
+ * open above the dock with the same glass styling.
+ *
+ * The reference project is AGPL — this file re-implements the LOOK with
+ * our own components and design tokens (no antd, zero code reuse).
+ */
 
 import { isImeComposing } from "@/lib/keyboard";
 import {
   AudioLines,
   ChevronDown,
+  CircleDot,
   Clapperboard,
+  Eraser,
+  Grid2x2,
   Group,
   ImagePlus,
   Library,
   Map as MapIcon,
   Maximize2,
   Palette,
-  Pencil,
-  Plus,
   Redo2,
   SlidersHorizontal,
+  Square,
   Trash2,
   Type,
   Undo2,
   Upload,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
 import {
-  createBoard,
-  deleteBoard,
-  getCanvasBoards,
-  renameBoard,
-  useCanvasBoards,
-} from "./canvas-boards";
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { renameBoard, useCanvasBoards } from "./canvas-boards";
 import { openCanvasDialog } from "./canvas-dialogs";
 import { ingestFilesAsNodes, readFilesAsDataUrls } from "./canvas-ingest";
 import {
@@ -38,11 +53,16 @@ import {
   deleteSelection,
   redo,
   setViewport,
-  switchCanvasBoard,
   undo,
   useCanvas,
 } from "./canvas-store";
 import { setCanvasUiPref, useCanvasUiPrefs } from "./canvas-ui-prefs";
+
+/** Dock tooltip state: which label to show, at which x inside the wrapper. */
+type DockTip = { label: string; x: number };
+
+/** Icon size inside dock buttons (reference: size-4.5 ≈ 18px). */
+const ICON = 18;
 
 export function CanvasToolbar({
   getContainerSize,
@@ -63,6 +83,8 @@ export function CanvasToolbar({
   const { minimapVisible, gridMode, showImageInfo } = useCanvasUiPrefs();
   const hasSelection = selectedNodeIds.length > 0 || !!selectedConnectionId;
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [tip, setTip] = useState<DockTip | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
   // Escape closes the appearance panel (mount-once; harmless when panel closed).
   useEffect(() => {
@@ -74,18 +96,43 @@ export function CanvasToolbar({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [appearanceOpen]);
 
+  // Tooltip x is measured against the OUTER wrapper (not the scrolling dock)
+  // so the tip tracks the button even when the dock is scrolled.
+  function showTip(label: string) {
+    return (event: ReactMouseEvent<HTMLElement>) => {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const wrapBox = wrap.getBoundingClientRect();
+      const box = event.currentTarget.getBoundingClientRect();
+      setTip({ label, x: box.left - wrapBox.left + box.width / 2 });
+    };
+  }
+  const hideTip = () => setTip(null);
+
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
-      {/* W4.2: Appearance panel — toolbar-anchored, opens above the toolbar */}
+    <div
+      ref={wrapRef}
+      className="absolute bottom-4 left-1/2 z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
+    >
+      {tip ? (
+        <span
+          className="pointer-events-none absolute bottom-[calc(100%+8px)] -translate-x-1/2 whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-xs text-white shadow-lg"
+          style={{ left: tip.x }}
+        >
+          {tip.label}
+        </span>
+      ) : null}
+
+      {/* W4.2: Appearance panel — opens above the dock, same glass styling */}
       {appearanceOpen ? (
         <div
           data-canvas-appearance-panel="true"
-          className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[180px] rounded-lg border border-border bg-surface-1/95 py-2 px-3 shadow-md text-xs"
+          className="absolute bottom-[calc(100%+10px)] left-1/2 w-[248px] -translate-x-1/2 rounded-xl border border-border bg-surface-1/95 p-2.5 shadow-xl backdrop-blur"
           onPointerDown={(event) => event.stopPropagation()}
         >
           {/* Theme follows the app global theme (no canvas-local toggle by design). */}
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-text-tertiary">外观</p>
+          <div className="flex items-center justify-between px-1 pb-2">
+            <p className="text-sm font-medium text-text-secondary">画布外观</p>
             <button
               type="button"
               aria-label="关闭外观面板"
@@ -96,73 +143,110 @@ export function CanvasToolbar({
               <X size={12} />
             </button>
           </div>
-          <div className="mb-2">
-            <p className="mb-1 text-text-tertiary">网格</p>
-            <div className="flex gap-1">
-              {(["dots", "lines", "blank"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setCanvasUiPref("gridMode", m)}
-                  className={`rounded px-2 py-1 text-[11px] border ${gridMode === m ? "border-sky-500 text-sky-500 bg-sky-500/10" : "border-border text-text-secondary hover:bg-surface-2"}`}
-                >
-                  {m === "dots" ? "点" : m === "lines" ? "线" : "无"}
-                </button>
-              ))}
-            </div>
+          <p className="px-1 pb-1.5 text-[11px] font-medium text-text-tertiary">
+            网格样式
+          </p>
+          <div className="grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1">
+            {(
+              [
+                { mode: "dots", label: "点", icon: <CircleDot size={14} /> },
+                { mode: "lines", label: "线", icon: <Grid2x2 size={14} /> },
+                { mode: "blank", label: "空白", icon: <Square size={14} /> },
+              ] as const
+            ).map(({ mode, label, icon }) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setCanvasUiPref("gridMode", mode)}
+                className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-xs transition ${
+                  gridMode === mode
+                    ? "bg-surface-1 text-text-primary shadow-sm"
+                    : "text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-text-secondary">图片信息</span>
-            <input
-              type="checkbox"
-              checked={showImageInfo}
-              onChange={(event) =>
-                setCanvasUiPref("showImageInfo", event.target.checked)
-              }
-            />
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg px-1.5 py-1">
+            <span className="text-[11px] font-medium text-text-secondary">
+              图片信息
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showImageInfo}
+              aria-label="图片信息"
+              onClick={() => setCanvasUiPref("showImageInfo", !showImageInfo)}
+              className={`relative h-4 w-7 rounded-full transition-colors ${showImageInfo ? "bg-sky-500" : "bg-surface-3"}`}
+            >
+              <span
+                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${showImageInfo ? "translate-x-3.5" : "translate-x-0.5"}`}
+              />
+            </button>
           </div>
         </div>
       ) : null}
+
       <div
         data-canvas-toolbar="true"
-        className="flex items-center gap-1 rounded-lg border border-border bg-surface-1/95 px-2 py-1 shadow-md"
+        className="no-scrollbar flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-surface-1/85 px-2 shadow-[0_16px_40px_rgba(0,0,0,0.16)] backdrop-blur [&>*]:shrink-0"
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <BoardSwitcher />
+        <BoardBadge onTipEnter={showTip} onTipLeave={hideTip} />
         <Divider />
-        <ToolButton label="撤销" onClick={undo}>
-          <Undo2 size={14} />
+        <ToolButton
+          label="撤销"
+          onClick={undo}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
+        >
+          <Undo2 size={ICON} />
         </ToolButton>
-        <ToolButton label="重做" onClick={redo}>
-          <Redo2 size={14} />
+        <ToolButton
+          label="重做"
+          onClick={redo}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
+        >
+          <Redo2 size={ICON} />
         </ToolButton>
         <Divider />
         <ToolButton
-          label="文本节点"
+          label="文本"
           onClick={() => addNode({ type: "text", title: "文本" })}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <Type size={14} />
+          <Type size={ICON} />
         </ToolButton>
         <ToolButton
-          label="图片节点"
+          label="图片"
           onClick={() => addNode({ type: "image", title: "图片" })}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <ImagePlus size={14} />
+          <ImagePlus size={ICON} />
         </ToolButton>
         <ToolButton
-          label="视频节点"
+          label="视频"
           onClick={() => addNode({ type: "video", title: "视频" })}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <Clapperboard size={14} />
+          <Clapperboard size={ICON} />
         </ToolButton>
         <ToolButton
-          label="音频节点"
+          label="音频"
           onClick={() => addNode({ type: "audio", title: "音频" })}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <AudioLines size={14} />
+          <AudioLines size={ICON} />
         </ToolButton>
         <ToolButton
-          label="配置节点"
+          label="生成配置"
           onClick={() =>
             addNode({
               type: "config",
@@ -170,30 +254,26 @@ export function CanvasToolbar({
               metadata: { config: { mode: "image" } },
             })
           }
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <SlidersHorizontal size={14} />
+          <SlidersHorizontal size={ICON} />
         </ToolButton>
         <ToolButton
-          label="编组"
+          label="组"
           onClick={() => addNode({ type: "group", title: "组" })}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <Group size={14} />
+          <Group size={ICON} />
         </ToolButton>
-        <button
-          type="button"
-          title="素材库"
-          aria-label="素材库"
-          data-canvas-asset-library="true"
-          onClick={() => openCanvasDialog({ kind: "assets" })}
-          className="rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-        >
-          <Library size={14} />
-        </button>
         <label
-          title="上传素材"
-          className="cursor-pointer rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+          aria-label="上传素材"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+          onMouseEnter={showTip("上传素材")}
+          onMouseLeave={hideTip}
         >
-          <Upload size={14} />
+          <Upload size={ICON} />
           <input
             type="file"
             multiple
@@ -211,26 +291,65 @@ export function CanvasToolbar({
           />
         </label>
         <Divider />
-        {hasSelection ? (
-          <>
-            <ToolButton label="删除选中" onClick={deleteSelection}>
-              <Trash2 size={14} className="text-danger" />
-            </ToolButton>
-            <Divider />
-          </>
-        ) : null}
+        <ToolButton
+          label="素材库"
+          dataAttr={{ name: "data-canvas-asset-library", value: "true" }}
+          onClick={() => openCanvasDialog({ kind: "assets" })}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
+        >
+          <Library size={ICON} />
+        </ToolButton>
+        <ToolButton
+          label="小地图"
+          active={minimapVisible}
+          dataAttr={{ name: "data-canvas-minimap-toggle", value: "true" }}
+          onClick={() => setCanvasUiPref("minimapVisible", !minimapVisible)}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
+        >
+          <MapIcon size={ICON} />
+        </ToolButton>
+        <ToolButton
+          label="画布外观"
+          active={appearanceOpen}
+          dataAttr={{ name: "data-canvas-appearance-toggle", value: "true" }}
+          onClick={() => setAppearanceOpen((v) => !v)}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
+        >
+          <Palette size={ICON} />
+        </ToolButton>
+        <Divider />
         <ToolButton
           label="适配全部"
           onClick={() => setViewport(fitViewport(nodes, getContainerSize()))}
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          <Maximize2 size={14} />
+          <Maximize2 size={ICON} />
         </ToolButton>
-        <span className="px-1 text-[10px] tabular-nums text-text-tertiary">
+        <span className="px-1 text-[11px] tabular-nums text-text-tertiary">
           {Math.round(viewport.scale * 100)}%
         </span>
+        {hasSelection ? (
+          <>
+            <Divider />
+            <ToolButton
+              label="删除选中"
+              danger
+              onClick={deleteSelection}
+              onTipEnter={showTip}
+              onTipLeave={hideTip}
+            >
+              <Trash2 size={ICON} />
+            </ToolButton>
+          </>
+        ) : null}
         <Divider />
-        <button
-          type="button"
+        <ToolButton
+          label="清空画布"
+          danger
           onClick={() => {
             if (
               nodes.length === 0 ||
@@ -239,45 +358,33 @@ export function CanvasToolbar({
               clearCanvas();
             }
           }}
-          className="rounded px-1.5 py-1 text-[10px] text-text-tertiary hover:bg-surface-2 hover:text-danger"
+          onTipEnter={showTip}
+          onTipLeave={hideTip}
         >
-          清空
-        </button>
-        <Divider />
-        <button
-          type="button"
-          title="小地图"
-          aria-label="小地图"
-          data-canvas-minimap-toggle="true"
-          onClick={() => setCanvasUiPref("minimapVisible", !minimapVisible)}
-          className={`rounded p-1.5 hover:bg-surface-2 ${minimapVisible ? "text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
-        >
-          <MapIcon size={14} />
-        </button>
-        <button
-          type="button"
-          title="外观"
-          aria-label="外观"
-          data-canvas-appearance-toggle="true"
-          onClick={() => setAppearanceOpen((v) => !v)}
-          className={`rounded p-1.5 hover:bg-surface-2 ${appearanceOpen ? "text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
-        >
-          <Palette size={14} />
-        </button>
+          <Eraser size={ICON} />
+        </ToolButton>
       </div>
     </div>
   );
 }
 
 /**
- * W4.4: Named-board switcher. A button showing the active board name + caret;
- * clicking opens a popover (above the toolbar, like the appearance panel) that
- * lists boards, lets you create/rename/delete, and switches on click.
+ * W5: Current-board badge + rename popover. With boards bound 1:1 to chat
+ * sessions, both manual switching AND deleting are gone from the UI:
+ * switching would be silently undone on the next session focus, and deleting
+ * another session's board would silently destroy that session's canvas
+ * (deleting the active one just recreates it empty on the next bind).
+ * The only remaining user-facing board operation is renaming the CURRENT one.
  */
-function BoardSwitcher() {
+function BoardBadge({
+  onTipEnter,
+  onTipLeave,
+}: {
+  onTipEnter: (label: string) => (event: ReactMouseEvent<HTMLElement>) => void;
+  onTipLeave: () => void;
+}) {
   const { boards, activeId } = useCanvasBoards();
   const [open, setOpen] = useState(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
 
   // Escape closes the popover (mount-once; harmless when closed).
@@ -292,28 +399,15 @@ function BoardSwitcher() {
 
   const activeBoard = boards.find((b) => b.id === activeId);
   const activeName = activeBoard?.name ?? "画布";
-  const canDelete = boards.length > 1;
 
-  function beginRename(id: string, currentName: string) {
-    setRenamingId(id);
-    setDraftName(currentName);
+  function togglePanel() {
+    setDraftName(activeName);
+    setOpen((v) => !v);
   }
 
   function commitRename() {
-    if (renamingId) renameBoard(renamingId, draftName);
-    setRenamingId(null);
-    setDraftName("");
-  }
-
-  async function handleDelete(id: string) {
-    // Deleting the active board: switch to the first remaining board and let
-    // the switch's index write (setActiveBoardId) land BEFORE we remove — so
-    // the persisted index never briefly points activeId at a deleted board.
-    if (id === activeId) {
-      const fallback = getCanvasBoards().boards.find((b) => b.id !== id);
-      if (fallback) await switchCanvasBoard(fallback.id);
-    }
-    deleteBoard(id);
+    if (activeBoard) renameBoard(activeBoard.id, draftName);
+    setOpen(false);
   }
 
   return (
@@ -321,11 +415,11 @@ function BoardSwitcher() {
       {open ? (
         <div
           data-canvas-board-panel="true"
-          className="absolute bottom-full mb-2 left-0 min-w-[200px] rounded-lg border border-border bg-surface-1/95 py-2 px-2 shadow-md text-xs"
+          className="absolute bottom-[calc(100%+18px)] left-0 w-[220px] rounded-xl border border-border bg-surface-1/95 p-2.5 shadow-xl backdrop-blur"
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <div className="mb-1 flex items-center justify-between px-1">
-            <p className="text-text-tertiary">画布</p>
+          <div className="flex items-center justify-between px-1 pb-2">
+            <p className="text-sm font-medium text-text-secondary">当前画布</p>
             <button
               type="button"
               aria-label="关闭画布面板"
@@ -336,98 +430,34 @@ function BoardSwitcher() {
               <X size={12} />
             </button>
           </div>
-          <ul className="mb-1 flex flex-col gap-0.5">
-            {boards.map((board) => {
-              const isActive = board.id === activeId;
-              const isRenaming = renamingId === board.id;
-              return (
-                <li
-                  key={board.id}
-                  data-canvas-board-item={board.id}
-                  className={`group flex items-center gap-1 rounded px-1.5 py-1 ${isActive ? "bg-sky-500/10" : "hover:bg-surface-2"}`}
-                >
-                  {isRenaming ? (
-                    <input
-                      // biome-ignore lint/a11y/noAutofocus: inline rename edit needs immediate focus
-                      autoFocus
-                      value={draftName}
-                      onChange={(event) => setDraftName(event.target.value)}
-                      onBlur={commitRename}
-                      onKeyDown={(event) => {
-                        // Board names are Chinese — don't commit on the IME's
-                        // candidate-confirming Enter.
-                        if (event.key === "Enter" && !isImeComposing(event)) {
-                          commitRename();
-                        }
-                        if (event.key === "Escape") {
-                          setRenamingId(null);
-                          setDraftName("");
-                        }
-                      }}
-                      className="min-w-0 flex-1 rounded border border-border bg-surface-2 px-1 py-0.5 text-[11px] text-text-primary"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void switchCanvasBoard(board.id);
-                        setOpen(false);
-                      }}
-                      className={`min-w-0 flex-1 truncate text-left ${isActive ? "text-sky-500" : "text-text-secondary"}`}
-                    >
-                      {board.name}
-                    </button>
-                  )}
-                  {!isRenaming ? (
-                    <>
-                      <button
-                        type="button"
-                        aria-label="重命名画布"
-                        data-canvas-board-rename={board.id}
-                        onClick={() => beginRename(board.id, board.name)}
-                        className="rounded p-0.5 text-text-tertiary opacity-0 hover:bg-surface-2 hover:text-text-primary group-hover:opacity-100"
-                      >
-                        <Pencil size={11} />
-                      </button>
-                      {canDelete ? (
-                        <button
-                          type="button"
-                          aria-label="删除画布"
-                          data-canvas-board-delete={board.id}
-                          onClick={() => void handleDelete(board.id)}
-                          className="rounded p-0.5 text-text-tertiary opacity-0 hover:bg-surface-2 hover:text-danger group-hover:opacity-100"
-                        >
-                          <Trash2 size={11} />
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-          <button
-            type="button"
-            data-canvas-board-new="true"
-            onClick={() => {
-              const board = createBoard(`画布 ${boards.length + 1}`);
-              void switchCanvasBoard(board.id);
-              setOpen(false);
+          <input
+            // biome-ignore lint/a11y/noAutofocus: inline rename edit needs immediate focus
+            autoFocus
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(event) => {
+              // Board names are Chinese — don't commit on the IME's
+              // candidate-confirming Enter.
+              if (event.key === "Enter" && !isImeComposing(event)) {
+                commitRename();
+              }
             }}
-            className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-          >
-            <Plus size={12} />
-            新建画布
-          </button>
+            className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-text-primary"
+          />
+          <p className="px-1 pt-2 text-[11px] leading-4 text-text-tertiary">
+            画布跟随会话自动切换
+          </p>
         </div>
       ) : null}
       <button
         type="button"
-        title="切换画布"
-        aria-label="切换画布"
+        aria-label="画布"
         data-canvas-board-switcher="true"
-        onClick={() => setOpen((v) => !v)}
-        className={`flex max-w-[120px] items-center gap-1 rounded px-1.5 py-1 text-[11px] hover:bg-surface-2 ${open ? "text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
+        onClick={togglePanel}
+        onMouseEnter={onTipEnter("重命名画布")}
+        onMouseLeave={onTipLeave}
+        className={`flex h-8 max-w-[120px] items-center gap-1 rounded-lg px-2 text-xs hover:bg-surface-2 ${open ? "bg-sky-500/15 text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
       >
         <span className="truncate">{activeName}</span>
         <ChevronDown size={12} className="shrink-0" />
@@ -439,19 +469,36 @@ function BoardSwitcher() {
 function ToolButton({
   label,
   onClick,
+  onTipEnter,
+  onTipLeave,
+  active = false,
+  danger = false,
+  dataAttr,
   children,
 }: {
   label: string;
   onClick: () => void;
+  onTipEnter: (label: string) => (event: ReactMouseEvent<HTMLElement>) => void;
+  onTipLeave: () => void;
+  active?: boolean;
+  danger?: boolean;
+  dataAttr?: { name: string; value: string };
   children: ReactNode;
 }) {
+  const stateClass = active
+    ? "bg-sky-500/15 text-sky-500"
+    : danger
+      ? "text-danger/80 hover:bg-danger/10 hover:text-danger"
+      : "text-text-secondary hover:bg-surface-2 hover:text-text-primary";
   return (
     <button
       type="button"
-      title={label}
       aria-label={label}
+      {...(dataAttr ? { [dataAttr.name]: dataAttr.value } : {})}
       onClick={onClick}
-      className="rounded p-1.5 text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+      onMouseEnter={onTipEnter(label)}
+      onMouseLeave={onTipLeave}
+      className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${stateClass}`}
     >
       {children}
     </button>
@@ -459,5 +506,5 @@ function ToolButton({
 }
 
 function Divider() {
-  return <div className="mx-0.5 h-4 w-px bg-border" />;
+  return <div className="mx-1 h-6 w-px shrink-0 bg-border" />;
 }

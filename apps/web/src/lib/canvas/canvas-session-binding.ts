@@ -20,13 +20,38 @@
  * boards; the W4.4 manual board switcher keeps working as a board manager.
  */
 
-import { createBoard, getCanvasBoards } from "./canvas-boards";
+import { createBoard, getCanvasBoards, renameBoard } from "./canvas-boards";
 import { switchCanvasBoard } from "./canvas-store";
 
 const SESSION_BOARDS_KEY = "nexu:canvas:session-boards";
 
 /** Default name for a lazily-created session board (title used only at creation). */
 const DEFAULT_SESSION_BOARD_NAME = "对话画布";
+
+/**
+ * True when a would-be board name is a raw session key (`agent:<uuid>:main`)
+ * rather than a human title. Untitled sessions report the key AS their title,
+ * and using it verbatim fills the board manager with meaningless entries.
+ * Heuristic: colon-separated, no whitespace — human titles with a colon
+ * virtually always contain spaces too.
+ */
+function isRawSessionKey(label: string): boolean {
+  return /^\S+:\S+$/.test(label);
+}
+
+/** Board name for a session whose title is unusable: 对话画布 · MM-DD HH:mm. */
+function fallbackBoardName(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${DEFAULT_SESSION_BOARD_NAME} · ${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+/** Resolve the display name for a session board from its session title. */
+function sessionBoardName(label?: string): string {
+  const trimmed = label?.trim() ?? "";
+  if (!trimmed || isRawSessionKey(trimmed)) return fallbackBoardName();
+  return trimmed;
+}
 
 function loadStoredMap(): Record<string, string> {
   try {
@@ -99,9 +124,15 @@ export async function bindSessionToBoard(
   let targetBoardId: string;
   if (mappedId !== undefined && mappedBoardExists) {
     targetBoardId = mappedId;
+    // Retro-fix boards created before raw-key names were sanitized: a board
+    // still named after the bare session key gets the friendly name once.
+    const mapped = getCanvasBoards().boards.find((b) => b.id === mappedId);
+    if (mapped && isRawSessionKey(mapped.name)) {
+      renameBoard(mappedId, sessionBoardName(label));
+    }
   } else {
     // Unmapped, or the mapped board was deleted: create + remap.
-    const board = createBoard(label?.trim() || DEFAULT_SESSION_BOARD_NAME);
+    const board = createBoard(sessionBoardName(label));
     targetBoardId = board.id;
     sessionBoardMap = { ...sessionBoardMap, [sessionKey]: board.id };
     saveMap(sessionBoardMap);

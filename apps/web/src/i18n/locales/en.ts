@@ -920,6 +920,7 @@ const en = {
   "sessions.hoursAgo": "{{count}}h ago",
   "sessions.daysAgo": "{{count}}d ago",
   "sessions.chat.messages": "{{count}} messages",
+  "sessions.chat.canvas": "Canvas",
   "sessions.chat.lastActive": "Last active {{time}}",
   "sessions.chat.empty": "No messages yet",
   "sessions.chat.emptyDesc": "Messages will appear once a conversation starts.",

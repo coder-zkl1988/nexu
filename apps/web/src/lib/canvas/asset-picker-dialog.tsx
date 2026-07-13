@@ -6,12 +6,6 @@
  * multi-insert) / delete. Hydrates assets on open.
  */
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { AudioLines, Clapperboard, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -25,6 +19,7 @@ import {
   useCanvasAssets,
 } from "./canvas-assets";
 import { closeCanvasDialog } from "./canvas-dialogs";
+import { CanvasModal } from "./canvas-modal";
 
 const KIND_TABS: ReadonlyArray<{
   value: CanvasAsset["kind"] | "all";
@@ -58,94 +53,84 @@ export function AssetPickerDialog() {
   } = paginateAssets(filtered, page);
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeCanvasDialog();
-      }}
-    >
-      <DialogContent className="max-w-[720px] w-full" style={{ maxWidth: 720 }}>
-        <DialogHeader>
-          <DialogTitle>素材库</DialogTitle>
-        </DialogHeader>
-        <div
-          data-canvas-asset-picker="true"
-          className="flex flex-col gap-3 px-6 pb-6"
-        >
-          {/* Kind tabs */}
-          <div className="flex items-center gap-1">
-            {KIND_TABS.map((tab) => (
-              <button
-                key={tab.value}
-                type="button"
-                data-asset-kind-tab={tab.value}
-                onClick={() => {
-                  setKind(tab.value);
-                  setPage(1);
-                }}
-                className={`rounded px-2.5 py-1 text-xs border ${
-                  kind === tab.value
-                    ? "border-sky-500 text-sky-500 bg-sky-500/10"
-                    : "border-border text-text-secondary hover:bg-surface-2"
-                }`}
-              >
-                {tab.label}
-              </button>
+    <CanvasModal title="素材库" maxWidth={720} onClose={closeCanvasDialog}>
+      <div
+        data-canvas-asset-picker="true"
+        className="flex flex-col gap-3 px-6 pb-6"
+      >
+        {/* Kind tabs */}
+        <div className="flex items-center gap-1">
+          {KIND_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              data-asset-kind-tab={tab.value}
+              onClick={() => {
+                setKind(tab.value);
+                setPage(1);
+              }}
+              className={`rounded px-2.5 py-1 text-xs border ${
+                kind === tab.value
+                  ? "border-sky-500 text-sky-500 bg-sky-500/10"
+                  : "border-border text-text-secondary hover:bg-surface-2"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(1);
+          }}
+          placeholder="搜索素材…"
+          className="w-full rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
+        />
+
+        {/* Grid */}
+        {pageItems.length === 0 ? (
+          <div className="flex h-40 items-center justify-center text-sm text-text-secondary">
+            {assets.length === 0 ? "无素材" : "无匹配"}
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-3">
+            {pageItems.map((asset) => (
+              <AssetCard key={asset.id} asset={asset} />
             ))}
           </div>
+        )}
 
-          {/* Search */}
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder="搜索素材…"
-            className="w-full rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
-          />
-
-          {/* Grid */}
-          {pageItems.length === 0 ? (
-            <div className="flex h-40 items-center justify-center text-sm text-text-secondary">
-              {assets.length === 0 ? "无素材" : "无匹配"}
-            </div>
-          ) : (
-            <div className="grid grid-cols-4 gap-3">
-              {pageItems.map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          <div className="flex items-center justify-center gap-3 text-xs text-text-secondary">
-            <button
-              type="button"
-              data-asset-prev="true"
-              disabled={currentPage <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="rounded border border-border px-2 py-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              上一页
-            </button>
-            <span className="tabular-nums">
-              第 {currentPage} / {pageCount} 页
-            </span>
-            <button
-              type="button"
-              data-asset-next="true"
-              disabled={currentPage >= pageCount}
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded border border-border px-2 py-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              下一页
-            </button>
-          </div>
+        {/* Pagination */}
+        <div className="flex items-center justify-center gap-3 text-xs text-text-secondary">
+          <button
+            type="button"
+            data-asset-prev="true"
+            disabled={currentPage <= 1}
+            onClick={() => setPage((p) => p - 1)}
+            className="rounded border border-border px-2 py-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            上一页
+          </button>
+          <span className="tabular-nums">
+            第 {currentPage} / {pageCount} 页
+          </span>
+          <button
+            type="button"
+            data-asset-next="true"
+            disabled={currentPage >= pageCount}
+            onClick={() => setPage((p) => p + 1)}
+            className="rounded border border-border px-2 py-1 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            下一页
+          </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </CanvasModal>
   );
 }
 

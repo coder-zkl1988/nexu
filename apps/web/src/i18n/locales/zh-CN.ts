@@ -846,6 +846,7 @@ const zhCN = {
   "sessions.hoursAgo": "{{count}}小时前",
   "sessions.daysAgo": "{{count}}天前",
   "sessions.chat.messages": "{{count}} 条消息",
+  "sessions.chat.canvas": "画布",
   "sessions.chat.lastActive": "最后活跃于 {{time}}",
   "sessions.chat.empty": "暂无消息",
   "sessions.chat.emptyDesc": "对话开始后消息将在此显示。",

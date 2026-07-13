@@ -14,6 +14,7 @@ import {
   CanvasOpCard,
 } from "@/lib/canvas/canvas-op-card";
 import { bindSessionToBoard } from "@/lib/canvas/canvas-session-binding";
+import { setPanelOpen, useCanvas } from "@/lib/canvas/canvas-store";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import {
   A2UI_TOOL_NAMES,
@@ -1284,6 +1285,11 @@ export function SessionsPage() {
     "border-[rgba(15,23,42,0.1)] hover:bg-[rgba(248,250,252,0.9)]",
   );
 
+  // Canvas workbench toggle state for the header entry button. The session
+  // is already bound 1:1 to its own board (bindSessionToBoard above), so
+  // opening the panel lands directly on this session's canvas.
+  const { panelOpen: canvasPanelOpen } = useCanvas();
+
   const handleUnavailableChatLink = (): void => {
     if (platform === "feishu") {
       toast.info(
@@ -1332,6 +1338,20 @@ export function SessionsPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              data-session-canvas-toggle="true"
+              aria-pressed={canvasPanelOpen}
+              aria-label={t("sessions.chat.canvas")}
+              title={t("sessions.chat.canvas")}
+              onClick={() => setPanelOpen(!canvasPanelOpen)}
+              className={cn(
+                "rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
+                canvasPanelOpen && "text-sky-600",
+              )}
+            >
+              <PanelRight size={18} />
+            </button>
             {!!session?.channelId &&
               platform !== "wechat" &&
               (externalChatUrl ? (

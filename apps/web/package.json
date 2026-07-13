@@ -11,6 +11,7 @@
     "test": "vitest run tests",
     "preview": "vite preview",
     "generate-sdk": "openapi-ts",
+    "generate:prompt-snapshot": "tsx scripts/generate-prompt-snapshot.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

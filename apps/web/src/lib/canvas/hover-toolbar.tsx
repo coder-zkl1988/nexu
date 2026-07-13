@@ -346,7 +346,7 @@ function ToolbarPill({
   return (
     <div
       data-canvas-hover-toolbar={nodeId}
-      className={`absolute -top-9 left-1/2 z-40 -translate-x-1/2 flex items-center gap-0.5 rounded-lg border border-border bg-surface-1/95 px-1 py-0.5 shadow-md transition-opacity duration-150 ${selected ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"}`}
+      className={`absolute -top-12 left-1/2 z-40 -translate-x-1/2 flex items-center gap-0.5 rounded-lg border border-border bg-surface-1/95 px-1 py-0.5 shadow-md backdrop-blur transition-opacity duration-150 ${selected ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100"}`}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {children}

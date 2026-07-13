@@ -549,9 +549,9 @@ describe("ConfigNode markup", () => {
     expect(markup).toContain("音频");
   });
 
-  it("toolbar contains 配置节点 button", () => {
+  it("toolbar contains 生成配置 button", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
-    expect(markup).toContain("配置节点");
+    expect(markup).toContain("生成配置");
   });
 
   it("connect menu offers all five creatable types (real menu constant)", () => {
@@ -582,10 +582,13 @@ describe("CanvasMinimap markup", () => {
     expect(markup).toContain('data-canvas-minimap="true"');
   });
 
-  it("minimap absent when zero nodes (even with pref on)", () => {
-    // no nodes added
+  it("minimap present with zero nodes (default empty-world bounds)", () => {
+    // no nodes added — reference parity: the minimap stays visible on an
+    // empty board so the toolbar toggle always has a visible effect
     const markup = renderToStaticMarkup(<CanvasSurface />);
-    expect(markup).not.toContain('data-canvas-minimap="true"');
+    expect(markup).toContain('data-canvas-minimap="true"');
+    // viewport outline still rendered against the default world bounds
+    expect(markup).toContain('data-canvas-minimap-viewport="true"');
   });
 
   it("minimap absent when minimapVisible pref is off", () => {

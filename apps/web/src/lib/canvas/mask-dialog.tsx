@@ -10,18 +10,13 @@
  * capture on the painting container, NOT the cursor dot.
  */
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Brush, Eraser } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
 import { generateImageIntoNode } from "./canvas-generation";
+import { CanvasModal } from "./canvas-modal";
 import { addNode, getCanvasState } from "./canvas-store";
 import { fitScale } from "./crop-geometry";
 import { loadImageBitmap } from "./load-image-bitmap";
@@ -275,59 +270,34 @@ export function MaskDialog({
   const canConfirm = prompt.trim().length > 0 && painted;
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeCanvasDialog();
-      }}
-    >
-      <DialogContent className="max-w-[720px] w-full" style={{ maxWidth: 720 }}>
-        <DialogHeader>
-          <DialogTitle>重绘选区</DialogTitle>
-        </DialogHeader>
-        <div data-canvas-mask-dialog="true" className="px-6 pb-6">
-          {loading ? (
-            <div className="flex h-48 items-center justify-center text-text-secondary">
-              加载中…
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {/* Preview + overlay painting area */}
-              <div
-                ref={containerRef}
-                className="relative mx-auto select-none overflow-hidden rounded-lg bg-surface-2"
-                style={{
-                  width: displayW,
-                  height: displayH,
-                  cursor: brushMode === "eraser" ? "cell" : "crosshair",
-                  touchAction: "none",
-                }}
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerLeave={onPointerUp}
-              >
-                {/* Base image */}
-                {objUrl ? (
-                  <img
-                    src={objUrl}
-                    alt="source"
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      width: displayW,
-                      height: displayH,
-                      pointerEvents: "none",
-                      userSelect: "none",
-                    }}
-                    draggable={false}
-                  />
-                ) : null}
-
-                {/* Paint overlay */}
-                <canvas
-                  ref={overlayRef}
+    <CanvasModal title="重绘选区" maxWidth={720} onClose={closeCanvasDialog}>
+      <div data-canvas-mask-dialog="true" className="px-6 pb-6">
+        {loading ? (
+          <div className="flex h-48 items-center justify-center text-text-secondary">
+            加载中…
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {/* Preview + overlay painting area */}
+            <div
+              ref={containerRef}
+              className="relative mx-auto select-none overflow-hidden rounded-lg bg-surface-2"
+              style={{
+                width: displayW,
+                height: displayH,
+                cursor: brushMode === "eraser" ? "cell" : "crosshair",
+                touchAction: "none",
+              }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerUp}
+            >
+              {/* Base image */}
+              {objUrl ? (
+                <img
+                  src={objUrl}
+                  alt="source"
                   style={{
                     position: "absolute",
                     left: 0,
@@ -335,100 +305,115 @@ export function MaskDialog({
                     width: displayW,
                     height: displayH,
                     pointerEvents: "none",
+                    userSelect: "none",
                   }}
+                  draggable={false}
                 />
+              ) : null}
 
-                {/* Hidden full-res mask canvas */}
-                <canvas ref={maskRef} style={{ display: "none" }} />
-              </div>
+              {/* Paint overlay */}
+              <canvas
+                ref={overlayRef}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: displayW,
+                  height: displayH,
+                  pointerEvents: "none",
+                }}
+              />
 
-              {/* Brush controls */}
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                {/* Brush / Eraser toggle */}
-                <div className="flex overflow-hidden rounded-lg border border-border">
-                  <button
-                    type="button"
-                    title="画笔"
-                    onClick={() => setBrushMode("brush")}
-                    className={`flex items-center gap-1 px-3 py-1.5 text-sm transition-colors ${
-                      brushMode === "brush"
-                        ? "bg-sky-500 text-white"
-                        : "bg-surface-1 text-text-primary hover:bg-surface-2"
-                    }`}
-                  >
-                    <Brush size={13} />
-                    画笔
-                  </button>
-                  <button
-                    type="button"
-                    title="橡皮擦"
-                    onClick={() => setBrushMode("eraser")}
-                    className={`flex items-center gap-1 px-3 py-1.5 text-sm transition-colors ${
-                      brushMode === "eraser"
-                        ? "bg-sky-500 text-white"
-                        : "bg-surface-1 text-text-primary hover:bg-surface-2"
-                    }`}
-                  >
-                    <Eraser size={13} />
-                    橡皮
-                  </button>
-                </div>
-
-                {/* Brush size */}
-                <label className="flex items-center gap-2 text-text-primary">
-                  笔刷大小
-                  <input
-                    type="range"
-                    min={4}
-                    max={64}
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                    className="w-24"
-                  />
-                  <span className="w-6 text-text-secondary">{brushSize}</span>
-                </label>
-
-                {/* Clear button */}
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-primary hover:bg-surface-2"
-                >
-                  清除
-                </button>
-              </div>
-
-              {/* Prompt input */}
-              <div className="flex flex-col gap-1.5">
-                <label className="flex flex-col gap-1.5 text-sm font-medium text-text-primary">
-                  重绘内容
-                  <input
-                    type="text"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="描述要在选区内生成的内容…"
-                    className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-normal text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-sky-400"
-                  />
-                </label>
-              </div>
-
-              {/* Confirm */}
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  data-canvas-mask-confirm="true"
-                  disabled={!canConfirm}
-                  onClick={handleConfirm}
-                  className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Brush size={14} />
-                  重绘选区
-                </button>
-              </div>
+              {/* Hidden full-res mask canvas */}
+              <canvas ref={maskRef} style={{ display: "none" }} />
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+            {/* Brush controls */}
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              {/* Brush / Eraser toggle */}
+              <div className="flex overflow-hidden rounded-lg border border-border">
+                <button
+                  type="button"
+                  title="画笔"
+                  onClick={() => setBrushMode("brush")}
+                  className={`flex items-center gap-1 px-3 py-1.5 text-sm transition-colors ${
+                    brushMode === "brush"
+                      ? "bg-sky-500 text-white"
+                      : "bg-surface-1 text-text-primary hover:bg-surface-2"
+                  }`}
+                >
+                  <Brush size={13} />
+                  画笔
+                </button>
+                <button
+                  type="button"
+                  title="橡皮擦"
+                  onClick={() => setBrushMode("eraser")}
+                  className={`flex items-center gap-1 px-3 py-1.5 text-sm transition-colors ${
+                    brushMode === "eraser"
+                      ? "bg-sky-500 text-white"
+                      : "bg-surface-1 text-text-primary hover:bg-surface-2"
+                  }`}
+                >
+                  <Eraser size={13} />
+                  橡皮
+                </button>
+              </div>
+
+              {/* Brush size */}
+              <label className="flex items-center gap-2 text-text-primary">
+                笔刷大小
+                <input
+                  type="range"
+                  min={4}
+                  max={64}
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="w-24"
+                />
+                <span className="w-6 text-text-secondary">{brushSize}</span>
+              </label>
+
+              {/* Clear button */}
+              <button
+                type="button"
+                onClick={handleClear}
+                className="rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-sm text-text-primary hover:bg-surface-2"
+              >
+                清除
+              </button>
+            </div>
+
+            {/* Prompt input */}
+            <div className="flex flex-col gap-1.5">
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-primary">
+                重绘内容
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="描述要在选区内生成的内容…"
+                  className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-normal text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-sky-400"
+                />
+              </label>
+            </div>
+
+            {/* Confirm */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                data-canvas-mask-confirm="true"
+                disabled={!canConfirm}
+                onClick={handleConfirm}
+                className="flex items-center gap-1.5 rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Brush size={14} />
+                重绘选区
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </CanvasModal>
   );
 }

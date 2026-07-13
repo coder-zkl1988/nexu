@@ -419,6 +419,16 @@ function WorkspaceLayoutContent() {
     [],
   );
   const [collapsed, setCollapsed] = useState(false);
+  // Collapsed = icon rail (nav icons only), not a fully hidden sidebar.
+  // On the Mac desktop client the rail must clear the traffic lights plus
+  // the sidebar toggle beside them (toggle at left 76px + 32px width + 8px
+  // breathing room); elsewhere a slim rail suffices.
+  const SIDEBAR_RAIL_WIDTH =
+    isDesktopClient && isMacDesktopPlatform() ? 116 : 56;
+  const navItemClass = cn(
+    "nav-item flex items-center w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 py-2 whitespace-nowrap",
+    collapsed ? "justify-center px-0 gap-0" : "gap-2.5 px-3",
+  );
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [scheduledCollapsed, setScheduledCollapsed] = useState(true);
@@ -474,7 +484,7 @@ function WorkspaceLayoutContent() {
         return false;
       }
       preMaximizeWidthRef.current = rightSidebarWidth;
-      const leftWidth = collapsed ? 0 : sidebarWidth;
+      const leftWidth = collapsed ? SIDEBAR_RAIL_WIDTH : sidebarWidth;
       setRightSidebarWidth(
         Math.max(
           RIGHT_SIDEBAR_MIN,
@@ -483,7 +493,7 @@ function WorkspaceLayoutContent() {
       );
       return true;
     });
-  }, [rightSidebarWidth, collapsed, sidebarWidth]);
+  }, [rightSidebarWidth, collapsed, sidebarWidth, SIDEBAR_RAIL_WIDTH]);
 
   const handleRightResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -854,10 +864,10 @@ function WorkspaceLayoutContent() {
 
       {/* Desktop sidebar — transparent bg, no border (matches design-system) */}
       <div
-        className={`hidden md:flex flex-col shrink-0 overflow-hidden ${collapsed ? "w-0" : ""}`}
+        className="hidden md:flex flex-col shrink-0 overflow-hidden"
         style={
           {
-            ...(!collapsed ? { width: sidebarWidth } : {}),
+            width: collapsed ? SIDEBAR_RAIL_WIDTH : sidebarWidth,
             transition: isResizing.current ? "none" : "width 200ms",
             WebkitAppRegion: "drag",
             background: isDesktopClient
@@ -869,8 +879,8 @@ function WorkspaceLayoutContent() {
         {/* Traffic light clearance (desktop client) */}
         {!isWindowsDesktopClient && <div className={cn("shrink-0", "h-14")} />}
 
-        {/* Header / Brand */}
-        {!isWindowsDesktopClient && (
+        {/* Header / Brand — hidden in rail mode (fixed toggles reopen) */}
+        {!isWindowsDesktopClient && !collapsed && (
           <div
             className={cn(
               "flex items-center justify-between px-3 pb-2 shrink-0",
@@ -933,45 +943,39 @@ function WorkspaceLayoutContent() {
           <div className="shrink-0 px-2 pt-3 pb-1">
             <Link
               to="/workspace/home"
+              title={t("layout.nav.home")}
               onClick={() => {
                 track("workspace_home_click");
                 track("workspace_sidebar_click", { target: "home" });
               }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isHomePage && "nav-item-active",
-              )}
+              className={cn(navItemClass, isHomePage && "nav-item-active")}
             >
               <Home size={16} className="shrink-0" />
-              {t("layout.nav.home")}
+              {!collapsed && t("layout.nav.home")}
             </Link>
             <Link
               to="/workspace/chat"
+              title={t("layout.nav.newChat")}
               onClick={() => {
                 track("workspace_sidebar_click", { target: "local-chat" });
               }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isLocalChatPage && "nav-item-active",
-              )}
+              className={cn(navItemClass, isLocalChatPage && "nav-item-active")}
             >
               <CirclePlus size={16} className="shrink-0" />
-              {t("layout.nav.newChat")}
+              {!collapsed && t("layout.nav.newChat")}
             </Link>
             <Link
               to="/workspace/skills"
+              title={t("layout.nav.skillStore")}
               onClick={() => {
                 track("workspace_skills_click");
                 track("workspace_sidebar_click", { target: "skills" });
               }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isSkillsPage && "nav-item-active",
-              )}
+              className={cn(navItemClass, isSkillsPage && "nav-item-active")}
             >
               <Puzzle size={16} className="shrink-0" />
-              {t("layout.nav.skillStore")}
-              {installedSkillsCount > 0 && (
+              {!collapsed && t("layout.nav.skillStore")}
+              {!collapsed && installedSkillsCount > 0 && (
                 <span className="ml-auto text-[10px] text-text-tertiary font-normal">
                   {installedSkillsCount}
                 </span>
@@ -979,204 +983,90 @@ function WorkspaceLayoutContent() {
             </Link>
             <Link
               to="/workspace/automations"
+              title={t("layout.nav.automations")}
               onClick={() => {
                 track("workspace_sidebar_click", { target: "automations" });
               }}
               className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
+                navItemClass,
                 location.pathname.includes("/automations") && "nav-item-active",
               )}
             >
               <Sparkles size={16} className="shrink-0" />
-              {t("layout.nav.automations")}
+              {!collapsed && t("layout.nav.automations")}
             </Link>
             <Link
               to="/workspace/experts"
+              title={t("layout.nav.agents")}
               onClick={() => {
                 track("workspace_experts_click");
                 track("workspace_sidebar_click", { target: "experts" });
               }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isExpertsPage && "nav-item-active",
-              )}
+              className={cn(navItemClass, isExpertsPage && "nav-item-active")}
             >
               <Bot size={16} className="shrink-0" />
-              {t("layout.nav.agents")}
+              {!collapsed && t("layout.nav.agents")}
             </Link>
             <Link
               to="/workspace/teams"
+              title={t("layout.nav.teams")}
               onClick={() => {
                 track("workspace_sidebar_click", { target: "teams" });
               }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isTeamsPage && "nav-item-active",
-              )}
+              className={cn(navItemClass, isTeamsPage && "nav-item-active")}
             >
               <UsersRound size={16} className="shrink-0" />
-              {t("layout.nav.teams")}
+              {!collapsed && t("layout.nav.teams")}
             </Link>
             <Link
               to="/workspace/devices"
+              title={t("layout.nav.devices")}
               onClick={() => {
                 track("workspace_sidebar_click", { target: "devices" });
               }}
-              className={cn(
-                "nav-item flex items-center gap-2.5 w-full rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer mt-0.5 px-3 py-2 whitespace-nowrap",
-                isDevicesPage && "nav-item-active",
-              )}
+              className={cn(navItemClass, isDevicesPage && "nav-item-active")}
             >
               <Smartphone size={16} className="shrink-0" />
-              {t("layout.nav.devices")}
+              {!collapsed && t("layout.nav.devices")}
             </Link>
           </div>
 
-          {/* Conversations section */}
-          <div className="flex min-h-0 flex-1 flex-col px-2 pt-6">
-            <div className="sidebar-section-label shrink-0 whitespace-nowrap">
-              {t("layout.conversations")}
-            </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-              {(() => {
-                // Split sessions into regular and scheduled
-                const regularSessions = sessions.filter(
-                  (s) => !s.sessionKey.includes(":schedule-"),
-                );
-                const scheduledSessions = sessions.filter((s) =>
-                  s.sessionKey.includes(":schedule-"),
-                );
+          {/* Conversations section — no rail representation; hidden */}
+          {!collapsed && (
+            <div className="flex min-h-0 flex-1 flex-col px-2 pt-6">
+              <div className="sidebar-section-label shrink-0 whitespace-nowrap">
+                {t("layout.conversations")}
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+                {(() => {
+                  // Split sessions into regular and scheduled
+                  const regularSessions = sessions.filter(
+                    (s) => !s.sessionKey.includes(":schedule-"),
+                  );
+                  const scheduledSessions = sessions.filter((s) =>
+                    s.sessionKey.includes(":schedule-"),
+                  );
 
-                // Regular sessions grouped by channelType
-                const regularGroups = Object.entries(
-                  regularSessions.reduce(
-                    (acc, s) => {
-                      const key = s.channelType ?? "web";
-                      const group = acc[key] ?? [];
-                      group.push(s);
-                      acc[key] = group;
-                      return acc;
-                    },
-                    {} as Record<string, SidebarSession[]>,
-                  ),
-                );
+                  // Regular sessions grouped by channelType
+                  const regularGroups = Object.entries(
+                    regularSessions.reduce(
+                      (acc, s) => {
+                        const key = s.channelType ?? "web";
+                        const group = acc[key] ?? [];
+                        group.push(s);
+                        acc[key] = group;
+                        return acc;
+                      },
+                      {} as Record<string, SidebarSession[]>,
+                    ),
+                  );
 
-                return (
-                  <>
-                    {regularGroups.map(([channelType, groupSessions]) => (
-                      <div key={channelType}>
-                        <div className="space-y-0.5">
-                          {groupSessions.map((s) => {
-                            const isActive = selectedSessionId === s.id;
-                            return (
-                              <div
-                                key={s.id}
-                                data-sidebar-session-row={s.id}
-                                data-session-channel-type={
-                                  s.channelType ?? "web"
-                                }
-                                data-session-state={s.status || "idle"}
-                                className={cn(
-                                  "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
-                                  isActive && "nav-item-active",
-                                )}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const channel = normalizeChannel(
-                                      s.channelType,
-                                    );
-                                    track("workspace_channel_click", {
-                                      channel_type: s.channelType,
-                                    });
-                                    track("workspace_sidebar_click", {
-                                      target: "conversations",
-                                      ...(channel ? { channel } : {}),
-                                    });
-                                    navigate(`/workspace/sessions/${s.id}`);
-                                  }}
-                                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-                                >
-                                  <SidebarPlatformIcon
-                                    platform={s.channelType ?? "web"}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <div
-                                        className={cn(
-                                          "text-[12px] truncate whitespace-nowrap font-medium",
-                                          !isActive && "text-text-primary",
-                                        )}
-                                      >
-                                        {s.title}
-                                      </div>
-                                      {s.status === "active" && (
-                                        <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                          Live
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
-                                      <span>
-                                        {getPlatformLabel(
-                                          s.channelType ?? "web",
-                                        )}
-                                      </span>
-                                      <span className="text-border">·</span>
-                                      <span>{formatTime(s.lastTime)}</span>
-                                    </div>
-                                  </div>
-                                </button>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {s.status === "active" && (
-                                    <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      deleteSessionMutation.mutate(s.id);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
-                                    title={t("layout.deleteSession")}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Scheduled tasks section */}
-                    {scheduledSessions.length > 0 && (
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setScheduledCollapsed(!scheduledCollapsed)
-                          }
-                          className="flex items-center gap-2 w-full px-1 py-1.5 text-[12px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-                        >
-                          <ChevronRight
-                            size={12}
-                            className={cn(
-                              "transition-transform",
-                              !scheduledCollapsed && "rotate-90",
-                            )}
-                          />
-                          <Clock size={12} />
-                          <span>{t("layout.scheduledTasks", "定时任务")}</span>
-                          <span className="ml-auto text-[10px] text-text-muted/60">
-                            {scheduledSessions.length}
-                          </span>
-                        </button>
-                        {!scheduledCollapsed && (
-                          <div className="space-y-0.5 mt-1">
-                            {scheduledSessions.map((s) => {
+                  return (
+                    <>
+                      {regularGroups.map(([channelType, groupSessions]) => (
+                        <div key={channelType}>
+                          <div className="space-y-0.5">
+                            {groupSessions.map((s) => {
                               const isActive = selectedSessionId === s.id;
                               return (
                                 <div
@@ -1194,16 +1084,22 @@ function WorkspaceLayoutContent() {
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      const channel = normalizeChannel(
+                                        s.channelType,
+                                      );
+                                      track("workspace_channel_click", {
+                                        channel_type: s.channelType,
+                                      });
                                       track("workspace_sidebar_click", {
                                         target: "conversations",
+                                        ...(channel ? { channel } : {}),
                                       });
                                       navigate(`/workspace/sessions/${s.id}`);
                                     }}
                                     className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                                   >
-                                    <Clock
-                                      size={16}
-                                      className="shrink-0 text-text-muted"
+                                    <SidebarPlatformIcon
+                                      platform={s.channelType ?? "web"}
                                     />
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 min-w-0">
@@ -1222,11 +1118,20 @@ function WorkspaceLayoutContent() {
                                         )}
                                       </div>
                                       <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                        <span>
+                                          {getPlatformLabel(
+                                            s.channelType ?? "web",
+                                          )}
+                                        </span>
+                                        <span className="text-border">·</span>
                                         <span>{formatTime(s.lastTime)}</span>
                                       </div>
                                     </div>
                                   </button>
                                   <div className="flex items-center gap-1 shrink-0">
+                                    {s.status === "active" && (
+                                      <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
+                                    )}
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -1243,238 +1148,349 @@ function WorkspaceLayoutContent() {
                               );
                             })}
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
+                        </div>
+                      ))}
 
-        {/* Sidebar growth card */}
-        <div
-          className="pb-1 shrink-0"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          {rewardsCardLoading ? (
-            <div data-rewards-card-loading="true" className="animate-pulse">
-              <div className="mx-3 mb-2 flex items-center gap-3 rounded-[12px] border border-[#F5DFC0]/40 bg-gradient-to-br from-[#FFF8F0] via-[#FFFAF5] to-[#FFF5EB] px-3.5 py-3">
-                <div className="h-7 w-7 rounded-[8px] bg-[#F6D7A8]" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-28 rounded-full bg-[#E7D4B5]" />
-                  <div className="h-2.5 w-14 rounded-full bg-[#F0E1C8]" />
-                </div>
-                <div className="h-3 w-8 rounded-full bg-[#E7D4B5]" />
-              </div>
-              <div className="px-3 mb-1.5">
-                <div className="w-full rounded-[8px] px-2.5 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-2.5 w-2.5 rounded-full bg-border/70" />
-                      <div className="h-2.5 w-12 rounded-full bg-border/70" />
-                    </div>
-                    <div className="h-2.5 w-16 rounded-full bg-border/60" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : !cloudConnected ? (
-            <div className="px-3 mb-1.5">
-              <button
-                type="button"
-                data-sidebar-growth-card="login"
-                onClick={() =>
-                  void handleCloudConnect(
-                    isHomePage ? "home" : isModelsPage ? "settings" : "home",
-                  )
-                }
-                className="group flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-primary)]"
-              >
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-border bg-surface-2">
-                  {cloudConnecting ? (
-                    <Sparkles
-                      size={12}
-                      className="animate-pulse text-text-secondary"
-                    />
-                  ) : (
-                    <img
-                      src="/images/happytabby-logo.png"
-                      alt="Tabby"
-                      className="h-3.5 w-3.5"
-                    />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <div className="truncate text-[11px] font-medium text-text-secondary">
-                    {t("layout.sidebar.loginTitle")}
-                  </div>
-                  <div className="mt-0.5 text-[10px] leading-none text-text-muted">
-                    {cloudConnecting
-                      ? t("layout.sidebar.loginPending")
-                      : t("layout.sidebar.loginSubtitle")}
-                  </div>
-                </div>
-                <ChevronRight
-                  size={12}
-                  className="shrink-0 text-text-muted transition-transform duration-200 group-hover:translate-x-0.5"
-                />
-              </button>
-            </div>
-          ) : (
-            <div>
-              <div className="px-3 mb-1.5 relative" ref={balanceRef}>
-                <button
-                  type="button"
-                  data-sidebar-rewards-balance="true"
-                  className="group block w-full rounded-[8px] px-2.5 py-2 transition-colors hover:bg-surface-2 text-left"
-                  onClick={() => {
-                    if (canOpenBalancePopup) {
-                      setShowBalancePopup((prev) => !prev);
-                    } else {
-                      track("workspace_rewards_click");
-                      track("workspace_sidebar_click", { target: "credits" });
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="text-[11px] text-[var(--color-brand-primary)]">
-                        ✦
-                      </span>
-                      <span className="truncate text-[11px] font-semibold leading-none text-text-secondary">
-                        {t("layout.sidebar.balanceLabel")}
-                      </span>
-                    </div>
-                    <span className="shrink-0 tabular-nums text-[11px] font-medium leading-none text-text-secondary">
-                      {rewardBalanceValue}
-                    </span>
-                  </div>
-                </button>
-                {canOpenBalancePopup && showBalancePopup
-                  ? createPortal(
-                      <div
-                        data-sidebar-rewards-balance-popup="true"
-                        className="fixed z-[9999] pb-2"
-                        style={(() => {
-                          const rect =
-                            balanceRef.current?.getBoundingClientRect();
-                          if (!rect) return { display: "none" };
-                          return {
-                            left: rect.left,
-                            width: Math.max(rect.width, 240),
-                            bottom: window.innerHeight - rect.top,
-                          };
-                        })()}
-                      >
-                        <div className="rounded-xl border border-border bg-surface-1 p-3.5 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
-                          <div className="mb-3 flex items-center justify-between">
-                            <span className="text-[13px] font-semibold text-text-primary">
-                              ✦ {t("layout.sidebar.balancePopup.total")}
-                            </span>
-                            <span className="tabular-nums text-[14px] font-bold text-text-primary">
-                              {rewardBalancePopupValue}
-                            </span>
-                          </div>
-                          <div className="space-y-2 border-t border-border/60 pt-2.5">
-                            {SHOW_BALANCE_BREAKDOWN && (
-                              <>
-                                <div className="flex items-center justify-between">
-                                  <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                                    {t("layout.sidebar.balancePopup.earned")}
-                                    <span className="group relative inline-flex cursor-default items-center">
-                                      <Info
-                                        size={10}
-                                        className="text-text-muted/60"
-                                      />
-                                      <span
-                                        role="tooltip"
-                                        className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                                      >
-                                        {t(
-                                          "layout.sidebar.balancePopup.earnedTooltip",
-                                        )}
-                                      </span>
-                                    </span>
-                                  </span>
-                                  <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                    {formatUsdCents(
-                                      sidebarCreditBreakdown.giftedBalance,
-                                    )}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <span className="flex items-center gap-1 text-[11px] text-text-muted">
-                                    {t("layout.sidebar.balancePopup.recharged")}
-                                    <span className="group relative inline-flex cursor-default items-center">
-                                      <Info
-                                        size={10}
-                                        className="text-text-muted/60"
-                                      />
-                                      <span
-                                        role="tooltip"
-                                        className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
-                                      >
-                                        {t(
-                                          "layout.sidebar.balancePopup.rechargedTooltip",
-                                        )}
-                                      </span>
-                                    </span>
-                                  </span>
-                                  <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                    {formatUsdCents(
-                                      sidebarCreditBreakdown.planBalance,
-                                    )}
-                                  </span>
-                                </div>
-                              </>
-                            )}
-                            <div className="flex items-center justify-between border-t border-border/60 pt-2">
-                              <span className="text-[11px] text-text-muted">
-                                {t("layout.sidebar.balancePopup.consumed")}
-                              </span>
-                              <span className="tabular-nums text-[11px] font-medium text-text-secondary">
-                                {formatUsdCents(
-                                  rewardsStatus.cloudBalance?.totalConsumed ??
-                                    0,
-                                )}
-                              </span>
-                            </div>
-                          </div>
+                      {/* Scheduled tasks section */}
+                      {scheduledSessions.length > 0 && (
+                        <div>
                           <button
                             type="button"
-                            data-sidebar-rewards-balance-detail="true"
-                            className="mt-2.5 flex w-full items-center justify-between border-t border-border/60 pt-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary"
-                            onClick={() => {
-                              track("workspace_click_usage_detail");
-                              track("workspace_sidebar_click", {
-                                target: "credits_popup_detail",
-                              });
-                              void openExternalUrl(
-                                resolveCloudUsageUrl(
-                                  desktopCloudStatus?.cloudUrl,
-                                ),
-                              );
-                              setShowBalancePopup(false);
-                            }}
+                            onClick={() =>
+                              setScheduledCollapsed(!scheduledCollapsed)
+                            }
+                            className="flex items-center gap-2 w-full px-1 py-1.5 text-[12px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
                           >
-                            {t("layout.sidebar.balancePopup.viewDetail")}
-                            <ChevronRight size={12} />
+                            <ChevronRight
+                              size={12}
+                              className={cn(
+                                "transition-transform",
+                                !scheduledCollapsed && "rotate-90",
+                              )}
+                            />
+                            <Clock size={12} />
+                            <span>
+                              {t("layout.scheduledTasks", "定时任务")}
+                            </span>
+                            <span className="ml-auto text-[10px] text-text-muted/60">
+                              {scheduledSessions.length}
+                            </span>
                           </button>
+                          {!scheduledCollapsed && (
+                            <div className="space-y-0.5 mt-1">
+                              {scheduledSessions.map((s) => {
+                                const isActive = selectedSessionId === s.id;
+                                return (
+                                  <div
+                                    key={s.id}
+                                    data-sidebar-session-row={s.id}
+                                    data-session-channel-type={
+                                      s.channelType ?? "web"
+                                    }
+                                    data-session-state={s.status || "idle"}
+                                    className={cn(
+                                      "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
+                                      isActive && "nav-item-active",
+                                    )}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        track("workspace_sidebar_click", {
+                                          target: "conversations",
+                                        });
+                                        navigate(`/workspace/sessions/${s.id}`);
+                                      }}
+                                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                                    >
+                                      <Clock
+                                        size={16}
+                                        className="shrink-0 text-text-muted"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <div
+                                            className={cn(
+                                              "text-[12px] truncate whitespace-nowrap font-medium",
+                                              !isActive && "text-text-primary",
+                                            )}
+                                          >
+                                            {s.title}
+                                          </div>
+                                          {s.status === "active" && (
+                                            <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
+                                              Live
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted truncate whitespace-nowrap">
+                                          <span>{formatTime(s.lastTime)}</span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteSessionMutation.mutate(s.id);
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
+                                        title={t("layout.deleteSession")}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>,
-                      document.body,
-                    )
-                  : null}
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
         </div>
 
-        {/* Bottom action row */}
+        {/* Sidebar growth card — hidden in rail mode */}
+        {!collapsed && (
+          <div
+            className="pb-1 shrink-0"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            {rewardsCardLoading ? (
+              <div data-rewards-card-loading="true" className="animate-pulse">
+                <div className="mx-3 mb-2 flex items-center gap-3 rounded-[12px] border border-[#F5DFC0]/40 bg-gradient-to-br from-[#FFF8F0] via-[#FFFAF5] to-[#FFF5EB] px-3.5 py-3">
+                  <div className="h-7 w-7 rounded-[8px] bg-[#F6D7A8]" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-28 rounded-full bg-[#E7D4B5]" />
+                    <div className="h-2.5 w-14 rounded-full bg-[#F0E1C8]" />
+                  </div>
+                  <div className="h-3 w-8 rounded-full bg-[#E7D4B5]" />
+                </div>
+                <div className="px-3 mb-1.5">
+                  <div className="w-full rounded-[8px] px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-2.5 w-2.5 rounded-full bg-border/70" />
+                        <div className="h-2.5 w-12 rounded-full bg-border/70" />
+                      </div>
+                      <div className="h-2.5 w-16 rounded-full bg-border/60" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : !cloudConnected ? (
+              <div className="px-3 mb-1.5">
+                <button
+                  type="button"
+                  data-sidebar-growth-card="login"
+                  onClick={() =>
+                    void handleCloudConnect(
+                      isHomePage ? "home" : isModelsPage ? "settings" : "home",
+                    )
+                  }
+                  className="group flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-brand-primary)]"
+                >
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-border bg-surface-2">
+                    {cloudConnecting ? (
+                      <Sparkles
+                        size={12}
+                        className="animate-pulse text-text-secondary"
+                      />
+                    ) : (
+                      <img
+                        src="/images/happytabby-logo.png"
+                        alt="Tabby"
+                        className="h-3.5 w-3.5"
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="truncate text-[11px] font-medium text-text-secondary">
+                      {t("layout.sidebar.loginTitle")}
+                    </div>
+                    <div className="mt-0.5 text-[10px] leading-none text-text-muted">
+                      {cloudConnecting
+                        ? t("layout.sidebar.loginPending")
+                        : t("layout.sidebar.loginSubtitle")}
+                    </div>
+                  </div>
+                  <ChevronRight
+                    size={12}
+                    className="shrink-0 text-text-muted transition-transform duration-200 group-hover:translate-x-0.5"
+                  />
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div className="px-3 mb-1.5 relative" ref={balanceRef}>
+                  <button
+                    type="button"
+                    data-sidebar-rewards-balance="true"
+                    className="group block w-full rounded-[8px] px-2.5 py-2 transition-colors hover:bg-surface-2 text-left"
+                    onClick={() => {
+                      if (canOpenBalancePopup) {
+                        setShowBalancePopup((prev) => !prev);
+                      } else {
+                        track("workspace_rewards_click");
+                        track("workspace_sidebar_click", { target: "credits" });
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="text-[11px] text-[var(--color-brand-primary)]">
+                          ✦
+                        </span>
+                        <span className="truncate text-[11px] font-semibold leading-none text-text-secondary">
+                          {t("layout.sidebar.balanceLabel")}
+                        </span>
+                      </div>
+                      <span className="shrink-0 tabular-nums text-[11px] font-medium leading-none text-text-secondary">
+                        {rewardBalanceValue}
+                      </span>
+                    </div>
+                  </button>
+                  {canOpenBalancePopup && showBalancePopup
+                    ? createPortal(
+                        <div
+                          data-sidebar-rewards-balance-popup="true"
+                          className="fixed z-[9999] pb-2"
+                          style={(() => {
+                            const rect =
+                              balanceRef.current?.getBoundingClientRect();
+                            if (!rect) return { display: "none" };
+                            return {
+                              left: rect.left,
+                              width: Math.max(rect.width, 240),
+                              bottom: window.innerHeight - rect.top,
+                            };
+                          })()}
+                        >
+                          <div className="rounded-xl border border-border bg-surface-1 p-3.5 shadow-[0_8px_30px_rgba(0,0,0,0.12)]">
+                            <div className="mb-3 flex items-center justify-between">
+                              <span className="text-[13px] font-semibold text-text-primary">
+                                ✦ {t("layout.sidebar.balancePopup.total")}
+                              </span>
+                              <span className="tabular-nums text-[14px] font-bold text-text-primary">
+                                {rewardBalancePopupValue}
+                              </span>
+                            </div>
+                            <div className="space-y-2 border-t border-border/60 pt-2.5">
+                              {SHOW_BALANCE_BREAKDOWN && (
+                                <>
+                                  <div className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1 text-[11px] text-text-muted">
+                                      {t("layout.sidebar.balancePopup.earned")}
+                                      <span className="group relative inline-flex cursor-default items-center">
+                                        <Info
+                                          size={10}
+                                          className="text-text-muted/60"
+                                        />
+                                        <span
+                                          role="tooltip"
+                                          className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+                                        >
+                                          {t(
+                                            "layout.sidebar.balancePopup.earnedTooltip",
+                                          )}
+                                        </span>
+                                      </span>
+                                    </span>
+                                    <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                      {formatUsdCents(
+                                        sidebarCreditBreakdown.giftedBalance,
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1 text-[11px] text-text-muted">
+                                      {t(
+                                        "layout.sidebar.balancePopup.recharged",
+                                      )}
+                                      <span className="group relative inline-flex cursor-default items-center">
+                                        <Info
+                                          size={10}
+                                          className="text-text-muted/60"
+                                        />
+                                        <span
+                                          role="tooltip"
+                                          className="pointer-events-none absolute bottom-full left-0 z-[10000] mb-1.5 w-52 rounded-md bg-neutral-800 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100"
+                                        >
+                                          {t(
+                                            "layout.sidebar.balancePopup.rechargedTooltip",
+                                          )}
+                                        </span>
+                                      </span>
+                                    </span>
+                                    <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                      {formatUsdCents(
+                                        sidebarCreditBreakdown.planBalance,
+                                      )}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+                              {/* This divider separates the breakdown rows from
+                                the consumed total; with the breakdown hidden it
+                                would stack on the container's border-t as a
+                                doubled line. */}
+                              <div
+                                className={`flex items-center justify-between ${SHOW_BALANCE_BREAKDOWN ? "border-t border-border/60 pt-2" : ""}`}
+                              >
+                                <span className="text-[11px] text-text-muted">
+                                  {t("layout.sidebar.balancePopup.consumed")}
+                                </span>
+                                <span className="tabular-nums text-[11px] font-medium text-text-secondary">
+                                  {formatUsdCents(
+                                    rewardsStatus.cloudBalance?.totalConsumed ??
+                                      0,
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              data-sidebar-rewards-balance-detail="true"
+                              className="mt-2.5 flex w-full items-center justify-between border-t border-border/60 pt-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary"
+                              onClick={() => {
+                                track("workspace_click_usage_detail");
+                                track("workspace_sidebar_click", {
+                                  target: "credits_popup_detail",
+                                });
+                                void openExternalUrl(
+                                  resolveCloudUsageUrl(
+                                    desktopCloudStatus?.cloudUrl,
+                                  ),
+                                );
+                                setShowBalancePopup(false);
+                              }}
+                            >
+                              {t("layout.sidebar.balancePopup.viewDetail")}
+                              <ChevronRight size={12} />
+                            </button>
+                          </div>
+                        </div>,
+                        document.body,
+                      )
+                    : null}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bottom action row — stacks vertically in rail mode */}
         <div
-          className="shrink-0 border-t border-border/60 pt-1.5 pb-2 px-2 flex items-center gap-0.5"
+          className={cn(
+            "shrink-0 border-t border-border/60 pt-1.5 pb-2 px-2 flex gap-0.5",
+            collapsed ? "flex-col items-center gap-1" : "items-center",
+          )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           <button
@@ -1486,14 +1502,17 @@ function WorkspaceLayoutContent() {
             }}
             title={t("layout.nav.settings")}
             className={cn(
-              "nav-item flex flex-1 min-w-0 items-center gap-2 rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer px-2.5 py-2",
+              "nav-item flex items-center rounded-[var(--radius-6)] text-[13px] transition-colors cursor-pointer py-2",
+              collapsed ? "justify-center px-2" : "flex-1 min-w-0 gap-2 px-2.5",
               isModelsPage && "nav-item-active",
             )}
           >
             <Settings size={16} className="shrink-0" />
-            <span className="truncate text-left">
-              {t("layout.nav.settings")}
-            </span>
+            {!collapsed && (
+              <span className="truncate text-left">
+                {t("layout.nav.settings")}
+              </span>
+            )}
           </button>
 
           <div className="flex items-center gap-1 shrink-0">
@@ -1768,14 +1787,11 @@ function WorkspaceLayoutContent() {
               </button>
             </div>
           </div>
+          {/* Always mount the surface, even with zero nodes: the toolbar is
+              the way users CREATE the first node, and mounting keeps the
+              S8 mirror pushing so the chat agent's canvas_read stays live. */}
           <div className="a2ui-sidebar-host flex-1 min-h-0">
-            {canvasNodes.length === 0 ? (
-              <p className="p-4 text-xs text-[var(--color-text-tertiary)]">
-                暂无内容 — 运行卡、编辑器等会作为节点出现在这里。
-              </p>
-            ) : (
-              <CanvasSurface />
-            )}
+            <CanvasSurface />
           </div>
         </div>
       )}

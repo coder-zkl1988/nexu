@@ -10,17 +10,12 @@
  * Confirm: enhanceImageIntoNode with operation "multi-angle".
  */
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { CanvasDialogState } from "./canvas-dialogs";
 import { closeCanvasDialog } from "./canvas-dialogs";
 import { enhanceImageIntoNode } from "./canvas-generation";
+import { CanvasModal } from "./canvas-modal";
 import { addNode, getCanvasState } from "./canvas-store";
 import { loadImageBitmap } from "./load-image-bitmap";
 import { servableSourceOf } from "./prompt-panel-utils";
@@ -134,155 +129,145 @@ export function AngleDialog({
   const displayH = Math.min(PREVIEW_MAX_H, 280);
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) closeCanvasDialog();
-      }}
-    >
-      <DialogContent className="max-w-[680px] w-full" style={{ maxWidth: 680 }}>
-        <DialogHeader>
-          <DialogTitle>生成新视角</DialogTitle>
-        </DialogHeader>
-        <div data-canvas-angle-dialog="true" className="px-6 pb-6">
-          {loading ? (
-            <div className="flex h-48 items-center justify-center text-text-secondary">
-              加载中…
+    <CanvasModal title="生成新视角" maxWidth={680} onClose={closeCanvasDialog}>
+      <div data-canvas-angle-dialog="true" className="px-6 pb-6">
+        {loading ? (
+          <div className="flex h-48 items-center justify-center text-text-secondary">
+            加载中…
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {/* Live 3D preview */}
+            <div
+              className="relative mx-auto flex items-center justify-center overflow-hidden rounded-lg bg-surface-2"
+              style={{ width: displayW, height: displayH }}
+            >
+              {objUrl ? (
+                <img
+                  src={objUrl}
+                  alt="preview"
+                  style={{
+                    maxWidth: "80%",
+                    maxHeight: "80%",
+                    objectFit: "contain",
+                    transform: previewTransform,
+                    transition: "transform 0.1s ease",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                  draggable={false}
+                />
+              ) : null}
             </div>
-          ) : (
-            <div className="flex flex-col gap-5">
-              {/* Live 3D preview */}
-              <div
-                className="relative mx-auto flex items-center justify-center overflow-hidden rounded-lg bg-surface-2"
-                style={{ width: displayW, height: displayH }}
+
+            {/* Slider controls */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* 水平角 */}
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium text-text-primary">
+                  水平角{" "}
+                  <span className="font-normal text-text-secondary">
+                    {horizontalDeg}°
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={-60}
+                  max={60}
+                  value={horizontalDeg}
+                  onChange={(e) => setHorizontalDeg(Number(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-text-tertiary">
+                  <span>-60°</span>
+                  <span>60°</span>
+                </div>
+              </label>
+
+              {/* 俯仰角 */}
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium text-text-primary">
+                  俯仰角{" "}
+                  <span className="font-normal text-text-secondary">
+                    {pitchDeg}°
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={-45}
+                  max={45}
+                  value={pitchDeg}
+                  onChange={(e) => setPitchDeg(Number(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-text-tertiary">
+                  <span>-45°</span>
+                  <span>45°</span>
+                </div>
+              </label>
+
+              {/* 距离 */}
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium text-text-primary">
+                  距离{" "}
+                  <span className="font-normal text-text-secondary">
+                    {distance}
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  value={distance}
+                  onChange={(e) => setDistance(Number(e.target.value))}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-text-tertiary">
+                  <span>近</span>
+                  <span>远</span>
+                </div>
+              </label>
+
+              {/* 广角 checkbox */}
+              <label className="flex items-center gap-2 text-sm text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={wideAngle}
+                  onChange={(e) => setWideAngle(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                广角镜头
+              </label>
+            </div>
+
+            {/* Optional prompt */}
+            <div className="flex flex-col gap-1.5">
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-text-primary">
+                描述提示词（可选）
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="补充场景描述（可留空）"
+                  className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-normal text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-sky-400"
+                />
+              </label>
+            </div>
+
+            {/* Confirm */}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                data-canvas-angle-confirm="true"
+                onClick={handleConfirm}
+                className="rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600"
               >
-                {objUrl ? (
-                  <img
-                    src={objUrl}
-                    alt="preview"
-                    style={{
-                      maxWidth: "80%",
-                      maxHeight: "80%",
-                      objectFit: "contain",
-                      transform: previewTransform,
-                      transition: "transform 0.1s ease",
-                      userSelect: "none",
-                      pointerEvents: "none",
-                    }}
-                    draggable={false}
-                  />
-                ) : null}
-              </div>
-
-              {/* Slider controls */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {/* 水平角 */}
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium text-text-primary">
-                    水平角{" "}
-                    <span className="font-normal text-text-secondary">
-                      {horizontalDeg}°
-                    </span>
-                  </span>
-                  <input
-                    type="range"
-                    min={-60}
-                    max={60}
-                    value={horizontalDeg}
-                    onChange={(e) => setHorizontalDeg(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-text-tertiary">
-                    <span>-60°</span>
-                    <span>60°</span>
-                  </div>
-                </label>
-
-                {/* 俯仰角 */}
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium text-text-primary">
-                    俯仰角{" "}
-                    <span className="font-normal text-text-secondary">
-                      {pitchDeg}°
-                    </span>
-                  </span>
-                  <input
-                    type="range"
-                    min={-45}
-                    max={45}
-                    value={pitchDeg}
-                    onChange={(e) => setPitchDeg(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-text-tertiary">
-                    <span>-45°</span>
-                    <span>45°</span>
-                  </div>
-                </label>
-
-                {/* 距离 */}
-                <label className="flex flex-col gap-1 text-sm">
-                  <span className="font-medium text-text-primary">
-                    距离{" "}
-                    <span className="font-normal text-text-secondary">
-                      {distance}
-                    </span>
-                  </span>
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    value={distance}
-                    onChange={(e) => setDistance(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-text-tertiary">
-                    <span>近</span>
-                    <span>远</span>
-                  </div>
-                </label>
-
-                {/* 广角 checkbox */}
-                <label className="flex items-center gap-2 text-sm text-text-primary">
-                  <input
-                    type="checkbox"
-                    checked={wideAngle}
-                    onChange={(e) => setWideAngle(e.target.checked)}
-                    className="cursor-pointer"
-                  />
-                  广角镜头
-                </label>
-              </div>
-
-              {/* Optional prompt */}
-              <div className="flex flex-col gap-1.5">
-                <label className="flex flex-col gap-1.5 text-sm font-medium text-text-primary">
-                  描述提示词（可选）
-                  <input
-                    type="text"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="补充场景描述（可留空）"
-                    className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm font-normal text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-sky-400"
-                  />
-                </label>
-              </div>
-
-              {/* Confirm */}
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  data-canvas-angle-confirm="true"
-                  onClick={handleConfirm}
-                  className="rounded-lg bg-sky-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-600"
-                >
-                  生成新视角
-                </button>
-              </div>
+                生成新视角
+              </button>
             </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+          </div>
+        )}
+      </div>
+    </CanvasModal>
   );
 }

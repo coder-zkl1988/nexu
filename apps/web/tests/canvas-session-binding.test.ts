@@ -229,4 +229,51 @@ describe("bindSessionToBoard", () => {
     expect(() => __resetSessionBindingForTests()).not.toThrow();
     expect(getSessionBoardId("session-a")).toBeUndefined();
   });
+
+  it("h. raw sessionKey-shaped label is NOT used as the board name", async () => {
+    const fake = makeFakeStorage();
+    __setCanvasStorageForTests(fake.storage);
+
+    const rawKey = "agent:0fac7d8b-0440-4d4a-9291-0f994a8a3a6e:main";
+    // Untitled sessions report their key AS the title — bind passes it through.
+    await bindSessionToBoard(rawKey, rawKey);
+
+    const boardId = getSessionBoardId(rawKey);
+    const board = getCanvasBoards().boards.find((b) => b.id === boardId);
+    if (!board) throw new Error("expected a created board");
+    expect(board.name).not.toBe(rawKey);
+    expect(board.name).toContain("对话画布");
+  });
+
+  it("h2. human session title IS used as the board name", async () => {
+    const fake = makeFakeStorage();
+    __setCanvasStorageForTests(fake.storage);
+
+    await bindSessionToBoard("session-a", "小红书发布计划");
+
+    const boardId = getSessionBoardId("session-a");
+    const board = getCanvasBoards().boards.find((b) => b.id === boardId);
+    expect(board?.name).toBe("小红书发布计划");
+  });
+
+  it("h3. re-bind retro-renames a board still named after the raw key", async () => {
+    const fake = makeFakeStorage();
+    __setCanvasStorageForTests(fake.storage);
+
+    const rawKey = "agent:f50c0302-30ae-49a2-aa4a-69d4bae5067c:main";
+    // Simulate a board created BEFORE sanitizing existed: raw-key name.
+    const legacy = createBoard(rawKey);
+    localStorage.setItem(
+      SESSION_BOARDS_KEY,
+      JSON.stringify({ [rawKey]: legacy.id }),
+    );
+    __resetSessionBindingForTests();
+
+    await bindSessionToBoard(rawKey, rawKey);
+
+    const board = getCanvasBoards().boards.find((b) => b.id === legacy.id);
+    if (!board) throw new Error("expected the legacy board to survive");
+    expect(board.name).not.toBe(rawKey);
+    expect(board.name).toContain("对话画布");
+  });
 });

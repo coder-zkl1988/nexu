@@ -14,14 +14,16 @@
  */
 
 import { isImeComposing } from "@/lib/keyboard";
+import { ArrowUp, BookOpen, SlidersHorizontal } from "lucide-react";
 import {
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
   useCallback,
-  useEffect,
   useRef,
   useState,
 } from "react";
+import { openCanvasDialog } from "./canvas-dialogs";
 import {
   generateAudioIntoNode,
   generateImageIntoNode,
@@ -29,13 +31,15 @@ import {
 } from "./canvas-generation";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import type { CanvasNode } from "./canvas-store";
-import { getDraft, setDraft } from "./prompt-drafts";
+import { setDraft, useDraft } from "./prompt-drafts";
 import {
   type AudioFormat,
   type ImageQuality,
   buildAudioGenOpts,
   buildImageGenOpts,
   buildVideoGenOpts,
+  imageQualityLabel,
+  imageSettingsSummary,
   mentionQueryAt,
   upstreamSummary,
   usableReferencePaths,
@@ -49,18 +53,13 @@ type PromptPanelProps = {
 };
 
 export function PromptPanel({ node }: PromptPanelProps) {
-  // Per-node draft backed by module-level Map (survives selection changes)
-  const [prompt, setPromptState] = useState(() => getDraft(node.id));
-
-  // Re-sync prompt when the selected node changes
+  // Per-node draft backed by the subscribable prompt-drafts store — reactive
+  // so the prompt-library dialog inserting a prompt updates the open panel.
   const nodeId = node.id;
-  useEffect(() => {
-    setPromptState(getDraft(nodeId));
-  }, [nodeId]);
+  const prompt = useDraft(nodeId);
 
   const updatePrompt = useCallback(
     (value: string) => {
-      setPromptState(value);
       setDraft(nodeId, value);
     },
     [nodeId],
@@ -92,6 +91,14 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const [imageQuality, setImageQuality] = useState<ImageQuality>("auto");
   const [imageAspect, setImageAspect] = useState<string>("");
   const [imageSize, setImageSize] = useState<string>("");
+  // Image settings popover (reference-parity: params live behind a summary
+  // chip, not inline). Closed on node switch via the keyed state below.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsNodeId, setSettingsNodeId] = useState(nodeId);
+  if (settingsNodeId !== nodeId) {
+    setSettingsNodeId(nodeId);
+    setSettingsOpen(false);
+  }
   // Video-only
   const [videoAspect, setVideoAspect] = useState<string>("");
   const [videoGenerateAudio, setVideoGenerateAudio] = useState<boolean>(false);
@@ -272,15 +279,27 @@ export function PromptPanel({ node }: PromptPanelProps) {
     audioInstructions,
   ]);
 
+  const placeholder =
+    node.type === "image"
+      ? "描述要生成的图片内容"
+      : node.type === "video"
+        ? "描述要生成的视频内容"
+        : "描述要生成的音频内容";
+
+  // Fixed panel width, centered under the node (reference: w-[500px]
+  // -translate-x-1/2). Never tracks the node's width — a narrow node must
+  // not squeeze the bottom-row chips into wrapping their own text.
+  const PANEL_WIDTH = 500;
+
   return (
     <div
       data-canvas-prompt-panel={nodeId}
-      className="rounded-xl border-2 border-border bg-surface-1 shadow-lg p-2 text-xs"
+      className="rounded-2xl border border-border bg-surface-1 shadow-xl p-2.5 text-xs"
       style={{
         position: "absolute",
-        left: node.position.x,
-        top: node.position.y + node.size.height + 12,
-        width: Math.max(node.size.width, 320),
+        left: node.position.x + node.size.width / 2 - PANEL_WIDTH / 2,
+        top: node.position.y + node.size.height + 16,
+        width: PANEL_WIDTH,
       }}
       onPointerDown={(e: React.PointerEvent) => {
         // Prevent panel interactions from starting pans or clearing selection
@@ -288,15 +307,15 @@ export function PromptPanel({ node }: PromptPanelProps) {
       }}
     >
       {/* Upstream summary line */}
-      <div className="mb-1.5 text-text-tertiary truncate">{summary}</div>
+      <div className="mb-1.5 px-1 text-text-tertiary truncate">{summary}</div>
 
       {/* Prompt textarea + mention dropdown (relative container) */}
       <div className="relative">
         <textarea
           ref={textareaRef}
-          className="w-full select-text resize-none rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
-          rows={2}
-          placeholder="描述要生成的内容…"
+          className="w-full select-text resize-none rounded-xl border-0 bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-text-tertiary"
+          rows={3}
+          placeholder={placeholder}
           value={prompt}
           onChange={handleTextareaChange}
           onKeyUp={handleTextareaCaret}
@@ -335,75 +354,11 @@ export function PromptPanel({ node }: PromptPanelProps) {
         ) : null}
       </div>
 
-      {/* Per-type params row — best-effort generation hints */}
-      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
-        {node.type === "image" ? (
-          <>
-            <label className="flex items-center gap-1 text-text-secondary">
-              质量
-              <select
-                value={imageQuality}
-                onChange={(e) =>
-                  setImageQuality(e.target.value as ImageQuality)
-                }
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                <option value="auto">auto</option>
-                <option value="high">high</option>
-                <option value="medium">medium</option>
-                <option value="low">low</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              比例
-              <select
-                value={imageAspect}
-                onChange={(e) => setImageAspect(e.target.value)}
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                <option value="">默认</option>
-                {["1:1", "3:4", "4:3", "9:16", "16:9"].map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              尺寸
-              <select
-                value={imageSize}
-                onChange={(e) => setImageSize(e.target.value)}
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                <option value="">默认</option>
-                {["1K", "2K", "4K"].map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              数量
-              <select
-                value={imageCount}
-                onChange={(e) => setImageCount(Number(e.target.value))}
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        ) : node.type === "video" ? (
+      {/* Per-type params row — best-effort generation hints. Image params
+          live in the settings popover (reference paradigm); video/audio keep
+          inline rows. */}
+      <div className="mt-2 flex flex-wrap gap-1 items-center">
+        {node.type === "video" ? (
           <>
             <label className="flex items-center gap-1 text-text-secondary">
               时长(秒)
@@ -527,14 +482,30 @@ export function PromptPanel({ node }: PromptPanelProps) {
         ) : null}
       </div>
 
-      {/* Model picker + generate row (model is a shared best-effort hint) */}
-      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
-        <label className="flex items-center gap-1 text-text-secondary">
-          模型
+      {/* Bottom row: library · model pill · image settings chip · send */}
+      <div className="relative mt-2 flex items-center gap-1.5">
+        <button
+          type="button"
+          aria-label="提示词库"
+          data-canvas-prompt-library-toggle="true"
+          onClick={() => {
+            setSettingsOpen(false);
+            openCanvasDialog({ kind: "prompt-library", nodeId });
+          }}
+          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+          className="flex size-8 shrink-0 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
+        >
+          <BookOpen size={15} />
+        </button>
+        <label
+          aria-label="模型"
+          className="flex h-8 min-w-0 shrink-0 items-center whitespace-nowrap rounded-full border border-border bg-surface-1 px-1 text-xs text-text-secondary hover:text-text-primary"
+        >
+          <span className="pl-1.5 pr-1 text-text-tertiary">模型</span>
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="max-w-[140px] rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+            className="max-w-[150px] cursor-pointer truncate bg-transparent pr-1 text-xs outline-none"
             onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
           >
             <option value="">默认模型</option>
@@ -546,20 +517,152 @@ export function PromptPanel({ node }: PromptPanelProps) {
           </select>
         </label>
 
-        {/* Generate button — flex-pushed to end */}
-        <div className="ml-auto">
+        {node.type === "image" ? (
           <button
             type="button"
-            data-canvas-panel-generate="true"
-            disabled={isGenerating || !prompt.trim()}
-            onClick={handleGenerate}
+            data-canvas-image-settings-toggle="true"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((v) => !v)}
             onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-            className="rounded border border-[var(--color-accent)] bg-[var(--color-accent)] px-2 py-1 text-xs font-bold text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50"
+            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors ${settingsOpen ? "border-text-primary text-text-primary" : "border-border text-text-secondary hover:text-text-primary"}`}
           >
-            生成
+            <SlidersHorizontal size={13} />
+            <span className="whitespace-nowrap">
+              {imageSettingsSummary({
+                quality: imageQuality,
+                aspectRatio: imageAspect,
+                size: imageSize,
+                count: imageCount,
+              })}
+            </span>
           </button>
-        </div>
+        ) : null}
+
+        {/* Send — flex-pushed to end, circular (reference dock) */}
+        <button
+          type="button"
+          data-canvas-panel-generate="true"
+          aria-label="生成"
+          disabled={isGenerating || !prompt.trim()}
+          onClick={handleGenerate}
+          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+          className="ml-auto flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-fg)] transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          <ArrowUp size={15} />
+        </button>
+
+        {/* 图像设置 popover — anchored above the bottom row (reference) */}
+        {node.type === "image" && settingsOpen ? (
+          <div
+            data-canvas-image-settings-panel="true"
+            className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-[264px] rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl backdrop-blur"
+            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+          >
+            <p className="pb-2 text-sm font-medium text-text-primary">
+              图像设置
+            </p>
+            <SettingsGroup label="质量">
+              {(["auto", "high", "medium", "low"] as const).map((q) => (
+                <ParamPill
+                  key={q}
+                  active={imageQuality === q}
+                  onClick={() => setImageQuality(q)}
+                >
+                  {imageQualityLabel(q)}
+                </ParamPill>
+              ))}
+            </SettingsGroup>
+            <SettingsGroup label="宽高比">
+              <ParamPill
+                active={imageAspect === ""}
+                onClick={() => setImageAspect("")}
+              >
+                默认
+              </ParamPill>
+              {["1:1", "3:4", "4:3", "9:16", "16:9"].map((r) => (
+                <ParamPill
+                  key={r}
+                  active={imageAspect === r}
+                  onClick={() => setImageAspect(r)}
+                >
+                  {r}
+                </ParamPill>
+              ))}
+            </SettingsGroup>
+            <SettingsGroup label="尺寸">
+              <ParamPill
+                active={imageSize === ""}
+                onClick={() => setImageSize("")}
+              >
+                默认
+              </ParamPill>
+              {["1K", "2K", "4K"].map((s) => (
+                <ParamPill
+                  key={s}
+                  active={imageSize === s}
+                  onClick={() => setImageSize(s)}
+                >
+                  {s}
+                </ParamPill>
+              ))}
+            </SettingsGroup>
+            <SettingsGroup label="生成张数">
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                <ParamPill
+                  key={n}
+                  active={imageCount === n}
+                  onClick={() => setImageCount(n)}
+                >
+                  {n} 张
+                </ParamPill>
+              ))}
+            </SettingsGroup>
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+/** Labeled pill group inside the image settings popover. */
+function SettingsGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="pb-2.5 last:pb-0">
+      <p className="pb-1.5 text-[11px] font-medium text-text-tertiary">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-1">{children}</div>
+    </div>
+  );
+}
+
+/** Selectable pill button (reference 图像设置 paradigm). */
+function ParamPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+        active
+          ? "border-text-primary text-text-primary"
+          : "border-border text-text-secondary hover:text-text-primary"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

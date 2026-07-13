@@ -669,6 +669,10 @@ export function CanvasSurface({ className }: { className?: string }) {
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (event: WheelEvent) => {
+      // Canvas-scoped modals (CanvasModal) opt out of wheel-zoom so their
+      // content scrolls natively instead of zooming the canvas underneath.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-canvas-wheel-exempt]")) return;
       event.preventDefault();
       const rect = el.getBoundingClientRect();
       const pointer = {
@@ -1119,6 +1123,12 @@ const CanvasNodeView = memo(function CanvasNodeView({
     ((node.type === "image" || node.type === "video") &&
       Boolean(node.metadata.content));
 
+  // Media with content gets "bare" chrome (reference paradigm): no card fill,
+  // transparent border until selected — the rounded image IS the node.
+  const bareMedia =
+    (node.type === "image" || node.type === "video") &&
+    Boolean(node.metadata.content);
+
   // Groups are inert containers: a translucent body plus a z-0 tier so they stay
   // BEHIND their members (rendered on top) even when the group itself is
   // selected — "groups render behind everything else" must hold in every state.
@@ -1136,11 +1146,17 @@ const CanvasNodeView = memo(function CanvasNodeView({
       data-canvas-node={node.id}
       data-canvas-node-selected={selected || undefined}
       className={cn(
-        "group absolute flex flex-col rounded-2xl border-2 transition-shadow duration-200",
-        isGroup ? "bg-surface-1/40" : "bg-surface-1",
+        "group absolute flex flex-col rounded-3xl border-2 transition-shadow duration-200",
+        isGroup
+          ? "border-dashed bg-surface-1/40"
+          : bareMedia
+            ? "bg-transparent"
+            : "bg-surface-1",
         selected
           ? "border-sky-500 shadow-xl shadow-sky-500/10"
-          : "border-border shadow-lg shadow-black/5",
+          : bareMedia
+            ? "border-transparent shadow-lg shadow-black/10"
+            : "border-border shadow-lg shadow-black/5",
         // Groups sit behind at z-0 in every state; others use the normal
         // z-10 / z-50 (selected) tiers.
         isGroup ? "z-0" : selected ? "z-50" : "z-10",
@@ -1153,11 +1169,30 @@ const CanvasNodeView = memo(function CanvasNodeView({
       }}
       onPointerDown={(event) => {
         event.stopPropagation();
-        if (!getCanvasState().selectedNodeIds.includes(node.id)) {
-          selectNodes([node.id], event.shiftKey);
+        // Whole-card drag (reference paradigm — the header bar is gone, the
+        // title floats above the card). Pointerdown anywhere on the card
+        // starts a node drag EXCEPT on interactive elements and inside
+        // opt-out zones (rich a2ui editors), where it only ensures selection.
+        const target = event.target as HTMLElement | null;
+        if (
+          target?.closest(
+            "button, input, textarea, select, a, audio, video, [contenteditable], [data-canvas-no-drag]",
+          )
+        ) {
+          if (!getCanvasState().selectedNodeIds.includes(node.id)) {
+            selectNodes([node.id], event.shiftKey);
+          }
+          return;
         }
+        onHeaderDown(event, node.id);
       }}
     >
+      {/* Floating title above the card (reference paradigm: no header bar) */}
+      <div className="pointer-events-none absolute -top-7 left-3 z-20 max-w-[calc(100%-24px)]">
+        <span className="block truncate text-xs font-medium text-text-secondary opacity-75">
+          {node.title}
+        </span>
+      </div>
       <HoverToolbar node={node} selected={selected} />
       {/* Collapsed ghost: two decorative stacked cards behind the root */}
       {isCollapsed ? (
@@ -1165,7 +1200,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
           <div
             data-canvas-batch-ghost="2"
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-border bg-surface-2"
+            className="pointer-events-none absolute inset-0 rounded-3xl border-2 border-border bg-surface-2"
             style={{
               transform: "translate(6px, 6px) rotate(2deg)",
               zIndex: -1,
@@ -1174,7 +1209,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
           <div
             data-canvas-batch-ghost="1"
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-2xl border-2 border-border bg-surface-2"
+            className="pointer-events-none absolute inset-0 rounded-3xl border-2 border-border bg-surface-2"
             style={{
               transform: "translate(12px, 12px) rotate(4deg)",
               zIndex: -2,
@@ -1183,61 +1218,69 @@ const CanvasNodeView = memo(function CanvasNodeView({
         </>
       ) : null}
 
-      <div
-        className="flex shrink-0 cursor-move items-center justify-between gap-2 rounded-t-[14px] border-b border-border bg-surface-2/60 px-3 py-1.5"
-        onPointerDown={(event) => onHeaderDown(event, node.id)}
-      >
-        <span className="min-w-0 truncate text-xs font-medium text-text-secondary">
-          {node.title}
-        </span>
-        <div className="flex shrink-0 items-center gap-0.5">
-          {/* Batch child: promote-to-primary star */}
-          {isBatchChild ? (
-            <button
-              type="button"
-              aria-label="set as primary"
-              data-canvas-batch-primary={node.id}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setBatchPrimary(node.id)}
-              className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
-            >
-              <Star size={12} />
-            </button>
-          ) : null}
-          {/* Batch root: toggle expand/collapse badge */}
-          {isBatchRoot ? (
-            <button
-              type="button"
-              aria-label="toggle batch group"
-              data-canvas-batch-toggle={node.id}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => toggleBatchExpanded(node.id)}
-              className="rounded px-1 py-0.5 text-[10px] font-medium text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
-            >
-              ×{batchTotal}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label="close node"
-            onClick={() => removeNodes([node.id])}
-            onPointerDown={(event) => event.stopPropagation()}
-            className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
-          >
-            <X size={12} />
-          </button>
-        </div>
-      </div>
+      {/* Floating action cluster (top-right, glass chip): batch star / ×N /
+          close. Replaces the old header-bar buttons; visible on hover or
+          selection, but always in the DOM (opacity-only) so tests and
+          assistive tech can reach them. */}
       <div
         className={cn(
+          "absolute right-2 top-2 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-surface-1/85 px-1 py-0.5 shadow-sm backdrop-blur transition-opacity duration-150",
+          selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+        )}
+      >
+        {/* Batch child: promote-to-primary star */}
+        {isBatchChild ? (
+          <button
+            type="button"
+            aria-label="set as primary"
+            data-canvas-batch-primary={node.id}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => setBatchPrimary(node.id)}
+            className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+          >
+            <Star size={12} />
+          </button>
+        ) : null}
+        {/* Batch root: toggle expand/collapse badge */}
+        {isBatchRoot ? (
+          <button
+            type="button"
+            aria-label="toggle batch group"
+            data-canvas-batch-toggle={node.id}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => toggleBatchExpanded(node.id)}
+            className="rounded px-1 py-0.5 text-[10px] font-medium text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+          >
+            ×{batchTotal}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          aria-label="close node"
+          onClick={() => removeNodes([node.id])}
+          onPointerDown={(event) => event.stopPropagation()}
+          className="rounded p-0.5 text-text-tertiary hover:bg-surface-3 hover:text-text-primary"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      <div
+        {...(node.type === "a2ui" ? { "data-canvas-no-drag": "true" } : {})}
+        className={cn(
           "min-h-0 flex-1",
-          fullBleed
-            ? "overflow-hidden rounded-b-[14px]"
-            : "overflow-y-auto p-3",
+          fullBleed ? "overflow-hidden rounded-[22px]" : "overflow-y-auto p-3",
         )}
       >
         <NodeBody node={node} />
       </div>
+      {/* Reference-parity bottom fade: text blends into the card instead of
+          clipping hard at the edge. */}
+      {node.type === "text" ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0.5 bottom-0.5 z-10 h-10 rounded-b-[22px] bg-gradient-to-t from-surface-1 to-transparent"
+        />
+      ) : null}
 
       {/* Connect handle: 48px hit zone with a 12px dot, shown on
           hover/selection (reference paradigm), drag to another node. */}
