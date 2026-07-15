@@ -53,7 +53,6 @@ export function XHSEditor({ comp }: XHSEditorProps) {
 
   // Batch binding: mirror every local edit back to the shared store so the
   // inline table row reflects edits in real time.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mirror on any field change
   useEffect(() => {
     if (bound && batchId && postId) {
       updatePost(batchId, postId, {
