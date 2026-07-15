@@ -18,7 +18,6 @@ import { ArrowUp, BookOpen, SlidersHorizontal } from "lucide-react";
 import {
   type KeyboardEvent,
   type MouseEvent,
-  type ReactNode,
   useCallback,
   useRef,
   useState,
@@ -31,10 +30,12 @@ import {
 } from "./canvas-generation";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import type { CanvasNode } from "./canvas-store";
+import { ParamPill, SettingsGroup } from "./param-pills";
 import { setDraft, useDraft } from "./prompt-drafts";
 import {
   type AudioFormat,
   type ImageQuality,
+  audioSettingsSummary,
   buildAudioGenOpts,
   buildImageGenOpts,
   buildVideoGenOpts,
@@ -43,6 +44,7 @@ import {
   mentionQueryAt,
   upstreamSummary,
   usableReferencePaths,
+  videoSettingsSummary,
 } from "./prompt-panel-utils";
 import { collectUpstream, collectUpstreamNodes } from "./resource-references";
 
@@ -107,8 +109,12 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const [audioFormat, setAudioFormat] = useState<AudioFormat | "">("");
   const [audioInstructions, setAudioInstructions] = useState<string>("");
 
-  // Available models for the picker (shared ["models"] cache).
-  const models = useCanvasModelOptions();
+  // Available models for the picker (shared ["models"] cache), narrowed to
+  // the node's modality (image → tabby-image/tabby-image-free, video →
+  // tabby-video; audio has no dedicated backend yet → full list).
+  const models = useCanvasModelOptions(
+    node.type as "image" | "video" | "audio",
+  );
 
   // @-mention dropdown state
   const [mentionActive, setMentionActive] = useState(false);
@@ -354,134 +360,6 @@ export function PromptPanel({ node }: PromptPanelProps) {
         ) : null}
       </div>
 
-      {/* Per-type params row — best-effort generation hints. Image params
-          live in the settings popover (reference paradigm); video/audio keep
-          inline rows. */}
-      <div className="mt-2 flex flex-wrap gap-1 items-center">
-        {node.type === "video" ? (
-          <>
-            <label className="flex items-center gap-1 text-text-secondary">
-              时长(秒)
-              <input
-                type="number"
-                min={1}
-                max={60}
-                value={videoDuration}
-                onChange={(e) => setVideoDuration(Number(e.target.value))}
-                className="w-14 rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              />
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              分辨率
-              <select
-                value={videoResolution}
-                onChange={(e) =>
-                  setVideoResolution(e.target.value as "720p" | "1080p")
-                }
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                <option value="720p">720p</option>
-                <option value="1080p">1080p</option>
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              比例
-              <select
-                value={videoAspect}
-                onChange={(e) => setVideoAspect(e.target.value)}
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                <option value="">默认</option>
-                {["16:9", "9:16", "1:1"].map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              <input
-                type="checkbox"
-                checked={videoGenerateAudio}
-                onChange={(e) => setVideoGenerateAudio(e.target.checked)}
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              />
-              生成声音
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              <input
-                type="checkbox"
-                checked={videoWatermark}
-                onChange={(e) => setVideoWatermark(e.target.checked)}
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              />
-              水印
-            </label>
-          </>
-        ) : node.type === "audio" ? (
-          <>
-            <label className="flex items-center gap-1 text-text-secondary">
-              音色
-              <input
-                type="text"
-                value={audioVoice}
-                onChange={(e) => setAudioVoice(e.target.value)}
-                placeholder="默认"
-                className="w-20 rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              />
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              语速
-              <select
-                value={audioSpeed}
-                onChange={(e) => setAudioSpeed(Number(e.target.value))}
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                {[0.5, 1, 1.5, 2].map((s) => (
-                  <option key={s} value={s}>
-                    {s}x
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              格式
-              <select
-                value={audioFormat}
-                onChange={(e) =>
-                  setAudioFormat(e.target.value as AudioFormat | "")
-                }
-                className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              >
-                <option value="">默认</option>
-                {["mp3", "wav", "m4a", "ogg", "flac"].map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex items-center gap-1 text-text-secondary">
-              声音指令
-              <input
-                type="text"
-                value={audioInstructions}
-                onChange={(e) => setAudioInstructions(e.target.value)}
-                placeholder="可选"
-                className="w-28 rounded border border-border bg-transparent px-1 py-0.5 text-xs"
-                onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-              />
-            </label>
-          </>
-        ) : null}
-      </div>
-
       {/* Bottom row: library · model pill · image settings chip · send */}
       <div className="relative mt-2 flex items-center gap-1.5">
         <button
@@ -517,26 +395,36 @@ export function PromptPanel({ node }: PromptPanelProps) {
           </select>
         </label>
 
-        {node.type === "image" ? (
-          <button
-            type="button"
-            data-canvas-image-settings-toggle="true"
-            aria-expanded={settingsOpen}
-            onClick={() => setSettingsOpen((v) => !v)}
-            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-            className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors ${settingsOpen ? "border-text-primary text-text-primary" : "border-border text-text-secondary hover:text-text-primary"}`}
-          >
-            <SlidersHorizontal size={13} />
-            <span className="whitespace-nowrap">
-              {imageSettingsSummary({
-                quality: imageQuality,
-                aspectRatio: imageAspect,
-                size: imageSize,
-                count: imageCount,
-              })}
-            </span>
-          </button>
-        ) : null}
+        <button
+          type="button"
+          data-canvas-image-settings-toggle="true"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((v) => !v)}
+          onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+          className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors ${settingsOpen ? "border-text-primary text-text-primary" : "border-border text-text-secondary hover:text-text-primary"}`}
+        >
+          <SlidersHorizontal size={13} />
+          <span className="whitespace-nowrap">
+            {node.type === "image"
+              ? imageSettingsSummary({
+                  quality: imageQuality,
+                  aspectRatio: imageAspect,
+                  size: imageSize,
+                  count: imageCount,
+                })
+              : node.type === "video"
+                ? videoSettingsSummary({
+                    durationSeconds: videoDuration,
+                    resolution: videoResolution,
+                    aspectRatio: videoAspect,
+                  })
+                : audioSettingsSummary({
+                    voice: audioVoice,
+                    speed: audioSpeed,
+                    format: audioFormat,
+                  })}
+          </span>
+        </button>
 
         {/* Send — flex-pushed to end, circular (reference dock) */}
         <button
@@ -551,118 +439,198 @@ export function PromptPanel({ node }: PromptPanelProps) {
           <ArrowUp size={15} />
         </button>
 
-        {/* 图像设置 popover — anchored above the bottom row (reference) */}
-        {node.type === "image" && settingsOpen ? (
+        {/* 生成设置 popover — anchored above the bottom row (reference) */}
+        {settingsOpen ? (
           <div
             data-canvas-image-settings-panel="true"
             className="absolute bottom-[calc(100%+10px)] right-0 z-50 w-[264px] rounded-xl border border-border bg-surface-1/95 p-3 shadow-xl backdrop-blur"
             onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
           >
             <p className="pb-2 text-sm font-medium text-text-primary">
-              图像设置
+              {node.type === "image"
+                ? "图像设置"
+                : node.type === "video"
+                  ? "视频设置"
+                  : "音频设置"}
             </p>
-            <SettingsGroup label="质量">
-              {(["auto", "high", "medium", "low"] as const).map((q) => (
-                <ParamPill
-                  key={q}
-                  active={imageQuality === q}
-                  onClick={() => setImageQuality(q)}
-                >
-                  {imageQualityLabel(q)}
-                </ParamPill>
-              ))}
-            </SettingsGroup>
-            <SettingsGroup label="宽高比">
-              <ParamPill
-                active={imageAspect === ""}
-                onClick={() => setImageAspect("")}
-              >
-                默认
-              </ParamPill>
-              {["1:1", "3:4", "4:3", "9:16", "16:9"].map((r) => (
-                <ParamPill
-                  key={r}
-                  active={imageAspect === r}
-                  onClick={() => setImageAspect(r)}
-                >
-                  {r}
-                </ParamPill>
-              ))}
-            </SettingsGroup>
-            <SettingsGroup label="尺寸">
-              <ParamPill
-                active={imageSize === ""}
-                onClick={() => setImageSize("")}
-              >
-                默认
-              </ParamPill>
-              {["1K", "2K", "4K"].map((s) => (
-                <ParamPill
-                  key={s}
-                  active={imageSize === s}
-                  onClick={() => setImageSize(s)}
-                >
-                  {s}
-                </ParamPill>
-              ))}
-            </SettingsGroup>
-            <SettingsGroup label="生成张数">
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-                <ParamPill
-                  key={n}
-                  active={imageCount === n}
-                  onClick={() => setImageCount(n)}
-                >
-                  {n} 张
-                </ParamPill>
-              ))}
-            </SettingsGroup>
+            {node.type === "image" && (
+              <>
+                <SettingsGroup label="质量">
+                  {(["auto", "high", "medium", "low"] as const).map((q) => (
+                    <ParamPill
+                      key={q}
+                      active={imageQuality === q}
+                      onClick={() => setImageQuality(q)}
+                    >
+                      {imageQualityLabel(q)}
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <SettingsGroup label="宽高比">
+                  <ParamPill
+                    active={imageAspect === ""}
+                    onClick={() => setImageAspect("")}
+                  >
+                    默认
+                  </ParamPill>
+                  {["1:1", "3:4", "4:3", "9:16", "16:9"].map((r) => (
+                    <ParamPill
+                      key={r}
+                      active={imageAspect === r}
+                      onClick={() => setImageAspect(r)}
+                    >
+                      {r}
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <SettingsGroup label="尺寸">
+                  <ParamPill
+                    active={imageSize === ""}
+                    onClick={() => setImageSize("")}
+                  >
+                    默认
+                  </ParamPill>
+                  {["1K", "2K", "4K"].map((s) => (
+                    <ParamPill
+                      key={s}
+                      active={imageSize === s}
+                      onClick={() => setImageSize(s)}
+                    >
+                      {s}
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <SettingsGroup label="生成张数">
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                    <ParamPill
+                      key={n}
+                      active={imageCount === n}
+                      onClick={() => setImageCount(n)}
+                    >
+                      {n} 张
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+              </>
+            )}
+            {node.type === "video" && (
+              <>
+                <div className="flex items-center gap-2 pb-2.5 text-xs">
+                  <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                    时长(秒)
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={videoDuration}
+                    onChange={(e) => setVideoDuration(Number(e.target.value))}
+                    className="w-20 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                  />
+                </div>
+                <SettingsGroup label="分辨率">
+                  {(["720p", "1080p"] as const).map((r) => (
+                    <ParamPill
+                      key={r}
+                      active={videoResolution === r}
+                      onClick={() => setVideoResolution(r)}
+                    >
+                      {r}
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <SettingsGroup label="宽高比">
+                  <ParamPill
+                    active={videoAspect === ""}
+                    onClick={() => setVideoAspect("")}
+                  >
+                    默认
+                  </ParamPill>
+                  {["16:9", "9:16", "1:1"].map((r) => (
+                    <ParamPill
+                      key={r}
+                      active={videoAspect === r}
+                      onClick={() => setVideoAspect(r)}
+                    >
+                      {r}
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <SettingsGroup label="其他">
+                  <ParamPill
+                    active={videoGenerateAudio}
+                    onClick={() => setVideoGenerateAudio((v) => !v)}
+                  >
+                    生成声音
+                  </ParamPill>
+                  <ParamPill
+                    active={videoWatermark}
+                    onClick={() => setVideoWatermark((v) => !v)}
+                  >
+                    水印
+                  </ParamPill>
+                </SettingsGroup>
+              </>
+            )}
+            {node.type === "audio" && (
+              <>
+                <div className="flex items-center gap-2 pb-2.5 text-xs">
+                  <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                    音色
+                  </span>
+                  <input
+                    type="text"
+                    value={audioVoice}
+                    onChange={(e) => setAudioVoice(e.target.value)}
+                    placeholder="默认"
+                    className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                  />
+                </div>
+                <SettingsGroup label="语速">
+                  {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
+                    <ParamPill
+                      key={s}
+                      active={audioSpeed === s}
+                      onClick={() => setAudioSpeed(s)}
+                    >
+                      {s}x
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <SettingsGroup label="格式">
+                  <ParamPill
+                    active={audioFormat === ""}
+                    onClick={() => setAudioFormat("")}
+                  >
+                    默认
+                  </ParamPill>
+                  {(["mp3", "wav", "m4a", "ogg", "flac"] as const).map((f) => (
+                    <ParamPill
+                      key={f}
+                      active={audioFormat === f}
+                      onClick={() => setAudioFormat(f)}
+                    >
+                      {f}
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
+                <div className="flex items-center gap-2 pt-0.5 text-xs">
+                  <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                    声音指令
+                  </span>
+                  <input
+                    type="text"
+                    value={audioInstructions}
+                    onChange={(e) => setAudioInstructions(e.target.value)}
+                    placeholder="可选"
+                    className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                  />
+                </div>
+              </>
+            )}
           </div>
         ) : null}
       </div>
     </div>
-  );
-}
-
-/** Labeled pill group inside the image settings popover. */
-function SettingsGroup({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="pb-2.5 last:pb-0">
-      <p className="pb-1.5 text-[11px] font-medium text-text-tertiary">
-        {label}
-      </p>
-      <div className="flex flex-wrap gap-1">{children}</div>
-    </div>
-  );
-}
-
-/** Selectable pill button (reference 图像设置 paradigm). */
-function ParamPill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active
-          ? "border-text-primary text-text-primary"
-          : "border-border text-text-secondary hover:text-text-primary"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

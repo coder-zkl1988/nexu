@@ -62,8 +62,10 @@ function renderPanel(node: CanvasNode): string {
   // Seed the ["models"] cache so the picker renders options synchronously.
   queryClient.setQueryData(["models"], {
     models: [
-      { id: "openai/gpt-image-1", name: "GPT Image 1", provider: "openai" },
-      { id: "google/veo-3", name: "Veo 3", provider: "google" },
+      { id: "tabby-image", name: "tabby-image", provider: "link" },
+      { id: "tabby-image-free", name: "tabby-image-free", provider: "link" },
+      { id: "tabby-video", name: "tabby-video", provider: "link" },
+      { id: "tabby-ultra", name: "tabby-ultra", provider: "link" },
     ],
   });
   return renderToStaticMarkup(
@@ -89,11 +91,14 @@ describe("PromptPanel controls per mode", () => {
     expect(markup).not.toContain("data-canvas-image-settings-panel");
     // reference-parity textarea placeholder
     expect(markup).toContain("描述要生成的图片内容");
-    // model picker: default + SDK-fed options
+    // model picker: default + capability-filtered options — image nodes only
+    // offer the image backends, never chat/video models
     expect(markup).toContain("模型");
     expect(markup).toContain("默认模型");
-    expect(markup).toContain("GPT Image 1");
-    expect(markup).toContain("Veo 3");
+    expect(markup).toContain("tabby-image");
+    expect(markup).toContain("tabby-image-free");
+    expect(markup).not.toContain("tabby-ultra");
+    expect(markup).not.toContain("tabby-video");
   });
 
   it("image settings summary helper reflects non-default params", () => {
@@ -115,29 +120,30 @@ describe("PromptPanel controls per mode", () => {
     ).toBe("自动 · 默认 · 1 张");
   });
 
-  it("video: renders 生成声音/水印/比例 (+ 时长/分辨率) + model picker", () => {
+  it("video: renders settings chip (defaults summary) + model picker", () => {
     const node = addNode({ type: "video", title: "视" });
     const markup = renderPanel(node);
-    expect(markup).toContain("生成声音");
-    expect(markup).toContain("水印");
-    expect(markup).toContain("比例");
-    expect(markup).toContain("时长(秒)");
-    expect(markup).toContain("分辨率");
-    expect(markup).toContain('type="checkbox"');
+    // Params live behind the settings chip (reference paradigm) — the chip
+    // shows the defaults summary; the popover itself is closed by default.
+    expect(markup).toContain("data-canvas-image-settings-toggle");
+    expect(markup).toContain("5s · 720p · 默认");
+    expect(markup).not.toContain("data-canvas-image-settings-panel");
+    expect(markup).toContain("描述要生成的视频内容");
     expect(markup).toContain("模型");
     expect(markup).toContain("默认模型");
+    // video nodes only offer the video backend
+    expect(markup).toContain("tabby-video");
+    expect(markup).not.toContain("tabby-image");
+    expect(markup).not.toContain("tabby-ultra");
   });
 
-  it("audio: renders 格式/声音指令 (+ 音色/语速) + model picker", () => {
+  it("audio: renders settings chip (defaults summary) + model picker", () => {
     const node = addNode({ type: "audio", title: "音" });
     const markup = renderPanel(node);
-    expect(markup).toContain("格式");
-    expect(markup).toContain("声音指令");
-    expect(markup).toContain("音色");
-    expect(markup).toContain("语速");
-    // format union options
-    expect(markup).toContain(">mp3<");
-    expect(markup).toContain(">flac<");
+    expect(markup).toContain("data-canvas-image-settings-toggle");
+    expect(markup).toContain("默认音色 · 1x");
+    expect(markup).not.toContain("data-canvas-image-settings-panel");
+    expect(markup).toContain("描述要生成的音频内容");
     expect(markup).toContain("模型");
   });
 

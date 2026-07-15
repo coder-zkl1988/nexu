@@ -574,10 +574,17 @@ export function CanvasSurface({ className }: { className?: string }) {
   const beginGesture = useCallback(
     (event: React.PointerEvent, gesture: GestureState) => {
       event.preventDefault();
-      try {
-        (event.currentTarget as Element).setPointerCapture(event.pointerId);
-      } catch {
-        // Pointer capture is best-effort (absent in some test DOMs).
+      // No pointer capture for NODE drags: with capture active on the node
+      // root, the browser retargets the follow-up click/dblclick to the root,
+      // which silently kills double-click affordances inside the node body
+      // (text-node edit). Movement tracking doesn't need capture — the
+      // pointermove/pointerup listeners live on window.
+      if (gesture.kind !== "node") {
+        try {
+          (event.currentTarget as Element).setPointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture is best-effort (absent in some test DOMs).
+        }
       }
       pointerRef.current = { x: event.clientX, y: event.clientY };
       gestureRef.current = gesture;
@@ -1176,7 +1183,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
         const target = event.target as HTMLElement | null;
         if (
           target?.closest(
-            "button, input, textarea, select, a, audio, video, [contenteditable], [data-canvas-no-drag]",
+            "button, input, textarea, select, a, label, audio, video, [contenteditable], [data-canvas-no-drag]",
           )
         ) {
           if (!getCanvasState().selectedNodeIds.includes(node.id)) {
@@ -1187,8 +1194,17 @@ const CanvasNodeView = memo(function CanvasNodeView({
         onHeaderDown(event, node.id);
       }}
     >
-      {/* Floating title above the card (reference paradigm: no header bar) */}
-      <div className="pointer-events-none absolute -top-7 left-3 z-20 max-w-[calc(100%-24px)]">
+      {/* Floating title above the card (reference paradigm: no header bar).
+          Doubles as the GUARANTEED drag handle: rich-interactive nodes (a2ui
+          editors, label-covered empty-image) opt their whole body out of the
+          whole-card drag, so without this they would be undraggable. */}
+      <div
+        className="absolute -top-7 left-3 z-20 max-w-[calc(100%-24px)] cursor-move px-1 py-1 -mx-1 -my-1"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onHeaderDown(event, node.id);
+        }}
+      >
         <span className="block truncate text-xs font-medium text-text-secondary opacity-75">
           {node.title}
         </span>

@@ -590,7 +590,6 @@ function compilePlugins(
               config: {
                 wsPort: config.deviceControl.wsPort,
                 rpcPort: config.deviceControl.rpcPort,
-                mqttPort: 0, // explicitly disable MQTT broker — device mirror now uses WebSocket directly
               },
             },
           }

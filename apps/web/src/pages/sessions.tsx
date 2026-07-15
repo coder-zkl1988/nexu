@@ -7,14 +7,22 @@ import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { A2UIRenderer } from "@/lib/a2ui";
 import type { A2UIMessage } from "@/lib/a2ui";
-import { useA2UISidebar } from "@/lib/a2ui/a2ui-sidebar-context";
+import {
+  sidebarSurfaceDefaultSize,
+  useA2UISidebar,
+} from "@/lib/a2ui/a2ui-sidebar-context";
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import {
   type CanvasOpBatchView,
   CanvasOpCard,
 } from "@/lib/canvas/canvas-op-card";
 import { bindSessionToBoard } from "@/lib/canvas/canvas-session-binding";
-import { setPanelOpen, useCanvas } from "@/lib/canvas/canvas-store";
+import {
+  getA2UIPayload,
+  refreshA2UIPayload,
+  setPanelOpen,
+  useCanvas,
+} from "@/lib/canvas/canvas-store";
 import { getChannelChatUrl } from "@/lib/channel-links";
 import {
   A2UI_TOOL_NAMES,
@@ -1210,6 +1218,10 @@ export function SessionsPage() {
   const sidebarPayloads = enrichedMessages
     .map(({ extracted }) => extracted.sidebarA2UI)
     .filter((p): p is SidebarA2UIPayload => p !== null);
+  // Canvas workbench state: panelOpen drives the header entry button; nodes
+  // feed the expired-a2ui self-heal below.
+  const { panelOpen: canvasPanelOpen, nodes: canvasNodes } = useCanvas();
+
   const sidebarSurfaceKey = sidebarPayloads.map((p) => p.surfaceId).join("|");
   const seenSidebarSurfacesRef = useRef<Set<string> | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: sidebarSurfaceKey tracks payload identity
@@ -1225,9 +1237,31 @@ export function SessionsPage() {
     for (const payload of sidebarPayloads) {
       if (seen.has(payload.surfaceId)) continue;
       seen.add(payload.surfaceId);
-      openWith(payload.surfaceId, payload.messages, onA2UIAction);
+      openWith(payload.surfaceId, payload.messages, onA2UIAction, {
+        size: sidebarSurfaceDefaultSize(payload.messages),
+      });
     }
   }, [sidebarSurfaceKey, chatData]);
+
+  // Self-heal expired a2ui nodes (W5 follow-up): node shells persist to IDB
+  // but their payloads (messages + onAction closures) are runtime-only, so a
+  // reload leaves "内容已过期" placeholders. Whenever the board's nodes and
+  // the chat history are both available, re-attach payloads for any surface
+  // the history still carries. refreshA2UIPayload never creates nodes and
+  // never opens the panel; healing changes node identity, which re-runs this
+  // effect once more and then finds nothing left to heal.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: heal is keyed on board nodes + payload identity
+  useEffect(() => {
+    if (sidebarPayloads.length === 0) return;
+    for (const node of canvasNodes) {
+      const sid = node.metadata.surfaceId;
+      if (!sid || getA2UIPayload(sid)) continue;
+      const payload = sidebarPayloads.find((p) => p.surfaceId === sid);
+      if (payload) {
+        refreshA2UIPayload(sid, payload.messages, onA2UIAction);
+      }
+    }
+  }, [canvasNodes, sidebarSurfaceKey, chatData]);
 
   // Reset surface tracking when navigating to a different session
   // biome-ignore lint/correctness/useExhaustiveDependencies: id change resets tracking
@@ -1284,11 +1318,6 @@ export function SessionsPage() {
     "inline-flex h-12 items-center justify-center gap-3 rounded-[18px] border bg-white px-5 text-[13px] font-medium text-text-primary shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors",
     "border-[rgba(15,23,42,0.1)] hover:bg-[rgba(248,250,252,0.9)]",
   );
-
-  // Canvas workbench toggle state for the header entry button. The session
-  // is already bound 1:1 to its own board (bindSessionToBoard above), so
-  // opening the panel lands directly on this session's canvas.
-  const { panelOpen: canvasPanelOpen } = useCanvas();
 
   const handleUnavailableChatLink = (): void => {
     if (platform === "feishu") {
@@ -1446,6 +1475,7 @@ export function SessionsPage() {
                         payload.surfaceId,
                         payload.messages,
                         onA2UIAction,
+                        { size: sidebarSurfaceDefaultSize(payload.messages) },
                       );
                     }}
                   />,

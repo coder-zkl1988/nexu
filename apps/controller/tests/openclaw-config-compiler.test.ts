@@ -441,6 +441,14 @@ describe("compileOpenClawConfig", () => {
       createEnv(),
     );
 
+    expect(result.plugins?.entries?.["tabby-control"]).toEqual({
+      enabled: true,
+      config: {
+        wsPort: 18790,
+        rpcPort: 18801,
+      },
+    });
+
     expect(result.channels["dingtalk-connector"]).toMatchObject({
       enabled: true,
       clientId: "ding-client-id",

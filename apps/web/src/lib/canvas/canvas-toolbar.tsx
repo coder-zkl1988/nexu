@@ -15,10 +15,8 @@
 
 import { isImeComposing } from "@/lib/keyboard";
 import {
-  AudioLines,
   ChevronDown,
   CircleDot,
-  Clapperboard,
   Eraser,
   Grid2x2,
   Group,
@@ -26,6 +24,7 @@ import {
   Library,
   Map as MapIcon,
   Maximize2,
+  Music2,
   Palette,
   Redo2,
   SlidersHorizontal,
@@ -34,6 +33,7 @@ import {
   Type,
   Undo2,
   Upload,
+  Video,
   X,
 } from "lucide-react";
 import {
@@ -235,7 +235,7 @@ export function CanvasToolbar({
           onTipEnter={showTip}
           onTipLeave={hideTip}
         >
-          <Clapperboard size={ICON} />
+          <Video size={ICON} />
         </ToolButton>
         <ToolButton
           label="音频"
@@ -243,7 +243,7 @@ export function CanvasToolbar({
           onTipEnter={showTip}
           onTipLeave={hideTip}
         >
-          <AudioLines size={ICON} />
+          <Music2 size={ICON} />
         </ToolButton>
         <ToolButton
           label="生成配置"

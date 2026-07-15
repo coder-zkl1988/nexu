@@ -530,7 +530,10 @@ WHEN TO USE:
 - Any situation where plain text alone is insufficient
 
 HOW TO USE:
-1. Call this tool with a unique surfaceId and an array of component definitions.
+1. Call this tool with a surfaceId and an array of component definitions.
+   surfaceId is the surface's IDENTITY, not a per-call serial number:
+   - Creating a genuinely NEW surface (a different artifact) -> pick a new descriptive id.
+   - Updating / revising / iterating on content you already rendered (same editor, same post, new wording) -> REUSE the exact same surfaceId as before. Re-rendering with the same id updates the existing surface and its canvas node in place; minting a new id every revision litters the canvas with stale duplicate nodes.
 2. The tool result is automatically rendered as interactive UI. Do NOT copy, repeat, or echo the JSONL in your text response. Just reply naturally — the UI appears alongside your message.
 3. CRITICAL: NEVER include raw JSONL or \`\`\`a2ui code blocks in your text output. The system renders UI automatically. Your text and A2UI are separate.
 
@@ -571,7 +574,7 @@ Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePrevi
                 surfaceId: {
                   type: "string",
                   description:
-                    "Unique identifier for this UI surface (e.g. 'registration-form', 'booking-ui')",
+                    "Stable identity of this UI surface (e.g. 'registration-form', 'booking-ui'). Reuse the SAME id when updating or revising previously rendered content; only use a new id for a genuinely different surface.",
                 },
                 catalogId: {
                   type: "string",

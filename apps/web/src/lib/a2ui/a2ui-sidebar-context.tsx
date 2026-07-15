@@ -36,6 +36,32 @@ export interface A2UISidebarApi {
   close: () => void;
 }
 
+/**
+ * Default node size for XHS editor surfaces — matched to the size users keep
+ * hand-resizing the editor to (comfortable title + body + hashtags + publish
+ * row without inner scrolling).
+ */
+export const XHS_EDITOR_NODE_SIZE = { width: 580, height: 625 };
+
+/**
+ * Component-aware default node size for a sidebar surface. XHSEditor cards
+ * get the editor-friendly size; everything else falls back to the store's
+ * generic a2ui default (undefined).
+ */
+export function sidebarSurfaceDefaultSize(
+  msgs: A2UIMessage[],
+): { width: number; height: number } | undefined {
+  for (const m of msgs) {
+    if (!("updateComponents" in m)) continue;
+    for (const comp of m.updateComponents?.components ?? []) {
+      if ((comp as { type?: string }).type === "XHSEditor") {
+        return XHS_EDITOR_NODE_SIZE;
+      }
+    }
+  }
+  return undefined;
+}
+
 /** "sidebar:xhs-editor-1" → "xhs editor 1" — fallback node title. */
 export function humanizeSurfaceId(surfaceId: string): string {
   return surfaceId

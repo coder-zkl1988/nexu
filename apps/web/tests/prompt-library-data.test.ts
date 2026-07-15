@@ -182,8 +182,10 @@ describe("cover routing helpers", () => {
     expect(promptCoverPath(gh)).toBe(
       `/api/v1/media/prompt-cover?url=${encodeURIComponent(gh)}`,
     );
+    // twimg deliberately loads DIRECT: proxying it hangs our origin's
+    // connection pool when the CDN is unreachable (see isProxyableCoverUrl).
     const twimg = "https://pbs.twimg.com/media/x.jpg";
-    expect(promptCoverPath(twimg)).toContain("/api/v1/media/prompt-cover");
+    expect(promptCoverPath(twimg)).toBe(twimg);
     // non-allowlisted host loads direct
     expect(promptCoverPath("https://cdn.example.com/x.png")).toBe(
       "https://cdn.example.com/x.png",

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
-import { useA2UISidebar } from "../a2ui-sidebar-context";
+import { XHS_EDITOR_NODE_SIZE, useA2UISidebar } from "../a2ui-sidebar-context";
 import type { A2UIComponent, A2UIMessage } from "../a2ui-types";
 import type { CustomComponentProps } from "./registry";
 import {
@@ -47,7 +47,7 @@ const STATUS_COLOR: Record<RowStatus, string> = {
 
 /** Grid layout for fanning every post out as its own XHSEditor canvas node. */
 const FANOUT_COLS = 3;
-const FANOUT_NODE = { width: 380, height: 460 };
+const FANOUT_NODE = XHS_EDITOR_NODE_SIZE;
 const FANOUT_GAP = 24;
 function fanoutPosition(index: number): { x: number; y: number } {
   const col = index % FANOUT_COLS;
@@ -135,7 +135,14 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
 
   const openEditor = (post: XHSPost) => {
     const surfaceId = `sidebar:xhs-editor-${batchId}-${post.id}`;
-    openWith(surfaceId, buildEditorSurface(surfaceId, batchId, post), () => {});
+    openWith(
+      surfaceId,
+      buildEditorSurface(surfaceId, batchId, post),
+      () => {},
+      {
+        size: XHS_EDITOR_NODE_SIZE,
+      },
+    );
   };
 
   // Fan out every post as its own XHSEditor canvas node (grid layout). Each

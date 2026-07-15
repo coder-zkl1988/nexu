@@ -1,6 +1,6 @@
 /** Node content views extracted from infinite-canvas.tsx (W3.0). */
 import { A2UIRenderer } from "@/lib/a2ui";
-import { AudioLines, Clapperboard, Group, ImagePlus } from "lucide-react";
+import { Group, ImagePlus, Music2, Video } from "lucide-react";
 import { type ReactNode, memo, useState } from "react";
 import { retryNodeTask } from "./canvas-generation";
 import { memberIdsOf } from "./canvas-groups";
@@ -101,9 +101,9 @@ function EmptyMediaHint({
   icon: ReactNode;
   label: string;
 }) {
-  // Reference parity: quiet centered icon + plain text-sm label, no chip box.
+  // Reference parity: soft-filled panel, quiet centered icon + text-sm label.
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-text-tertiary">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl bg-surface-2/60 text-text-tertiary">
       <span className="opacity-35">{icon}</span>
       <span className="text-sm">{label}</span>
     </div>
@@ -208,22 +208,22 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
         className="h-full w-full bg-black object-contain"
       />
     ) : (
-      <EmptyMediaHint icon={<Clapperboard size={28} />} label="空视频节点" />
+      <EmptyMediaHint icon={<Video size={28} />} label="空视频节点" />
     );
   }
   if (node.type === "audio") {
     return node.metadata.content ? (
       // Reference parity: labeled audio card, not a bare centered element.
-      <div className="flex h-full w-full flex-col justify-center gap-3 px-2">
-        <div className="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
-          <AudioLines size={16} className="shrink-0" />
+      <div className="flex h-full w-full flex-col justify-center gap-3 rounded-2xl bg-surface-2/60 px-4">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-text-secondary opacity-70">
+          <Music2 size={16} className="shrink-0" />
           <span className="truncate">{node.title || "音频"}</span>
         </div>
         {/* biome-ignore lint/a11y/useMediaCaption: user-provided clips have no captions */}
         <audio src={node.metadata.content} controls className="w-full" />
       </div>
     ) : (
-      <EmptyMediaHint icon={<AudioLines size={28} />} label="空音频节点" />
+      <EmptyMediaHint icon={<Music2 size={28} />} label="空音频节点" />
     );
   }
   if (node.type === "a2ui") {

@@ -1,13 +1,27 @@
 /**
  * config-node.tsx
  *
- * Config generation node UI (W2.4 + W5). Aggregates upstream inputs (shown as
- * typed chips), holds per-mode generation params + a base "组装提示词", and on
- * 生成 creates a downstream result node via the T2/T4 generation seam. Per-mode
- * params (model/quality/aspect/…) are best-effort hints.
+ * Config generation node UI (W2.4 + W5, reference-parity layout). Aggregates
+ * upstream inputs (typed count chips), holds per-mode generation params + a
+ * base "组装提示词", and on 开始生成 creates a downstream result node via the
+ * T2/T4 generation seam. Per-mode params (model/quality/aspect/…) are
+ * best-effort hints.
+ *
+ * Layout follows the reference config panel: header (title + icon segmented
+ * mode control) → input chips row (+ composer toggle) → model / settings
+ * grid → expandable pill-style params → full-width 开始生成 button.
  */
 
-import { useState } from "react";
+import {
+  Image as ImageIcon,
+  MessageSquare,
+  Music2,
+  Play,
+  Settings2,
+  SlidersHorizontal,
+  Video,
+} from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import type { CanvasNode } from "./canvas-store";
 import { updateNode } from "./canvas-store";
@@ -15,32 +29,37 @@ import {
   buildConfigGenerationPlan,
   runConfigGeneration,
 } from "./config-node-logic";
-import { usableReferencePaths } from "./prompt-panel-utils";
+import { ParamPill, SettingsGroup } from "./param-pills";
+import {
+  imageSettingsSummary,
+  usableReferencePaths,
+} from "./prompt-panel-utils";
 import { collectUpstream } from "./resource-references";
-
-type SelectOption = { value: string; label: string };
-const opt = (value: string, label = value): SelectOption => ({ value, label });
 
 const IMAGE_ASPECTS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const IMAGE_SIZES = ["1K", "2K", "4K"];
 const VIDEO_ASPECTS = ["16:9", "9:16", "1:1"];
 const AUDIO_FORMATS = ["mp3", "wav", "m4a", "ogg", "flac"] as const;
+const AUDIO_SPEEDS = ["0.5", "0.75", "1", "1.25", "1.5", "2"];
+
+const MODES = [
+  { value: "image", label: "生图", icon: ImageIcon },
+  { value: "text", label: "文本", icon: MessageSquare },
+  { value: "video", label: "视频", icon: Video },
+  { value: "audio", label: "音频", icon: Music2 },
+] as const;
 
 // ── ConfigNodeContent ──────────────────────────────────────────
 
 export function ConfigNodeContent({ node }: { node: CanvasNode }) {
   const cfg = node.metadata.config;
   const mode = cfg?.mode ?? "image";
-  const models = useCanvasModelOptions();
+  const models = useCanvasModelOptions(mode);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const upstream = collectUpstream(node.id);
-  const chips = [
-    { label: "提示词", n: upstream.prompts.length },
-    { label: "参考图", n: usableReferencePaths(upstream.images).length },
-    { label: "参考视频", n: upstream.videos.length },
-    { label: "参考音频", n: upstream.audios.length },
-  ].filter((c) => c.n > 0);
+  const imageCount = usableReferencePaths(upstream.images).length;
 
   const plan = buildConfigGenerationPlan(node.id);
   const hasPlanError = "error" in plan;
@@ -75,254 +94,348 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
     });
   }
 
+  const settingsSummary =
+    mode === "image"
+      ? imageSettingsSummary({
+          quality: cfg?.quality ?? "auto",
+          aspectRatio: cfg?.aspectRatio ?? "",
+          size: cfg?.size ?? "",
+          count: cfg?.count ?? 1,
+        })
+      : "设置";
+
   return (
-    <div
-      className="flex h-full w-full flex-col gap-2 select-text"
-      onPointerDown={stopProp}
-    >
-      {/* Typed upstream input chips */}
-      <div className="flex flex-wrap gap-1">
-        {chips.length === 0 ? (
-          <span className="text-[10px] text-text-tertiary">无上游输入</span>
-        ) : (
-          chips.map((c) => (
-            <span
-              key={c.label}
-              className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary"
+    <div className="flex h-full w-full select-text flex-col gap-2.5 text-sm">
+      {/* Header: title + icon segmented mode control (reference layout) */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="shrink-0 text-sm font-semibold text-text-primary">
+          生成配置
+        </span>
+        <div
+          className="grid shrink-0 grid-cols-4 gap-0.5 rounded-lg bg-surface-2 p-0.5 text-[11px]"
+          onPointerDown={stopProp}
+        >
+          {MODES.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setMode(value)}
+              className={`flex items-center justify-center gap-1 rounded-md px-1.5 py-1 transition-colors ${
+                mode === value
+                  ? "bg-surface-1 text-text-primary shadow-sm"
+                  : "text-text-secondary hover:text-text-primary"
+              }`}
             >
-              {c.label} {c.n}
-            </span>
-          ))
-        )}
+              <Icon size={12} />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Mode segmented control */}
-      <div className="flex shrink-0 rounded-md border border-border text-[11px]">
-        {(
-          [
-            { value: "image", label: "图" },
-            { value: "video", label: "视频" },
-            { value: "audio", label: "音频" },
-            { value: "text", label: "文本" },
-          ] as const
-        ).map(({ value, label }) => (
-          <button
-            key={value}
-            type="button"
-            onPointerDown={stopProp}
-            onClick={() => setMode(value)}
-            className={`flex-1 py-0.5 text-center transition-colors ${
-              mode === value
-                ? "bg-surface-3 font-medium text-text-primary"
-                : "text-text-secondary hover:bg-surface-2"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Per-mode params */}
-      {mode === "image" && (
-        <div className="flex flex-col gap-1">
-          <ParamSelect
-            label="质量"
-            value={cfg?.quality ?? "auto"}
-            onChange={(v) =>
-              setParam({ quality: v as "auto" | "high" | "medium" | "low" })
-            }
-            options={[opt("auto"), opt("high"), opt("medium"), opt("low")]}
-            stopProp={stopProp}
-          />
-          <ParamSelect
-            label="比例"
-            value={cfg?.aspectRatio ?? ""}
-            onChange={(v) => setParam({ aspectRatio: v || undefined })}
-            options={[opt("", "默认"), ...IMAGE_ASPECTS.map((a) => opt(a))]}
-            stopProp={stopProp}
-          />
-          <ParamSelect
-            label="尺寸"
-            value={cfg?.size ?? ""}
-            onChange={(v) => setParam({ size: v || undefined })}
-            options={[opt("", "默认"), ...IMAGE_SIZES.map((s) => opt(s))]}
-            stopProp={stopProp}
-          />
-          <ParamSelect
-            label="数量"
-            value={String(cfg?.count ?? 1)}
-            onChange={(v) => setParam({ count: Number(v) })}
-            options={Array.from({ length: 12 }, (_, i) => opt(String(i + 1)))}
-            stopProp={stopProp}
-          />
-        </div>
-      )}
-
-      {mode === "video" && (
-        <div className="flex flex-col gap-1 text-[11px]">
-          <div className="flex items-center gap-1">
-            <span className="w-12 shrink-0 text-text-tertiary">时长(秒)</span>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={cfg?.durationSeconds ?? ""}
-              onPointerDown={stopProp}
-              onChange={(e) =>
-                setParam({
-                  durationSeconds: e.target.value
-                    ? Number(e.target.value)
-                    : undefined,
-                })
-              }
-              placeholder="1-60"
-              className="flex-1 rounded border border-border bg-transparent px-1 py-0.5 text-text-primary outline-none"
-            />
-          </div>
-          <ParamSelect
-            label="分辨率"
-            value={cfg?.resolution ?? ""}
-            onChange={(v) =>
-              setParam({
-                resolution: v === "" ? undefined : (v as "720p" | "1080p"),
-              })
-            }
-            options={[opt("", "默认"), opt("720p"), opt("1080p")]}
-            stopProp={stopProp}
-          />
-          <ParamSelect
-            label="比例"
-            value={cfg?.aspectRatio ?? ""}
-            onChange={(v) => setParam({ aspectRatio: v || undefined })}
-            options={[opt("", "默认"), ...VIDEO_ASPECTS.map((a) => opt(a))]}
-            stopProp={stopProp}
-          />
-          <label className="flex items-center gap-1 text-[11px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={cfg?.generateAudio ?? false}
-              onPointerDown={stopProp}
-              onChange={(e) =>
-                setParam({ generateAudio: e.target.checked || undefined })
-              }
-            />
-            生成声音
-          </label>
-          <label className="flex items-center gap-1 text-[11px] text-text-secondary">
-            <input
-              type="checkbox"
-              checked={cfg?.watermark ?? false}
-              onPointerDown={stopProp}
-              onChange={(e) =>
-                setParam({ watermark: e.target.checked || undefined })
-              }
-            />
-            水印
-          </label>
-        </div>
-      )}
-
-      {mode === "audio" && (
-        <div className="flex flex-col gap-1 text-[11px]">
-          <div className="flex items-center gap-1">
-            <span className="w-12 shrink-0 text-text-tertiary">音色</span>
-            <input
-              type="text"
-              value={cfg?.voice ?? ""}
-              onPointerDown={stopProp}
-              onChange={(e) => setParam({ voice: e.target.value || undefined })}
-              placeholder="音色标识"
-              className="flex-1 rounded border border-border bg-transparent px-1 py-0.5 text-text-primary outline-none"
-            />
-          </div>
-          <ParamSelect
-            label="语速"
-            value={cfg?.speed !== undefined ? String(cfg.speed) : ""}
-            onChange={(v) =>
-              setParam({ speed: v === "" ? undefined : Number(v) })
-            }
-            options={[
-              opt("", "默认"),
-              opt("0.5", "0.5x"),
-              opt("0.75", "0.75x"),
-              opt("1", "1x"),
-              opt("1.25", "1.25x"),
-              opt("1.5", "1.5x"),
-              opt("2", "2x"),
-            ]}
-            stopProp={stopProp}
-          />
-          <ParamSelect
-            label="格式"
-            value={cfg?.format ?? ""}
-            onChange={(v) =>
-              setParam({
-                format:
-                  v === ""
-                    ? undefined
-                    : (v as "mp3" | "wav" | "m4a" | "ogg" | "flac"),
-              })
-            }
-            options={[opt("", "默认"), ...AUDIO_FORMATS.map((f) => opt(f))]}
-            stopProp={stopProp}
-          />
-          <div className="flex items-center gap-1">
-            <span className="w-12 shrink-0 text-text-tertiary">声音指令</span>
-            <input
-              type="text"
-              value={cfg?.instructions ?? ""}
-              onPointerDown={stopProp}
-              onChange={(e) =>
-                setParam({ instructions: e.target.value || undefined })
-              }
-              placeholder="可选"
-              className="flex-1 rounded border border-border bg-transparent px-1 py-0.5 text-text-primary outline-none"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Model picker (all modes) */}
-      <ParamSelect
-        label="模型"
-        value={cfg?.model ?? ""}
-        onChange={(v) => setParam({ model: v || undefined })}
-        options={[opt("", "默认模型"), ...models.map((m) => opt(m.id, m.name))]}
-        stopProp={stopProp}
-      />
-
-      {/* 组装提示词 composer (collapsed base prompt) */}
-      <div className="flex flex-col gap-1">
+      {/* Typed upstream input chips + composer toggle (reference chips row) */}
+      <div className="flex flex-wrap gap-1.5" onPointerDown={stopProp}>
+        <InputChip label="提示词" value={`${upstream.prompts.length} 个`} />
+        <InputChip label="参考图" value={`${imageCount} 张`} />
+        <InputChip label="参考视频" value={`${upstream.videos.length} 个`} />
+        <InputChip label="参考音频" value={`${upstream.audios.length} 个`} />
         <button
           type="button"
-          onPointerDown={stopProp}
           onClick={() => setComposerOpen((v) => !v)}
-          className="self-start text-[10px] text-text-tertiary hover:text-text-secondary"
+          className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] transition-colors ${
+            composerOpen
+              ? "border-text-primary text-text-primary"
+              : "border-border bg-surface-2/60 text-text-secondary hover:text-text-primary"
+          }`}
         >
-          {composerOpen ? "▾ 组装提示词" : "▸ 组装提示词"}
+          <Settings2 size={12} />
+          组装提示词
         </button>
-        {composerOpen && (
-          <textarea
-            value={cfg?.composedPrompt ?? ""}
-            onPointerDown={stopProp}
-            onChange={(e) =>
-              setParam({ composedPrompt: e.target.value || undefined })
-            }
-            placeholder="在上游提示词前追加的基础提示词（可选）"
-            rows={2}
-            className="w-full resize-none rounded border border-border bg-transparent px-1 py-0.5 text-[11px] text-text-primary outline-none"
-          />
+      </div>
+
+      {composerOpen && (
+        <textarea
+          value={cfg?.composedPrompt ?? ""}
+          onPointerDown={stopProp}
+          onChange={(e) =>
+            setParam({ composedPrompt: e.target.value || undefined })
+          }
+          placeholder="在上游提示词前追加的基础提示词（可选）"
+          rows={2}
+          className="w-full resize-none rounded-lg border-0 bg-surface-2 px-2.5 py-2 text-xs text-text-primary outline-none placeholder:text-text-tertiary"
+        />
+      )}
+
+      {/* Model picker + per-mode settings toggle (reference two-column grid) */}
+      <div
+        className={`grid min-w-0 items-center gap-1.5 ${mode === "text" ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_auto]"}`}
+        onPointerDown={stopProp}
+      >
+        <label className="flex h-9 min-w-0 items-center rounded-lg border border-border px-2 text-xs text-text-secondary">
+          <span className="shrink-0 pr-1.5 text-text-tertiary">模型</span>
+          <select
+            value={cfg?.model ?? ""}
+            onChange={(e) => setParam({ model: e.target.value || undefined })}
+            className="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-xs outline-none"
+          >
+            <option value="">默认模型</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {mode !== "text" && (
+          <button
+            type="button"
+            data-canvas-config-settings={node.id}
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((v) => !v)}
+            className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-colors ${
+              settingsOpen
+                ? "border-text-primary text-text-primary"
+                : "border-border text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            <SlidersHorizontal size={13} />
+            <span className="max-w-[120px] truncate whitespace-nowrap">
+              {settingsSummary}
+            </span>
+          </button>
         )}
       </div>
+
+      {/* Expandable per-mode params — pill groups (in-flow; the node body
+          scrolls, so a popover would clip) */}
+      {settingsOpen && mode !== "text" && (
+        <div
+          className="rounded-xl border border-border bg-surface-1 p-2.5"
+          onPointerDown={stopProp}
+        >
+          {mode === "image" && (
+            <>
+              <SettingsGroup label="质量">
+                {(["auto", "high", "medium", "low"] as const).map((q) => (
+                  <ParamPill
+                    key={q}
+                    active={(cfg?.quality ?? "auto") === q}
+                    onClick={() => setParam({ quality: q })}
+                  >
+                    {q === "auto"
+                      ? "自动"
+                      : q === "high"
+                        ? "高"
+                        : q === "medium"
+                          ? "中"
+                          : "低"}
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <SettingsGroup label="宽高比">
+                <ParamPill
+                  active={!cfg?.aspectRatio}
+                  onClick={() => setParam({ aspectRatio: undefined })}
+                >
+                  默认
+                </ParamPill>
+                {IMAGE_ASPECTS.map((a) => (
+                  <ParamPill
+                    key={a}
+                    active={cfg?.aspectRatio === a}
+                    onClick={() => setParam({ aspectRatio: a })}
+                  >
+                    {a}
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <SettingsGroup label="尺寸">
+                <ParamPill
+                  active={!cfg?.size}
+                  onClick={() => setParam({ size: undefined })}
+                >
+                  默认
+                </ParamPill>
+                {IMAGE_SIZES.map((s) => (
+                  <ParamPill
+                    key={s}
+                    active={cfg?.size === s}
+                    onClick={() => setParam({ size: s })}
+                  >
+                    {s}
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <SettingsGroup label="生成张数">
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                  <ParamPill
+                    key={n}
+                    active={(cfg?.count ?? 1) === n}
+                    onClick={() => setParam({ count: n })}
+                  >
+                    {n} 张
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+            </>
+          )}
+
+          {mode === "video" && (
+            <>
+              <div className="flex items-center gap-2 pb-2.5 text-xs">
+                <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                  时长(秒)
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={cfg?.durationSeconds ?? ""}
+                  onChange={(e) =>
+                    setParam({
+                      durationSeconds: e.target.value
+                        ? Number(e.target.value)
+                        : undefined,
+                    })
+                  }
+                  placeholder="默认"
+                  className="w-20 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                />
+              </div>
+              <SettingsGroup label="分辨率">
+                <ParamPill
+                  active={!cfg?.resolution}
+                  onClick={() => setParam({ resolution: undefined })}
+                >
+                  默认
+                </ParamPill>
+                {(["720p", "1080p"] as const).map((r) => (
+                  <ParamPill
+                    key={r}
+                    active={cfg?.resolution === r}
+                    onClick={() => setParam({ resolution: r })}
+                  >
+                    {r}
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <SettingsGroup label="宽高比">
+                <ParamPill
+                  active={!cfg?.aspectRatio}
+                  onClick={() => setParam({ aspectRatio: undefined })}
+                >
+                  默认
+                </ParamPill>
+                {VIDEO_ASPECTS.map((a) => (
+                  <ParamPill
+                    key={a}
+                    active={cfg?.aspectRatio === a}
+                    onClick={() => setParam({ aspectRatio: a })}
+                  >
+                    {a}
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <SettingsGroup label="其他">
+                <ParamPill
+                  active={cfg?.generateAudio ?? false}
+                  onClick={() =>
+                    setParam({
+                      generateAudio: cfg?.generateAudio ? undefined : true,
+                    })
+                  }
+                >
+                  生成声音
+                </ParamPill>
+                <ParamPill
+                  active={cfg?.watermark ?? false}
+                  onClick={() =>
+                    setParam({ watermark: cfg?.watermark ? undefined : true })
+                  }
+                >
+                  水印
+                </ParamPill>
+              </SettingsGroup>
+            </>
+          )}
+
+          {mode === "audio" && (
+            <>
+              <div className="flex items-center gap-2 pb-2.5 text-xs">
+                <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                  音色
+                </span>
+                <input
+                  type="text"
+                  value={cfg?.voice ?? ""}
+                  onChange={(e) =>
+                    setParam({ voice: e.target.value || undefined })
+                  }
+                  placeholder="默认"
+                  className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                />
+              </div>
+              <SettingsGroup label="语速">
+                <ParamPill
+                  active={cfg?.speed === undefined}
+                  onClick={() => setParam({ speed: undefined })}
+                >
+                  默认
+                </ParamPill>
+                {AUDIO_SPEEDS.map((s) => (
+                  <ParamPill
+                    key={s}
+                    active={cfg?.speed === Number(s)}
+                    onClick={() => setParam({ speed: Number(s) })}
+                  >
+                    {s}x
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <SettingsGroup label="格式">
+                <ParamPill
+                  active={!cfg?.format}
+                  onClick={() => setParam({ format: undefined })}
+                >
+                  默认
+                </ParamPill>
+                {AUDIO_FORMATS.map((f) => (
+                  <ParamPill
+                    key={f}
+                    active={cfg?.format === f}
+                    onClick={() => setParam({ format: f })}
+                  >
+                    {f}
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
+              <div className="flex items-center gap-2 pt-0.5 text-xs">
+                <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                  声音指令
+                </span>
+                <input
+                  type="text"
+                  value={cfg?.instructions ?? ""}
+                  onChange={(e) =>
+                    setParam({ instructions: e.target.value || undefined })
+                  }
+                  placeholder="可选"
+                  className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* No-prompt hint */}
       {noPrompt && (
-        <p className="text-[10px] text-text-tertiary">
+        <p className="text-[11px] text-text-tertiary">
           连入文本节点或填写组装提示词
         </p>
       )}
 
-      {/* Generate button */}
+      {/* Generate — full-width bottom button (reference layout) */}
       <button
         type="button"
         data-canvas-config-generate={node.id}
@@ -331,43 +444,21 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
         onClick={() => {
           void runConfigGeneration(node.id);
         }}
-        className="mt-auto shrink-0 rounded-full border border-[var(--color-accent)] bg-[var(--color-accent)] py-1 text-[11px] font-bold text-[var(--color-accent-fg)] hover:opacity-90 disabled:opacity-50"
+        className="mt-auto flex h-9 w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent)] text-xs font-medium text-[var(--color-accent-fg)] transition-opacity hover:opacity-90 disabled:opacity-50"
       >
-        生成
+        <Play size={14} />
+        开始生成
       </button>
     </div>
   );
 }
 
-// Small labelled select shared across the config node's param rows.
-function ParamSelect({
-  label,
-  value,
-  onChange,
-  options,
-  stopProp,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: ReadonlyArray<SelectOption>;
-  stopProp: (e: React.PointerEvent) => void;
-}) {
+/** Bordered input-count chip (reference InputChip). */
+function InputChip({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-center gap-1 text-[11px]">
-      <span className="w-12 shrink-0 text-text-tertiary">{label}</span>
-      <select
-        value={value}
-        onPointerDown={stopProp}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex-1 rounded border border-border bg-transparent px-1 py-0.5 text-text-primary"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+    <div className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-surface-2/60 px-2 text-[11px] text-text-secondary">
+      <span>{label}</span>
+      <span className="font-medium text-text-primary">{value}</span>
     </div>
   );
 }

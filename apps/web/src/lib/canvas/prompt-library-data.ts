@@ -422,9 +422,13 @@ export function isProxyableCoverUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "https:") return false;
+    // pbs.twimg.com is deliberately NOT proxied: it is frequently unreachable
+    // from the controller's network, and a hanging proxied fetch occupies one
+    // of the browser's ~6 connections to OUR origin — a page of covers can
+    // starve every other cover/probe request into an endless blank pending
+    // state. Loaded direct, a twimg failure stays on twitter's origin pool.
     return (
       parsed.hostname === "github.com" ||
-      parsed.hostname === "pbs.twimg.com" ||
       parsed.hostname.endsWith(".githubusercontent.com")
     );
   } catch {

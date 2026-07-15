@@ -21,8 +21,38 @@ const fallbackQueryClient = new QueryClient();
 
 export type CanvasModelOption = { id: string; name: string };
 
-/** Available generation models for the canvas model pickers. */
-export function useCanvasModelOptions(): CanvasModelOption[] {
+export type GenerationCapability = "image" | "video" | "audio" | "text";
+
+/**
+ * Per-capability model allowlists. The /models list is the CHAT model
+ * registry; only these entries are actual generation backends for the given
+ * modality — offering tabby-ultra in an image picker just produces a broken
+ * hint. Modalities without an allowlist (audio/text) show the full list.
+ */
+const CAPABILITY_MODEL_ALLOWLIST: Partial<
+  Record<GenerationCapability, Set<string>>
+> = {
+  image: new Set(["tabby-image", "tabby-image-free"]),
+  video: new Set(["tabby-video"]),
+};
+
+/** Pure filter (exported for tests). */
+export function filterModelsByCapability(
+  models: ReadonlyArray<CanvasModelOption>,
+  capability?: GenerationCapability,
+): CanvasModelOption[] {
+  const allow = capability ? CAPABILITY_MODEL_ALLOWLIST[capability] : undefined;
+  if (!allow) return [...models];
+  return models.filter((m) => allow.has(m.id));
+}
+
+/**
+ * Available generation models for the canvas model pickers, optionally
+ * narrowed to the models that can actually serve `capability`.
+ */
+export function useCanvasModelOptions(
+  capability?: GenerationCapability,
+): CanvasModelOption[] {
   const ctxClient = useContext(QueryClientContext);
   const { data } = useQuery(
     {
@@ -35,5 +65,5 @@ export function useCanvasModelOptions(): CanvasModelOption[] {
     },
     ctxClient ?? fallbackQueryClient,
   );
-  return data?.models ?? [];
+  return filterModelsByCapability(data?.models ?? [], capability);
 }

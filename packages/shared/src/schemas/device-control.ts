@@ -99,6 +99,13 @@ export const stepRecordSchema = z.object({
   error: z.string().optional(),
 });
 
+export const deviceTaskArtifactSchema = z.object({
+  artifactId: z.string().min(1),
+  name: z.string().min(1),
+  mimeType: z.string().min(1),
+  path: z.string().min(1),
+});
+
 export const taskResultSchema = z.object({
   taskId: z.string().min(1),
   success: z.boolean(),
@@ -108,6 +115,7 @@ export const taskResultSchema = z.object({
   failedAtStep: z.number().int().min(1).optional(),
   finalScreenshot: z.string().optional(),
   duration: z.number().int().nonnegative().optional(),
+  artifacts: z.array(deviceTaskArtifactSchema).optional(),
 });
 
 export const deviceExecuteTaskResponseSchema = z.object({
@@ -142,6 +150,7 @@ export type DeviceInfo = z.infer<typeof deviceInfoSchema>;
 export type DeviceListResponse = z.infer<typeof deviceListResponseSchema>;
 export type DeviceExecuteTaskBody = z.infer<typeof deviceExecuteTaskBodySchema>;
 export type StepRecord = z.infer<typeof stepRecordSchema>;
+export type DeviceTaskArtifact = z.infer<typeof deviceTaskArtifactSchema>;
 export type TaskResult = z.infer<typeof taskResultSchema>;
 export type CancelTaskBody = z.infer<typeof cancelTaskBodySchema>;
 export type DeviceErrorCode = z.infer<typeof deviceErrorCodeSchema>;

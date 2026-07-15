@@ -327,3 +327,28 @@ export function imageSettingsSummary(s: {
   parts.push(`${s.count} 张`);
   return parts.join(" · ");
 }
+
+/**
+ * One-line summary for the video settings chip, e.g. "5s · 720p · 默认".
+ * The 声音/水印 toggles live in the popover only (chip stays compact).
+ */
+export function videoSettingsSummary(s: {
+  durationSeconds: number;
+  resolution: string;
+  aspectRatio: string;
+}): string {
+  return [`${s.durationSeconds}s`, s.resolution, s.aspectRatio || "默认"].join(
+    " · ",
+  );
+}
+
+/** One-line summary for the audio settings chip, e.g. "默认音色 · 1x · mp3". */
+export function audioSettingsSummary(s: {
+  voice: string;
+  speed: number;
+  format: string;
+}): string {
+  const parts = [s.voice.trim() || "默认音色", `${s.speed}x`];
+  if (s.format !== "") parts.push(s.format);
+  return parts.join(" · ");
+}

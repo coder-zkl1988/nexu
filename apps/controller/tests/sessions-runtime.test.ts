@@ -1971,6 +1971,76 @@ describe("SessionsRuntime", () => {
     expect(result.messages[0]?.id).toBe("msg-before");
   });
 
+  it("drops the sanitized delivery echo of a MEDIA-marker reply", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "media-echo.jsonl", [
+      {
+        type: "message",
+        id: "reply-original",
+        timestamp: "2026-07-14T08:51:14.380Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-14T08:51:14.380Z"),
+          content: [
+            {
+              type: "text",
+              text: "已生成帖子，可直接发布。\n\nMEDIA: /tmp/media/cover.png",
+            },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "reply-echo",
+        parentId: "reply-original",
+        timestamp: "2026-07-14T08:51:15.293Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-14T08:51:15.293Z"),
+          content: [{ type: "text", text: "已生成帖子，可直接发布。" }],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("media-echo.jsonl");
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.id).toBe("reply-original");
+  });
+
+  it("keeps consecutive assistant replies that are genuinely different", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "media-no-echo.jsonl", [
+      {
+        type: "message",
+        id: "reply-a",
+        timestamp: "2026-07-14T08:51:14.380Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-14T08:51:14.380Z"),
+          content: [{ type: "text", text: "第一步完成。" }],
+        },
+      },
+      {
+        type: "message",
+        id: "reply-b",
+        parentId: "reply-a",
+        timestamp: "2026-07-14T08:51:15.293Z",
+        message: {
+          role: "assistant",
+          timestamp: Date.parse("2026-07-14T08:51:15.293Z"),
+          content: [{ type: "text", text: "第二步完成。" }],
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("media-no-echo.jsonl");
+
+    expect(result.messages).toHaveLength(2);
+  });
+
   it("hides only the poll line when the agent uses a heartbeat to send a proactive message", async () => {
     rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
     const runtime = createWebchatRuntime(rootDir);

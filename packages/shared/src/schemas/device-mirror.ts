@@ -17,23 +17,6 @@ export const mirrorSnapshotFrameSchema = z.object({
   deviceStatus: z.enum(["idle", "busy", "error"]),
 });
 
-/**
- * Schema for the binary frame header in MQTT mirror frames.
- * Format: JSON header (this schema) + '\n' + JPEG/WebP binary bytes.
- * Produced by MqttClientManager.publishFrame() on Android.
- */
-export const mirrorFrameHeaderSchema = z.object({
-  seq: z.number().int().nonnegative().optional(),
-  ts: z.number().int().positive(),
-  w: z.number().int().positive(),
-  h: z.number().int().positive(),
-  app: z.string().optional(),
-  status: z.string().default("idle"),
-  fmt: z.string().default("jpeg"),
-  len: z.number().int().positive().optional(),
-});
-export type MirrorFrameHeader = z.infer<typeof mirrorFrameHeaderSchema>;
-
 export const mirrorClientActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("click"),

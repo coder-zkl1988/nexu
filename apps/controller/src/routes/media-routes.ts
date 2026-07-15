@@ -66,6 +66,14 @@ const promptCoverGenerateResponseSchema = z.object({
   url: z.string(),
 });
 
+/**
+ * Negative cache for cover-proxy origin failures: a hanging/unreachable
+ * origin (e.g. a blocked CDN) must fail FAST on re-request instead of
+ * re-hanging a browser connection slot on every dialog open.
+ */
+const coverFetchFailures = new Map<string, number>();
+const COVER_FAILURE_TTL_MS = 10 * 60 * 1000;
+
 const generatedCoverInFlight = new Map<string, Promise<string>>();
 let generatedCoverChain: Promise<unknown> = Promise.resolve();
 
@@ -516,9 +524,18 @@ export function registerMediaRoutes(
       // miss — fall through to the origin fetch
     }
 
+    // Recently failed origin → fail fast (negative cache).
+    const failedAt = coverFetchFailures.get(rawUrl);
+    if (
+      failedAt !== undefined &&
+      Date.now() - failedAt < COVER_FAILURE_TTL_MS
+    ) {
+      return c.text("Bad gateway", 502);
+    }
+
     try {
       const response = await fetch(rawUrl, {
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(6_000),
       });
       if (!response.ok) return c.text("Not found", 404);
       const contentType = response.headers.get("content-type") ?? "";
@@ -537,6 +554,7 @@ export function registerMediaRoutes(
       }
       return serve(data, contentType);
     } catch (error) {
+      coverFetchFailures.set(rawUrl, Date.now());
       logger.warn({ err: error }, "prompt-cover: origin fetch failed");
       return c.text("Bad gateway", 502);
     }

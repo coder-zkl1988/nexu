@@ -190,6 +190,20 @@ const HEARTBEAT_POLL_MESSAGE = "[OpenClaw heartbeat poll]";
 /** Trivial heartbeat ack the agent sends when there's nothing to report. */
 const HEARTBEAT_OK_REPLY = "HEARTBEAT_OK";
 
+/** Plain concatenated text of a message content (string or text-block list). */
+function rawMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        const b = block as { type?: string; text?: string } | null;
+        return b?.type === "text" ? (b.text ?? "") : "";
+      })
+      .join("");
+  }
+  return "";
+}
+
 /** True when a heartbeat reply is just the no-op ack, not a proactive message. */
 function isTrivialHeartbeatReply(content: unknown): boolean {
   if (typeof content === "string") {
@@ -1014,6 +1028,9 @@ export class SessionsRuntime {
     // whether its direct reply is a trivial ack (also skipped) or a genuine
     // proactive message (surfaced normally, with no trace of the poll).
     let pendingHeartbeatPollId: string | null = null;
+    // Last surfaced assistant message (id + media-marker-stripped text), used
+    // to drop the delivery pipeline's sanitized echo of the same reply.
+    let lastAssistant: { id: string; strippedText: string } | null = null;
     for (const line of raw.split("\n")) {
       if (!line.trim()) continue;
       try {
@@ -1084,6 +1101,27 @@ export class SessionsRuntime {
         const mediaTypes =
           entry.message.MediaTypes ??
           (entry.message.MediaType ? [entry.message.MediaType] : []);
+        if (role === "assistant") {
+          const strippedText = rawMessageText(entry.message.content)
+            .replace(ASSISTANT_MEDIA_MARKER_PATTERN, "")
+            .trim();
+          if (
+            lastAssistant !== null &&
+            entry.parentId === lastAssistant.id &&
+            mediaPaths.length === 0 &&
+            strippedText !== "" &&
+            strippedText === lastAssistant.strippedText
+          ) {
+            // Sanitized delivery echo: when a reply carries `MEDIA:` marker
+            // lines, the channel pipeline re-appends the same reply minus the
+            // markers (~1s later, parentId pointing at the original, tagged
+            // with an idempotencyKey). Surfacing both shows the user the same
+            // bubble twice — drop the echo, keep the original (which owns the
+            // media attachment).
+            continue;
+          }
+          lastAssistant = { id: entry.id ?? "", strippedText };
+        }
         const normalizedMessage = this.normalizeChatMessage(
           {
             id: entry.id ?? "",

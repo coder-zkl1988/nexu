@@ -760,6 +760,36 @@ export function getA2UIPayload(surfaceId: string) {
   return a2uiPayloads.get(surfaceId) ?? null;
 }
 
+/**
+ * Re-attach a runtime payload to an EXISTING a2ui node after a reload wiped
+ * the payload map (node shells persist to IDB; onAction closures cannot).
+ * Unlike upsertA2UINode this never creates a node and never opens the panel —
+ * it only heals an "内容已过期" placeholder back into a live surface.
+ *
+ * The nudge swaps the node's metadata identity so NodeBody's memo (which
+ * ignores everything except id/type/title/metadata) lets the placeholder
+ * re-render. Deliberately NOT a history entry: nothing user-visible moved.
+ */
+export function refreshA2UIPayload(
+  surfaceId: string,
+  messages: A2UIMessage[],
+  onAction: (name: string, context: Record<string, unknown>) => void,
+): boolean {
+  const target = state.nodes.find(
+    (node) => node.metadata.surfaceId === surfaceId,
+  );
+  if (!target) return false;
+  a2uiPayloads.set(surfaceId, { messages, onAction });
+  setState({
+    nodes: state.nodes.map((node) =>
+      node.id === target.id
+        ? { ...node, metadata: { ...node.metadata } }
+        : node,
+    ),
+  });
+  return true;
+}
+
 // ── Export / import ────────────────────────────────────────────
 
 export type CanvasExportFile = {
