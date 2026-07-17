@@ -496,41 +496,60 @@ cli
   });
 
 cli
-  .command("inspect screenshot", "Capture a desktop dev screenshot")
-  .option("--out <path>", "Write screenshot PNG to this path")
-  .action(async (options?: { out?: string }) => {
-    const result = await captureDesktopDevInspectScreenshot({
-      outputPath: options?.out,
-    });
-    process.stdout.write(`${result.outputPath}\n`);
-  });
-
-cli
-  .command("inspect eval <input>", "Evaluate a desktop dev renderer script")
-  .action(async (input: string) => {
-    const result = await evaluateDesktopDevInspectScript(input);
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  });
-
-cli
-  .command("inspect dom", "Dump the desktop dev renderer DOM summary")
-  .option("--max-html-length <number>", "Cap returned DOM HTML length")
-  .action(async (options?: { maxHtmlLength?: string | number }) => {
-    const result = await getDesktopDevInspectDomSnapshot({
-      maxHtmlLength: readOptionalPositiveNumber(options?.maxHtmlLength),
-    });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  });
-
-cli
-  .command("inspect logs", "Show buffered desktop dev renderer logs")
-  .option("--limit <number>", "Limit renderer log entries")
-  .action(async (options?: { limit?: string | number }) => {
-    const result = await getDesktopDevInspectRendererLogs({
-      limit: readOptionalPositiveNumber(options?.limit),
-    });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  });
+  .command(
+    "inspect <action> [input]",
+    "Inspect the desktop dev renderer: screenshot|eval <expr>|dom|logs",
+  )
+  .option("--out <path>", "Write screenshot PNG to this path (screenshot)")
+  .option("--max-html-length <number>", "Cap returned DOM HTML length (dom)")
+  .option("--limit <number>", "Limit renderer log entries (logs)")
+  .action(
+    async (
+      action: string,
+      input: string | undefined,
+      options?: {
+        out?: string;
+        maxHtmlLength?: string | number;
+        limit?: string | number;
+      },
+    ) => {
+      switch (action) {
+        case "screenshot": {
+          const result = await captureDesktopDevInspectScreenshot({
+            outputPath: options?.out,
+          });
+          process.stdout.write(`${result.outputPath}\n`);
+          return;
+        }
+        case "eval": {
+          if (!input) {
+            throw new Error("inspect eval requires a script input");
+          }
+          const result = await evaluateDesktopDevInspectScript(input);
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+          return;
+        }
+        case "dom": {
+          const result = await getDesktopDevInspectDomSnapshot({
+            maxHtmlLength: readOptionalPositiveNumber(options?.maxHtmlLength),
+          });
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+          return;
+        }
+        case "logs": {
+          const result = await getDesktopDevInspectRendererLogs({
+            limit: readOptionalPositiveNumber(options?.limit),
+          });
+          process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+          return;
+        }
+        default:
+          throw new Error(
+            `unsupported inspect action: ${action} (expected screenshot|eval|dom|logs)`,
+          );
+      }
+    },
+  );
 
 cli.help();
 
