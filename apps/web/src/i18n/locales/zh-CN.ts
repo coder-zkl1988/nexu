@@ -1493,6 +1493,7 @@ const zhCN = {
   "teams.nameLabel": "名称",
   "teams.namePlaceholder": "例如：发版小队",
   "teams.membersLabel": "成员（已安装的专家）",
+  "teams.defaultTeamAutoMembers": "自动包含全部已安装专家",
   "teams.noInstalled": "还没有已安装的专家。请先安装专家，再创建AI·小分队。",
   "teams.selected": "已选",
   "teams.cancel": "取消",

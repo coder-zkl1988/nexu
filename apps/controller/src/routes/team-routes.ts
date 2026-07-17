@@ -31,6 +31,8 @@ export type TeamRoutesDeps = {
     TeamService,
     | "listTeams"
     | "getTeam"
+    | "listTeamViews"
+    | "getTeamView"
     | "getBoard"
     | "createTeam"
     | "updateTeam"
@@ -80,7 +82,7 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
       },
     }),
     async (c) => {
-      return c.json({ teams: deps.teamService.listTeams() }, 200);
+      return c.json({ teams: await deps.teamService.listTeamViews() }, 200);
     },
   );
 
@@ -191,7 +193,7 @@ export function buildTeamRoutes(deps: TeamRoutesDeps) {
     }),
     async (c) => {
       const { id } = c.req.valid("param");
-      const team = deps.teamService.getTeam(id);
+      const team = await deps.teamService.getTeamView(id);
       if (!team) {
         return c.json({ message: "Team not found" }, 404);
       }

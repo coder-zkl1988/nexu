@@ -1593,6 +1593,8 @@ const en = {
   "teams.nameLabel": "Name",
   "teams.namePlaceholder": "e.g. Release Squad",
   "teams.membersLabel": "Members (installed experts)",
+  "teams.defaultTeamAutoMembers":
+    "automatically includes all installed experts",
   "teams.noInstalled":
     "No installed experts. Install experts first, then create a team.",
   "teams.selected": "Selected",
