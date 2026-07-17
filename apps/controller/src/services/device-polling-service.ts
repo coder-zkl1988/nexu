@@ -9,10 +9,19 @@ const DEFAULT_POLL_INTERVAL_MS = 3_000;
 const AVAILABILITY_CHECK_INTERVAL_MS = 10_000;
 /** Consecutive failures before declaring the plugin offline. */
 const OFFLINE_THRESHOLD = 3;
+/**
+ * How often to re-push desktop-owned state (VLM credential + telemetry
+ * consent) to the plugin. The plugin holds this state in memory only, so any
+ * OpenClaw restart the controller didn't initiate (tools/dev, manual kill,
+ * crash) silently wipes it — this reconcile loop bounds that window.
+ */
+const DESKTOP_STATE_RECONCILE_INTERVAL_MS = 60_000;
 
 export class DevicePollingService {
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
   private availabilityHandle: ReturnType<typeof setInterval> | null = null;
+  private reconcileHandle: ReturnType<typeof setInterval> | null = null;
+  private reconciling = false;
   private previousDeviceIds = new Set<string>();
   private polling = false;
   private disposed = false;
@@ -45,6 +54,13 @@ export class DevicePollingService {
       void this.checkAvailability();
     }, AVAILABILITY_CHECK_INTERVAL_MS);
     this.availabilityHandle.unref?.();
+
+    // Periodic reconcile of desktop-owned plugin state (VLM credential +
+    // telemetry consent) — see DESKTOP_STATE_RECONCILE_INTERVAL_MS.
+    this.reconcileHandle = setInterval(() => {
+      void this.reconcileDesktopState();
+    }, DESKTOP_STATE_RECONCILE_INTERVAL_MS);
+    this.reconcileHandle.unref?.();
   }
 
   dispose(): void {
@@ -56,6 +72,10 @@ export class DevicePollingService {
     if (this.availabilityHandle) {
       clearInterval(this.availabilityHandle);
       this.availabilityHandle = null;
+    }
+    if (this.reconcileHandle) {
+      clearInterval(this.reconcileHandle);
+      this.reconcileHandle = null;
     }
     this.previousDeviceIds.clear();
     this.consecutiveFailures = 0;
@@ -78,6 +98,10 @@ export class DevicePollingService {
             {},
             "device-polling-service: plugin online, resumed polling",
           );
+          // A comeback usually means OpenClaw restarted and the plugin lost
+          // its in-memory desktop state — re-push right away instead of
+          // waiting for the next reconcile tick.
+          void this.reconcileDesktopState();
         }
       } else {
         this.consecutiveFailures++;
@@ -123,6 +147,25 @@ export class DevicePollingService {
           "device-polling-service: plugin offline (exception path), paused polling",
         );
       }
+    }
+  }
+
+  private async reconcileDesktopState(): Promise<void> {
+    if (this.disposed || this.reconciling) return;
+    // Skip while the plugin is offline; the online-comeback path in
+    // checkAvailability() pushes as soon as it is reachable again.
+    if (!this.intervalHandle) return;
+    this.reconciling = true;
+    try {
+      await this.deviceControlService.pushVlmCredential();
+      await this.deviceControlService.pushTelemetryConsent();
+    } catch (err) {
+      logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        "device-polling-service: desktop state reconcile failed",
+      );
+    } finally {
+      this.reconciling = false;
     }
   }
 
