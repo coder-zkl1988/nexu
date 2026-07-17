@@ -1,5 +1,9 @@
 import { Component, type ReactNode, useMemo } from "react";
-import { createSurfaceManager, getByJsonPointer } from "./a2ui-surface";
+import {
+  createSurfaceManager,
+  getByJsonPointer,
+  setByJsonPointer,
+} from "./a2ui-surface";
 import type { SurfaceManager } from "./a2ui-surface";
 import type {
   A2UIMessage,
@@ -158,6 +162,12 @@ export function ComponentNode({
   const resolve = <T,>(val: T): unknown =>
     manager.resolveValue(val, surface.dataModel);
 
+  // Two-way binding write half: form components persist user input into the
+  // surface data model so button actions submit the live form state.
+  const write = (path: string, value: unknown): void => {
+    setByJsonPointer(surface.dataModel, path, value);
+  };
+
   function resolveChildren(childList: ChildList | undefined): ComponentId[] {
     if (!childList) return [];
     if (Array.isArray(childList)) return childList;
@@ -189,12 +199,19 @@ export function ComponentNode({
       return <TextComponent comp={comp} resolve={resolve} />;
     case "Button":
       return (
-        <ButtonComponent comp={comp} resolve={resolve} onAction={onAction} />
+        <ButtonComponent
+          comp={comp}
+          resolve={resolve}
+          onAction={onAction}
+          dataModel={surface.dataModel}
+        />
       );
     case "TextField":
-      return <TextFieldComponent comp={comp} resolve={resolve} />;
+      return <TextFieldComponent comp={comp} resolve={resolve} write={write} />;
     case "DateTimeInput":
-      return <DateTimeInputComponent comp={comp} resolve={resolve} />;
+      return (
+        <DateTimeInputComponent comp={comp} resolve={resolve} write={write} />
+      );
     case "Card":
       return (
         <CardComponent comp={comp} resolve={resolve}>
@@ -244,11 +261,13 @@ export function ComponentNode({
         </ModalComponent>
       );
     case "CheckBox":
-      return <CheckBoxComponent comp={comp} resolve={resolve} />;
+      return <CheckBoxComponent comp={comp} resolve={resolve} write={write} />;
     case "ChoicePicker":
-      return <ChoicePickerComponent comp={comp} resolve={resolve} />;
+      return (
+        <ChoicePickerComponent comp={comp} resolve={resolve} write={write} />
+      );
     case "Slider":
-      return <SliderComponent comp={comp} resolve={resolve} />;
+      return <SliderComponent comp={comp} resolve={resolve} write={write} />;
     case "Video":
       return <VideoComponent comp={comp} resolve={resolve} />;
     case "AudioPlayer":

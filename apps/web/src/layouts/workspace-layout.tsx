@@ -26,6 +26,7 @@ import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Archive,
   BookOpen,
   Bot,
   ChevronRight,
@@ -33,6 +34,7 @@ import {
   CircleHelp,
   CirclePlus,
   Clock,
+  GitBranch,
   Home,
   Info,
   LogOut,
@@ -40,8 +42,10 @@ import {
   Maximize2,
   MessageSquare,
   Minimize2,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Puzzle,
   ScrollText,
   Settings,
@@ -66,6 +70,9 @@ import {
   deleteApiV1SessionsById,
   getApiV1Me,
   getApiV1Sessions,
+  patchApiInternalSessionsById,
+  postApiV1SessionsByIdArchive,
+  postApiV1SessionsByIdFork,
 } from "../../lib/api/sdk.gen";
 
 interface SidebarSession {
@@ -701,6 +708,90 @@ function WorkspaceLayoutContent() {
     },
   });
 
+  // --- Session management (rename / archive / fork), OpenClaw >=2026.7.1 ---
+  const [sessionMenuId, setSessionMenuId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [sessionActionError, setSessionActionError] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!sessionMenuId) return;
+    const close = () => setSessionMenuId(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [sessionMenuId]);
+
+  useEffect(() => {
+    if (!sessionActionError) return;
+    const timer = setTimeout(() => setSessionActionError(null), 5000);
+    return () => clearTimeout(timer);
+  }, [sessionActionError]);
+
+  const renameSessionMutation = useMutation({
+    mutationFn: async (input: { id: string; title: string }) => {
+      await patchApiInternalSessionsById({
+        path: { id: input.id },
+        body: { title: input.title },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["sessions-recent"] });
+      setRenameTarget(null);
+    },
+  });
+
+  const archiveSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const { error } = await postApiV1SessionsByIdArchive({
+        path: { id: sessionId },
+        body: { archived: true },
+      });
+      if (error) {
+        throw new Error(
+          (error as { message?: string }).message ?? "archive failed",
+        );
+      }
+    },
+    onSuccess: (_data, archivedId) => {
+      queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
+      if (selectedSessionId === archivedId) {
+        navigate("/workspace");
+      }
+    },
+    onError: (err) => {
+      setSessionActionError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const forkSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const { data, error } = await postApiV1SessionsByIdFork({
+        path: { id: sessionId },
+      });
+      if (error) {
+        throw new Error(
+          (error as { message?: string }).message ?? "fork failed",
+        );
+      }
+      return data;
+    },
+    onSuccess: (forked) => {
+      queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
+      if (forked?.id) {
+        navigate(`/workspace/sessions/${forked.id}`);
+      }
+    },
+    onError: (err) => {
+      setSessionActionError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
   const sessions = sessionsData ?? [];
 
   const sessionMatch = location.pathname.match(/\/workspace\/sessions\/(.+)/);
@@ -1128,7 +1219,7 @@ function WorkspaceLayoutContent() {
                                       </div>
                                     </div>
                                   </button>
-                                  <div className="flex items-center gap-1 shrink-0">
+                                  <div className="relative flex items-center gap-1 shrink-0">
                                     {s.status === "active" && (
                                       <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
                                     )}
@@ -1136,13 +1227,73 @@ function WorkspaceLayoutContent() {
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        deleteSessionMutation.mutate(s.id);
+                                        setSessionMenuId(
+                                          sessionMenuId === s.id ? null : s.id,
+                                        );
                                       }}
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
-                                      title={t("layout.deleteSession")}
+                                      className={cn(
+                                        "opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-text-primary",
+                                        sessionMenuId === s.id && "opacity-100",
+                                      )}
+                                      title={t("layout.sessionActions")}
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <MoreHorizontal className="w-3.5 h-3.5" />
                                     </button>
+                                    {sessionMenuId === s.id && (
+                                      <div
+                                        className="absolute right-0 top-full z-50 mt-1 w-36 rounded-lg border border-border bg-surface-0 py-1 shadow-lg"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                          onClick={() => {
+                                            setSessionMenuId(null);
+                                            setRenameTarget({
+                                              id: s.id,
+                                              title: s.title,
+                                            });
+                                            setRenameValue(s.title);
+                                          }}
+                                        >
+                                          <Pencil className="w-3 h-3" />
+                                          {t("layout.renameSession")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                          onClick={() => {
+                                            setSessionMenuId(null);
+                                            forkSessionMutation.mutate(s.id);
+                                          }}
+                                        >
+                                          <GitBranch className="w-3 h-3" />
+                                          {t("layout.forkSession")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                          onClick={() => {
+                                            setSessionMenuId(null);
+                                            archiveSessionMutation.mutate(s.id);
+                                          }}
+                                        >
+                                          <Archive className="w-3 h-3" />
+                                          {t("layout.archiveSession")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-danger hover:bg-surface-2"
+                                          onClick={() => {
+                                            setSessionMenuId(null);
+                                            deleteSessionMutation.mutate(s.id);
+                                          }}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          {t("layout.deleteSession")}
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1794,6 +1945,74 @@ function WorkspaceLayoutContent() {
             <CanvasSurface />
           </div>
         </div>
+      )}
+
+      {/* Session rename dialog */}
+      {renameTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30"
+          onMouseDown={() => setRenameTarget(null)}
+        >
+          <div
+            className="w-80 rounded-xl border border-border bg-surface-0 p-4 shadow-xl"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 text-[13px] font-semibold text-text-primary">
+              {t("layout.renameSession")}
+            </div>
+            <input
+              // biome-ignore lint/a11y/noAutofocus: focus the field when the dialog opens
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && renameValue.trim()) {
+                  renameSessionMutation.mutate({
+                    id: renameTarget.id,
+                    title: renameValue.trim(),
+                  });
+                }
+                if (e.key === "Escape") setRenameTarget(null);
+              }}
+              className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-[13px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-1.5 text-[12px] text-text-muted hover:bg-surface-2"
+                onClick={() => setRenameTarget(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={
+                  !renameValue.trim() || renameSessionMutation.isPending
+                }
+                className="rounded-lg bg-accent px-3 py-1.5 text-[12px] text-white hover:opacity-90 disabled:opacity-50"
+                onClick={() =>
+                  renameSessionMutation.mutate({
+                    id: renameTarget.id,
+                    title: renameValue.trim(),
+                  })
+                }
+              >
+                {t("common.confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session action error toast */}
+      {sessionActionError && (
+        <button
+          type="button"
+          className="fixed bottom-4 left-1/2 z-[100] -translate-x-1/2 rounded-lg border border-border bg-surface-0 px-4 py-2 text-[12px] text-danger shadow-lg"
+          onClick={() => setSessionActionError(null)}
+        >
+          {sessionActionError}
+        </button>
       )}
     </div>
   );

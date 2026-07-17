@@ -33,6 +33,8 @@ const RECENT_EVENT_LIMIT = 500;
 
 /** Maximum consecutive auto-restart attempts before giving up. */
 const MAX_CONSECUTIVE_RESTARTS = 10;
+/** EX_CONFIG from sysexits.h — OpenClaw >=2026.7.1 config-error exit. */
+const EXIT_CONFIG_ERROR = 78;
 /** If the process ran longer than this before crashing, reset the restart counter. */
 const RESTART_WINDOW_MS = 120_000;
 let nextRuntimeLogEntryId = 0;
@@ -375,6 +377,23 @@ export class RuntimeOrchestrator {
       if (code === 0) return;
       if (record.manifest.autoRestart === false) return;
       if (record.stoppedByUser) return;
+
+      // EX_CONFIG (78, sysexits.h): OpenClaw >=2026.7.1 exits with this on
+      // configuration errors. Restarting cannot fix a broken config — halt
+      // immediately instead of burning through the restart budget.
+      if (code === EXIT_CONFIG_ERROR) {
+        setRecordPhase(record, "failed");
+        record.lastError =
+          "Exited with EX_CONFIG (configuration error) — auto-restart suppressed; fix the runtime config and restart manually";
+        this.logStateChange(record, {
+          kind: "lifecycle",
+          actionId: ensureActionId(record, "auto-restart"),
+          reasonCode: "exit_config_error",
+          message:
+            "auto-restart suppressed: process exited with EX_CONFIG (78, configuration error)",
+        });
+        return;
+      }
 
       // If the process ran longer than RESTART_WINDOW_MS, it was stable —
       // reset the consecutive restart counter.

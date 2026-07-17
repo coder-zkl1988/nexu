@@ -32,6 +32,14 @@ const defaultModelSetResponseSchema = z.object({
   modelId: z.string(),
   configPushed: z.boolean(),
 });
+// Empty string clears the utility model (the SDK generator drops `nullable`,
+// so null cannot round-trip through the generated client types).
+const utilityModelBodySchema = z.object({ modelId: z.string() });
+const utilityModelSetResponseSchema = z.object({
+  ok: z.boolean(),
+  modelId: z.string().nullable(),
+  configPushed: z.boolean(),
+});
 const desktopAuthSessionResponseSchema = z.object({
   session: z.object({
     id: z.string(),
@@ -489,6 +497,64 @@ export function registerDesktopCompatRoutes(
         {
           ok: true,
           modelId: config.runtime.defaultModelId,
+          configPushed,
+        },
+        200,
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/internal/desktop/utility-model",
+      tags: ["Desktop"],
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: defaultModelResponseSchema },
+          },
+          description:
+            "Utility model for short internal tasks (session titles)",
+        },
+      },
+    }),
+    async (c) => {
+      const config = await container.configStore.getConfig();
+      return c.json({ modelId: config.runtime.utilityModelId ?? null }, 200);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/api/internal/desktop/utility-model",
+      tags: ["Desktop"],
+      request: {
+        body: {
+          content: { "application/json": { schema: utilityModelBodySchema } },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: utilityModelSetResponseSchema },
+          },
+          description: "Set utility model (null clears it)",
+        },
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      await container.desktopLocalService.setUtilityModel(
+        body.modelId.trim() ? body.modelId : null,
+      );
+      const config = await container.configStore.getConfig();
+      const { configPushed } = await container.openclawSyncService.syncAll();
+      return c.json(
+        {
+          ok: true,
+          modelId: config.runtime.utilityModelId ?? null,
           configPushed,
         },
         200,

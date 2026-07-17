@@ -1132,6 +1132,46 @@ export type PutApiInternalDesktopDefaultModelResponses = {
 
 export type PutApiInternalDesktopDefaultModelResponse = PutApiInternalDesktopDefaultModelResponses[keyof PutApiInternalDesktopDefaultModelResponses];
 
+export type GetApiInternalDesktopUtilityModelData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/internal/desktop/utility-model';
+};
+
+export type GetApiInternalDesktopUtilityModelResponses = {
+    /**
+     * Utility model for short internal tasks (session titles)
+     */
+    200: {
+        modelId: string;
+    };
+};
+
+export type GetApiInternalDesktopUtilityModelResponse = GetApiInternalDesktopUtilityModelResponses[keyof GetApiInternalDesktopUtilityModelResponses];
+
+export type PutApiInternalDesktopUtilityModelData = {
+    body?: {
+        modelId: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/internal/desktop/utility-model';
+};
+
+export type PutApiInternalDesktopUtilityModelResponses = {
+    /**
+     * Set utility model (null clears it)
+     */
+    200: {
+        ok: boolean;
+        modelId: string;
+        configPushed: boolean;
+    };
+};
+
+export type PutApiInternalDesktopUtilityModelResponse = PutApiInternalDesktopUtilityModelResponses[keyof PutApiInternalDesktopUtilityModelResponses];
+
 export type GetApiInternalDesktopRewardsData = {
     body?: never;
     path?: never;
@@ -2410,6 +2450,7 @@ export type GetApiV1ChannelsLiveStatusResponses = {
      */
     200: {
         gatewayConnected: boolean;
+        gatewaySafeMode: boolean;
         channels: Array<{
             channelType: string;
             channelId: string;
@@ -2660,10 +2701,32 @@ export type PostApiV1ChatLocalResponses = {
 
 export type PostApiV1ChatLocalResponse = PostApiV1ChatLocalResponses[keyof PostApiV1ChatLocalResponses];
 
+export type GetApiV1ChatRunStatusData = {
+    body?: never;
+    path?: never;
+    query: {
+        botId: string;
+        sessionKey?: string;
+    };
+    url: '/api/v1/chat/run-status';
+};
+
+export type GetApiV1ChatRunStatusResponses = {
+    /**
+     * Active-run state for the session
+     */
+    200: {
+        busy: boolean;
+    };
+};
+
+export type GetApiV1ChatRunStatusResponse = GetApiV1ChatRunStatusResponses[keyof GetApiV1ChatRunStatusResponses];
+
 export type PostApiV1ChatCancelData = {
     body?: {
         botId: string;
         sessionKey: string;
+        stopDeviceTasks?: boolean;
     };
     path?: never;
     query?: never;
@@ -2678,6 +2741,7 @@ export type PostApiV1ChatCancelResponses = {
         ok: boolean;
         aborted: boolean;
         runIds: Array<string>;
+        deviceTasksCancelled: number;
     };
 };
 
@@ -2999,6 +3063,85 @@ export type GetApiV1SessionsByIdMessagesResponses = {
 };
 
 export type GetApiV1SessionsByIdMessagesResponse = GetApiV1SessionsByIdMessagesResponses[keyof GetApiV1SessionsByIdMessagesResponses];
+
+export type PostApiV1SessionsByIdArchiveData = {
+    body?: {
+        archived?: boolean;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/archive';
+};
+
+export type PostApiV1SessionsByIdArchiveErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Rejected by OpenClaw (main session or active run)
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1SessionsByIdArchiveError = PostApiV1SessionsByIdArchiveErrors[keyof PostApiV1SessionsByIdArchiveErrors];
+
+export type PostApiV1SessionsByIdArchiveResponses = {
+    /**
+     * Archive or unarchive a session
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PostApiV1SessionsByIdArchiveResponse = PostApiV1SessionsByIdArchiveResponses[keyof PostApiV1SessionsByIdArchiveResponses];
+
+export type PostApiV1SessionsByIdForkData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/fork';
+};
+
+export type PostApiV1SessionsByIdForkErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Fork rejected
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1SessionsByIdForkError = PostApiV1SessionsByIdForkErrors[keyof PostApiV1SessionsByIdForkErrors];
+
+export type PostApiV1SessionsByIdForkResponses = {
+    /**
+     * Forked session (context inherited from parent)
+     */
+    200: {
+        id: string;
+        botId: string;
+        sessionKey: string;
+        title: string;
+    };
+};
+
+export type PostApiV1SessionsByIdForkResponse = PostApiV1SessionsByIdForkResponses[keyof PostApiV1SessionsByIdForkResponses];
 
 export type GetApiV1ModelsData = {
     body?: never;
@@ -5601,6 +5744,7 @@ export type GetApiV1RuntimeConfigResponses = {
                 authMode?: 'none' | 'token';
             };
             defaultModelId?: string;
+            utilityModelId?: string;
         };
         deviceControl: {
             enabled?: boolean;
@@ -5621,6 +5765,7 @@ export type PutApiV1RuntimeConfigData = {
             authMode?: 'none' | 'token';
         };
         defaultModelId?: string;
+        utilityModelId?: string;
     };
     path?: never;
     query?: never;
@@ -5639,6 +5784,7 @@ export type PutApiV1RuntimeConfigResponses = {
                 authMode?: 'none' | 'token';
             };
             defaultModelId?: string;
+            utilityModelId?: string;
         };
     };
 };
@@ -5666,6 +5812,72 @@ export type PatchApiV1RuntimeConfigDeviceControlResponses = {
 };
 
 export type PatchApiV1RuntimeConfigDeviceControlResponse = PatchApiV1RuntimeConfigDeviceControlResponses[keyof PatchApiV1RuntimeConfigDeviceControlResponses];
+
+export type GetApiV1RuntimeHostStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime/host-status';
+};
+
+export type GetApiV1RuntimeHostStatusResponses = {
+    /**
+     * Runtime host status (CPU/memory/disk/uptime) from OpenClaw system.info
+     */
+    200: {
+        connected: boolean;
+        machineName?: string;
+        hostname?: string;
+        platform?: string;
+        arch?: string;
+        osLabel?: string;
+        nodeVersion?: string;
+        uptimeMs?: number;
+        cpuCount?: number;
+        cpuModel?: string;
+        loadAverage?: Array<number>;
+        memoryTotalBytes?: number;
+        memoryFreeBytes?: number;
+        diskTotalBytes?: number;
+        diskAvailableBytes?: number;
+        diskPath?: string;
+    };
+};
+
+export type GetApiV1RuntimeHostStatusResponse = GetApiV1RuntimeHostStatusResponses[keyof GetApiV1RuntimeHostStatusResponses];
+
+export type PostApiV1TtsSpeakData = {
+    body?: {
+        text: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/tts/speak';
+};
+
+export type PostApiV1TtsSpeakErrors = {
+    /**
+     * TTS unavailable (no provider configured / synth failed)
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1TtsSpeakError = PostApiV1TtsSpeakErrors[keyof PostApiV1TtsSpeakErrors];
+
+export type PostApiV1TtsSpeakResponses = {
+    /**
+     * Synthesized speech audio (OpenClaw tts.speak)
+     */
+    200: {
+        audioBase64: string;
+        mimeType: string;
+        provider?: string;
+    };
+};
+
+export type PostApiV1TtsSpeakResponse = PostApiV1TtsSpeakResponses[keyof PostApiV1TtsSpeakResponses];
 
 export type GetApiV1WorkspaceTemplatesData = {
     body?: never;
@@ -5780,6 +5992,12 @@ export type GetApiV1DevicesTasksResponses = {
                 failedAtStep?: number;
                 finalScreenshot?: string;
                 duration?: number;
+                artifacts?: Array<{
+                    artifactId: string;
+                    name: string;
+                    mimeType: string;
+                    path: string;
+                }>;
             };
         }>;
     };
@@ -5834,6 +6052,12 @@ export type GetApiV1DevicesTasksByTaskIdResponses = {
             failedAtStep?: number;
             finalScreenshot?: string;
             duration?: number;
+            artifacts?: Array<{
+                artifactId: string;
+                name: string;
+                mimeType: string;
+                path: string;
+            }>;
         };
     };
 };
@@ -6061,6 +6285,12 @@ export type PostApiV1DevicesByDeviceIdTasksResponses = {
             failedAtStep?: number;
             finalScreenshot?: string;
             duration?: number;
+            artifacts?: Array<{
+                artifactId: string;
+                name: string;
+                mimeType: string;
+                path: string;
+            }>;
         };
     };
 };
@@ -6202,6 +6432,7 @@ export type GetApiV1SchedulesResponses = {
             channelType?: string;
             channelId?: string;
             description?: string;
+            modelId?: string;
             id: string;
             createdAt: string;
             updatedAt: string;
@@ -6225,6 +6456,7 @@ export type PostApiV1SchedulesData = {
         channelType?: string;
         channelId?: string;
         description?: string;
+        modelId?: string;
     };
     path?: never;
     query?: never;
@@ -6247,6 +6479,7 @@ export type PostApiV1SchedulesResponses = {
         channelType?: string;
         channelId?: string;
         description?: string;
+        modelId?: string;
         id: string;
         createdAt: string;
         updatedAt: string;
@@ -6288,6 +6521,7 @@ export type PatchApiV1SchedulesByScheduleIdData = {
         channelType?: string;
         channelId?: string;
         description?: string;
+        modelId?: string;
     };
     path: {
         scheduleId: string;
@@ -6323,6 +6557,7 @@ export type PatchApiV1SchedulesByScheduleIdResponses = {
         channelType?: string;
         channelId?: string;
         description?: string;
+        modelId?: string;
         id: string;
         createdAt: string;
         updatedAt: string;

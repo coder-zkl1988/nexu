@@ -193,6 +193,9 @@ const agentsConfigSchema = z.object({
       model: z
         .union([z.string(), z.object({ primary: z.string() })])
         .optional(),
+      // Lower-cost model for short internal tasks (generated session/thread
+      // titles). Falls back to the primary model when unset.
+      utilityModel: z.string().optional(),
       compaction: compactionSchema.optional(),
       memorySearch: memorySearchSchema.optional(),
       // Thinking and verbosity

@@ -45,6 +45,8 @@ import {
   Loader2,
   MessageSquare,
   PanelRight,
+  Square,
+  Volume2,
   WifiOff,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -55,15 +57,98 @@ import {
   getApiV1Bots,
   getApiV1BotsByBotId,
   getApiV1Channels,
+  getApiV1ChatRunStatus,
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
   postApiV1ChatCancel,
   postApiV1ChatLocal,
   postApiV1SessionsByIdReset,
+  postApiV1TtsSpeak,
 } from "../../lib/api/sdk.gen";
 
 const BOT_AVATAR = "/images/claw-avatar.png";
 const USER_AVATAR = "/images/tabby-avatar.png";
+
+/**
+ * Speak-reply button for assistant bubbles (OpenClaw >=2026.7.1 tts.speak).
+ * One shared Audio element so starting a new readout stops the previous one.
+ */
+let activeSpeakAudio: HTMLAudioElement | null = null;
+let notifyActiveSpeakEnded: (() => void) | null = null;
+
+function stopActiveSpeakAudio(): void {
+  if (activeSpeakAudio) {
+    activeSpeakAudio.pause();
+    activeSpeakAudio = null;
+  }
+  notifyActiveSpeakEnded?.();
+  notifyActiveSpeakEnded = null;
+}
+
+function SpeakButton({ text }: { text: string }) {
+  const { t } = useTranslation();
+  const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
+
+  const handleClick = useCallback(async () => {
+    if (state === "playing" || state === "loading") {
+      stopActiveSpeakAudio();
+      setState("idle");
+      return;
+    }
+    stopActiveSpeakAudio();
+    setState("loading");
+    try {
+      const { data, error } = await postApiV1TtsSpeak({
+        body: { text: text.slice(0, 4000) },
+      });
+      if (error || !data) {
+        throw new Error(
+          (error as { message?: string } | undefined)?.message ??
+            "TTS unavailable",
+        );
+      }
+      const audio = new Audio(
+        `data:${data.mimeType};base64,${data.audioBase64}`,
+      );
+      activeSpeakAudio = audio;
+      notifyActiveSpeakEnded = () => setState("idle");
+      audio.onended = () => {
+        if (activeSpeakAudio === audio) {
+          activeSpeakAudio = null;
+          notifyActiveSpeakEnded = null;
+        }
+        setState("idle");
+      };
+      await audio.play();
+      setState("playing");
+    } catch (err) {
+      setState("idle");
+      toast.error(
+        `${t("sessions.speakFailed")}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }, [state, text, t]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="inline-flex items-center gap-1 rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface-2 hover:text-text-primary group-hover/bubble:opacity-100 data-[state=playing]:opacity-100 data-[state=loading]:opacity-100"
+      data-state={state}
+      title={
+        state === "idle" ? t("sessions.speakReply") : t("sessions.speakStop")
+      }
+    >
+      {state === "loading" ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : state === "playing" ? (
+        <Square className="h-3 w-3" />
+      ) : (
+        <Volume2 className="h-3 w-3" />
+      )}
+    </button>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -557,7 +642,7 @@ function ChatBubble({
     <div
       data-chat-message={msg.id}
       data-chat-role={msg.role}
-      className="flex gap-3 items-start"
+      className="group/bubble flex gap-3 items-start"
     >
       {showAvatar ? (
         <img
@@ -616,7 +701,10 @@ function ChatBubble({
           <SidebarA2UIButton payload={sidebarA2UI} onOpen={onOpenSidebar} />
         )}
         {isBot && canvasOpBatch && <CanvasOpCard batch={canvasOpBatch} />}
-        {time && <div className="text-[10px] text-text-muted pl-1">{time}</div>}
+        <div className="flex items-center gap-1 pl-1">
+          {time && <div className="text-[10px] text-text-muted">{time}</div>}
+          {isBot && hasText && <SpeakButton text={text} />}
+        </div>
       </div>
     </div>
   );
@@ -977,17 +1065,45 @@ export function SessionsPage() {
         body: {
           botId: selectedBot.id,
           sessionKey: session.sessionKey,
+          // The stop button means "halt the bot" — including a phone task the
+          // run dispatched, which would otherwise keep executing on-device.
+          stopDeviceTasks: true,
         },
       });
       if (data) {
         activeRunIdRef.current = null;
         setWaitingForReply(false);
         sentAtRef.current = 0;
+        queryClient.invalidateQueries({ queryKey: ["chat-run-status", id] });
+        if ((data.deviceTasksCancelled ?? 0) > 0) {
+          toast.success(
+            t("sessions.deviceTasksStopped", {
+              count: data.deviceTasksCancelled,
+            }),
+          );
+        }
       }
     } catch {
       // Silently ignore — the reply may have already finished
     }
-  }, [session?.sessionKey, selectedBot]);
+  }, [session?.sessionKey, selectedBot, queryClient, id, t]);
+
+  // Poll the session's active-run state so runs this composer did NOT start
+  // (A2UI actions, automations, device tasks) still surface as a stop button
+  // instead of a dead send button that bounces off the 409 busy guard.
+  const { data: runStatus } = useQuery({
+    queryKey: ["chat-run-status", id],
+    queryFn: async () => {
+      if (!selectedBot || !session?.sessionKey) return { busy: false };
+      const { data } = await getApiV1ChatRunStatus({
+        query: { botId: selectedBot.id, sessionKey: session.sessionKey },
+      });
+      return data ?? { busy: false };
+    },
+    enabled: Boolean(selectedBot && session?.sessionKey),
+    refetchInterval: 3000,
+  });
+  const sessionBusy = runStatus?.busy === true;
 
   // null = not yet loaded, [] = loaded but empty, [...] = loaded with messages
   const messages = (
@@ -1542,7 +1658,7 @@ export function SessionsPage() {
             }}
             onCancel={handleCancel}
             sending={false}
-            waitingReply={waitingForReply}
+            waitingReply={waitingForReply || sessionBusy}
             disabled={!session?.botId}
             placeholder={t("localChat.inputPlaceholder")}
             showBotSelector={false}

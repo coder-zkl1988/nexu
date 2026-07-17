@@ -17,6 +17,8 @@ interface CronPayload {
   kind: "systemEvent" | "agentTurn";
   text?: string;
   message?: string;
+  /** Per-job model override (OpenClaw >=2026.7.1); null clears it. */
+  model?: string | null;
 }
 
 interface CronJob {
@@ -49,6 +51,8 @@ export interface CronJobCreateInput {
    */
   deliveryTo?: string;
   scheduleId: string;
+  /** Per-job model override; undefined/empty keeps the bot default. */
+  modelId?: string;
 }
 
 /** Derive an announce delivery target from a channel session key.
@@ -128,6 +132,7 @@ export function mapCronJobToScheduleItem(
     source: "agent",
     sessionKey: job.sessionKey,
     description: job.description,
+    modelId: job.payload.model ?? undefined,
     externalId: job.id,
     createdAt: new Date(job.createdAtMs).toISOString(),
     updatedAt: new Date(job.updatedAtMs).toISOString(),
@@ -197,17 +202,29 @@ export class OpenClawCronGateway {
     return this.fallbackReadFile();
   }
 
-  async updateJob(id: string, patch: { enabled?: boolean }): Promise<void> {
+  async updateJob(
+    id: string,
+    patch: {
+      name?: string;
+      description?: string;
+      enabled?: boolean;
+      schedule?: CronSchedule;
+      payload?: CronPayload;
+      delivery?: Record<string, unknown>;
+    },
+  ): Promise<void> {
     await this.wsClient.request("cron.update", { id, patch });
   }
 
-  async createJob(input: CronJobCreateInput): Promise<string> {
-    // Channel-bound automation → announce-deliver to that channel/target.
-    // Channel-less automation → mode "none": run + record the result (visible
-    // in run history and the isolated cron session) WITHOUT attempting a push.
-    // Falling back to channel "last" here would leak delivery to another bot's
-    // most-recent channel and fail every run with a misleading error.
-    const delivery = input.channelType
+  // Channel-bound automation → announce-deliver to that channel/target.
+  // Channel-less automation → mode "none": run + record the result (visible
+  // in run history and the isolated cron session) WITHOUT attempting a push.
+  // Falling back to channel "last" here would leak delivery to another bot's
+  // most-recent channel and fail every run with a misleading error.
+  private buildDelivery(
+    input: Pick<CronJobCreateInput, "channelType" | "channelId" | "deliveryTo">,
+  ): Record<string, unknown> {
+    return input.channelType
       ? {
           mode: "announce" as const,
           // OpenClaw delivery wants the plugin channel key, e.g. WeChat's
@@ -219,11 +236,17 @@ export class OpenClawCronGateway {
           ...(input.deliveryTo ? { to: input.deliveryTo } : {}),
         }
       : { mode: "none" as const };
+  }
 
-    const result = await this.wsClient.request<{ id: string }>("cron.add", {
+  private buildJobFields(input: CronJobCreateInput): {
+    name: string;
+    enabled: boolean;
+    schedule: CronSchedule;
+    payload: CronPayload;
+    delivery: Record<string, unknown>;
+  } {
+    return {
       name: input.name,
-      description: input.description ?? `nexuScheduleId:${input.scheduleId}`,
-      agentId: input.agentId,
       enabled: input.enabled,
       schedule: {
         kind: "cron",
@@ -233,12 +256,43 @@ export class OpenClawCronGateway {
       payload: {
         kind: "agentTurn",
         message: input.prompt,
+        // cron.add rejects model:null — omit when unset. Clearing an existing
+        // override happens via the cron.update patch (updateJobFromSchedule).
+        ...(input.modelId?.trim() ? { model: input.modelId } : {}),
       },
+      delivery: this.buildDelivery(input),
+    };
+  }
+
+  async createJob(input: CronJobCreateInput): Promise<string> {
+    const result = await this.wsClient.request<{ id: string }>("cron.add", {
+      ...this.buildJobFields(input),
+      description: input.description ?? `nexuScheduleId:${input.scheduleId}`,
+      agentId: input.agentId,
       sessionTarget: "isolated",
       sessionKey: `agent:${input.agentId}:schedule-${input.scheduleId}`,
-      delivery,
     });
     return result.id;
+  }
+
+  /**
+   * In-place edit of an existing cron job from the nexu schedule shape
+   * (OpenClaw >=2026.7.1 cron.update). Preserves the job id and its run
+   * history — no delete/recreate.
+   */
+  async updateJobFromSchedule(
+    externalId: string,
+    input: CronJobCreateInput,
+  ): Promise<void> {
+    const fields = this.buildJobFields(input);
+    await this.updateJob(externalId, {
+      ...fields,
+      payload: {
+        ...fields.payload,
+        // Patch semantics: null explicitly clears a previous override.
+        model: input.modelId?.trim() ? input.modelId : null,
+      },
+    });
   }
 
   async getRuns(

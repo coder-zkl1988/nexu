@@ -3223,6 +3223,85 @@
         }
       }
     },
+    "/api/internal/desktop/utility-model": {
+      "get": {
+        "tags": [
+          "Desktop"
+        ],
+        "responses": {
+          "200": {
+            "description": "Utility model for short internal tasks (session titles)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "modelId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "modelId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Desktop"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "modelId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Set utility model (null clears it)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "modelId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "configPushed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "modelId",
+                    "configPushed"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/internal/desktop/rewards": {
       "get": {
         "tags": [
@@ -7334,6 +7413,9 @@
                     "gatewayConnected": {
                       "type": "boolean"
                     },
+                    "gatewaySafeMode": {
+                      "type": "boolean"
+                    },
                     "channels": {
                       "type": "array",
                       "items": {
@@ -7412,6 +7494,7 @@
                   },
                   "required": [
                     "gatewayConnected",
+                    "gatewaySafeMode",
                     "channels",
                     "agent"
                   ]
@@ -8109,6 +8192,51 @@
         }
       }
     },
+    "/api/v1/chat/run-status": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "botId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "sessionKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active-run state for the session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "busy": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "busy"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/chat/cancel": {
       "post": {
         "tags": [
@@ -8125,6 +8253,9 @@
                   },
                   "sessionKey": {
                     "type": "string"
+                  },
+                  "stopDeviceTasks": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -8154,12 +8285,16 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "deviceTasksCancelled": {
+                      "type": "number"
                     }
                   },
                   "required": [
                     "ok",
                     "aborted",
-                    "runIds"
+                    "runIds",
+                    "deviceTasksCancelled"
                   ]
                 }
               }
@@ -9019,6 +9154,179 @@
           },
           "404": {
             "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/archive": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Archive or unarchive a session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected by OpenClaw (main session or active run)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/fork": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Forked session (context inherited from parent)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "sessionKey",
+                    "title"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Fork rejected",
             "content": {
               "application/json": {
                 "schema": {
@@ -16945,6 +17253,11 @@
                         "defaultModelId": {
                           "type": "string",
                           "default": "link/gemini-3-flash-preview"
+                        },
+                        "utilityModelId": {
+                          "type": "string",
+                          "nullable": true,
+                          "default": null
                         }
                       }
                     },
@@ -17029,6 +17342,11 @@
                   "defaultModelId": {
                     "type": "string",
                     "default": "link/gemini-3-flash-preview"
+                  },
+                  "utilityModelId": {
+                    "type": "string",
+                    "nullable": true,
+                    "default": null
                   }
                 }
               }
@@ -17082,6 +17400,11 @@
                         "defaultModelId": {
                           "type": "string",
                           "default": "link/gemini-3-flash-preview"
+                        },
+                        "utilityModelId": {
+                          "type": "string",
+                          "nullable": true,
+                          "default": null
                         }
                       }
                     }
@@ -17139,6 +17462,152 @@
                   },
                   "required": [
                     "ok"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/host-status": {
+      "get": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime host status (CPU/memory/disk/uptime) from OpenClaw system.info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "machineName": {
+                      "type": "string"
+                    },
+                    "hostname": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "arch": {
+                      "type": "string"
+                    },
+                    "osLabel": {
+                      "type": "string"
+                    },
+                    "nodeVersion": {
+                      "type": "string"
+                    },
+                    "uptimeMs": {
+                      "type": "number"
+                    },
+                    "cpuCount": {
+                      "type": "number"
+                    },
+                    "cpuModel": {
+                      "type": "string"
+                    },
+                    "loadAverage": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      }
+                    },
+                    "memoryTotalBytes": {
+                      "type": "number"
+                    },
+                    "memoryFreeBytes": {
+                      "type": "number"
+                    },
+                    "diskTotalBytes": {
+                      "type": "number"
+                    },
+                    "diskAvailableBytes": {
+                      "type": "number"
+                    },
+                    "diskPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connected"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tts/speak": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Synthesized speech audio (OpenClaw tts.speak)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "audioBase64": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "audioBase64",
+                    "mimeType"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "TTS unavailable (no provider configured / synth failed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }
@@ -17451,6 +17920,36 @@
                               "duration": {
                                 "type": "integer",
                                 "minimum": 0
+                              },
+                              "artifacts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "artifactId": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "name": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "mimeType": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "path": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    }
+                                  },
+                                  "required": [
+                                    "artifactId",
+                                    "name",
+                                    "mimeType",
+                                    "path"
+                                  ]
+                                }
                               }
                             },
                             "required": [
@@ -17582,6 +18081,36 @@
                         "duration": {
                           "type": "integer",
                           "minimum": 0
+                        },
+                        "artifacts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "artifactId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mimeType": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "artifactId",
+                              "name",
+                              "mimeType",
+                              "path"
+                            ]
+                          }
                         }
                       },
                       "required": [
@@ -18260,6 +18789,36 @@
                         "duration": {
                           "type": "integer",
                           "minimum": 0
+                        },
+                        "artifacts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "artifactId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mimeType": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "path": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "artifactId",
+                              "name",
+                              "mimeType",
+                              "path"
+                            ]
+                          }
                         }
                       },
                       "required": [
@@ -18702,6 +19261,9 @@
                           "description": {
                             "type": "string"
                           },
+                          "modelId": {
+                            "type": "string"
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -18787,6 +19349,9 @@
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "modelId": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -18847,6 +19412,9 @@
                       "type": "string"
                     },
                     "description": {
+                      "type": "string"
+                    },
+                    "modelId": {
                       "type": "string"
                     },
                     "id": {
@@ -18934,6 +19502,9 @@
                   },
                   "description": {
                     "type": "string"
+                  },
+                  "modelId": {
+                    "type": "string"
                   }
                 }
               }
@@ -18988,6 +19559,9 @@
                       "type": "string"
                     },
                     "description": {
+                      "type": "string"
+                    },
+                    "modelId": {
                       "type": "string"
                     },
                     "id": {

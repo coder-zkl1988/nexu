@@ -456,9 +456,10 @@ export function createRuntimeUnitManifests(
       EXPERTHUB_STATIC_EXPERTS_DIR: experthubStaticExpertsDir,
       PLATFORM_TEMPLATES_DIR: platformTemplatesDir,
       OPENCLAW_BIN: effectiveOpenclawBinPath,
-      ...(isPackaged
-        ? { OPENCLAW_ELECTRON_EXECUTABLE: resolveElectronNodeRunner() }
-        : {}),
+      // Always run OpenClaw through the Electron node runner (ELECTRON_RUN_AS_NODE).
+      // OpenClaw >=2026.7.1 hard-requires Node >=24.15; the dev-desktop GUI PATH may
+      // resolve an older system `node`, while the Electron runner is version-pinned.
+      OPENCLAW_ELECTRON_EXECUTABLE: resolveElectronNodeRunner(),
       OPENCLAW_EXTENSIONS_DIR: path.resolve(
         effectiveOpenclawSidecarRoot,
         "node_modules",

@@ -14,7 +14,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 
 const OPENCLAW_PACKAGE_PATCH_DIRNAME = "openclaw";
 const STAGE_MANIFEST_FILENAME = "manifest.json";
-const STAGE_PATCH_VERSION = "2026-05-26-slimclaw-runtime-stage-v3";
+const STAGE_PATCH_VERSION = "2026-07-16-slimclaw-runtime-stage-v7";
 const REPLY_OUTCOME_HELPER_SEARCH = `
 const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const startTime = diagnosticsEnabled ? Date.now() : 0;
@@ -148,18 +148,47 @@ const COMPACTION_NEXU_EVENT_REPLACEMENT = [
   '\t\t\t\t\t\t\t\t\tif (phase === "start") {',
   '\t\t\t\t\t\t\t\t\t\tfetch("http://127.0.0.1:" + (process.env.CONTROLLER_PORT || "50800") + "/api/internal/compaction-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionKey: params.sessionCtx.SessionKey ?? params.sessionCtx.CommandTargetSessionKey, channel: resolveMessageChannel(params.sessionCtx.Surface, params.sessionCtx.Provider) ?? "" }) }).catch(() => {});',
 ].join("\n");
-const EMPTY_PAYLOAD_ARRAY_SEARCH =
-  "const payloadArray = runResult.payloads ?? [];\n\t\t\tif (payloadArray.length === 0) return;";
-const EMPTY_PAYLOAD_ARRAY_REPLACEMENT =
-  'const payloadArray = runResult.payloads ?? [];\n\t\t\tif (payloadArray.length === 0) {\n\t\t\t\tconst _fallbackErr = runResult.meta?.error?.message || runResult.meta?.error;\n\t\t\t\tif (_fallbackErr) {\n\t\t\t\t\tpayloadArray.push({ text: typeof _fallbackErr === "string" ? _fallbackErr : "\\u26a0\\ufe0f An error occurred. Please try again.", isError: true });\n\t\t\t\t} else {\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t}';
 const FOLLOWUP_COMPACTION_FEEDBACK_SEARCH =
   'if (evt.stream === "compaction") {\n\t\t\t\t\t\t\tif ((typeof evt.data.phase === "string" ? evt.data.phase : "") === "end") memoryCompactionCompleted = true;\n\t\t\t\t\t\t}';
 const FOLLOWUP_COMPACTION_FEEDBACK_REPLACEMENT =
   'if (evt.stream === "compaction") {\n\t\t\t\t\t\t\tconst _phase = typeof evt.data.phase === "string" ? evt.data.phase : "";\n\t\t\t\t\t\t\tif (_phase === "start") { const _l = globalThis.__nexuCgLocale || "zh-CN"; sendFollowupPayloads([{ text: _l === "en" ? "\\u23f3 Compacting conversation, estimated ~30s..." : "\\u23f3 \\u6b63\\u5728\\u6574\\u7406\\u5bf9\\u8bdd\\u8bb0\\u5f55\\uff0c\\u9884\\u8ba130\\u79d2\\u5185\\u5b8c\\u6210..." }], queued).catch(() => {}); }\n\t\t\t\t\t\t\tif (_phase === "end") memoryCompactionCompleted = true;\n\t\t\t\t\t\t}';
 const COMPACTION_COMPLETE_VERBOSE_SEARCH =
-  'if (shouldEmitVerboseProgress()) deliveryPayloads = [{ text: `🧹 Auto-compaction complete${typeof count === "number" ? ` (count ${count})` : ""}.` }, ...finalPayloads];';
+  'if (shouldEmitVerboseProgress()) deliveryPayloads = [{ text: `🧹 Auto-compaction complete${typeof count === "number" ? ` (count ${count})` : ""}.` }, ...deliveryPayloads];';
 const COMPACTION_COMPLETE_VERBOSE_REPLACEMENT =
-  '{ const _l = globalThis.__nexuCgLocale || "zh-CN"; deliveryPayloads = [{ text: _l === "en" ? "\\u2705 Conversation compacted successfully." : "\\u2705 \\u5bf9\\u8bdd\\u8bb0\\u5f55\\u6574\\u7406\\u5b8c\\u6210\\u3002" }, ...finalPayloads]; }';
+  '{ const _l = globalThis.__nexuCgLocale || "zh-CN"; deliveryPayloads = [{ text: _l === "en" ? "\\u2705 Conversation compacted successfully." : "\\u2705 \\u5bf9\\u8bdd\\u8bb0\\u5f55\\u6574\\u7406\\u5b8c\\u6210\\u3002" }, ...deliveryPayloads]; }';
+const COMPACTION_COMPLETE_PREFIX_NOTICE_SEARCH =
+  'if (verboseEnabled) {\n\t\t\t\tconst suffix = typeof count === "number" ? ` (count ${count})` : "";\n\t\t\t\tprefixNotices.push({ text: `🧹 Auto-compaction complete${suffix}.` });\n\t\t\t}';
+const COMPACTION_COMPLETE_PREFIX_NOTICE_REPLACEMENT =
+  '{ const _l = globalThis.__nexuCgLocale || "zh-CN"; prefixNotices.push({ text: _l === "en" ? "\\u2705 Conversation compacted successfully." : "\\u2705 \\u5bf9\\u8bdd\\u8bb0\\u5f55\\u6574\\u7406\\u5b8c\\u6210\\u3002" }); }';
+// OpenClaw only auto-generates session titles (via utilityModel routing) for
+// Control-UI keys shaped `agent:<id>:dashboard:*`. Nexu webchat sessions use
+// `agent:<botId>:main` and `agent:<botId>:<uuid>`, so widen the predicate to
+// cover them. Channel traffic (feishu/slack/…) never reaches this chat.send
+// hook, so channel sessions keep their hint-derived titles.
+const DASHBOARD_TITLE_KEY_SEARCH =
+  'function isDashboardSessionKey(sessionKey) {\n\treturn parseAgentSessionKey(sessionKey)?.rest.startsWith("dashboard:") === true;\n}';
+const DASHBOARD_TITLE_KEY_REPLACEMENT =
+  'function isDashboardSessionKey(sessionKey) {\n\tconst rest = parseAgentSessionKey(sessionKey)?.rest;\n\tif (!rest) return false;\n\treturn rest.startsWith("dashboard:") || rest === "main" || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rest);\n}';
+// Nexu's chat flow marks sessions systemSent (persona/system preamble) before
+// the first user message, so upstream's systemSent guard would suppress title
+// generation for every nexu session. Relax it for nexu-shaped keys only
+// (main / bare-uuid); Control-UI `dashboard:*` keys keep upstream semantics.
+// The generated title still derives solely from the user's message text.
+// Two nexu-specific fixes for the title-generation callsite:
+// 1. Strip nexu's expert-routing preamble (`[路由提示：…]`) from the title
+//    source so generated titles reflect the user's actual message.
+// 2. New nexu sessions are created by chat.send itself (no prior
+//    sessions.create like the Control UI), so the session-store entry may not
+//    be persisted yet at ack time — retry the entry load briefly instead of
+//    silently skipping title generation.
+const DASHBOARD_TITLE_ENTRY_RACE_SEARCH =
+  "const titleSource = stripInlineDirectiveTagsForDisplay(rawMessage).text;\n\t\t\tif (isDashboardSessionTitleCandidate({\n\t\t\t\tsessionKey,\n\t\t\t\tuserMessage: titleSource\n\t\t\t})) (async () => {\n\t\t\t\tconst titleEntry = entry?.sessionId === admittedSessionId ? entry : loadSessionEntry(sessionKey, sessionLoadOptions).entry;\n\t\t\t\tconst titleSessionId = titleEntry?.sessionId;\n\t\t\t\tif (!titleSessionId) return;";
+const DASHBOARD_TITLE_ENTRY_RACE_REPLACEMENT =
+  'const titleSource = stripInlineDirectiveTagsForDisplay(rawMessage).text.replace(/^\\[\\u8def\\u7531\\u63d0\\u793a\\uff1a[^\\]]*\\]\\s*/u, "");\n\t\t\tif (isDashboardSessionTitleCandidate({\n\t\t\t\tsessionKey,\n\t\t\t\tuserMessage: titleSource\n\t\t\t})) (async () => {\n\t\t\t\tlet titleEntry = entry?.sessionId === admittedSessionId ? entry : loadSessionEntry(sessionKey, sessionLoadOptions).entry;\n\t\t\t\tfor (let nexuTitleRetry = 0; !titleEntry?.sessionId && nexuTitleRetry < 5; nexuTitleRetry++) {\n\t\t\t\t\tawait new Promise((resolveDelay) => setTimeout(resolveDelay, 2000));\n\t\t\t\t\ttitleEntry = loadSessionEntry(sessionKey, sessionLoadOptions).entry;\n\t\t\t\t}\n\t\t\t\tconst titleSessionId = titleEntry?.sessionId;\n\t\t\t\tif (!titleSessionId) return;';
+const DASHBOARD_TITLE_SYSTEM_SENT_GUARD_SEARCH =
+  "|| hasExplicitSessionName(params.entry) || params.entry?.systemSent === true || params.entry?.sessionId !== params.sessionId) return false;";
+const DASHBOARD_TITLE_SYSTEM_SENT_GUARD_REPLACEMENT =
+  "|| hasExplicitSessionName(params.entry) || (params.entry?.systemSent === true && !/^agent:[^:]+:(?:main$|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$)/i.test(params.sessionKey)) || params.entry?.sessionId !== params.sessionId) return false;";
 const LOCALE_READER_LINES = [
   'const _nexuLocale = (() => { try { const _fs = require("node:fs"); const _path = require("node:path"); const _stateDir = process.env.OPENCLAW_STATE_DIR; if (!_stateDir) return "zh-CN"; const _fp = _path.join(_stateDir, "nexu-credit-guard-state.json"); const _mt = _fs.statSync(_fp).mtimeMs; if (globalThis.__nexuCgMt === _mt) return globalThis.__nexuCgLocale || "zh-CN"; const _d = JSON.parse(_fs.readFileSync(_fp, "utf8")); globalThis.__nexuCgMt = _mt; globalThis.__nexuCgLocale = _d.locale || "zh-CN"; return globalThis.__nexuCgLocale; } catch { return globalThis.__nexuCgLocale || "zh-CN"; } })();',
 ] as const;
@@ -191,6 +220,7 @@ const CORE_DIST_REPLY_BUNDLE_PATTERNS = [
   /^pi-embedded-.*\.js$/u,
   /^reply-turn-admission-.*\.js$/u,
   /^agent-runner\.runtime.*\.js$/u,
+  /^chat-.*\.js$/u,
 ] as const;
 const FEISHU_PRE_LLM_SINGLE_AGENT_SEARCH = `
       // --- Single-agent dispatch (existing behavior) ---
@@ -703,6 +733,44 @@ async function patchReplyOutcomeBridge(
         );
       }
 
+      if (source.includes(DASHBOARD_TITLE_KEY_SEARCH)) {
+        source = applyExactReplacement(
+          source,
+          DASHBOARD_TITLE_KEY_SEARCH,
+          DASHBOARD_TITLE_KEY_REPLACEMENT,
+          `${bundleName}: nexu session title key predicate`,
+        );
+        source = applyExactReplacement(
+          source,
+          DASHBOARD_TITLE_SYSTEM_SENT_GUARD_SEARCH,
+          DASHBOARD_TITLE_SYSTEM_SENT_GUARD_REPLACEMENT,
+          `${bundleName}: nexu session title systemSent guard`,
+        );
+        source = applyExactReplacement(
+          source,
+          DASHBOARD_TITLE_ENTRY_RACE_SEARCH,
+          DASHBOARD_TITLE_ENTRY_RACE_REPLACEMENT,
+          `${bundleName}: nexu session title entry race`,
+        );
+        emitLog(
+          log,
+          `[slimclaw-runtime-stage] patched session title key predicate in ${bundleName}`,
+        );
+      }
+
+      if (source.includes(COMPACTION_COMPLETE_PREFIX_NOTICE_SEARCH)) {
+        source = applyExactReplacement(
+          source,
+          COMPACTION_COMPLETE_PREFIX_NOTICE_SEARCH,
+          COMPACTION_COMPLETE_PREFIX_NOTICE_REPLACEMENT,
+          `${bundleName}: always-visible compaction complete prefix notice`,
+        );
+        emitLog(
+          log,
+          `[slimclaw-runtime-stage] patched compaction complete prefix notice in ${bundleName}`,
+        );
+      }
+
       if (source.includes(FOLLOWUP_COMPACTION_FEEDBACK_SEARCH)) {
         source = applyExactReplacement(
           source,
@@ -739,19 +807,6 @@ async function patchReplyOutcomeBridge(
         emitLog(
           log,
           `[slimclaw-runtime-stage] patched empty payloads fallback in ${bundleName}`,
-        );
-      }
-
-      if (source.includes(EMPTY_PAYLOAD_ARRAY_SEARCH)) {
-        source = applyExactReplacement(
-          source,
-          EMPTY_PAYLOAD_ARRAY_SEARCH,
-          EMPTY_PAYLOAD_ARRAY_REPLACEMENT,
-          `${bundleName}: empty payload array fallback`,
-        );
-        emitLog(
-          log,
-          `[slimclaw-runtime-stage] patched empty payload array fallback in ${bundleName}`,
         );
       }
 

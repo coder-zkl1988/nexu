@@ -206,6 +206,102 @@ export function registerSessionRoutes(
 
   app.openapi(
     createRoute({
+      method: "post",
+      path: "/api/v1/sessions/{id}/archive",
+      tags: ["Sessions"],
+      request: {
+        params: sessionIdParamSchema,
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({ archived: z.boolean().default(true) }),
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: z.object({ ok: z.boolean() }) },
+          },
+          description: "Archive or unarchive a session",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Not found",
+        },
+        409: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Rejected by OpenClaw (main session or active run)",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      const { archived } = c.req.valid("json");
+      try {
+        const result = await container.sessionService.setSessionArchived(
+          id,
+          archived,
+        );
+        if (!result) return c.json({ message: "Session not found" }, 404);
+        return c.json({ ok: true }, 200);
+      } catch (err) {
+        return c.json(
+          { message: err instanceof Error ? err.message : String(err) },
+          409,
+        );
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/sessions/{id}/fork",
+      tags: ["Sessions"],
+      request: { params: sessionIdParamSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                id: z.string(),
+                botId: z.string(),
+                sessionKey: z.string(),
+                title: z.string(),
+              }),
+            },
+          },
+          description: "Forked session (context inherited from parent)",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Not found",
+        },
+        409: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Fork rejected",
+        },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid("param");
+      try {
+        const forked = await container.sessionService.forkSession(id);
+        if (!forked) return c.json({ message: "Session not found" }, 404);
+        return c.json(forked, 200);
+      } catch (err) {
+        return c.json(
+          { message: err instanceof Error ? err.message : String(err) },
+          409,
+        );
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
       method: "delete",
       path: "/api/v1/sessions/{id}",
       tags: ["Sessions"],

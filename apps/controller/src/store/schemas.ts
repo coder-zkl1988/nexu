@@ -465,6 +465,10 @@ export const controllerRuntimeConfigSchema = z
       })
       .default({ port: 18789, bind: "loopback", authMode: "none" }),
     defaultModelId: z.string().default("link/gemini-3-flash-preview"),
+    // Optional lower-cost model for OpenClaw's short internal tasks (generated
+    // session/thread titles). Compiled to agents.defaults.utilityModel; when
+    // null OpenClaw falls back to the agent's primary model.
+    utilityModelId: z.string().nullable().default(null),
   })
   .passthrough();
 
@@ -630,6 +634,14 @@ export const nexuConfigSchema = z.preprocess((input) => {
             ? {
                 defaultModelId: normalizePersistedModelRef(
                   runtimeCandidate.defaultModelId,
+                  models,
+                ),
+              }
+            : {}),
+          ...(typeof runtimeCandidate.utilityModelId === "string"
+            ? {
+                utilityModelId: normalizePersistedModelRef(
+                  runtimeCandidate.utilityModelId,
                   models,
                 ),
               }

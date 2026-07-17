@@ -175,6 +175,7 @@ export class ScheduleService {
         channelId: schedule.channelId,
         deliveryTo,
         scheduleId: schedule.id,
+        modelId: schedule.modelId,
       });
       // Store the externalId for future updates/deletes
       await this.configStore.setScheduleExternalId(schedule.id, externalId);
@@ -198,37 +199,65 @@ export class ScheduleService {
     if (!existing) return null;
 
     if (existing.source === "agent" && existing.externalId) {
-      // Agent-created: route to OpenClaw via RPC
-      if (input.enabled !== undefined) {
-        await this.cronGateway.updateJob(existing.externalId, {
-          enabled: input.enabled,
-        });
-      }
-      // Return a merged view (existing fields + enabled change)
-      return {
+      // Agent-created: patch the OpenClaw job in place (cron.update). Delivery
+      // stays agent-managed — only nexu-editable fields are patched.
+      const merged = {
         ...existing,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.cron !== undefined ? { cron: input.cron } : {}),
+        ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+        ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-        updatedAt: new Date().toISOString(),
+        ...(input.modelId !== undefined
+          ? { modelId: input.modelId || undefined }
+          : {}),
       };
+      const patchesPayload =
+        input.prompt !== undefined || input.modelId !== undefined;
+      // Preserve the job's payload kind — agent jobs may be systemEvent.
+      let payloadPatch:
+        | { kind: "systemEvent"; text: string }
+        | { kind: "agentTurn"; message: string; model: string | null }
+        | undefined;
+      if (patchesPayload) {
+        const jobs = await this.cronGateway.listJobs();
+        const job = jobs.find((entry) => entry.id === existing.externalId);
+        payloadPatch =
+          job?.payload.kind === "systemEvent"
+            ? { kind: "systemEvent", text: merged.prompt }
+            : {
+                kind: "agentTurn",
+                message: merged.prompt,
+                model: merged.modelId?.trim() ? merged.modelId : null,
+              };
+      }
+      await this.cronGateway.updateJob(existing.externalId, {
+        ...(input.name !== undefined ? { name: merged.name } : {}),
+        ...(input.enabled !== undefined ? { enabled: merged.enabled } : {}),
+        ...(input.cron !== undefined || input.timezone !== undefined
+          ? {
+              schedule: {
+                kind: "cron" as const,
+                expr: merged.cron,
+                tz: merged.timezone,
+              },
+            }
+          : {}),
+        ...(payloadPatch ? { payload: payloadPatch } : {}),
+      });
+      return { ...merged, updatedAt: new Date().toISOString() };
     }
 
-    // UI-created: update config store + sync + refresh cron job
+    // UI-created: update config store, then patch the cron job in place.
     const updated = await this.configStore.updateSchedule(id, input);
     if (updated) {
-      if (updated.externalId) {
-        try {
-          await this.cronGateway.removeJob(updated.externalId);
-        } catch {
-          // Non-fatal: old job may already be gone
-        }
-      }
       try {
         const deliveryTo = await this.resolveLatestChannelTarget(
           updated.botId,
           updated.channelType,
           updated.channelId,
         );
-        const externalId = await this.cronGateway.createJob({
+        const jobInput = {
           name: updated.name,
           agentId: updated.botId,
           enabled: updated.enabled,
@@ -239,8 +268,27 @@ export class ScheduleService {
           channelId: updated.channelId,
           deliveryTo,
           scheduleId: updated.id,
-        });
-        await this.configStore.setScheduleExternalId(updated.id, externalId);
+          modelId: updated.modelId,
+        };
+        if (updated.externalId && existing.botId === updated.botId) {
+          // In-place edit (OpenClaw >=2026.7.1): keeps job id + run history.
+          await this.cronGateway.updateJobFromSchedule(
+            updated.externalId,
+            jobInput,
+          );
+        } else {
+          // No job yet, or the bot changed (agentId is part of the job's
+          // session identity) → recreate.
+          if (updated.externalId) {
+            try {
+              await this.cronGateway.removeJob(updated.externalId);
+            } catch {
+              // Non-fatal: old job may already be gone
+            }
+          }
+          const externalId = await this.cronGateway.createJob(jobInput);
+          await this.configStore.setScheduleExternalId(updated.id, externalId);
+        }
       } catch (err) {
         logger.warn(
           { error: err instanceof Error ? err.message : String(err) },

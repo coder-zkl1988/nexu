@@ -176,6 +176,35 @@ function applyDataPath(
   }
 }
 
+/**
+ * Write a value into the surface data model at a JSON-pointer path.
+ * Two-way binding write half: form components call this on user input so
+ * button actions (and the bot) observe the live form state.
+ */
+export function setByJsonPointer(
+  obj: Record<string, unknown>,
+  pointer: string,
+  value: unknown,
+): void {
+  applyDataPath(obj, pointer, value);
+}
+
+/**
+ * Extract the data-binding path from a dynamic value (`{ path: "/x" }`).
+ * Returns null for literals and function bindings.
+ */
+export function getBindingPath(val: unknown): string | null {
+  if (
+    val !== null &&
+    typeof val === "object" &&
+    "path" in val &&
+    typeof (val as { path: unknown }).path === "string"
+  ) {
+    return (val as { path: string }).path;
+  }
+  return null;
+}
+
 export function getByJsonPointer(obj: unknown, pointer: string): unknown {
   if (!pointer || pointer === "/") return obj;
   const segments = pointer.split("/").filter(Boolean);

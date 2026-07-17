@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
+import { getBindingPath } from "../a2ui-surface";
 import type { TextFieldComponent as TextFieldComp } from "../a2ui-types";
 
 interface Props {
   comp: TextFieldComp;
   resolve: <T>(val: T) => unknown;
+  write?: (path: string, value: unknown) => void;
 }
 
-export function TextFieldComponent({ comp, resolve }: Props) {
+export function TextFieldComponent({ comp, resolve, write }: Props) {
   const label = comp.label ? String(resolve(comp.label) ?? "") : undefined;
   const value = comp.value ? String(resolve(comp.value) ?? "") : "";
   const placeholder = comp.placeholder
@@ -17,8 +19,16 @@ export function TextFieldComponent({ comp, resolve }: Props) {
   const multiline = resolve(comp.multiline) === true;
   const required = resolve(comp.required) === true;
 
+  // Two-way binding target: explicit `path`, else the `value` binding, else
+  // the component id — button actions submit the live form state.
+  const bindPath = comp.path ?? getBindingPath(comp.value) ?? `/${comp.id}`;
+
   const [currentValue, setCurrentValue] = useState(value);
   useEffect(() => setCurrentValue(value), [value]);
+
+  useEffect(() => {
+    write?.(bindPath, currentValue);
+  }, [bindPath, currentValue, write]);
 
   const inputProps = {
     id: comp.id,
@@ -26,8 +36,12 @@ export function TextFieldComponent({ comp, resolve }: Props) {
     placeholder,
     required,
     value: currentValue,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setCurrentValue(e.target.value),
+    onChange: (
+      e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ) => {
+      setCurrentValue(e.target.value);
+      write?.(bindPath, e.target.value);
+    },
   };
 
   return (

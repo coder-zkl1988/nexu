@@ -1283,6 +1283,13 @@ export function registerChannelRoutes(
 
   const channelsLiveStatusResponseSchema = z.object({
     gatewayConnected: z.boolean(),
+    /**
+     * OpenClaw >=2026.7.1 crash-loop breaker: after repeated unclean boots
+     * the gateway stays alive in control-plane-safe mode with channel
+     * auto-start suppressed ("channels all down, process alive"). Detected
+     * from the suppression message OpenClaw stamps into channel lastError.
+     */
+    gatewaySafeMode: z.boolean(),
     channels: z.array(channelLiveStatusEntrySchema),
     agent: z.object({
       modelId: z.string().nullable(),
@@ -1324,9 +1331,14 @@ export function registerChannelRoutes(
         ? (models.models.find((model) => model.id === modelId)?.name ?? null)
         : null;
 
+      const gatewaySafeMode = liveStatus.channels.some((channel) =>
+        (channel.lastError ?? "").includes("restart-loop breaker"),
+      );
+
       return c.json(
         {
           gatewayConnected: liveStatus.gatewayConnected,
+          gatewaySafeMode,
           channels: liveStatus.channels,
           agent: {
             modelId,

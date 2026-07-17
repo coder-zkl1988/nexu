@@ -711,7 +711,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     agentService,
     channelService,
     channelFallbackService,
-    sessionService: new SessionService(sessionsRuntime),
+    sessionService: new SessionService(sessionsRuntime, gatewayService),
     runtimeConfigService: new RuntimeConfigService(
       configStore,
       openclawSyncService,
