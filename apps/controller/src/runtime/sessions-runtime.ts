@@ -1982,8 +1982,13 @@ export class SessionsRuntime {
       return undefined;
     }
     for (const candidate of [entry.label, entry.displayName, entry.subject]) {
+      // The utility-model title generator may emit a markdown heading
+      // ("# 标题") that upstream normalizeDashboardSessionTitle does not
+      // strip, so drop any leading heading marker on read-back.
       const normalized =
-        typeof candidate === "string" ? candidate.trim() : undefined;
+        typeof candidate === "string"
+          ? candidate.replace(/^#{1,6}\s+/, "").trim()
+          : undefined;
       if (normalized) {
         return normalized;
       }

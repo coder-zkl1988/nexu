@@ -14,7 +14,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 
 const OPENCLAW_PACKAGE_PATCH_DIRNAME = "openclaw";
 const STAGE_MANIFEST_FILENAME = "manifest.json";
-const STAGE_PATCH_VERSION = "2026-07-16-slimclaw-runtime-stage-v7";
+const STAGE_PATCH_VERSION = "2026-07-17-slimclaw-runtime-stage-v8";
 const REPLY_OUTCOME_HELPER_SEARCH = `
 const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const startTime = diagnosticsEnabled ? Date.now() : 0;
@@ -185,6 +185,14 @@ const DASHBOARD_TITLE_ENTRY_RACE_SEARCH =
   "const titleSource = stripInlineDirectiveTagsForDisplay(rawMessage).text;\n\t\t\tif (isDashboardSessionTitleCandidate({\n\t\t\t\tsessionKey,\n\t\t\t\tuserMessage: titleSource\n\t\t\t})) (async () => {\n\t\t\t\tconst titleEntry = entry?.sessionId === admittedSessionId ? entry : loadSessionEntry(sessionKey, sessionLoadOptions).entry;\n\t\t\t\tconst titleSessionId = titleEntry?.sessionId;\n\t\t\t\tif (!titleSessionId) return;";
 const DASHBOARD_TITLE_ENTRY_RACE_REPLACEMENT =
   'const titleSource = stripInlineDirectiveTagsForDisplay(rawMessage).text.replace(/^\\[\\u8def\\u7531\\u63d0\\u793a\\uff1a[^\\]]*\\]\\s*/u, "");\n\t\t\tif (isDashboardSessionTitleCandidate({\n\t\t\t\tsessionKey,\n\t\t\t\tuserMessage: titleSource\n\t\t\t})) (async () => {\n\t\t\t\tlet titleEntry = entry?.sessionId === admittedSessionId ? entry : loadSessionEntry(sessionKey, sessionLoadOptions).entry;\n\t\t\t\tfor (let nexuTitleRetry = 0; !titleEntry?.sessionId && nexuTitleRetry < 5; nexuTitleRetry++) {\n\t\t\t\t\tawait new Promise((resolveDelay) => setTimeout(resolveDelay, 2000));\n\t\t\t\t\ttitleEntry = loadSessionEntry(sessionKey, sessionLoadOptions).entry;\n\t\t\t\t}\n\t\t\t\tconst titleSessionId = titleEntry?.sessionId;\n\t\t\t\tif (!titleSessionId) return;';
+// utilityModel sometimes returns a markdown heading ("# 标题") despite the
+// "Return only the title" prompt; upstream normalizeDashboardSessionTitle
+// only strips code fences, a `title:` prefix, and surrounding quotes, so
+// strip leading heading markers before the title is persisted.
+const DASHBOARD_TITLE_MARKDOWN_HEADING_SEARCH =
+  'const normalized = firstLine.replace(/^\\s*(?:title\\s*:\\s*)?/i, "")';
+const DASHBOARD_TITLE_MARKDOWN_HEADING_REPLACEMENT =
+  'const normalized = firstLine.replace(/^#{1,6}\\s+/, "").replace(/^\\s*(?:title\\s*:\\s*)?/i, "")';
 const DASHBOARD_TITLE_SYSTEM_SENT_GUARD_SEARCH =
   "|| hasExplicitSessionName(params.entry) || params.entry?.systemSent === true || params.entry?.sessionId !== params.sessionId) return false;";
 const DASHBOARD_TITLE_SYSTEM_SENT_GUARD_REPLACEMENT =
@@ -751,6 +759,12 @@ async function patchReplyOutcomeBridge(
           DASHBOARD_TITLE_ENTRY_RACE_SEARCH,
           DASHBOARD_TITLE_ENTRY_RACE_REPLACEMENT,
           `${bundleName}: nexu session title entry race`,
+        );
+        source = applyExactReplacement(
+          source,
+          DASHBOARD_TITLE_MARKDOWN_HEADING_SEARCH,
+          DASHBOARD_TITLE_MARKDOWN_HEADING_REPLACEMENT,
+          `${bundleName}: nexu session title markdown heading strip`,
         );
         emitLog(
           log,
