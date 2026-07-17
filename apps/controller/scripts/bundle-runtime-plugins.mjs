@@ -37,6 +37,10 @@ const bundledPlugins = [
     id: "wecom",
     npmName: "@wecom/wecom-openclaw-plugin",
   },
+  {
+    id: "whatsapp",
+    npmName: "@openclaw/whatsapp",
+  },
 ];
 
 const MANIFEST_ID_FIXES = {

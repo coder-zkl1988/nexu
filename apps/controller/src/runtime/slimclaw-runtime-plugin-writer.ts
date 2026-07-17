@@ -17,6 +17,7 @@ const BUNDLED_PLUGIN_IDS = new Set([
   "openclaw-qqbot",
   "tabby-control",
   "wecom",
+  "whatsapp",
 ]);
 
 export class OpenClawRuntimePluginWriter {
