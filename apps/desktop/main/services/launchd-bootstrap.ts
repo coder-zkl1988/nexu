@@ -177,6 +177,39 @@ async function ensureLogDir(nexuHome?: string): Promise<string> {
   return logDir;
 }
 
+const LOG_ROTATE_THRESHOLD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Rotate a service's launchd stdout/stderr logs when they exceed the size
+ * threshold. launchd only appends to StandardOutPath/StandardErrorPath and
+ * never rotates, so without this the files grow unbounded.
+ *
+ * Must only be called while the service is NOT running (fresh start, or
+ * after bootout and before re-bootstrap) — renaming a file launchd is
+ * actively writing to would race the writer. Keeps a single .1 backup.
+ */
+async function rotateOversizedServiceLogs(
+  logDir: string,
+  service: "controller" | "openclaw",
+): Promise<void> {
+  for (const name of [`${service}.log`, `${service}.error.log`]) {
+    const filePath = path.join(logDir, name);
+    try {
+      const { size } = await fs.stat(filePath);
+      if (size < LOG_ROTATE_THRESHOLD_BYTES) {
+        continue;
+      }
+      await fs.rm(`${filePath}.1`, { force: true });
+      await fs.rename(filePath, `${filePath}.1`);
+      console.log(
+        `[bootstrap] rotated oversized log ${name} (${Math.round(size / 1024 / 1024)}MB) to ${name}.1`,
+      );
+    } catch {
+      // Best effort — a missing log file must never block startup.
+    }
+  }
+}
+
 /**
  * Wait for controller to be ready by polling health endpoint.
  *
@@ -1175,6 +1208,9 @@ export async function bootstrapWithLaunchd(
   };
 
   if (!controllerHealthy) {
+    // Safe to rotate here: controller is either cold (never started) or was
+    // booted out above, so nothing is writing to its launchd log files.
+    await rotateOversizedServiceLogs(logDir, "controller");
     await ensureService(labels.controller, "controller");
     await ensureRunning(labels.controller, "controller");
     await validateOrRecoverController();
@@ -1182,6 +1218,8 @@ export async function bootstrapWithLaunchd(
     console.log("[bootstrap] controller already healthy, skipping");
   }
   if (!openclawHealthy) {
+    // Same as controller: openclaw is not running on this path.
+    await rotateOversizedServiceLogs(logDir, "openclaw");
     await ensureService(labels.openclaw, "openclaw");
     await ensureRunning(labels.openclaw, "openclaw");
 
