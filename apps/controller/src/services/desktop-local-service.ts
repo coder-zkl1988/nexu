@@ -90,6 +90,11 @@ export class DesktopLocalService {
     return { ok: true, modelId };
   }
 
+  async setUtilityModel(modelId: string | null) {
+    await this.configStore.setUtilityModel(modelId);
+    return { ok: true, modelId };
+  }
+
   async restartRuntime(): Promise<void> {
     if (!this.openclawProcess.managesProcess()) {
       logger.info(

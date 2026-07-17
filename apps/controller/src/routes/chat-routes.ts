@@ -307,6 +307,42 @@ export function registerChatRoutes(
     },
   );
 
+  // GET /api/v1/chat/run-status - Whether a turn is currently running for a
+  // session (SessionRunRegistry view). Lets the composer show a stop button
+  // for runs it did not initiate (A2UI actions, automations) instead of
+  // bouncing sends off the 409 busy guard with no way to cancel.
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/chat/run-status",
+      tags: ["Chat"],
+      request: {
+        query: z.object({
+          botId: z.string(),
+          sessionKey: z.string().optional(),
+        }),
+      },
+      responses: {
+        200: {
+          description: "Active-run state for the session",
+          content: {
+            "application/json": {
+              schema: z.object({ busy: z.boolean() }),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { botId, sessionKey } = c.req.valid("query");
+      const lookupKey = sessionKey || `agent:${botId}:main`;
+      return c.json(
+        { busy: container.sessionRunRegistry.isBusy(lookupKey) },
+        200,
+      );
+    },
+  );
+
   // POST /api/v1/chat/cancel - Abort active runs for a chat session
   app.openapi(
     createRoute({
@@ -320,6 +356,13 @@ export function registerChatRoutes(
               schema: z.object({
                 botId: z.string(),
                 sessionKey: z.string(),
+                /**
+                 * Also emergency-stop running device (phone) tasks. A device
+                 * task dispatched by this run keeps executing on the phone
+                 * after the agent run aborts; the composer's stop button opts
+                 * in so "cancel the bot" really halts the phone too.
+                 */
+                stopDeviceTasks: z.boolean().optional(),
               }),
             },
           },
@@ -334,6 +377,7 @@ export function registerChatRoutes(
                 ok: z.boolean(),
                 aborted: z.boolean(),
                 runIds: z.array(z.string()),
+                deviceTasksCancelled: z.number(),
               }),
             },
           },
@@ -341,10 +385,44 @@ export function registerChatRoutes(
       },
     }),
     async (c) => {
-      const { botId, sessionKey } = c.req.valid("json");
+      const { botId, sessionKey, stopDeviceTasks } = c.req.valid("json");
       const lookupKey = sessionKey || `agent:${botId}:main`;
       const result = await container.gatewayService.abortChatSession(lookupKey);
-      return c.json(result);
+      // Clear the registry immediately: OpenClaw's aborted event can lag (or
+      // never arrive when the run is stuck inside a blocking tool), and the
+      // whole point of cancel is to unblock the composer.
+      container.sessionRunRegistry.markFinished(lookupKey);
+
+      let deviceTasksCancelled = 0;
+      if (stopDeviceTasks) {
+        try {
+          const { devices } =
+            await container.deviceControlService.listDevices();
+          const busyDevices = devices.filter(
+            (device) => device.status === "busy" && device.currentTaskId,
+          );
+          const results = await Promise.allSettled(
+            busyDevices.map((device) =>
+              container.deviceControlService.cancelTask(device.deviceId, {
+                taskId: device.currentTaskId as string,
+              }),
+            ),
+          );
+          deviceTasksCancelled = results.filter(
+            (entry) => entry.status === "fulfilled" && entry.value.cancelled,
+          ).length;
+        } catch (err) {
+          logger.warn(
+            {
+              error: err instanceof Error ? err.message : String(err),
+              sessionKey: lookupKey,
+            },
+            "chat_cancel_device_stop_failed",
+          );
+        }
+      }
+
+      return c.json({ ...result, deviceTasksCancelled });
     },
   );
 

@@ -617,6 +617,9 @@ export function compileOpenClawConfig(
       config.runtime.defaultModelId,
     oauthState,
   );
+  const utilityModelId = config.runtime.utilityModelId
+    ? resolveModelId(config, env, config.runtime.utilityModelId, oauthState)
+    : null;
 
   const openClawConfig: OpenClawConfig = {
     ...(disableMdnsDiscovery
@@ -670,6 +673,10 @@ export function compileOpenClawConfig(
     agents: {
       defaults: {
         model: { primary: defaultModelId },
+        // Route short internal tasks (generated session/thread titles) through
+        // a cheaper model when configured; OpenClaw falls back to the primary
+        // model when absent.
+        ...(utilityModelId ? { utilityModel: utilityModelId } : {}),
         compaction: {
           // "safeguard" mode: Pi framework auto-compacts when prompt
           // approaches context window. The safeguard extension (compaction-

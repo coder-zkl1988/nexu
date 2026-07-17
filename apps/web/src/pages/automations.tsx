@@ -1,3 +1,4 @@
+import { InlineModelSelector } from "@/components/inline-model-selector";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +51,8 @@ interface ScheduleItem {
   sessionKey?: string;
   channelType?: string;
   channelId?: string;
+  /** Per-job model override; empty = bot default. */
+  modelId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,6 +225,7 @@ function AutomationModal({
     "minutes",
   );
   const [prompt, setPrompt] = useState("");
+  const [modelId, setModelId] = useState("");
   const [enabled, setEnabled] = useState(true);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -269,6 +273,7 @@ function AutomationModal({
       setChannelId(editingSchedule.channelId ?? undefined);
       setPrompt(editingSchedule.prompt);
       setEnabled(editingSchedule.enabled);
+      setModelId(editingSchedule.modelId ?? "");
 
       const interval = parseIntervalCron(editingSchedule.cron);
       if (interval) {
@@ -289,6 +294,7 @@ function AutomationModal({
       setName("");
       setBotId("");
       setPrompt("");
+      setModelId("");
       setEnabled(true);
       setScheduleMode("daily");
       setTime("09:00");
@@ -309,6 +315,7 @@ function AutomationModal({
     setIntervalValue(30);
     setIntervalUnit("minutes");
     setPrompt("");
+    setModelId("");
     setEnabled(true);
   }
 
@@ -349,6 +356,8 @@ function AutomationModal({
             enabled,
             channelType: channelType || undefined,
             channelId: channelId || undefined,
+            // Empty string clears the per-job override back to bot default.
+            modelId,
           },
           path: { scheduleId: editingSchedule.id },
         });
@@ -363,6 +372,7 @@ function AutomationModal({
             enabled,
             channelType: channelType || undefined,
             channelId: channelId || undefined,
+            modelId: modelId || undefined,
           },
         });
       }
@@ -437,6 +447,34 @@ function AutomationModal({
                   <ChevronDown size={16} />
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Per-job model override (OpenClaw >=2026.7.1 cron payload.model) */}
+          <div>
+            <Label className="block text-[13px] font-medium text-[var(--color-tabby-foreground)] mb-1.5">
+              {t("automations.modal.model")}
+            </Label>
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--color-tabby-border)] bg-white px-1.5 py-0.5">
+              <div className="flex-1">
+                <InlineModelSelector
+                  selectedModelId={modelId}
+                  onSelectModel={setModelId}
+                />
+              </div>
+              {modelId ? (
+                <button
+                  type="button"
+                  className="shrink-0 pr-1.5 text-[11px] text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)] transition-colors"
+                  onClick={() => setModelId("")}
+                >
+                  {t("automations.modal.modelFollowBot")}
+                </button>
+              ) : (
+                <span className="shrink-0 pr-1.5 text-[11px] text-[var(--color-tabby-muted)]">
+                  {t("automations.modal.modelFollowBot")}
+                </span>
+              )}
             </div>
           </div>
 
@@ -677,6 +715,7 @@ export function AutomationsPage() {
           sessionKey: s.sessionKey as string | undefined,
           channelType: s.channelType as string | undefined,
           channelId: s.channelId as string | undefined,
+          modelId: s.modelId as string | undefined,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt,
         })),

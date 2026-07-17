@@ -222,6 +222,62 @@ export class OpenClawGatewayService {
     );
   }
 
+  /**
+   * Runtime host status (OpenClaw >=2026.7.1 system.info): CPU/load, memory,
+   * disk, uptime of the machine running the gateway.
+   */
+  async systemInfo(): Promise<Record<string, unknown>> {
+    return this.wsClient.request("system.info", {});
+  }
+
+  /**
+   * Synthesize speech for a text snippet (OpenClaw >=2026.7.1 tts.speak).
+   * Requires a configured speech provider; rejects with the provider error
+   * otherwise. Synthesis can take a while — generous timeout.
+   */
+  async ttsSpeak(text: string): Promise<{
+    audioBase64?: string;
+    provider?: string;
+    mimeType?: string;
+    outputFormat?: string;
+    fileExtension?: string;
+  }> {
+    return this.wsClient.request("tts.speak", { text }, { timeoutMs: 60000 });
+  }
+
+  // ---- Session management (OpenClaw >=2026.7.1) --------------------------
+
+  /**
+   * Patch a session's store entry: rename (`label`), group (`category`),
+   * archive/unarchive (`archived`), pin, unread. Null clears a field.
+   */
+  async sessionsPatch(params: {
+    key: string;
+    agentId?: string;
+    label?: string | null;
+    category?: string | null;
+    archived?: boolean;
+  }): Promise<unknown> {
+    return this.wsClient.request("sessions.patch", params);
+  }
+
+  /**
+   * Create a session; with `parentSessionKey` this forks the parent
+   * (context inherited via the parent chain).
+   */
+  async sessionsCreate(params: {
+    key: string;
+    agentId?: string;
+    parentSessionKey?: string;
+  }): Promise<{
+    ok?: boolean;
+    key?: string;
+    sessionId?: string;
+    entry?: { sessionId?: string; sessionFile?: string };
+  }> {
+    return this.wsClient.request("sessions.create", params);
+  }
+
   // ---- Workboard (team task board) --------------------------------------
   // workboard.* RPC requires an operator-scoped gateway connection; the
   // controller's WS client connects with the shared gateway token. Note the

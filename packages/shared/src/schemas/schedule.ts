@@ -12,6 +12,8 @@ export const createScheduleSchema = z.object({
   channelType: z.string().optional(),
   channelId: z.string().optional(),
   description: z.string().optional(),
+  /** Per-job model override (OpenClaw cron payload.model). Empty = bot default. */
+  modelId: z.string().optional(),
 });
 
 export const updateScheduleSchema = z.object({
@@ -25,6 +27,8 @@ export const updateScheduleSchema = z.object({
   channelType: z.string().optional(),
   channelId: z.string().optional(),
   description: z.string().optional(),
+  /** Per-job model override; empty string clears back to the bot default. */
+  modelId: z.string().optional(),
 });
 
 export const scheduleResponseSchema = createScheduleSchema.extend({

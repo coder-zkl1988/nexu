@@ -56,6 +56,7 @@ import {
   getApiInternalDesktopDefaultModel,
   getApiInternalDesktopPreferences,
   getApiInternalDesktopReady,
+  getApiInternalDesktopUtilityModel,
   getApiV1ModelProvidersByProviderIdOauthProviderStatus,
   getApiV1ModelProvidersByProviderIdOauthStatus,
   getApiV1ModelProvidersConfig,
@@ -72,6 +73,7 @@ import {
   postApiV1ModelProvidersInstancesValidate,
   postApiV1ModelProvidersMinimaxOauthLogin,
   putApiInternalDesktopDefaultModel,
+  putApiInternalDesktopUtilityModel,
   putApiV1ModelProvidersConfig,
 } from "../../lib/api/sdk.gen";
 import type {
@@ -1564,6 +1566,17 @@ export function ModelsPage() {
   });
 
   const currentModelId = defaultModelData?.modelId ?? "";
+
+  // Utility model for short internal tasks (generated session titles).
+  // Null means "follow the primary model".
+  const { data: utilityModelData } = useQuery({
+    queryKey: ["desktop-utility-model"],
+    queryFn: async () => {
+      const { data } = await getApiInternalDesktopUtilityModel();
+      return data as { modelId: string | null } | undefined;
+    },
+  });
+  const currentUtilityModelId = utilityModelData?.modelId ?? "";
   const models = modelsData?.models ?? [];
   const visibleRegistryProviders = useMemo(
     () =>
@@ -1684,6 +1697,24 @@ export function ModelsPage() {
         model_name: modelId,
       });
       queryClient.invalidateQueries({ queryKey: ["desktop-default-model"] });
+    },
+  });
+
+  const updateUtilityModel = useMutation({
+    // Empty string clears the override (follow the primary model).
+    mutationFn: async (modelId: string) => {
+      const toastId = toast.loading(t("models.switchingModel"));
+      const { error } = await putApiInternalDesktopUtilityModel({
+        body: { modelId },
+      });
+      if (error) {
+        toast.error(t("models.modelSwitchFailed"), { id: toastId });
+        throw new Error("Failed to update utility model");
+      }
+      toast.success(t("models.modelSwitched"), { id: toastId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["desktop-utility-model"] });
     },
   });
 
@@ -2038,6 +2069,41 @@ export function ModelsPage() {
                     triggerClassName="min-w-[220px] justify-between"
                     dropdownClassName="shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
                   />
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-4 border-t border-border-subtle pt-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-text-primary">
+                      {t("settings.providers.utilityModelTitle")}
+                    </div>
+                    <div className="text-[11px] text-text-tertiary">
+                      {t("settings.providers.utilityModelDesc")}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {currentUtilityModelId ? (
+                      <button
+                        type="button"
+                        className="text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+                        onClick={() => updateUtilityModel.mutate("")}
+                      >
+                        {t("settings.providers.utilityModelFollow")}
+                      </button>
+                    ) : null}
+                    <ModelPickerDropdown
+                      compact
+                      dropdownAlign="end"
+                      models={models}
+                      currentModelId={currentUtilityModelId}
+                      emptyLabel={t("settings.providers.utilityModelFollow")}
+                      onSelectModel={(modelId) =>
+                        updateUtilityModel.mutate(modelId)
+                      }
+                      className="shrink-0"
+                      triggerClassName="min-w-[220px] justify-between"
+                      dropdownClassName="shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
+                    />
+                  </div>
                 </div>
               </div>
 

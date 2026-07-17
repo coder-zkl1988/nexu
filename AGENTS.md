@@ -79,6 +79,7 @@ This repo is desktop-first. Prefer the controller-first path and remove or ignor
 ## Desktop local development
 
 - Minimal cold-start setup on a fresh machine is: `pnpm install` -> `pnpm --filter @nexu/shared build` -> copy `tools/dev/.env.example` to `tools/dev/.env` only if you need dev-only overrides.
+- OpenClaw >=2026.7.1 hard-refuses unsupported Node versions (requires >=22.22.3 <23, >=24.15.0 <25, or >=25.9.0; it also verifies the Node SQLite runtime before opening state databases). Local dev Node must satisfy this or `pnpm dev start openclaw` exits immediately with a version error. Packaged desktop is unaffected: Electron 43's embedded Node is 24.17.0.
 - Default daily flow is: `pnpm dev start` -> `pnpm dev status <service>` / `pnpm dev logs <service>` as needed -> `pnpm dev stop`.
 - Use `pnpm dev restart` for a clean full-stack recycle; use `pnpm dev restart <service>` only when you are intentionally touching one service.
 - Explicit single-service control remains available through `pnpm dev start <desktop|openclaw|controller|web>`, `pnpm dev stop <service>`, `pnpm dev restart <service>`, `pnpm dev status <service>`, and `pnpm dev logs <service>`.

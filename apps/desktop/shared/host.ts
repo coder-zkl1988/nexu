@@ -666,6 +666,7 @@ export type RuntimeReasonCode =
   | "stderr_line"
   | "auto_restart_scheduled"
   | "max_restarts_exceeded"
+  | "exit_config_error"
   | "launchd_running"
   | "launchd_stopped"
   | "launchd_start_requested"

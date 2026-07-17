@@ -76,7 +76,15 @@ type SessionHints = {
 type SessionsIndexEntry = {
   sessionId?: string;
   sessionFile?: string;
+  /** Set by OpenClaw >=2026.7.1 sessions.patch { archived: true }. */
+  archivedAt?: number;
   lastChannel?: string;
+  // Explicit or generated session names maintained by OpenClaw >=2026.7.1
+  // (deriveSessionTitle precedence: label > displayName > subject). The
+  // utility-model title generator persists into displayName.
+  label?: string;
+  displayName?: string;
+  subject?: string;
   origin?: {
     provider?: string;
     label?: string;
@@ -111,6 +119,13 @@ type QqbotKnownUser = {
 
 const UUID_LIKE_TITLE_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Controller-injected message directives (chat-service.ts: EXPERT_ROUTING_HINT
+// / TEAM_LEAD_HINT / skill directive). Mirrors the web display-layer strip in
+// apps/web/src/lib/chat/chat-message-extract.ts — keep the patterns in sync.
+const INJECTED_DIRECTIVE_PATTERNS: readonly RegExp[] = [
+  /^\[请使用「[^」]*」技能完成本次请求\]\s*/u,
+  /^\[路由提示：[^\]]+\]\s*/u,
+];
 const QQBOT_OPEN_ID_PATTERN = /^[0-9a-f]{32}$/i;
 const QQBOT_TARGET_PATTERN = /^qqbot:(c2c|group):([0-9a-f-]+)$/i;
 // Persisted titles that are just the raw qqbot open id, optionally with the
@@ -523,6 +538,16 @@ export class SessionsRuntime {
             fileNameToIndexKey.get(file.name) ??
             file.name.replace(/\.jsonl$/, "");
 
+          // Skip archived sessions (OpenClaw sessions.patch { archived }).
+          const archivedEntry = this.findSessionIndexEntry(
+            sessionsIndex,
+            filePath,
+            sessionKey,
+          )?.[1];
+          if (archivedEntry?.archivedAt) {
+            continue;
+          }
+
           // Read the first user message metadata block and backfill exact
           // Feishu chat targets for existing sessions without touching
           // OpenClaw's transcript writer.
@@ -598,7 +623,6 @@ export class SessionsRuntime {
           ) {
             title = "WeChat ClawBot";
           }
-
           const { metadata: mergedMetadata, changed: metadataBackfilled } =
             this.mergeSessionMetadata(extra.metadata, resolvedHintMetadata);
           const titleInferred =
@@ -626,6 +650,42 @@ export class SessionsRuntime {
           );
           const lastMsg = messages.at(-1);
 
+          // Hint-less sessions (webchat/dashboard): prefer OpenClaw's
+          // generated/explicit session name from sessions.json. Read live on
+          // every list (not persisted to .meta.json) so later regeneration or
+          // gateway-side renames flow through.
+          if (this.shouldReplaceInferredTitle(title, sessionKey)) {
+            const indexName = this.readIndexSessionName(
+              sessionsIndex,
+              filePath,
+              sessionKey,
+            );
+            if (
+              indexName &&
+              !this.shouldReplaceInferredTitle(indexName, sessionKey)
+            ) {
+              title = indexName;
+            }
+          }
+
+          // Last-resort readable title: first user message excerpt. Keeps the
+          // list free of raw "agent:<uuid>:…" keys even before OpenClaw's
+          // generated title lands (or when no utility/primary model responded).
+          if (this.shouldReplaceInferredTitle(title, sessionKey)) {
+            const firstUserMessage = messages.find(
+              (message) => message.role === "user",
+            );
+            let firstUserText = rawMessageText(firstUserMessage?.content);
+            for (const pattern of INJECTED_DIRECTIVE_PATTERNS) {
+              firstUserText = firstUserText.replace(pattern, "");
+            }
+            const excerpt = firstUserText.replace(/\s+/g, " ").trim();
+            if (excerpt) {
+              title =
+                excerpt.length > 60 ? `${excerpt.slice(0, 59)}…` : excerpt;
+            }
+          }
+
           sessions.push({
             id: file.name,
             botId: agentEntry.name,
@@ -649,6 +709,39 @@ export class SessionsRuntime {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Ensure a gateway-created session's transcript file exists so it shows up
+   * in listSessions immediately (OpenClaw creates the .jsonl lazily on first
+   * message). Writes a minimal .meta.json alongside. Returns the session id
+   * (file name) or null when the gateway did not assign a session file.
+   */
+  async materializeSessionFile(
+    sessionFile: string | undefined,
+    title: string,
+  ): Promise<string | null> {
+    if (!sessionFile) {
+      return null;
+    }
+    const filePath = path.resolve(sessionFile);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    try {
+      await stat(filePath);
+    } catch {
+      await writeFile(filePath, "", "utf8");
+    }
+    const now = new Date().toISOString();
+    const existing = await this.readSessionMetadata(filePath);
+    await this.writeSessionMetadata(filePath, {
+      ...existing,
+      title: existing.title ?? title,
+      channelType: existing.channelType ?? "webchat",
+      status: existing.status ?? "active",
+      createdAt: existing.createdAt ?? now,
+      updatedAt: now,
+    });
+    return path.basename(filePath);
   }
 
   async createOrUpdateSession(
@@ -701,7 +794,10 @@ export class SessionsRuntime {
     if (!session) {
       return null;
     }
-    const filePath = this.getSessionFilePath(session.botId, session.sessionKey);
+    const filePath = await this.resolveSessionFilePath(
+      session.botId,
+      session.sessionKey,
+    );
     const existing = await this.readSessionMetadata(filePath);
     const now = new Date().toISOString();
     await this.writeSessionMetadata(filePath, {
@@ -727,7 +823,10 @@ export class SessionsRuntime {
     if (!session) {
       return null;
     }
-    const filePath = this.getSessionFilePath(session.botId, session.sessionKey);
+    const filePath = await this.resolveSessionFilePath(
+      session.botId,
+      session.sessionKey,
+    );
     await truncate(filePath, 0);
     const now = new Date().toISOString();
     const existing = await this.readSessionMetadata(filePath);
@@ -1851,12 +1950,12 @@ export class SessionsRuntime {
     }
   }
 
-  private inferSessionHintsFromIndex(
+  private findSessionIndexEntry(
     index: Record<string, SessionsIndexEntry>,
     filePath: string,
     sessionKey: string,
-  ): SessionHints {
-    const matched = Object.entries(index).find(([, item]) => {
+  ): [string, SessionsIndexEntry] | undefined {
+    return Object.entries(index).find(([, item]) => {
       if (item.sessionId === sessionKey) {
         return true;
       }
@@ -1865,6 +1964,39 @@ export class SessionsRuntime {
       }
       return false;
     });
+  }
+
+  /**
+   * OpenClaw-maintained session name (explicit label/subject or the
+   * utility-model generated displayName). Used as the title fallback for
+   * sessions with no channel hints (webchat "agent:<botId>:main" and
+   * per-conversation "agent:<botId>:<uuid>" keys).
+   */
+  private readIndexSessionName(
+    index: Record<string, SessionsIndexEntry>,
+    filePath: string,
+    sessionKey: string,
+  ): string | undefined {
+    const entry = this.findSessionIndexEntry(index, filePath, sessionKey)?.[1];
+    if (!entry) {
+      return undefined;
+    }
+    for (const candidate of [entry.label, entry.displayName, entry.subject]) {
+      const normalized =
+        typeof candidate === "string" ? candidate.trim() : undefined;
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return undefined;
+  }
+
+  private inferSessionHintsFromIndex(
+    index: Record<string, SessionsIndexEntry>,
+    filePath: string,
+    sessionKey: string,
+  ): SessionHints {
+    const matched = this.findSessionIndexEntry(index, filePath, sessionKey);
 
     if (!matched) {
       return {};

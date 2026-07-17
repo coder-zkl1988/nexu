@@ -25,9 +25,17 @@ const SKILL_DIRECTIVE_PATTERN = /^\[请使用「[^」]*」技能完成本次请�
  * a frontend release. */
 const EXPERT_ROUTING_HINT_PATTERN = /^\[路由提示：[^\]]+\]\s*/u;
 
+/** OpenClaw runtime-injected internal context (e.g. subagent task-completion
+ * events, delivered as a user-role message). Explicitly marked "internal —
+ * keep private": never render any part of it. A message that is nothing but
+ * this block extracts to empty text and the bubble is hidden entirely. */
+const OPENCLAW_INTERNAL_CONTEXT_PATTERN =
+  /<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>[\s\S]*?(?:<<<END_OPENCLAW_INTERNAL_CONTEXT>>>|$)/gu;
+
 function stripMetadata(rawInput: string): string {
   // Drop controller-injected directives before any other parsing.
   const raw = rawInput
+    .replace(OPENCLAW_INTERNAL_CONTEXT_PATTERN, "")
     .replace(SKILL_DIRECTIVE_PATTERN, "")
     .replace(EXPERT_ROUTING_HINT_PATTERN, "");
   const withoutConversationMeta = raw.replace(

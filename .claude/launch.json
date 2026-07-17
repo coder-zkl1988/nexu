@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "openclaw",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "start", "openclaw"],
+      "port": 18789
+    },
+    {
+      "name": "controller",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "start", "controller"],
+      "port": 50800
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "start", "web"],
+      "port": 50810
+    },
+    {
+      "name": "desktop",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev", "start", "desktop"],
+      "port": 5180
+    }
+  ]
+}

@@ -2231,4 +2231,127 @@ describe("SessionsRuntime", () => {
     );
     expect(cached).toBe("jpg-bytes");
   });
+
+  async function writeIndexMappedSession(
+    dir: string,
+    botId: string,
+    sessionKey: string,
+    sessionId: string,
+  ): Promise<{ sessionsDir: string; sessionPath: string }> {
+    const sessionsDir = path.join(dir, "agents", botId, "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    const sessionPath = path.join(sessionsDir, `${sessionId}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${JSON.stringify({
+        type: "message",
+        id: "msg-1",
+        timestamp: "2026-07-01T10:00:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-07-01T10:00:00.000Z"),
+          content: [{ type: "text", text: "hello" }],
+        },
+      })}\n`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(sessionsDir, "sessions.json"),
+      `${JSON.stringify(
+        {
+          [sessionKey]: {
+            sessionId,
+            sessionFile: sessionPath,
+            updatedAt: Date.parse("2026-07-01T10:00:00.000Z"),
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    return { sessionsDir, sessionPath };
+  }
+
+  it("updateSession writes metadata to the UUID file mapped in sessions.json, not the legacy sessionKey path", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = new SessionsRuntime(
+      createEnv({
+        openclawStateDir: rootDir,
+        openclawConfigPath: path.join(rootDir, "openclaw.json"),
+        openclawSkillsDir: path.join(rootDir, "skills"),
+        openclawWorkspaceTemplatesDir: path.join(
+          rootDir,
+          "workspace-templates",
+        ),
+      }),
+    );
+
+    const sessionId = "3f2a9c40-88f1-4f0e-9a4b-6f1d2e3c4b5a";
+    const sessionKey = "agent:bot-main:main";
+    const { sessionsDir, sessionPath } = await writeIndexMappedSession(
+      rootDir,
+      "bot-main",
+      sessionKey,
+      sessionId,
+    );
+    await writeFile(
+      sessionPath.replace(/\.jsonl$/, ".meta.json"),
+      `${JSON.stringify({ title: "Old title", channelType: "webchat" }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const updated = await runtime.updateSession(`${sessionId}.jsonl`, {
+      title: "Renamed title",
+    });
+    expect(updated?.title).toBe("Renamed title");
+
+    const realMeta = JSON.parse(
+      await readFile(sessionPath.replace(/\.jsonl$/, ".meta.json"), "utf8"),
+    ) as { title?: string };
+    expect(realMeta.title).toBe("Renamed title");
+
+    // The legacy {sessionKey}.meta.json orphan must not be created.
+    await expect(
+      readFile(path.join(sessionsDir, `${sessionKey}.meta.json`), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("resetSession truncates the UUID file mapped in sessions.json instead of failing on the legacy path", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = new SessionsRuntime(
+      createEnv({
+        openclawStateDir: rootDir,
+        openclawConfigPath: path.join(rootDir, "openclaw.json"),
+        openclawSkillsDir: path.join(rootDir, "skills"),
+        openclawWorkspaceTemplatesDir: path.join(
+          rootDir,
+          "workspace-templates",
+        ),
+      }),
+    );
+
+    const sessionId = "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a";
+    const { sessionPath } = await writeIndexMappedSession(
+      rootDir,
+      "bot-main",
+      "agent:bot-main:main",
+      sessionId,
+    );
+    await writeFile(
+      sessionPath.replace(/\.jsonl$/, ".meta.json"),
+      `${JSON.stringify({ title: "Main", messageCount: 5 }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const reset = await runtime.resetSession(`${sessionId}.jsonl`);
+    expect(reset).not.toBeNull();
+
+    expect(await readFile(sessionPath, "utf8")).toBe("");
+    const realMeta = JSON.parse(
+      await readFile(sessionPath.replace(/\.jsonl$/, ".meta.json"), "utf8"),
+    ) as { messageCount?: number; lastMessageAt?: string | null };
+    expect(realMeta.messageCount).toBe(0);
+    expect(realMeta.lastMessageAt).toBeNull();
+  });
 });

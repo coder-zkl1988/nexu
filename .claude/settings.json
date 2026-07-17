@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "kotlin-lsp@claude-plugins-official": true,
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "vercel@claude-plugins-official": false
+  }
+}

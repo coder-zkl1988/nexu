@@ -20,6 +20,9 @@ const execFileAsync = promisify(execFile);
 const MAX_CONSECUTIVE_RESTARTS = 10;
 const BASE_RESTART_DELAY_MS = 3000;
 const RESTART_WINDOW_MS = 120_000;
+// EX_CONFIG from sysexits.h. OpenClaw >=2026.7.1 exits with this on
+// configuration errors; supervisors must not auto-restart (restart storm).
+const EXIT_CONFIG_ERROR = 78;
 // OpenClaw full-process restarts can take tens of seconds before the successor
 // starts listening again (observed ~20s during first-time Feishu enablement).
 // Keep a generous grace window so the outer supervisor does not spawn a second
@@ -210,6 +213,17 @@ export class OpenClawProcessManager {
       if (signal !== "SIGTERM") {
         if (code === 0 && this.controlledRestartExpected) {
           this.awaitControlledRestart();
+          return;
+        }
+        // EX_CONFIG (78, sysexits.h): OpenClaw >=2026.7.1 exits with this on
+        // configuration errors (including the crash-loop safe-mode path).
+        // Restarting cannot fix a config error — suppress auto-restart so we
+        // don't enter a restart storm; surface the state for diagnostics.
+        if (code === EXIT_CONFIG_ERROR) {
+          logger.error(
+            { code, event: "openclaw_exit_config_error" },
+            "openclaw exited with EX_CONFIG (configuration error) — auto-restart suppressed; fix openclaw.json and restart manually",
+          );
           return;
         }
         this.scheduleRestart(code, signal);

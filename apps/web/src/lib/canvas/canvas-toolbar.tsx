@@ -6,8 +6,8 @@
  * shadow — holding 32px icon-only buttons. Hovering a button shows an
  * instant dark tooltip ABOVE the dock (rendered outside the scrolling
  * dock so it never clips); groups are separated by hairline dividers;
- * destructive actions render red. The appearance popover and board panel
- * open above the dock with the same glass styling.
+ * destructive actions render red. The appearance popover opens above the
+ * dock with the same glass styling.
  *
  * The reference project is AGPL — this file re-implements the LOOK with
  * our own components and design tokens (no antd, zero code reuse).
@@ -15,7 +15,8 @@
 
 import { isImeComposing } from "@/lib/keyboard";
 import {
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Eraser,
   Grid2x2,
@@ -26,6 +27,7 @@ import {
   Maximize2,
   Music2,
   Palette,
+  Pencil,
   Redo2,
   SlidersHorizontal,
   Square,
@@ -39,6 +41,7 @@ import {
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -85,6 +88,37 @@ export function CanvasToolbar({
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [tip, setTip] = useState<DockTip | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Single-row dock: when the panel is narrower than the dock's content, the
+  // row scrolls horizontally (scrollbar hidden) and an arrow appears on each
+  // side that still has icons hidden beyond the edge.
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [dockOverflow, setDockOverflow] = useState({
+    left: false,
+    right: false,
+  });
+
+  const updateDockOverflow = useCallback(() => {
+    const dock = dockRef.current;
+    if (!dock) return;
+    const left = dock.scrollLeft > 1;
+    const right = dock.scrollLeft + dock.clientWidth < dock.scrollWidth - 1;
+    setDockOverflow((prev) =>
+      prev.left === left && prev.right === right ? prev : { left, right },
+    );
+  }, []);
+
+  useEffect(() => {
+    updateDockOverflow();
+    const dock = dockRef.current;
+    if (!dock || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateDockOverflow);
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, [updateDockOverflow]);
+
+  const scrollDockBy = (direction: -1 | 1) => {
+    dockRef.current?.scrollBy({ left: direction * 192, behavior: "smooth" });
+  };
 
   // Escape closes the appearance panel (mount-once; harmless when panel closed).
   useEffect(() => {
@@ -112,7 +146,7 @@ export function CanvasToolbar({
   return (
     <div
       ref={wrapRef}
-      className="absolute bottom-4 left-1/2 z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
+      className="absolute bottom-4 left-1/2 z-40 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
     >
       {tip ? (
         <span
@@ -189,278 +223,284 @@ export function CanvasToolbar({
         </div>
       ) : null}
 
-      <div
-        data-canvas-toolbar="true"
-        className="no-scrollbar flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-surface-1/85 px-2 shadow-[0_16px_40px_rgba(0,0,0,0.16)] backdrop-blur [&>*]:shrink-0"
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <BoardBadge onTipEnter={showTip} onTipLeave={hideTip} />
-        <Divider />
-        <ToolButton
-          label="撤销"
-          onClick={undo}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
+      <div className="relative min-w-0">
+        <div
+          ref={dockRef}
+          data-canvas-toolbar="true"
+          className="no-scrollbar flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-surface-1/85 px-2 shadow-[0_16px_40px_rgba(0,0,0,0.16)] backdrop-blur [&>*]:shrink-0"
+          onPointerDown={(event) => event.stopPropagation()}
+          onScroll={updateDockOverflow}
         >
-          <Undo2 size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="重做"
-          onClick={redo}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Redo2 size={ICON} />
-        </ToolButton>
-        <Divider />
-        <ToolButton
-          label="文本"
-          onClick={() => addNode({ type: "text", title: "文本" })}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Type size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="图片"
-          onClick={() => addNode({ type: "image", title: "图片" })}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <ImagePlus size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="视频"
-          onClick={() => addNode({ type: "video", title: "视频" })}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Video size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="音频"
-          onClick={() => addNode({ type: "audio", title: "音频" })}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Music2 size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="生成配置"
-          onClick={() =>
-            addNode({
-              type: "config",
-              title: "生成配置",
-              metadata: { config: { mode: "image" } },
-            })
-          }
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <SlidersHorizontal size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="组"
-          onClick={() => addNode({ type: "group", title: "组" })}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Group size={ICON} />
-        </ToolButton>
-        <label
-          aria-label="上传素材"
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2 hover:text-text-primary"
-          onMouseEnter={showTip("上传素材")}
-          onMouseLeave={hideTip}
-        >
-          <Upload size={ICON} />
-          <input
-            type="file"
-            multiple
-            accept="image/*,video/*,audio/*"
-            className="hidden"
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              event.target.value = "";
-              if (files.length === 0) return;
-              // Place at top-left cascade; ingestFilesAsNodes handles MIME detection.
-              void readFilesAsDataUrls(files).then((inputs) => {
-                ingestFilesAsNodes(inputs, { x: 32, y: 32 });
-              });
-            }}
-          />
-        </label>
-        <Divider />
-        <ToolButton
-          label="素材库"
-          dataAttr={{ name: "data-canvas-asset-library", value: "true" }}
-          onClick={() => openCanvasDialog({ kind: "assets" })}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Library size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="小地图"
-          active={minimapVisible}
-          dataAttr={{ name: "data-canvas-minimap-toggle", value: "true" }}
-          onClick={() => setCanvasUiPref("minimapVisible", !minimapVisible)}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <MapIcon size={ICON} />
-        </ToolButton>
-        <ToolButton
-          label="画布外观"
-          active={appearanceOpen}
-          dataAttr={{ name: "data-canvas-appearance-toggle", value: "true" }}
-          onClick={() => setAppearanceOpen((v) => !v)}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Palette size={ICON} />
-        </ToolButton>
-        <Divider />
-        <ToolButton
-          label="适配全部"
-          onClick={() => setViewport(fitViewport(nodes, getContainerSize()))}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Maximize2 size={ICON} />
-        </ToolButton>
-        <span className="px-1 text-[11px] tabular-nums text-text-tertiary">
-          {Math.round(viewport.scale * 100)}%
-        </span>
-        {hasSelection ? (
-          <>
-            <Divider />
-            <ToolButton
-              label="删除选中"
-              danger
-              onClick={deleteSelection}
-              onTipEnter={showTip}
-              onTipLeave={hideTip}
-            >
-              <Trash2 size={ICON} />
-            </ToolButton>
-          </>
-        ) : null}
-        <Divider />
-        <ToolButton
-          label="清空画布"
-          danger
-          onClick={() => {
-            if (
-              nodes.length === 0 ||
-              window.confirm("清空画布上的全部节点？")
-            ) {
-              clearCanvas();
+          <ToolButton
+            label="撤销"
+            onClick={undo}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Undo2 size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="重做"
+            onClick={redo}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Redo2 size={ICON} />
+          </ToolButton>
+          <Divider />
+          <ToolButton
+            label="文本"
+            onClick={() => addNode({ type: "text", title: "文本" })}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Type size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="图片"
+            onClick={() => addNode({ type: "image", title: "图片" })}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <ImagePlus size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="视频"
+            onClick={() => addNode({ type: "video", title: "视频" })}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Video size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="音频"
+            onClick={() => addNode({ type: "audio", title: "音频" })}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Music2 size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="生成配置"
+            onClick={() =>
+              addNode({
+                type: "config",
+                title: "生成配置",
+                metadata: { config: { mode: "image" } },
+              })
             }
-          }}
-          onTipEnter={showTip}
-          onTipLeave={hideTip}
-        >
-          <Eraser size={ICON} />
-        </ToolButton>
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <SlidersHorizontal size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="组"
+            onClick={() => addNode({ type: "group", title: "组" })}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Group size={ICON} />
+          </ToolButton>
+          <label
+            aria-label="上传素材"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+            onMouseEnter={showTip("上传素材")}
+            onMouseLeave={hideTip}
+          >
+            <Upload size={ICON} />
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*,audio/*"
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                if (files.length === 0) return;
+                // Place at top-left cascade; ingestFilesAsNodes handles MIME detection.
+                void readFilesAsDataUrls(files).then((inputs) => {
+                  ingestFilesAsNodes(inputs, { x: 32, y: 32 });
+                });
+              }}
+            />
+          </label>
+          <Divider />
+          <ToolButton
+            label="素材库"
+            dataAttr={{ name: "data-canvas-asset-library", value: "true" }}
+            onClick={() => openCanvasDialog({ kind: "assets" })}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Library size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="小地图"
+            active={minimapVisible}
+            dataAttr={{ name: "data-canvas-minimap-toggle", value: "true" }}
+            onClick={() => setCanvasUiPref("minimapVisible", !minimapVisible)}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <MapIcon size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="画布外观"
+            active={appearanceOpen}
+            dataAttr={{ name: "data-canvas-appearance-toggle", value: "true" }}
+            onClick={() => setAppearanceOpen((v) => !v)}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Palette size={ICON} />
+          </ToolButton>
+          <Divider />
+          <ToolButton
+            label="适配全部"
+            onClick={() => setViewport(fitViewport(nodes, getContainerSize()))}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Maximize2 size={ICON} />
+          </ToolButton>
+          <span className="px-1 text-[11px] tabular-nums text-text-tertiary">
+            {Math.round(viewport.scale * 100)}%
+          </span>
+          {hasSelection ? (
+            <>
+              <Divider />
+              <ToolButton
+                label="删除选中"
+                danger
+                onClick={deleteSelection}
+                onTipEnter={showTip}
+                onTipLeave={hideTip}
+              >
+                <Trash2 size={ICON} />
+              </ToolButton>
+            </>
+          ) : null}
+          <Divider />
+          <ToolButton
+            label="清空画布"
+            danger
+            onClick={() => {
+              if (
+                nodes.length === 0 ||
+                window.confirm("清空画布上的全部节点？")
+              ) {
+                clearCanvas();
+              }
+            }}
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Eraser size={ICON} />
+          </ToolButton>
+        </div>
+        {dockOverflow.left ? (
+          <button
+            type="button"
+            aria-label="向左滚动工具栏"
+            data-canvas-toolbar-scroll="left"
+            onClick={() => scrollDockBy(-1)}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="absolute left-1 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface-1/95 text-text-secondary shadow-md backdrop-blur hover:text-text-primary"
+          >
+            <ChevronLeft size={14} />
+          </button>
+        ) : null}
+        {dockOverflow.right ? (
+          <button
+            type="button"
+            aria-label="向右滚动工具栏"
+            data-canvas-toolbar-scroll="right"
+            onClick={() => scrollDockBy(1)}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="absolute right-1 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-surface-1/95 text-text-secondary shadow-md backdrop-blur hover:text-text-primary"
+          >
+            <ChevronRight size={14} />
+          </button>
+        ) : null}
       </div>
     </div>
   );
 }
 
 /**
- * W5: Current-board badge + rename popover. With boards bound 1:1 to chat
+ * W5: Current-board title + inline rename. With boards bound 1:1 to chat
  * sessions, both manual switching AND deleting are gone from the UI:
  * switching would be silently undone on the next session focus, and deleting
  * another session's board would silently destroy that session's canvas
  * (deleting the active one just recreates it empty on the next bind).
  * The only remaining user-facing board operation is renaming the CURRENT one.
  */
-function BoardBadge({
-  onTipEnter,
-  onTipLeave,
-}: {
-  onTipEnter: (label: string) => (event: ReactMouseEvent<HTMLElement>) => void;
-  onTipLeave: () => void;
-}) {
+/**
+ * Active-board title with inline rename, rendered in the workbench panel
+ * header (replacing the static "工作台" label). The title uses the header's
+ * full remaining width and only ellipsizes on real overflow. Double-clicking
+ * the name or clicking the pencil swaps it for an inline input; the rename
+ * persists via renameBoard (localStorage-backed boards index).
+ */
+export function CanvasBoardTitle() {
   const { boards, activeId } = useCanvasBoards();
-  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState("");
-
-  // Escape closes the popover (mount-once; harmless when closed).
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
 
   const activeBoard = boards.find((b) => b.id === activeId);
   const activeName = activeBoard?.name ?? "画布";
 
-  function togglePanel() {
+  function startRename() {
     setDraftName(activeName);
-    setOpen((v) => !v);
+    setEditing(true);
   }
 
   function commitRename() {
     if (activeBoard) renameBoard(activeBoard.id, draftName);
-    setOpen(false);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <input
+        // biome-ignore lint/a11y/noAutofocus: inline rename edit needs immediate focus
+        autoFocus
+        value={draftName}
+        onChange={(event) => setDraftName(event.target.value)}
+        onBlur={commitRename}
+        onKeyDown={(event) => {
+          // Board names are Chinese — don't commit on the IME's
+          // candidate-confirming Enter.
+          if (event.key === "Enter" && !isImeComposing(event)) {
+            commitRename();
+          } else if (event.key === "Escape") {
+            setEditing(false);
+          }
+        }}
+        className="-ml-1.5 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-1.5 py-0.5 text-sm font-medium text-text-primary"
+      />
+    );
   }
 
   return (
-    <div className="relative">
-      {open ? (
-        <div
-          data-canvas-board-panel="true"
-          className="absolute bottom-[calc(100%+18px)] left-0 w-[220px] rounded-xl border border-border bg-surface-1/95 p-2.5 shadow-xl backdrop-blur"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-1 pb-2">
-            <p className="text-sm font-medium text-text-secondary">当前画布</p>
-            <button
-              type="button"
-              aria-label="关闭画布面板"
-              data-canvas-board-close="true"
-              onClick={() => setOpen(false)}
-              className="rounded p-0.5 text-text-tertiary hover:bg-surface-2 hover:text-text-primary"
-            >
-              <X size={12} />
-            </button>
-          </div>
-          <input
-            // biome-ignore lint/a11y/noAutofocus: inline rename edit needs immediate focus
-            autoFocus
-            value={draftName}
-            onChange={(event) => setDraftName(event.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(event) => {
-              // Board names are Chinese — don't commit on the IME's
-              // candidate-confirming Enter.
-              if (event.key === "Enter" && !isImeComposing(event)) {
-                commitRename();
-              }
-            }}
-            className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-text-primary"
-          />
-          <p className="px-1 pt-2 text-[11px] leading-4 text-text-tertiary">
-            画布跟随会话自动切换
-          </p>
-        </div>
-      ) : null}
+    <div className="flex min-w-0 items-center gap-1">
+      <span
+        title="双击重命名"
+        onDoubleClick={startRename}
+        className="min-w-0 truncate text-sm font-medium text-[var(--color-text-heading)]"
+      >
+        {activeName}
+      </span>
       <button
         type="button"
-        aria-label="画布"
+        aria-label="重命名画布"
+        title="重命名画布"
         data-canvas-board-switcher="true"
-        onClick={togglePanel}
-        onMouseEnter={onTipEnter("重命名画布")}
-        onMouseLeave={onTipLeave}
-        className={`flex h-8 max-w-[120px] items-center gap-1 rounded-lg px-2 text-xs hover:bg-surface-2 ${open ? "bg-sky-500/15 text-sky-500" : "text-text-secondary hover:text-text-primary"}`}
+        onClick={startRename}
+        className="shrink-0 rounded p-0.5 text-text-tertiary hover:bg-[var(--color-surface-2)] hover:text-text-primary"
       >
-        <span className="truncate">{activeName}</span>
-        <ChevronDown size={12} className="shrink-0" />
+        <Pencil size={12} />
       </button>
     </div>
   );

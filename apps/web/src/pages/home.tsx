@@ -6,6 +6,7 @@ import { TelegramSetupView } from "@/components/channel-setup/telegram-setup-vie
 import { WechatSetupView } from "@/components/channel-setup/wechat-setup-view";
 import { WecomSetupView } from "@/components/channel-setup/wecom-setup-view";
 import { WhatsappSetupView } from "@/components/channel-setup/whatsapp-setup-view";
+import { HostStatusCard } from "@/components/host-status-card";
 import { InlineModelSelector } from "@/components/inline-model-selector";
 import {
   DingtalkIcon,
@@ -57,6 +58,8 @@ type ChannelLiveStatusEntry = {
 
 type LiveStatusResponse = {
   gatewayConnected: boolean;
+  /** OpenClaw crash-loop breaker tripped: gateway alive, channels suppressed. */
+  gatewaySafeMode?: boolean;
   channels: ChannelLiveStatusEntry[];
   agent: {
     modelId: string | null;
@@ -893,6 +896,11 @@ export function HomePage() {
               Channels
             </h2>
           </div>
+          {liveStatus?.gatewaySafeMode && (
+            <div className="mx-5 mb-3 rounded-lg border border-[color-mix(in_srgb,var(--color-danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--color-danger)_6%,transparent)] px-3 py-2 text-[12px] text-danger">
+              {t("home.gatewaySafeMode")}
+            </div>
+          )}
           <div className="px-5 pb-5 space-y-3">
             {/* Connected channels — full width rows with green dot */}
             {CHANNEL_OPTIONS.filter((ch) => effectiveConnectedTypes.has(ch.id))
@@ -1158,6 +1166,9 @@ export function HomePage() {
 
         {/* Activity Feed */}
         <ActivityFeed />
+
+        {/* Runtime host status (OpenClaw >=2026.7.1 system.info) */}
+        <HostStatusCard />
       </div>
       {modalChannel && (
         <ChannelConnectModal

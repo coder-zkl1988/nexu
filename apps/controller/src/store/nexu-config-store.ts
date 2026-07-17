@@ -654,6 +654,7 @@ export class NexuConfigStore {
             authMode: env.openclawGatewayToken ? "token" : "none",
           },
           defaultModelId: env.defaultModelId,
+          utilityModelId: null,
         },
         models: {
           mode: "merge",
@@ -1163,6 +1164,7 @@ export class NexuConfigStore {
       channelType: input.channelType,
       channelId: input.channelId,
       description: input.description,
+      modelId: input.modelId || undefined,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1201,6 +1203,11 @@ export class NexuConfigStore {
             input.channelId !== undefined ? input.channelId : s.channelId,
           description:
             input.description !== undefined ? input.description : s.description,
+          // Empty string clears the per-job model override back to bot default.
+          modelId:
+            input.modelId !== undefined
+              ? input.modelId || undefined
+              : s.modelId,
           updatedAt: now(),
         };
         return updated;
@@ -2484,6 +2491,16 @@ export class NexuConfigStore {
         modelId,
         updatedAt: now(),
       })),
+    }));
+  }
+
+  async setUtilityModel(modelId: string | null): Promise<void> {
+    await this.store.update((config) => ({
+      ...config,
+      runtime: {
+        ...config.runtime,
+        utilityModelId: modelId,
+      },
     }));
   }
 
