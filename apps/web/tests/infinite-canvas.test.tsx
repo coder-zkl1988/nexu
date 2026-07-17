@@ -20,6 +20,7 @@ import {
   undo,
   upsertA2UINode,
 } from "../src/lib/canvas/canvas-store";
+import { CanvasBoardTitle } from "../src/lib/canvas/canvas-toolbar";
 import {
   __resetCanvasUiPrefsForTests,
   setCanvasUiPref,
@@ -832,15 +833,20 @@ describe("W4.2 appearance markup", () => {
 // ── W4.4: board switcher markup ───────────────────────────────────
 
 describe("W4.4 board switcher markup", () => {
-  it("toolbar shows the board switcher button with the active board name", () => {
+  it("board switcher lives in the panel header, not the toolbar", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("data-canvas-board-switcher");
+  });
+
+  it("header title shows the switcher button with the active board name", () => {
+    const markup = renderToStaticMarkup(<CanvasBoardTitle />);
     expect(markup).toContain("data-canvas-board-switcher");
     // default board name is 画布 1
     expect(markup).toContain("画布 1");
   });
 
   it("board popover is ABSENT by default (closed)", () => {
-    const markup = renderToStaticMarkup(<CanvasSurface />);
+    const markup = renderToStaticMarkup(<CanvasBoardTitle />);
     expect(markup).not.toContain("data-canvas-board-panel");
   });
 });

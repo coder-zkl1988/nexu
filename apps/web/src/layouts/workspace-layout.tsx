@@ -15,6 +15,7 @@ import {
 } from "@/lib/a2ui/a2ui-sidebar-context";
 import { authClient } from "@/lib/auth-client";
 import { useCanvas } from "@/lib/canvas/canvas-store";
+import { CanvasBoardTitle } from "@/lib/canvas/canvas-toolbar";
 import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
 import { openExternalUrl } from "@/lib/desktop-links";
 import {
@@ -501,6 +502,34 @@ function WorkspaceLayoutContent() {
       return true;
     });
   }, [rightSidebarWidth, collapsed, sidebarWidth, SIDEBAR_RAIL_WIDTH]);
+
+  // Re-clamp the workbench width whenever the window shrinks (e.g. moving from
+  // an external monitor to the 14" built-in display). Without this, a width
+  // saved or maximized on a wider screen exceeds the current window: the chat
+  // column (flex-1 min-w-0) collapses to zero and the panel's restore button
+  // ends up off-screen, leaving no way to recover. Runs once on mount too, to
+  // catch stale localStorage values.
+  useEffect(() => {
+    if (!rightSidebarOpen) return;
+    const clampToWindow = () => {
+      const leftWidth = collapsed ? SIDEBAR_RAIL_WIDTH : sidebarWidth;
+      setRightSidebarWidth((width) => {
+        const target = rightSidebarMaximized
+          ? window.innerWidth - leftWidth - MAIN_MIN_MAXIMIZED
+          : Math.min(width, window.innerWidth - leftWidth - MAIN_MIN);
+        return Math.max(RIGHT_SIDEBAR_MIN, target);
+      });
+    };
+    clampToWindow();
+    window.addEventListener("resize", clampToWindow);
+    return () => window.removeEventListener("resize", clampToWindow);
+  }, [
+    rightSidebarOpen,
+    rightSidebarMaximized,
+    collapsed,
+    sidebarWidth,
+    SIDEBAR_RAIL_WIDTH,
+  ]);
 
   const handleRightResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -1890,14 +1919,14 @@ function WorkspaceLayoutContent() {
               md:p-3 top pad (12px) on top of its md:pt-7 (28px); min-h matches
               the chat header's badge row. */}
           <div className="flex min-h-[34px] items-center justify-between border-b border-[var(--color-border-subtle)] px-4 pb-2 pt-2 md:pt-[40px]">
-            <span className="text-sm font-medium text-[var(--color-text-heading)]">
-              工作台
+            <div className="flex min-w-0 flex-1 items-center pr-2">
+              <CanvasBoardTitle />
               {canvasNodes.length > 0 ? (
-                <span className="ml-2 text-xs font-normal text-[var(--color-text-tertiary)]">
+                <span className="ml-2 shrink-0 text-xs font-normal text-[var(--color-text-tertiary)]">
                   {canvasNodes.length}
                 </span>
               ) : null}
-            </span>
+            </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
