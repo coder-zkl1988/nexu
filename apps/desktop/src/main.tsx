@@ -28,6 +28,7 @@ import type {
 } from "../shared/host";
 import { getDesktopSentryBuildMetadata } from "../shared/sentry-build-metadata";
 import { resolveDesktopUpdateExperience } from "../shared/update-policy";
+import { DesktopDeskpetApp } from "./components/desktop-deskpet-app";
 import { DevelopSetBalanceDialog } from "./components/develop-set-balance-dialog";
 import { SurfaceFrame } from "./components/surface-frame";
 import { UpdateBadge, UpdateBanner } from "./components/update-banner";
@@ -1117,7 +1118,8 @@ function DesktopShell() {
         ? "full"
         : "immersive",
   );
-  const webSurfaceVersion = 0;
+  const [webPath, setWebPath] = useState("/workspace");
+  const [webSurfaceVersion, setWebSurfaceVersion] = useState(0);
   const [runtimeConfig, setRuntimeConfig] =
     useState<DesktopRuntimeConfig | null>(null);
   const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
@@ -1202,6 +1204,18 @@ function DesktopShell() {
       if (command.type === "setup:complete") {
         return;
       }
+      if (command.type === "desktop:open-web-path") {
+        const nextPath = command.path.startsWith("/")
+          ? command.path
+          : `/${command.path}`;
+        if (webPath !== nextPath) {
+          setWebPath(nextPath);
+          setWebSurfaceVersion((version) => version + 1);
+        }
+        setActiveSurface("web");
+        setChromeMode("immersive");
+        return;
+      }
       if (
         command.type !== "develop:focus-surface" &&
         command.type !== "develop:show-shell"
@@ -1212,7 +1226,7 @@ function DesktopShell() {
       setActiveSurface(command.surface);
       setChromeMode(command.chromeMode);
     });
-  }, [update]);
+  }, [update, webPath]);
 
   // Poll the controller ready endpoint through the web sidecar proxy before mounting the webview.
   // Note: getRuntimeConfig() IPC handler waits for cold-start to complete, so
@@ -1287,7 +1301,7 @@ function DesktopShell() {
 
   const desktopWebUrl =
     runtimeConfig && controllerReady
-      ? new URL("/workspace", runtimeConfig.urls.web).toString()
+      ? new URL(webPath, runtimeConfig.urls.web).toString()
       : null;
   const desktopOpenClawUrl = getDesktopOpenClawUrl({
     runtimeConfig,
@@ -1619,6 +1633,11 @@ function DesktopShell() {
 }
 
 function RootApp() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("surface") === "deskpet") {
+    return <DesktopDeskpetApp />;
+  }
+
   return <DesktopShell />;
 }
 

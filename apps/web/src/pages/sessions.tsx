@@ -51,7 +51,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   getApiV1Bots,
@@ -148,6 +148,121 @@ function SpeakButton({ text }: { text: string }) {
       )}
     </button>
   );
+}
+
+function isDeskpetHostChannel(channel: string): boolean {
+  return channel.startsWith("desktop:deskpet");
+}
+
+function logDeskpetHostDebug(
+  message: string,
+  data?: Record<string, unknown>,
+): void {
+  console.info("[deskpet-debug:web]", message, data ?? {});
+}
+
+function invokeDesktopHost(channel: string, payload: unknown): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
+  if (!candidate || typeof candidate !== "object") {
+    if (isDeskpetHostChannel(channel)) {
+      logDeskpetHostDebug("nexuHost missing", { channel, payload });
+    }
+    return;
+  }
+
+  const invoke = Reflect.get(candidate as Record<string, unknown>, "invoke");
+  if (typeof invoke !== "function") {
+    if (isDeskpetHostChannel(channel)) {
+      logDeskpetHostDebug("nexuHost.invoke missing", { channel, payload });
+    }
+    return;
+  }
+
+  const invokeHost = invoke as (
+    channel: string,
+    payload: unknown,
+  ) => Promise<unknown>;
+
+  if (isDeskpetHostChannel(channel)) {
+    logDeskpetHostDebug("invoke start", { channel, payload });
+  }
+
+  void invokeHost(channel, payload)
+    .then((result) => {
+      if (isDeskpetHostChannel(channel)) {
+        logDeskpetHostDebug("invoke success", { channel, result });
+      }
+    })
+    .catch((error) => {
+      if (isDeskpetHostChannel(channel)) {
+        logDeskpetHostDebug("invoke failed", {
+          channel,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      // Non-desktop web builds do not expose the host bridge.
+    });
+}
+
+const DESKPET_REPLYING_DURATION_MS = 8000;
+const DESKPET_REPLYING_REFRESH_MS = 1800;
+const DESKPET_SUCCESS_DURATION_MS = 5000;
+const DESKPET_SUCCESS_REPLY_RETRY_MS = 800;
+const DESKPET_SUCCESS_REPLY_MAX_RETRIES = 10;
+const DESKPET_TYPING_WORKING_DURATION_MS = 1600;
+const DESKPET_TYPING_NOTIFY_INTERVAL_MS = 700;
+
+function onDesktopHostCommand(
+  listener: (command: Record<string, unknown>) => void,
+): (() => void) | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
+  if (!candidate || typeof candidate !== "object") {
+    return undefined;
+  }
+
+  const onDesktopCommand = Reflect.get(candidate, "onDesktopCommand");
+  if (typeof onDesktopCommand !== "function") {
+    return undefined;
+  }
+
+  return onDesktopCommand.call(candidate, listener) as (() => void) | undefined;
+}
+
+function getLatestAssistantReplyTextFromMessages(
+  messages: ChatMessageData[],
+  options?: { afterTimestamp?: number },
+): string {
+  const afterTimestamp = options?.afterTimestamp ?? 0;
+  for (const message of messages.slice().reverse()) {
+    if (message.role !== "assistant") {
+      continue;
+    }
+
+    const messageTimestamp =
+      message.timestamp ??
+      (message.createdAt ? new Date(message.createdAt).getTime() : 0);
+    if (afterTimestamp > 0 && messageTimestamp <= afterTimestamp) {
+      continue;
+    }
+
+    const extracted = extractMessage(
+      message as unknown as Record<string, unknown>,
+    );
+    const text = stripMediaMarkerLines(extracted.text).trim();
+    if (text) {
+      return text.slice(0, 280);
+    }
+  }
+
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +794,7 @@ function ChatBubble({
         )}
         {hasText && (
           <div
+            data-deskpet-reply-preview={isBot ? text : undefined}
             className={cn(
               "inline-block max-w-full rounded-[20px] px-4 py-3 text-[13px] break-words shadow-[0_10px_24px_rgba(15,23,42,0.04)]",
               isBot
@@ -717,6 +833,9 @@ function ChatBubble({
 export function SessionsPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const deskpetReplyFocusToken = searchParams.get("deskpetReplyFocusAt");
   const endRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { openWith } = useA2UISidebar();
@@ -769,9 +888,18 @@ export function SessionsPage() {
       },
       onDelta: (delta) => {
         // Accumulate streaming text for real-time display
-        setStreamingText((prev) =>
-          delta.replace ? delta.deltaText : prev + delta.deltaText,
-        );
+        setStreamingText((prev) => {
+          const next = delta.replace ? delta.deltaText : prev + delta.deltaText;
+          const preview = stripMediaMarkerLines(next).trim();
+          if (preview) {
+            latestStreamingReplyTextRef.current = preview.slice(0, 280);
+          }
+          return next;
+        });
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "lobster-replying",
+          durationMs: DESKPET_REPLYING_DURATION_MS,
+        });
       },
       onFinal: (final) => {
         // OpenClaw emits ONE final per run, at run end (emitChatFinal fires
@@ -811,6 +939,7 @@ export function SessionsPage() {
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
+        deskpetReplyStartedAtRef.current = 0;
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
       onError: (error) => {
@@ -828,6 +957,7 @@ export function SessionsPage() {
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
+        deskpetReplyStartedAtRef.current = 0;
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
     });
@@ -896,6 +1026,19 @@ export function SessionsPage() {
       } as BotItem)
     : null;
 
+  useEffect(() => {
+    const botId = selectedBot?.id ?? session?.botId;
+    if (!botId || !session?.sessionKey || !id) {
+      return;
+    }
+
+    invokeDesktopHost("desktop:deskpet-register-current-chat", {
+      botId,
+      sessionKey: session.sessionKey,
+      sessionId: id,
+    });
+  }, [id, selectedBot?.id, session?.botId, session?.sessionKey]);
+
   // Stable A2UI action handler shared by inline rendering and sidebar
   const onA2UIAction = useCallback(
     (actionName: string, context: Record<string, unknown>) => {
@@ -932,18 +1075,189 @@ export function SessionsPage() {
     number | null
   >(null);
   const sentAtRef = useRef(0);
+  const deskpetReplyStartedAtRef = useRef(0);
   /** runId of the chat run this composer is waiting on (null = any run). */
   const activeRunIdRef = useRef<string | null>(null);
+  const awaitingDeskpetSuccessRef = useRef(false);
+  const lastDeskpetSuccessTextRef = useRef("");
+  const latestAssistantReplyTextRef = useRef("");
+  const latestStreamingReplyTextRef = useRef("");
+  const handledDeskpetPendingKeyRef = useRef("");
+  const lastDeskpetTypingNotifyAtRef = useRef(0);
+  const wasWaitingForDeskpetReplyRef = useRef(false);
+
+  const markDeskpetReplyWaiting = useCallback(
+    ({
+      pendingReplyText = "",
+      runId = "",
+    }: {
+      pendingReplyText?: string;
+      runId?: string;
+    }) => {
+      sentAtRef.current = Date.now();
+      deskpetReplyStartedAtRef.current = sentAtRef.current;
+      activeRunIdRef.current = runId || null;
+      awaitingDeskpetSuccessRef.current = true;
+      lastDeskpetSuccessTextRef.current = "";
+      latestAssistantReplyTextRef.current = "";
+      latestStreamingReplyTextRef.current = pendingReplyText.slice(0, 280);
+      setWaitingForReply(true);
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "lobster-replying",
+        durationMs: DESKPET_REPLYING_DURATION_MS,
+      });
+
+      if (pendingReplyText) {
+        window.setTimeout(() => {
+          activeRunIdRef.current = null;
+          setWaitingForReply(false);
+          sentAtRef.current = 0;
+          deskpetReplyStartedAtRef.current = 0;
+          setPendingMessages([]);
+        }, 900);
+      }
+    },
+    [],
+  );
 
   // Reset waiting state when switching sessions
   // biome-ignore lint/correctness/useExhaustiveDependencies: id triggers reset on session navigation
   useEffect(() => {
     setWaitingForReply(false);
     sentAtRef.current = 0;
+    deskpetReplyStartedAtRef.current = 0;
     activeRunIdRef.current = null;
+    awaitingDeskpetSuccessRef.current = false;
+    lastDeskpetSuccessTextRef.current = "";
+    latestAssistantReplyTextRef.current = "";
+    latestStreamingReplyTextRef.current = "";
+    handledDeskpetPendingKeyRef.current = "";
     setPendingMessages([]);
     setStreamingText("");
   }, [id]);
+
+  useEffect(() => {
+    const state = location.state as {
+      deskpetPendingReplyText?: unknown;
+      deskpetPendingRunId?: unknown;
+      deskpetPendingSessionKey?: unknown;
+    } | null;
+    const pendingSessionKey =
+      typeof state?.deskpetPendingSessionKey === "string"
+        ? state.deskpetPendingSessionKey
+        : (searchParams.get("deskpetSessionKey")?.trim() ?? "");
+    const pendingStartedAt = searchParams.get("deskpetStartedAt")?.trim() ?? "";
+    const pendingRunIdFromQuery =
+      searchParams.get("deskpetRunId")?.trim() ?? "";
+    const pendingRunIdFromState =
+      typeof state?.deskpetPendingRunId === "string"
+        ? state.deskpetPendingRunId
+        : "";
+    const pendingRunId = pendingRunIdFromState || pendingRunIdFromQuery;
+    const pendingReplyText =
+      typeof state?.deskpetPendingReplyText === "string"
+        ? stripMediaMarkerLines(state.deskpetPendingReplyText).trim()
+        : "";
+    const key = `${id ?? ""}:${pendingSessionKey}:${pendingRunId}:${pendingStartedAt}`;
+
+    if (
+      !id ||
+      !pendingSessionKey ||
+      handledDeskpetPendingKeyRef.current === key
+    ) {
+      return;
+    }
+
+    handledDeskpetPendingKeyRef.current = key;
+    markDeskpetReplyWaiting({
+      pendingReplyText,
+      runId: pendingRunId,
+    });
+    void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+  }, [id, location.state, markDeskpetReplyWaiting, queryClient, searchParams]);
+
+  useEffect(() => {
+    return onDesktopHostCommand((command) => {
+      if (command.type === "deskpet:chat-started") {
+        const commandSessionId =
+          typeof command.sessionId === "string" ? command.sessionId : null;
+        const commandSessionKey =
+          typeof command.sessionKey === "string" ? command.sessionKey : null;
+
+        if (commandSessionId) {
+          if (commandSessionId !== id) {
+            return;
+          }
+        } else if (commandSessionKey !== session?.sessionKey) {
+          return;
+        }
+
+        const runId = typeof command.runId === "string" ? command.runId : "";
+        const startedAt =
+          typeof command.startedAt === "number"
+            ? String(command.startedAt)
+            : "";
+        const key = `${id ?? ""}:${commandSessionKey ?? ""}:${runId}:${startedAt}`;
+        if (handledDeskpetPendingKeyRef.current === key) {
+          return;
+        }
+
+        handledDeskpetPendingKeyRef.current = key;
+        markDeskpetReplyWaiting({ runId });
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+        void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
+        return;
+      }
+
+      if (command.type !== "deskpet:current-chat-replied") {
+        return;
+      }
+
+      const commandSessionId =
+        typeof command.sessionId === "string" ? command.sessionId : null;
+      const commandSessionKey =
+        typeof command.sessionKey === "string" ? command.sessionKey : null;
+
+      if (commandSessionId) {
+        if (commandSessionId !== id) {
+          return;
+        }
+      } else if (commandSessionKey !== session?.sessionKey) {
+        return;
+      }
+
+      const text = typeof command.text === "string" ? command.text.trim() : "";
+      if (!text || !id) {
+        return;
+      }
+
+      const now = Date.now();
+      activeRunIdRef.current = null;
+      markDeskpetReplyWaiting({});
+      setPendingMessages((prev) => {
+        if (
+          prev.some(
+            (message) =>
+              message.text === text && message.attachments.length === 0,
+          )
+        ) {
+          return prev;
+        }
+
+        return [
+          ...prev,
+          {
+            id: `deskpet-${now}`,
+            text,
+            timestamp: now,
+            attachments: [],
+          },
+        ];
+      });
+      void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
+    });
+  }, [id, markDeskpetReplyWaiting, session?.sessionKey, queryClient]);
 
   const handleSend = useCallback(
     async (
@@ -961,6 +1275,7 @@ export function SessionsPage() {
           setNewSessionDividerTime(Date.now());
           setWaitingForReply(false);
           sentAtRef.current = 0;
+          deskpetReplyStartedAtRef.current = 0;
           await queryClient.invalidateQueries({
             queryKey: ["chat-history", id],
           });
@@ -974,6 +1289,20 @@ export function SessionsPage() {
         }
         return;
       }
+
+      const optimisticId = `pending-${Date.now()}`;
+      const now = Date.now();
+      sentAtRef.current = now;
+      deskpetReplyStartedAtRef.current = now;
+      awaitingDeskpetSuccessRef.current = true;
+      lastDeskpetSuccessTextRef.current = "";
+      latestAssistantReplyTextRef.current = "";
+      latestStreamingReplyTextRef.current = "";
+      setWaitingForReply(true);
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "lobster-replying",
+        durationMs: DESKPET_REPLYING_DURATION_MS,
+      });
 
       // Format message payload with attachment support (mirrors local-chat.tsx)
       const onlyImage = attachments[0];
@@ -1003,9 +1332,6 @@ export function SessionsPage() {
                 : undefined,
           };
 
-      const optimisticId = `pending-${Date.now()}`;
-      const now = Date.now();
-      sentAtRef.current = now;
       setPendingMessages((prev) => [
         ...prev,
         {
@@ -1015,7 +1341,6 @@ export function SessionsPage() {
           attachments,
         },
       ]);
-      setWaitingForReply(true);
 
       try {
         const result = await postApiV1ChatLocal({
@@ -1053,9 +1378,33 @@ export function SessionsPage() {
         activeRunIdRef.current = null;
         setWaitingForReply(false);
         setPendingMessages((prev) => prev.filter((m) => m.id !== optimisticId));
+        deskpetReplyStartedAtRef.current = 0;
       }
     },
     [selectedBot, id, session?.sessionKey, queryClient, t],
+  );
+
+  const handleDeskpetTyping = useCallback(
+    (text: string) => {
+      if (waitingForReply || !text.trim()) {
+        return;
+      }
+
+      const now = Date.now();
+      if (
+        now - lastDeskpetTypingNotifyAtRef.current <
+        DESKPET_TYPING_NOTIFY_INTERVAL_MS
+      ) {
+        return;
+      }
+
+      lastDeskpetTypingNotifyAtRef.current = now;
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "working",
+        durationMs: DESKPET_TYPING_WORKING_DURATION_MS,
+      });
+    },
+    [waitingForReply],
   );
 
   const handleCancel = useCallback(async () => {
@@ -1082,6 +1431,7 @@ export function SessionsPage() {
             }),
           );
         }
+        deskpetReplyStartedAtRef.current = 0;
       }
     } catch {
       // Silently ignore — the reply may have already finished
@@ -1104,6 +1454,29 @@ export function SessionsPage() {
     refetchInterval: 3000,
   });
   const sessionBusy = runStatus?.busy === true;
+
+  useEffect(() => {
+    return onDesktopHostCommand((command) => {
+      if (command.type !== "deskpet:pause-current-reply") {
+        return;
+      }
+
+      const commandSessionId =
+        typeof command.sessionId === "string" ? command.sessionId : null;
+      const commandSessionKey =
+        typeof command.sessionKey === "string" ? command.sessionKey : null;
+
+      if (commandSessionId) {
+        if (commandSessionId !== id) {
+          return;
+        }
+      } else if (commandSessionKey !== session?.sessionKey) {
+        return;
+      }
+
+      void handleCancel();
+    });
+  }, [handleCancel, id, session?.sessionKey]);
 
   // null = not yet loaded, [] = loaded but empty, [...] = loaded with messages
   const messages = (
@@ -1155,6 +1528,7 @@ export function SessionsPage() {
       waitingTimerRef.current = setTimeout(() => {
         setWaitingForReply(false);
         sentAtRef.current = 0;
+        deskpetReplyStartedAtRef.current = 0;
         setPendingMessages([]);
       }, 120_000);
     }
@@ -1202,6 +1576,189 @@ export function SessionsPage() {
     }));
 
   const displayMessages = [...safeMessages, ...optimisticMessages];
+  const latestAssistantReplyText = getLatestAssistantReplyTextFromMessages(
+    displayMessages,
+    {
+      afterTimestamp: deskpetReplyStartedAtRef.current,
+    },
+  );
+
+  useEffect(() => {
+    if (latestAssistantReplyText) {
+      latestAssistantReplyTextRef.current = latestAssistantReplyText;
+    }
+
+    if (
+      awaitingDeskpetSuccessRef.current &&
+      latestAssistantReplyText &&
+      lastDeskpetSuccessTextRef.current !== latestAssistantReplyText
+    ) {
+      lastDeskpetSuccessTextRef.current = latestAssistantReplyText;
+      awaitingDeskpetSuccessRef.current = false;
+      logDeskpetHostDebug("assistant reply visible; send success immediately", {
+        replyText: latestAssistantReplyText,
+      });
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "success",
+        durationMs: DESKPET_SUCCESS_DURATION_MS,
+        replyText: latestAssistantReplyText,
+      });
+    }
+  }, [latestAssistantReplyText]);
+
+  useEffect(() => {
+    if (
+      !waitingForReply ||
+      !awaitingDeskpetSuccessRef.current ||
+      !latestAssistantReplyText
+    ) {
+      return;
+    }
+
+    logDeskpetHostDebug("assistant reply history fallback; finish waiting", {
+      replyText: latestAssistantReplyText,
+    });
+    activeRunIdRef.current = null;
+    setWaitingForReply(false);
+    sentAtRef.current = 0;
+    deskpetReplyStartedAtRef.current = 0;
+    setPendingMessages([]);
+  }, [latestAssistantReplyText, waitingForReply]);
+
+  useEffect(() => {
+    if (
+      !awaitingDeskpetSuccessRef.current ||
+      waitingForReply ||
+      !latestAssistantReplyText
+    ) {
+      return;
+    }
+
+    if (lastDeskpetSuccessTextRef.current === latestAssistantReplyText) {
+      return;
+    }
+
+    lastDeskpetSuccessTextRef.current = latestAssistantReplyText;
+    awaitingDeskpetSuccessRef.current = false;
+    logDeskpetHostDebug("assistant reply detected; send success bubble", {
+      replyText: latestAssistantReplyText,
+    });
+    invokeDesktopHost("desktop:deskpet-activity", {
+      mood: "success",
+      durationMs: DESKPET_SUCCESS_DURATION_MS,
+      replyText: latestAssistantReplyText,
+    });
+  }, [latestAssistantReplyText, waitingForReply]);
+
+  useEffect(() => {
+    if (!waitingForReply) {
+      logDeskpetHostDebug("waitingForReply false");
+      return;
+    }
+
+    if (awaitingDeskpetSuccessRef.current) {
+      logDeskpetHostDebug("waitingForReply true; send lobster-replying");
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "lobster-replying",
+        durationMs: DESKPET_REPLYING_DURATION_MS,
+      });
+    }
+
+    const timer = window.setInterval(() => {
+      if (!awaitingDeskpetSuccessRef.current) {
+        return;
+      }
+
+      logDeskpetHostDebug(
+        "waitingForReply heartbeat; refresh lobster-replying",
+      );
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "lobster-replying",
+        durationMs: DESKPET_REPLYING_DURATION_MS,
+      });
+    }, DESKPET_REPLYING_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [waitingForReply]);
+
+  useEffect(() => {
+    if (!wasWaitingForDeskpetReplyRef.current) {
+      wasWaitingForDeskpetReplyRef.current = waitingForReply;
+      return;
+    }
+
+    if (waitingForReply) {
+      return;
+    }
+
+    if (!awaitingDeskpetSuccessRef.current) {
+      wasWaitingForDeskpetReplyRef.current = false;
+      return;
+    }
+
+    let retryCount = 0;
+    let timer: number | null = null;
+    const sendSuccess = async () => {
+      let replyText = latestAssistantReplyTextRef.current;
+
+      if (!replyText && id) {
+        try {
+          const { data } = await getApiV1SessionsByIdMessages({
+            path: { id },
+            query: { limit: 200 },
+          });
+          const messages = ((data as Record<string, unknown> | undefined)
+            ?.messages ?? []) as ChatMessageData[];
+          replyText = getLatestAssistantReplyTextFromMessages(messages, {
+            afterTimestamp: deskpetReplyStartedAtRef.current,
+          });
+          if (replyText) {
+            latestAssistantReplyTextRef.current = replyText;
+          }
+        } catch (error) {
+          logDeskpetHostDebug("success reply fetch failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      if (!replyText && retryCount < DESKPET_SUCCESS_REPLY_MAX_RETRIES) {
+        retryCount += 1;
+        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+        timer = window.setTimeout(() => {
+          void sendSuccess();
+        }, DESKPET_SUCCESS_REPLY_RETRY_MS);
+        return;
+      }
+
+      logDeskpetHostDebug("waitingForReply completed; send success", {
+        replyText,
+        retryCount,
+      });
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "success",
+        durationMs: DESKPET_SUCCESS_DURATION_MS,
+        replyText,
+      });
+      awaitingDeskpetSuccessRef.current = false;
+      lastDeskpetSuccessTextRef.current = replyText;
+      latestStreamingReplyTextRef.current = "";
+      deskpetReplyStartedAtRef.current = 0;
+    };
+
+    timer = window.setTimeout(() => {
+      void sendSuccess();
+    }, 0);
+
+    wasWaitingForDeskpetReplyRef.current = false;
+    return () => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [id, queryClient, waitingForReply]);
 
   // Enrich assistant messages with A2UI from matching render_a2ui toolResults.
   // render_a2ui results contain A2UI JSONL in ```a2ui code blocks, but
@@ -1633,7 +2190,12 @@ export function SessionsPage() {
                     />
                   )}
                   <div className="rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] max-w-[80%]">
-                    <p className="text-[13px] text-text-secondary whitespace-pre-wrap break-words">
+                    <p
+                      className="text-[13px] text-text-secondary whitespace-pre-wrap break-words"
+                      data-deskpet-reply-preview={stripMediaMarkerLines(
+                        streamingText,
+                      )}
+                    >
                       {stripMediaMarkerLines(streamingText)}
                       <span className="inline-block w-1.5 h-4 ml-0.5 bg-text-secondary animate-pulse align-text-bottom" />
                     </p>
@@ -1656,6 +2218,7 @@ export function SessionsPage() {
             onSend={(text, attachments, skillSlug) => {
               void handleSend(text, attachments, skillSlug);
             }}
+            onTyping={handleDeskpetTyping}
             onCancel={handleCancel}
             sending={false}
             waitingReply={waitingForReply || sessionBusy}
@@ -1663,6 +2226,7 @@ export function SessionsPage() {
             placeholder={t("localChat.inputPlaceholder")}
             showBotSelector={false}
             modelReadOnly
+            focusToken={deskpetReplyFocusToken}
           />
         </div>
       </div>

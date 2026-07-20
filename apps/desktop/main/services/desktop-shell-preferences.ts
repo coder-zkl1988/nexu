@@ -5,6 +5,7 @@ import { app } from "electron";
 export type DesktopShellPreferences = {
   launchAtLogin: boolean;
   showInDock: boolean;
+  deskpetEnabled: boolean;
   supportsLaunchAtLogin: boolean;
   supportsShowInDock: boolean;
   /** Crash/error reporting consent (default on). Gates Sentry in the main process. */
@@ -24,6 +25,7 @@ let runtimeApplyHandler:
 type StoredDesktopShellPreferences = {
   launchAtLogin: boolean;
   showInDock: boolean;
+  deskpetEnabled: boolean;
   crashReportsEnabled: boolean;
   sessionReplayEnabled: boolean;
 };
@@ -31,6 +33,7 @@ type StoredDesktopShellPreferences = {
 const DEFAULT_PREFERENCES: StoredDesktopShellPreferences = {
   launchAtLogin: true,
   showInDock: true,
+  deskpetEnabled: true,
   crashReportsEnabled: true,
   sessionReplayEnabled: false,
 };
@@ -80,6 +83,10 @@ function readStoredPreferencesState(): StoredPreferencesState {
           typeof candidate?.showInDock === "boolean"
             ? candidate.showInDock
             : DEFAULT_PREFERENCES.showInDock,
+        deskpetEnabled:
+          typeof candidate?.deskpetEnabled === "boolean"
+            ? candidate.deskpetEnabled
+            : DEFAULT_PREFERENCES.deskpetEnabled,
         crashReportsEnabled:
           typeof candidate?.crashReportsEnabled === "boolean"
             ? candidate.crashReportsEnabled
@@ -131,6 +138,7 @@ function resolvePreferencesForRead(): StoredDesktopShellPreferences {
   return {
     launchAtLogin: osLaunchAtLogin || DEFAULT_PREFERENCES.launchAtLogin,
     showInDock: DEFAULT_PREFERENCES.showInDock,
+    deskpetEnabled: DEFAULT_PREFERENCES.deskpetEnabled,
     crashReportsEnabled: DEFAULT_PREFERENCES.crashReportsEnabled,
     sessionReplayEnabled: DEFAULT_PREFERENCES.sessionReplayEnabled,
   };
@@ -142,6 +150,7 @@ export function getDesktopShellPreferences(): DesktopShellPreferences {
   return {
     launchAtLogin: getLaunchAtLoginState(storedPreferences),
     showInDock: supportsShowInDock() ? storedPreferences.showInDock : true,
+    deskpetEnabled: storedPreferences.deskpetEnabled,
     supportsLaunchAtLogin: supportsLaunchAtLogin(),
     supportsShowInDock: supportsShowInDock(),
     crashReportsEnabled: storedPreferences.crashReportsEnabled,
@@ -198,6 +207,7 @@ export function applyDesktopShellPreferencesOnStartup(): void {
 export function updateDesktopShellPreferences(input: {
   launchAtLogin?: boolean;
   showInDock?: boolean;
+  deskpetEnabled?: boolean;
   crashReportsEnabled?: boolean;
   sessionReplayEnabled?: boolean;
 }): DesktopShellPreferences {
@@ -211,6 +221,10 @@ export function updateDesktopShellPreferences(input: {
       typeof input.showInDock === "boolean"
         ? input.showInDock
         : storedPreferences.showInDock,
+    deskpetEnabled:
+      typeof input.deskpetEnabled === "boolean"
+        ? input.deskpetEnabled
+        : storedPreferences.deskpetEnabled,
     crashReportsEnabled:
       typeof input.crashReportsEnabled === "boolean"
         ? input.crashReportsEnabled

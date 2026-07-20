@@ -37,6 +37,7 @@
     "@sentry/electron": "^7.10.0",
     "electron-updater": "^6.8.9",
     "pino": "^10.3.1",
+    "posthog-js": "^1.365.1",
     "sharp": "0.34.5",
     "yauzl": "^3.2.1"
   },

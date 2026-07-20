@@ -55,6 +55,7 @@ export interface ChatInputAreaProps {
     attachments: PendingAttachment[],
     skillSlug: string | null,
   ) => void;
+  onTyping?: (text: string) => void;
   onCancel?: () => void;
   sending: boolean;
   waitingReply: boolean;
@@ -68,6 +69,8 @@ export interface ChatInputAreaProps {
   showModelSelector?: boolean;
   /** Show model as read-only label instead of changeable dropdown */
   modelReadOnly?: boolean;
+  /** Change this value to focus the text input from an external action. */
+  focusToken?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,6 +406,7 @@ export function ChatInputArea({
   selectedBot,
   onSelectBot,
   onSend,
+  onTyping,
   onCancel,
   sending,
   waitingReply,
@@ -412,6 +416,7 @@ export function ChatInputArea({
   showBotSelector = true,
   showModelSelector = true,
   modelReadOnly = false,
+  focusToken = null,
 }: ChatInputAreaProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
@@ -425,6 +430,7 @@ export function ChatInputArea({
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const skillDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -544,6 +550,20 @@ export function ChatInputArea({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!focusToken) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      const valueLength = inputRef.current?.value.length ?? 0;
+      inputRef.current?.setSelectionRange(valueLength, valueLength);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusToken]);
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Enter while an IME is composing commits the candidate — never sends.
     if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
@@ -571,6 +591,11 @@ export function ChatInputArea({
     onSend(text, atts, skillSlug);
   }
 
+  function handleInputChange(nextValue: string) {
+    setInput(nextValue);
+    onTyping?.(nextValue);
+  }
+
   return (
     <>
       <input
@@ -587,8 +612,9 @@ export function ChatInputArea({
         />
       )}
       <ChatInput
+        inputRef={inputRef}
         value={input}
-        onChange={setInput}
+        onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         onSend={handleSend}

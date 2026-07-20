@@ -8,10 +8,512 @@ body,
   overflow: hidden;
 }
 
+body:has(.deskpet-root) {
+  background: transparent;
+}
+
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+.deskpet-root {
+  position: relative;
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  place-items: center;
+  overflow: hidden;
+  background: transparent;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.deskpet-dismiss-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-trigger {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: grab;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-trigger.is-moving {
+  cursor: grabbing;
+}
+
+.deskpet-trigger:focus-visible {
+  outline: 2px solid rgba(226, 80, 38, 0.6);
+  outline-offset: -18px;
+}
+
+.deskpet-sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 18px rgba(102, 48, 18, 0.18));
+}
+
+.deskpet-reply-panel {
+  position: absolute;
+  top: max(14px, 7vh);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  width: fit-content;
+  max-width: min(236px, calc(100vw - 28px));
+  transform: translateX(-50%);
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(248, 103, 47, 0.24);
+  border-radius: 16px;
+  background: rgba(31, 27, 24, 0.94);
+  box-shadow: none;
+  color: rgba(255, 238, 219, 0.9);
+  font: 400 12px / 1.25 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  backdrop-filter: blur(16px);
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.deskpet-reply-panel.is-near-top {
+  top: max(14px, 7vh);
+  left: 50%;
+}
+
+.deskpet-reply-panel.is-thinking {
+  top: max(18px, 8vh);
+  left: 50%;
+}
+
+.deskpet-reply-panel::after {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid rgba(248, 103, 47, 0.22);
+  border-bottom: 1px solid rgba(248, 103, 47, 0.22);
+  background: rgba(31, 27, 24, 0.94);
+}
+
+.deskpet-reply-bubble {
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 25px;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-reply-panel.is-composing .deskpet-reply-bubble {
+  display: block;
+  min-height: auto;
+}
+
+.deskpet-reply-panel.is-complete .deskpet-reply-bubble {
+  display: block;
+  min-height: auto;
+}
+
+.deskpet-reply-panel.is-thinking .deskpet-reply-bubble {
+  display: block;
+  min-height: auto;
+}
+
+.deskpet-reply-text {
+  position: relative;
+  display: block;
+  overflow: visible;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.deskpet-root.is-size-small .deskpet-reply-panel:not(.is-thinking) {
+  max-width: calc(100vw - 12px);
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
+.deskpet-root.is-size-small
+  .deskpet-reply-panel:not(.is-thinking)
+  .deskpet-reply-text {
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.deskpet-reply-panel.is-thinking .deskpet-reply-text {
+  overflow: hidden;
+  padding-left: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deskpet-reply-panel.is-thinking .deskpet-reply-text::before {
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 11px;
+  height: 11px;
+  content: "";
+  transform: translateY(-50%);
+  border: 2px solid rgba(248, 103, 47, 0.2);
+  border-top-color: rgba(248, 103, 47, 0.92);
+  border-radius: 999px;
+  animation: deskpet-thinking-spin 0.85s linear infinite;
+}
+
+@keyframes deskpet-thinking-spin {
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}
+
+.deskpet-reply-open-button {
+  position: relative;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 238, 219, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 248, 238, 0.76);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-reply-open-button:hover {
+  background: rgba(248, 103, 47, 0.18);
+  color: #fff8ef;
+}
+
+.deskpet-reply-open-button:focus-visible {
+  outline: 2px solid rgba(248, 103, 47, 0.34);
+  outline-offset: 2px;
+}
+
+.deskpet-reply-open-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.deskpet-task-panel {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  width: min(420px, calc(100vw - 18px));
+  transform: translateX(-50%);
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 16px;
+  border: 1px solid rgba(255, 224, 197, 0.1);
+  border-radius: 30px;
+  background: rgba(34, 33, 30, 0.94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px
+    rgba(0, 0, 0, 0.2);
+  color: rgba(255, 248, 238, 0.96);
+  font: 400 12px / 1.28 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  backdrop-filter: blur(20px);
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.deskpet-task-panel.is-expanded {
+  width: min(410px, calc(100vw - 28px));
+}
+
+.deskpet-task-panel::after {
+  display: none;
+  content: none;
+}
+
+.deskpet-task-panel.is-lobster-replying {
+  padding: 13px 16px;
+}
+
+.deskpet-task-panel.is-success {
+  top: 8px;
+  width: min(420px, calc(100vw - 18px));
+  gap: 8px;
+  padding: 10px 12px;
+  border-color: rgba(255, 238, 219, 0.11);
+  border-radius: 30px;
+  background: rgba(31, 31, 29, 0.95);
+}
+
+.deskpet-task-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.deskpet-task-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.deskpet-task-copy strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deskpet-task-panel.is-success .deskpet-task-copy {
+  display: block;
+  max-height: calc(14px * 1.36 * 2);
+  overflow: hidden;
+  color: rgba(255, 248, 238, 0.96);
+  font-size: 14px;
+  line-height: 1.36;
+}
+
+.deskpet-task-panel.is-success .deskpet-task-copy strong {
+  display: inline;
+  overflow: visible;
+  line-height: inherit;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.deskpet-task-panel.is-success .deskpet-task-copy strong::after {
+  content: " · ";
+  color: rgba(255, 248, 238, 0.5);
+  font-weight: 700;
+}
+
+.deskpet-task-inline-summary {
+  display: inline;
+  overflow: visible;
+  color: rgba(255, 238, 219, 0.72);
+  font-size: 14px;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.deskpet-task-copy span {
+  overflow: hidden;
+  color: rgba(255, 198, 157, 0.78);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deskpet-task-panel.is-success .deskpet-task-inline-summary {
+  display: inline;
+  overflow: visible;
+  color: rgba(255, 238, 219, 0.72);
+  font-size: 14px;
+  line-height: inherit;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.deskpet-task-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+}
+
+.deskpet-task-action-button,
+.deskpet-task-close {
+  display: inline-flex;
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 238, 219, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 248, 238, 0.72);
+  cursor: pointer;
+  font: 900 16px / 1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-task-action-button:hover,
+.deskpet-task-close:hover {
+  border-color: rgba(255, 238, 219, 0.14);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff8ef;
+}
+
+.deskpet-task-action-button:focus-visible,
+.deskpet-task-close:focus-visible {
+  outline: 2px solid rgba(248, 103, 47, 0.34);
+  outline-offset: 2px;
+}
+
+.deskpet-task-action-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.deskpet-task-indicator {
+  position: relative;
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 999px;
+}
+
+button.deskpet-task-indicator {
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+button.deskpet-task-indicator:focus-visible {
+  outline: 2px solid rgba(248, 103, 47, 0.34);
+  outline-offset: 2px;
+}
+
+.deskpet-task-indicator.is-working {
+  overflow: hidden;
+}
+
+.deskpet-task-indicator.is-working::before {
+  position: absolute;
+  inset: 7px;
+  box-sizing: border-box;
+  content: "";
+  border: 4px solid rgba(248, 103, 47, 0.24);
+  border-top-color: rgba(248, 103, 47, 0.98);
+  border-radius: 999px;
+  animation: deskpet-indicator-spin 0.85s linear infinite;
+}
+
+@keyframes deskpet-indicator-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.deskpet-task-indicator.is-complete {
+  background: #f8672f;
+  color: #fff8ef;
+}
+
+button.deskpet-task-indicator.is-complete:hover {
+  background: #ff7040;
+}
+
+.deskpet-task-indicator.is-complete::before {
+  width: 12px;
+  height: 7px;
+  content: "";
+  transform: translateY(-1px) rotate(-45deg);
+  border-bottom: 3px solid currentColor;
+  border-left: 3px solid currentColor;
+}
+
+.deskpet-task-summary {
+  display: -webkit-box;
+  min-height: calc(14px * 1.35 * 2);
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 238, 219, 0.72);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.deskpet-task-summary.is-single-line {
+  min-height: auto;
+}
+
+.deskpet-task-panel.is-lobster-replying .deskpet-task-summary {
+  min-height: auto;
+}
+
+.deskpet-task-followup {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 238, 219, 0.16);
+  border-radius: 999px;
+  background: rgba(16, 16, 15, 0.7);
+  color: rgba(255, 238, 219, 0.72);
+  caret-color: #f8672f;
+  font: 400 14px / 1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  outline: none;
+  text-align: left;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-task-followup::placeholder {
+  color: rgba(255, 238, 219, 0.7);
+  opacity: 1;
+}
+
+.deskpet-task-followup:hover {
+  border-color: rgba(255, 238, 219, 0.22);
+  background: rgba(22, 22, 20, 0.84);
+  color: rgba(255, 248, 238, 0.88);
+}
+
+.deskpet-task-followup:focus {
+  border-color: rgba(248, 103, 47, 0.5);
+  background: rgba(18, 18, 17, 0.92);
+  color: rgba(255, 248, 238, 0.94);
+  box-shadow: 0 0 0 2px rgba(248, 103, 47, 0.16);
 }
 
 .desktop-shell {

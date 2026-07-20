@@ -15,6 +15,30 @@ import { getApiV1Bots, getApiV1ChatSession } from "../../lib/api/sdk.gen";
 
 const BOT_AVATAR = "/images/claw-avatar.png";
 const USER_AVATAR = "/images/tabby-avatar.png";
+const DESKPET_REPLYING_DURATION_MS = 8000;
+const DESKPET_SUCCESS_DURATION_MS = 5000;
+
+function invokeDesktopHost(channel: string, payload: unknown): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
+  if (!candidate || typeof candidate !== "object") {
+    return;
+  }
+
+  const invoke = Reflect.get(candidate as Record<string, unknown>, "invoke");
+  if (typeof invoke !== "function") {
+    return;
+  }
+
+  void (invoke as (channel: string, payload: unknown) => Promise<unknown>).call(
+    candidate,
+    channel,
+    payload,
+  );
+}
 
 type PendingStatus = "starting" | "streaming" | "error";
 
@@ -33,6 +57,7 @@ export function PendingSessionPage() {
   const [streamingText, setStreamingText] = useState("");
   const [status, setStatus] = useState<PendingStatus>("starting");
   const resolvedRef = useRef(false);
+  const latestStreamingTextRef = useRef("");
 
   const { data: botsData } = useQuery({
     queryKey: ["bots"],
@@ -54,9 +79,18 @@ export function PendingSessionPage() {
       if (resolvedRef.current) return;
       resolvedRef.current = true;
       void queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
-      navigate(`/workspace/sessions/${sessionId}`, { replace: true });
+      navigate(`/workspace/sessions/${sessionId}`, {
+        replace: true,
+        state: params
+          ? {
+              deskpetPendingReplyText: latestStreamingTextRef.current,
+              deskpetPendingRunId: params.runId,
+              deskpetPendingSessionKey: params.sessionKey,
+            }
+          : undefined,
+      });
     },
-    [navigate, queryClient],
+    [navigate, params, queryClient],
   );
 
   const resolveSessionOnce = useCallback(async () => {
@@ -85,6 +119,11 @@ export function PendingSessionPage() {
     resolvedRef.current = false;
     setStatus("starting");
     setStreamingText("");
+    latestStreamingTextRef.current = "";
+    invokeDesktopHost("desktop:deskpet-activity", {
+      mood: "lobster-replying",
+      durationMs: DESKPET_REPLYING_DURATION_MS,
+    });
 
     void waitForLocalChatSession({
       botId: params.botId,
@@ -115,11 +154,22 @@ export function PendingSessionPage() {
       runId: params.runId,
       onDelta: (delta) => {
         setStatus("streaming");
-        setStreamingText((prev) =>
-          delta.replace ? delta.deltaText : prev + delta.deltaText,
-        );
+        setStreamingText((prev) => {
+          const next = delta.replace ? delta.deltaText : prev + delta.deltaText;
+          latestStreamingTextRef.current = next.trim().slice(0, 280);
+          return next;
+        });
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "lobster-replying",
+          durationMs: DESKPET_REPLYING_DURATION_MS,
+        });
       },
       onFinal: () => {
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "success",
+          durationMs: DESKPET_SUCCESS_DURATION_MS,
+          replyText: latestStreamingTextRef.current,
+        });
         void resolveSessionOnce();
       },
       onAborted: () => {

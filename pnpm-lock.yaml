@@ -118,6 +118,9 @@ importers:
       pino:
         specifier: ^10.3.1
         version: 10.3.1
+      posthog-js:
+        specifier: ^1.365.1
+        version: 1.365.1
       sharp:
         specifier: 0.34.5
         version: 0.34.5
@@ -365,6 +368,9 @@ importers:
       '@nexu/dev-utils':
         specifier: workspace:*
         version: link:../../packages/dev-utils
+      '@nexu/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@nexu/slimclaw':
         specifier: workspace:*
         version: link:../../packages/slimclaw
