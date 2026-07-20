@@ -161,6 +161,39 @@ export class TeamService {
   }
 
   /**
+   * Public (API) view of a team. The default team's membership is dynamic —
+   * every installed expert belongs to it — so it is resolved from the expert
+   * ledger at read time instead of persisting a copy that drifts as experts
+   * are installed/uninstalled. Execution paths already enroll assignees on
+   * demand (ensureTeamMembers), so this only affects what clients see.
+   */
+  async resolveTeamView(team: TeamResponse): Promise<TeamResponse> {
+    if (!team.isDefault) {
+      return team;
+    }
+    const ledger = await this.deps.readExpertLedger();
+    const members: TeamMember[] = await Promise.all(
+      Object.entries(ledger.entries).map(async ([slug, entry]) => ({
+        expertSlug: slug,
+        botId: entry.botId,
+        name: (await this.deps.resolveExpertName(slug)) ?? entry.name ?? slug,
+      })),
+    );
+    return { ...team, members };
+  }
+
+  async listTeamViews(): Promise<TeamResponse[]> {
+    return Promise.all(
+      this.listTeams().map((team) => this.resolveTeamView(team)),
+    );
+  }
+
+  async getTeamView(teamId: string): Promise<TeamResponse | null> {
+    const team = this.getTeam(teamId);
+    return team ? this.resolveTeamView(team) : null;
+  }
+
+  /**
    * Live snapshot of the team's Workboard for the Kanban view. Degrades to an
    * empty board when the gateway is offline or the board has no cards yet, so
    * the polling UI never error-spams.

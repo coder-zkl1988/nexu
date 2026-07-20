@@ -37,7 +37,11 @@ import {
   stopWebDevProcess,
 } from "./services/web.js";
 import { logger as rootLogger } from "./shared/logger.js";
-import { defaultLogTailLineCount } from "./shared/logs.js";
+import {
+  defaultLogTailLineCount,
+  devLogSessionRetentionCount,
+  pruneDevLogSessions,
+} from "./shared/logs.js";
 import { createDevSessionId } from "./shared/trace.js";
 
 const cli = cac("dev");
@@ -111,6 +115,16 @@ function getNoActiveLogMessage(snapshot: SnapshotLike): string {
   }
 
   return `${snapshot.service} is not running; no active session log is available`;
+}
+
+async function pruneStaleDevLogSessions(): Promise<void> {
+  const removed = await pruneDevLogSessions();
+  if (removed.length > 0) {
+    logger.info("pruned old dev log session directories", {
+      removedCount: removed.length,
+      retentionCount: devLogSessionRetentionCount,
+    });
+  }
 }
 
 async function runDefaultStartStage(
@@ -353,6 +367,8 @@ function readOptionalPositiveNumber(
 cli
   .command("start [target]", "Start one local dev service")
   .action(async (target?: string) => {
+    await pruneStaleDevLogSessions();
+
     if (!target) {
       await runWithCommandTimeout("start", "stack", true, () =>
         startDefaultStack(),
@@ -373,6 +389,8 @@ cli
 cli
   .command("restart [target]", "Restart one local dev service")
   .action(async (target?: string) => {
+    await pruneStaleDevLogSessions();
+
     if (!target) {
       await runWithCommandTimeout("restart", "stack", true, () =>
         restartDefaultStack(),

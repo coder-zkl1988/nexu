@@ -14,6 +14,7 @@ import {
   openLocalFolderUrl,
   pathToFileUrl,
 } from "@/lib/desktop-links";
+import { getSpecialModelLabelKey } from "@/lib/special-models";
 import {
   ANALYTICS_PREFERENCE_STORAGE_KEY,
   disableAnalytics,
@@ -2578,16 +2579,24 @@ function ManagedProviderDetail({
           <div className="space-y-0.5">
             {provider.models.map((model) => {
               const isSelected = isModelSelected(model.id, currentModelId);
+              // Purpose-reserved models (image/video generation, phone
+              // control) cannot be a bot's chat model — grey them out with a
+              // purpose label, mirroring the model picker dropdown.
+              const specialLabelKey = getSpecialModelLabelKey(model.id);
+              const isSpecial = specialLabelKey !== null;
               return (
                 <button
                   key={model.id}
                   type="button"
+                  disabled={isSpecial}
                   onClick={() => {
                     if (!isSelected) onSelectModel(model.id);
                   }}
                   className={cn(
                     "w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
                     isSelected ? "bg-surface-2" : "hover:bg-surface-2",
+                    isSpecial &&
+                      "cursor-not-allowed opacity-60 hover:bg-transparent",
                   )}
                 >
                   <span className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 bg-white border border-border-subtle">
@@ -2600,12 +2609,15 @@ function ManagedProviderDetail({
                   <span
                     className={cn(
                       "flex-1 text-[12px] truncate",
-                      isSelected
-                        ? "font-semibold text-text-primary"
-                        : "font-medium text-text-primary",
+                      isSpecial
+                        ? "font-medium text-text-muted"
+                        : isSelected
+                          ? "font-semibold text-text-primary"
+                          : "font-medium text-text-primary",
                     )}
                   >
                     {model.name}
+                    {specialLabelKey && ` (${t(specialLabelKey)})`}
                   </span>
                   {formatContextWindow(model.contextWindow) && (
                     <span className="inline-flex items-center text-[10px] font-medium text-text-tertiary shrink-0 tabular-nums">

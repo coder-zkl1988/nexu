@@ -80,12 +80,18 @@ export class DeviceControlService {
    * cloud login state changes. Best-effort: if the plugin isn't up, ignore.
    */
   async pushVlmCredential(): Promise<void> {
-    let credential: { apiUrl: string; apiKey: string; model: string } | null =
-      null;
+    let credential: { apiUrl: string; apiKey: string; model: string } | null;
     try {
       credential = await this.configStore.getVlmGatewayCredential();
-    } catch {
-      credential = null;
+    } catch (err) {
+      // A read failure is NOT a logout: pushing null here would wipe a good
+      // credential from the plugin. Keep the plugin's current state and let
+      // the next push (reconcile loop / login change) retry.
+      logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        "device-control: VLM credential read failed, skipping push",
+      );
+      return;
     }
     try {
       await this.rpc("device_set_vlm_credential", { credential });

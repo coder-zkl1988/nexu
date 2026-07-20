@@ -93,35 +93,47 @@ export function TeamsPage() {
                       </CardTitle>
                     </Link>
                     <div className="flex shrink-0 items-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setEditTeam(team)}
-                        aria-label={t("teams.editAria")}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={deleteTeam.isPending}
-                        onClick={() => {
-                          if (
-                            confirm(
-                              t("teams.deleteConfirm", { name: team.name }),
-                            )
-                          ) {
-                            deleteTeam.mutate(team.id);
-                          }
-                        }}
-                        aria-label={t("teams.deleteAria")}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {/* The default team's membership is dynamic (all
+                          installed experts) — manual member edits would be
+                          overwritten, so hide the edit affordance. */}
+                      {!team.isDefault && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditTeam(team)}
+                          aria-label={t("teams.editAria")}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!team.isDefault && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={deleteTeam.isPending}
+                          onClick={() => {
+                            if (
+                              confirm(
+                                t("teams.deleteConfirm", { name: team.name }),
+                              )
+                            ) {
+                              deleteTeam.mutate(team.id);
+                            }
+                          }}
+                          aria-label={t("teams.deleteAria")}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <CardDescription>
                     {t("teams.memberCount", { count: team.members.length })}
+                    {team.isDefault && (
+                      <span className="ml-1.5 text-text-muted">
+                        · {t("teams.defaultTeamAutoMembers")}
+                      </span>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="mt-auto">
