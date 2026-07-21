@@ -12,18 +12,25 @@ import {
   crashReporter,
   dialog,
   globalShortcut,
+  ipcMain,
   nativeImage,
   nativeTheme,
   powerMonitor,
   powerSaveBlocker,
+  screen,
   session,
   shell,
 } from "electron";
 import { getOpenclawSkillsDir } from "../shared/desktop-paths";
 import type {
   DesktopChromeMode,
+  DesktopDeskpetMood,
+  DesktopDeskpetMoodSource,
+  DesktopDeskpetSize,
   DesktopSurface,
   HostDesktopCommand,
+  RuntimeEvent,
+  RuntimeState,
 } from "../shared/host";
 import { buildChildProcessProxyEnv } from "../shared/proxy-config";
 import { getDesktopRuntimeConfig } from "../shared/runtime-config";
@@ -435,6 +442,10 @@ if (sentryDsn && readCrashReportsConsent()) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let deskpetWindow: BrowserWindow | null = null;
+let deskpetSize: DesktopDeskpetSize = "medium";
+let deskpetAlwaysOnTop = true;
+let currentDeskpetMood: DesktopDeskpetMood = "idle";
 let residentTray: Tray | null = null;
 let launchdQuitOptsForResidentEntry:
   | Parameters<typeof installLaunchdQuitHandler>[0]
@@ -442,6 +453,7 @@ let launchdQuitOptsForResidentEntry:
 let diagnosticsReporter: DesktopDiagnosticsReporter | null = null;
 
 let unsubscribeIpc: (() => void) | null = null;
+let unsubscribeDeskpetRuntime: (() => void) | null = null;
 let systemTray: Tray | null = null;
 let pendingMacResidentEntryPreferences: DesktopShellPreferences | null = null;
 
@@ -657,6 +669,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
     sleepGuard?.dispose(reason);
     unsubscribeIpc?.();
     unsubscribeIpc = null;
+    unsubscribeDeskpetRuntime?.();
+    unsubscribeDeskpetRuntime = null;
     await diagnosticsReporter?.flushNow().catch(() => undefined);
     flushRuntimeLoggers();
     flushV8CoverageIfEnabled();
@@ -713,6 +727,267 @@ function sendHostDesktopCommand(command: HostDesktopCommand): void {
 
 function sendSetupProgress(stage: string, detail?: string): void {
   sendHostDesktopCommand({ type: "setup:progress", stage, detail });
+}
+
+const DESKPET_WINDOW_SIZES: Record<DesktopDeskpetSize, number> = {
+  small: 210,
+  medium: 315,
+  large: 420,
+};
+
+const DESKPET_MOOD_LABELS: Record<DesktopDeskpetMood, string> = {
+  "belly-rub": "摸肚皮",
+  connection: "连接中",
+  error: "异常提醒",
+  idle: "待命",
+  "lobster-replying": "龙虾回复中",
+  peek: "偷看",
+  rest: "休息",
+  success: "成功",
+  "tease-lobster": "逗龙虾",
+  working: "认真工作",
+  yawn: "打哈欠",
+};
+
+const DESKPET_AUTOMATION_DURATIONS: Partial<
+  Record<DesktopDeskpetMood, number>
+> = {
+  "belly-rub": 2600,
+  "lobster-replying": 4800,
+  success: 3600,
+  "tease-lobster": 4200,
+  working: 2200,
+  yawn: 2600,
+};
+
+const DESKPET_SELECTABLE_MOODS: DesktopDeskpetMood[] = [
+  "connection",
+  "error",
+  "idle",
+  "lobster-replying",
+  "peek",
+  "rest",
+  "success",
+  "tease-lobster",
+  "working",
+];
+
+function runtimeHasPhase(
+  runtimeState: RuntimeState,
+  phases: Array<RuntimeState["units"][number]["phase"]>,
+): boolean {
+  return runtimeState.units.some((unit) => phases.includes(unit.phase));
+}
+
+function resolveDeskpetRuntimeMood(
+  runtimeState: RuntimeState,
+): DesktopDeskpetMood {
+  if (runtimeHasPhase(runtimeState, ["failed"])) {
+    return "error";
+  }
+
+  if (runtimeHasPhase(runtimeState, ["starting", "stopping"])) {
+    return "connection";
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+    return "rest";
+  }
+
+  if (runtimeHasPhase(runtimeState, ["running"])) {
+    return "idle";
+  }
+
+  return "rest";
+}
+
+function getDeskpetWindowSize(): number {
+  return DESKPET_WINDOW_SIZES[deskpetSize];
+}
+
+function sendDeskpetCommand(command: HostDesktopCommand): void {
+  if (!deskpetWindow || deskpetWindow.isDestroyed()) {
+    return;
+  }
+
+  deskpetWindow.webContents.send("host:desktop-command", command);
+}
+
+function applyDeskpetMood(
+  mood: DesktopDeskpetMood,
+  options?: {
+    source?: DesktopDeskpetMoodSource;
+    durationMs?: number;
+    replyText?: string;
+  },
+): void {
+  currentDeskpetMood = mood;
+  sendDeskpetCommand({
+    type: "deskpet:set-mood",
+    mood,
+    source: options?.source ?? "auto",
+    durationMs: options?.durationMs,
+    replyText: options?.replyText,
+  });
+}
+
+function applyDeskpetRuntimeMood(): void {
+  applyDeskpetMood(resolveDeskpetRuntimeMood(orchestrator.getRuntimeState()), {
+    source: "runtime",
+  });
+}
+
+function handleDeskpetRuntimeEvent(event: RuntimeEvent): void {
+  if (event.type !== "runtime:unit-state") {
+    return;
+  }
+
+  if (event.type === "runtime:unit-state" && event.unit.phase === "failed") {
+    applyDeskpetMood("error", { source: "runtime" });
+    return;
+  }
+
+  if (
+    event.type === "runtime:unit-state" &&
+    (event.unit.phase === "starting" || event.unit.phase === "stopping")
+  ) {
+    applyDeskpetMood("connection", { source: "runtime" });
+    return;
+  }
+
+  applyDeskpetRuntimeMood();
+}
+
+function handleDeskpetActivity(
+  mood: DesktopDeskpetMood,
+  source: DesktopDeskpetMoodSource = "auto",
+  durationMs = DESKPET_AUTOMATION_DURATIONS[mood],
+  replyText?: string,
+): void {
+  applyDeskpetMood(mood, { source, durationMs, replyText });
+}
+
+ipcMain.on(
+  "deskpet:activity",
+  (
+    _event,
+    payload: {
+      mood?: DesktopDeskpetMood;
+      durationMs?: number;
+      source?: DesktopDeskpetMoodSource;
+      replyText?: string;
+    },
+  ) => {
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+
+    const mood = payload.mood;
+    if (!mood || !(mood in DESKPET_MOOD_LABELS)) {
+      return;
+    }
+
+    const durationMs =
+      typeof payload.durationMs === "number" &&
+      Number.isFinite(payload.durationMs)
+        ? Math.max(500, Math.min(payload.durationMs, 10_000))
+        : undefined;
+    const replyText =
+      typeof payload.replyText === "string" && payload.replyText.trim()
+        ? payload.replyText.trim().slice(0, 280)
+        : undefined;
+
+    handleDeskpetActivity(
+      mood,
+      payload.source ?? "auto",
+      durationMs,
+      replyText,
+    );
+  },
+);
+
+function positionDeskpetWindow(window: BrowserWindow): void {
+  const size = getDeskpetWindowSize();
+  const cursorPoint = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursorPoint);
+  const margin = 36;
+
+  window.setBounds({
+    x: display.workArea.x + display.workArea.width - size - margin,
+    y: display.workArea.y + display.workArea.height - size - margin,
+    width: size,
+    height: size,
+  });
+}
+
+function setDeskpetSize(size: DesktopDeskpetSize): void {
+  deskpetSize = size;
+  if (deskpetWindow && !deskpetWindow.isDestroyed()) {
+    const bounds = deskpetWindow.getBounds();
+    const nextSize = getDeskpetWindowSize();
+    deskpetWindow.setBounds({
+      x: bounds.x,
+      y: bounds.y,
+      width: nextSize,
+      height: nextSize,
+    });
+  }
+
+  sendDeskpetCommand({ type: "deskpet:set-size", size });
+}
+
+function showDeskpetContextMenu(): void {
+  if (!deskpetWindow || deskpetWindow.isDestroyed()) {
+    return;
+  }
+
+  const moodItems: MenuItemConstructorOptions[] = DESKPET_SELECTABLE_MOODS.map(
+    (mood) => ({
+      label: DESKPET_MOOD_LABELS[mood],
+      type: "radio",
+      checked: currentDeskpetMood === mood,
+      click: () => applyDeskpetMood(mood, { source: "manual" }),
+    }),
+  );
+
+  const sizeItems: MenuItemConstructorOptions[] = [
+    ["small", "小"],
+    ["medium", "默认"],
+    ["large", "大"],
+  ].map(([size, label]) => ({
+    label,
+    type: "radio",
+    checked: deskpetSize === size,
+    click: () => setDeskpetSize(size as DesktopDeskpetSize),
+  }));
+
+  Menu.buildFromTemplate([
+    {
+      label: "打开 Tabby",
+      click: () => {
+        showMainWindowFromResidentEntry();
+      },
+    },
+    { type: "separator" },
+    { label: "状态", submenu: moodItems },
+    { label: "大小", submenu: sizeItems },
+    { type: "separator" },
+    {
+      label: "保持置顶",
+      type: "checkbox",
+      checked: deskpetAlwaysOnTop,
+      click: (item) => {
+        deskpetAlwaysOnTop = item.checked;
+        deskpetWindow?.setAlwaysOnTop(deskpetAlwaysOnTop, "floating");
+      },
+    },
+    {
+      label: "隐藏桌宠",
+      click: () => {
+        deskpetWindow?.hide();
+      },
+    },
+  ]).popup({ window: deskpetWindow });
 }
 
 function showAboutDialog(): void {
@@ -1244,6 +1519,37 @@ function hideMainWindowToTray(): void {
   hideMainWindowToBackground();
 }
 
+function showDeskpetWindow(): void {
+  const preferences = getDesktopShellPreferences();
+  if (!preferences.deskpetEnabled) {
+    return;
+  }
+
+  if (!deskpetWindow || deskpetWindow.isDestroyed()) {
+    createDeskpetWindow();
+    return;
+  }
+
+  deskpetWindow.showInactive();
+}
+
+function applyDeskpetPreference(preferences: DesktopShellPreferences): void {
+  if (preferences.deskpetEnabled) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
+    showDeskpetWindow();
+    return;
+  }
+
+  if (deskpetWindow && !deskpetWindow.isDestroyed()) {
+    deskpetWindow.hide();
+  }
+  updateSystemTrayMenu();
+  updateResidentTrayMenu();
+}
+
 function updateSystemTrayMenu(): void {
   if (!systemTray) {
     return;
@@ -1254,6 +1560,10 @@ function updateSystemTrayMenu(): void {
   const isVisible = Boolean(
     mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible(),
   );
+  const isDeskpetVisible = Boolean(
+    deskpetWindow && !deskpetWindow.isDestroyed() && deskpetWindow.isVisible(),
+  );
+  const shellPreferences = getDesktopShellPreferences();
 
   systemTray.setContextMenu(
     Menu.buildFromTemplate([
@@ -1266,6 +1576,22 @@ function updateSystemTrayMenu(): void {
           }
 
           showMainWindowFromResidentEntry();
+        },
+      },
+      {
+        label: shellPreferences.deskpetEnabled
+          ? isDeskpetVisible
+            ? "隐藏桌宠"
+            : "显示桌宠"
+          : "桌宠已关闭",
+        enabled: shellPreferences.deskpetEnabled,
+        click: () => {
+          if (isDeskpetVisible) {
+            deskpetWindow?.hide();
+            return;
+          }
+
+          showDeskpetWindow();
         },
       },
       { type: "separator" },
@@ -1318,7 +1644,62 @@ function showResidentTrayMenu(): void {
     return;
   }
 
+  updateResidentTrayMenu();
   residentTray.popUpContextMenu();
+}
+
+function updateResidentTrayMenu(): void {
+  if (!residentTray) {
+    return;
+  }
+
+  const isDeskpetVisible = Boolean(
+    deskpetWindow && !deskpetWindow.isDestroyed() && deskpetWindow.isVisible(),
+  );
+  const shellPreferences = getDesktopShellPreferences();
+
+  residentTray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Open Tabby",
+        click: () => {
+          showMainWindowFromResidentEntry();
+        },
+      },
+      {
+        label: shellPreferences.deskpetEnabled
+          ? isDeskpetVisible
+            ? "Hide Deskpet"
+            : "Show Deskpet"
+          : "Deskpet Off",
+        enabled: shellPreferences.deskpetEnabled,
+        click: () => {
+          if (isDeskpetVisible) {
+            deskpetWindow?.hide();
+            return;
+          }
+
+          showDeskpetWindow();
+        },
+      },
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => {
+          if (app.isPackaged && launchdQuitOptsForResidentEntry) {
+            void runTeardownAndExit(
+              launchdQuitOptsForResidentEntry,
+              "tray-quit",
+            );
+            return;
+          }
+
+          markForceQuitInProgress();
+          app.quit();
+        },
+      },
+    ]),
+  );
 }
 
 function ensureResidentTray(): void {
@@ -1344,31 +1725,7 @@ function ensureResidentTray(): void {
   const tray = new Tray(trayIcon);
   residentTray = tray;
   tray.setToolTip("Tabby");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "Open Tabby",
-        click: () => {
-          showMainWindowFromResidentEntry();
-        },
-      },
-      {
-        label: "Quit",
-        click: () => {
-          if (app.isPackaged && launchdQuitOptsForResidentEntry) {
-            void runTeardownAndExit(
-              launchdQuitOptsForResidentEntry,
-              "tray-quit",
-            );
-            return;
-          }
-
-          markForceQuitInProgress();
-          app.quit();
-        },
-      },
-    ]),
-  );
+  updateResidentTrayMenu();
   tray.on("click", () => {
     showResidentTrayMenu();
   });
@@ -1431,6 +1788,8 @@ function applyResidentEntryPreferences(
   } else {
     destroyResidentTray();
   }
+
+  applyDeskpetPreference(preferences);
 }
 
 function shouldHideOnWindowClose(): boolean {
@@ -1622,6 +1981,7 @@ function createMainWindow(): BrowserWindow {
       mainWindow = null;
     }
 
+    applyDeskpetRuntimeMood();
     updateSystemTrayMenu();
   });
 
@@ -1643,10 +2003,12 @@ function createMainWindow(): BrowserWindow {
   });
 
   window.on("show", () => {
+    applyDeskpetRuntimeMood();
     updateSystemTrayMenu();
   });
 
   window.on("hide", () => {
+    applyDeskpetMood("rest", { source: "runtime" });
     updateSystemTrayMenu();
   });
 
@@ -1706,6 +2068,87 @@ function createMainWindow(): BrowserWindow {
       : "main window loadFile dispatched",
   );
   mainWindow = window;
+  return window;
+}
+
+function createDeskpetWindow(): BrowserWindow {
+  if (deskpetWindow && !deskpetWindow.isDestroyed()) {
+    deskpetWindow.showInactive();
+    return deskpetWindow;
+  }
+
+  const size = getDeskpetWindowSize();
+  const window = new BrowserWindow({
+    width: size,
+    height: size,
+    minWidth: DESKPET_WINDOW_SIZES.small,
+    minHeight: DESKPET_WINDOW_SIZES.small,
+    maxWidth: DESKPET_WINDOW_SIZES.large,
+    maxHeight: DESKPET_WINDOW_SIZES.large,
+    transparent: true,
+    frame: false,
+    resizable: false,
+    movable: true,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: deskpetAlwaysOnTop,
+    hasShadow: false,
+    backgroundColor: "#00000000",
+    title: "Tabby Deskpet",
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false,
+    },
+  });
+
+  deskpetWindow = window;
+  window.setAlwaysOnTop(deskpetAlwaysOnTop, "floating");
+  window.setIgnoreMouseEvents(true, { forward: true });
+  positionDeskpetWindow(window);
+
+  window.webContents.on("context-menu", () => {
+    showDeskpetContextMenu();
+  });
+
+  window.webContents.on(
+    "console-message",
+    (_event, level, message, line, sourceId) => {
+      const levelLabel =
+        ["verbose", "info", "warning", "error"][level] ?? String(level);
+      logRendererEvent({
+        source: `deskpet:${levelLabel}`,
+        stream: level >= 3 ? "stderr" : "stdout",
+        kind: "app",
+        message: `${message} (${sourceId}:${line})`,
+        windowId: window.webContents.id,
+      });
+    },
+  );
+
+  window.once("ready-to-show", () => {
+    window.showInactive();
+  });
+
+  window.on("closed", () => {
+    if (deskpetWindow === window) {
+      deskpetWindow = null;
+    }
+  });
+
+  const desktopRendererEntryPath = resolve(__dirname, "../../dist/index.html");
+  if (!app.isPackaged && desktopDevServerUrl) {
+    const url = new URL(desktopDevServerUrl);
+    url.searchParams.set("surface", "deskpet");
+    void window.loadURL(url.toString());
+  } else {
+    void window.loadFile(desktopRendererEntryPath, {
+      query: { surface: "deskpet" },
+    });
+  }
+
   return window;
 }
 
@@ -1894,7 +2337,11 @@ app.whenReady().then(async () => {
     runtimeConfig,
     diagnosticsReporter,
     coldStartReady,
+    (mood) => {
+      currentDeskpetMood = mood;
+    },
   );
+  unsubscribeDeskpetRuntime = orchestrator.subscribe(handleDeskpetRuntimeEvent);
   // Provide orchestrator-mode quit fallback for app:quit IPC when launchd
   // quit handler is not available (e.g. CI, orchestrator mode).
   setQuitFallback(() =>
@@ -1913,6 +2360,14 @@ app.whenReady().then(async () => {
     },
   });
   const win = createMainWindow();
+  if (getDesktopShellPreferences().deskpetEnabled) {
+    createDeskpetWindow();
+  }
+  if (!app.isPackaged) {
+    setTimeout(() => {
+      showMainWindowFromResidentEntry();
+    }, 1200);
+  }
   await ensureWindowsTray();
   sleepGuard.start("desktop-runtime-active");
 

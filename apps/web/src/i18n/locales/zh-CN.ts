@@ -450,6 +450,9 @@ const zhCN = {
   "settings.desktop.showInTaskbar": "在任务栏中显示",
   "settings.desktop.showInTaskbarHint":
     "显示在任务栏中；关闭后仅保留系统托盘入口",
+  "settings.desktop.deskpet": "桌面桌宠",
+  "settings.desktop.deskpetHint":
+    "在电脑桌面显示悬浮 Tabby 桌宠，并随运行状态联动切换表情。",
   "settings.desktop.updateFailed": "更新桌面设置失败",
   "settings.data.analytics": "使用分析",
   "settings.data.analyticsHint": "发送匿名使用数据以帮助改进 Tabby",

@@ -30,6 +30,14 @@ export const hostInvokeChannels = [
   "desktop:cancel-minimax-oauth",
   "desktop:get-shell-preferences",
   "desktop:update-shell-preferences",
+  "desktop:deskpet-start-chat",
+  "desktop:deskpet-register-current-chat",
+  "desktop:deskpet-reply-current-chat",
+  "desktop:deskpet-open-current-chat",
+  "desktop:deskpet-pause-current-reply",
+  "desktop:deskpet-activity",
+  "desktop:deskpet-move-window",
+  "desktop:deskpet-set-mouse-events",
   "desktop:report-error",
   "desktop:get-rewards-status",
   "desktop:set-reward-balance",
@@ -155,8 +163,39 @@ export type HostInvokePayloadMap = {
   "desktop:update-shell-preferences": {
     launchAtLogin?: boolean;
     showInDock?: boolean;
+    deskpetEnabled?: boolean;
     crashReportsEnabled?: boolean;
     sessionReplayEnabled?: boolean;
+  };
+  "desktop:deskpet-start-chat": {
+    text: string;
+  };
+  "desktop:deskpet-register-current-chat": {
+    botId: string;
+    sessionKey: string;
+    sessionId?: string;
+  };
+  "desktop:deskpet-reply-current-chat": {
+    text: string;
+  };
+  "desktop:deskpet-open-current-chat":
+    | {
+        intent?: "open" | "reply";
+      }
+    | undefined;
+  "desktop:deskpet-pause-current-reply": undefined;
+  "desktop:deskpet-activity": {
+    mood: DesktopDeskpetMood;
+    durationMs?: number;
+    replyText?: string;
+  };
+  "desktop:deskpet-move-window": {
+    deltaX: number;
+    deltaY: number;
+  };
+  "desktop:deskpet-set-mouse-events": {
+    ignore: boolean;
+    forward?: boolean;
   };
   "desktop:report-error": {
     area: string;
@@ -444,6 +483,7 @@ export type HostInvokeResultMap = {
   "desktop:get-shell-preferences": {
     launchAtLogin: boolean;
     showInDock: boolean;
+    deskpetEnabled: boolean;
     supportsLaunchAtLogin: boolean;
     supportsShowInDock: boolean;
     crashReportsEnabled: boolean;
@@ -452,10 +492,37 @@ export type HostInvokeResultMap = {
   "desktop:update-shell-preferences": {
     launchAtLogin: boolean;
     showInDock: boolean;
+    deskpetEnabled: boolean;
     supportsLaunchAtLogin: boolean;
     supportsShowInDock: boolean;
     crashReportsEnabled: boolean;
     sessionReplayEnabled: boolean;
+  };
+  "desktop:deskpet-start-chat": {
+    ok: true;
+    path: string;
+  };
+  "desktop:deskpet-register-current-chat": {
+    ok: true;
+  };
+  "desktop:deskpet-reply-current-chat": {
+    ok: true;
+  };
+  "desktop:deskpet-open-current-chat": {
+    ok: boolean;
+    path?: string;
+  };
+  "desktop:deskpet-pause-current-reply": {
+    ok: boolean;
+  };
+  "desktop:deskpet-activity": {
+    ok: true;
+  };
+  "desktop:deskpet-move-window": {
+    ok: boolean;
+  };
+  "desktop:deskpet-set-mouse-events": {
+    ok: boolean;
   };
   "desktop:report-error": { reported: boolean };
   "desktop:get-rewards-status": {
@@ -586,6 +653,23 @@ export type DesktopSurface =
 
 export type DesktopChromeMode = "full" | "immersive";
 
+export type DesktopDeskpetMood =
+  | "belly-rub"
+  | "connection"
+  | "error"
+  | "idle"
+  | "lobster-replying"
+  | "peek"
+  | "rest"
+  | "success"
+  | "tease-lobster"
+  | "working"
+  | "yawn";
+
+export type DesktopDeskpetSize = "small" | "medium" | "large";
+
+export type DesktopDeskpetMoodSource = "auto" | "manual" | "runtime";
+
 export type HostDesktopCommand =
   | {
       type: "develop:focus-surface";
@@ -607,12 +691,47 @@ export type HostDesktopCommand =
       type: "desktop:rewards-updated";
     }
   | {
+      type: "desktop:open-web-path";
+      path: string;
+    }
+  | {
+      type: "deskpet:current-chat-replied";
+      sessionKey: string;
+      text: string;
+      sessionId?: string;
+    }
+  | {
+      type: "deskpet:pause-current-reply";
+      sessionKey: string;
+      sessionId?: string;
+    }
+  | {
+      type: "deskpet:chat-started";
+      botId: string;
+      sessionKey: string;
+      sessionId?: string;
+      runId?: string | null;
+      text?: string;
+      startedAt?: number;
+    }
+  | {
       type: "setup:progress";
       stage: string;
       detail?: string;
     }
   | {
       type: "setup:complete";
+    }
+  | {
+      type: "deskpet:set-mood";
+      mood: DesktopDeskpetMood;
+      source?: DesktopDeskpetMoodSource;
+      durationMs?: number;
+      replyText?: string;
+    }
+  | {
+      type: "deskpet:set-size";
+      size: DesktopDeskpetSize;
     };
 
 export type RuntimeUnitSnapshot = Omit<RuntimeUnitState, "logTail">;

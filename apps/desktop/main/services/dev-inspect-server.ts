@@ -32,9 +32,12 @@ type DesktopDevInspectResponse =
 let desktopDevInspectServer: ReturnType<typeof createServer> | null = null;
 
 function getDesktopDevTargetContents(): Electron.WebContents {
-  const targetWindow = BrowserWindow.getAllWindows().find(
+  const windows = BrowserWindow.getAllWindows().filter(
     (window) => !window.isDestroyed(),
   );
+  const targetWindow =
+    windows.find((window) => window.getTitle() !== "Tabby Deskpet") ??
+    windows[0];
 
   if (!targetWindow) {
     throw new Error("No desktop renderer window is available.");

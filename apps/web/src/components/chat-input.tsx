@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Loader2, Plus, SendHorizonal, Sparkles, Square } from "lucide-react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, ReactNode, Ref } from "react";
 import { useTranslation } from "react-i18next";
 
 interface ChatInputProps {
@@ -17,6 +17,7 @@ interface ChatInputProps {
   canSend?: boolean;
   leftActions?: ReactNode;
   rightActions?: ReactNode;
+  inputRef?: Ref<HTMLTextAreaElement>;
 }
 
 export function ChatInput({
@@ -33,6 +34,7 @@ export function ChatInput({
   canSend,
   leftActions,
   rightActions,
+  inputRef,
 }: ChatInputProps) {
   const { t } = useTranslation();
   const effectiveCanSend =
@@ -54,6 +56,7 @@ export function ChatInput({
             </div>
           )}
           <textarea
+            ref={inputRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}

@@ -4,16 +4,19 @@ import {
   app,
   crashReporter,
   ipcMain,
+  screen,
   shell,
   webContents,
 } from "electron";
 import {
+  type DesktopDeskpetMood,
   type DesktopDevDomSnapshotResult,
   type DesktopDevEvalResult,
   type DesktopDevEvalSerializableValue,
   type DesktopDevRendererLogEntry,
   type DesktopDevRendererLogSnapshot,
   type DesktopDevScreenshotResult,
+  type HostDesktopCommand,
   type HostInvokePayloadMap,
   type HostInvokeResultMap,
   type StartupProbePayload,
@@ -298,6 +301,298 @@ async function fetchControllerJson<T>(
     : new Error("Failed to reach controller.");
 }
 
+type DeskpetDefaultBotResponse = {
+  id?: string;
+  name?: string;
+};
+
+type DeskpetLocalChatStartResponse = {
+  sessionKey?: string;
+  session?: {
+    id?: string;
+  } | null;
+  message?: {
+    runId?: string | null;
+  } | null;
+};
+
+type DeskpetCurrentChatTarget = {
+  botId: string;
+  sessionKey: string;
+  sessionId?: string;
+};
+
+let deskpetCurrentChatTarget: DeskpetCurrentChatTarget | null = null;
+
+function buildDeskpetPendingSessionPath(input: {
+  botId: string;
+  sessionKey: string;
+  runId?: string | null;
+}): string {
+  const params = new URLSearchParams({
+    botId: input.botId,
+    sessionKey: input.sessionKey,
+  });
+
+  const runId = input.runId?.trim();
+  if (runId) {
+    params.set("runId", runId);
+  }
+
+  return `/workspace/sessions/pending?${params.toString()}`;
+}
+
+function buildDeskpetSessionPath(input: {
+  sessionId: string;
+  botId: string;
+  sessionKey: string;
+  runId?: string | null;
+  startedAt: number;
+}): string {
+  const params = new URLSearchParams({
+    deskpetStartedAt: String(input.startedAt),
+    deskpetSessionKey: input.sessionKey,
+    deskpetBotId: input.botId,
+  });
+
+  const runId = input.runId?.trim();
+  if (runId) {
+    params.set("deskpetRunId", runId);
+  }
+
+  return `/workspace/sessions/${input.sessionId}?${params.toString()}`;
+}
+
+function broadcastDesktopCommand(command: HostDesktopCommand): void {
+  for (const contents of webContents.getAllWebContents()) {
+    if (!contents.isDestroyed()) {
+      contents.send("host:desktop-command", command);
+    }
+  }
+}
+
+function showPrimaryWindow(sender: Electron.WebContents): void {
+  const senderWindow = BrowserWindow.fromWebContents(sender);
+  const primaryWindow = BrowserWindow.getAllWindows().find((window) => {
+    if (window.isDestroyed() || window === senderWindow) {
+      return false;
+    }
+
+    return window.getTitle() !== "Tabby Deskpet";
+  });
+
+  if (!primaryWindow) {
+    return;
+  }
+
+  if (primaryWindow.isMinimized()) {
+    primaryWindow.restore();
+  }
+  if (!primaryWindow.isVisible()) {
+    primaryWindow.show();
+  }
+  primaryWindow.focus();
+}
+
+async function startDeskpetChat(
+  runtimeConfig: DesktopRuntimeConfig,
+  text: string,
+): Promise<HostInvokeResultMap["desktop:deskpet-start-chat"]> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("请输入想和 Tabby 说的话。");
+  }
+
+  const bot = await fetchControllerJson<DeskpetDefaultBotResponse>(
+    `${runtimeConfig.urls.controllerBase}/api/v1/bots/default`,
+  );
+  const botId = bot.id?.trim();
+  if (!botId) {
+    throw new Error("没有找到可用的默认助手。");
+  }
+
+  const mainSessionKey = `agent:${botId}:main`;
+  const response = await fetchControllerJson<DeskpetLocalChatStartResponse>(
+    `${runtimeConfig.urls.controllerBase}/api/v1/chat/local/start`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        botId,
+        sessionKey: mainSessionKey,
+        message: {
+          type: "text",
+          content: trimmed,
+        },
+      }),
+    },
+  );
+
+  const sessionKey = response.sessionKey ?? mainSessionKey;
+  const sessionId = response.session?.id?.trim();
+  const runId = response.message?.runId ?? null;
+  const startedAt = Date.now();
+  const path = sessionId
+    ? buildDeskpetSessionPath({
+        sessionId,
+        botId,
+        sessionKey,
+        runId,
+        startedAt,
+      })
+    : buildDeskpetPendingSessionPath({
+        botId,
+        sessionKey,
+        runId,
+      });
+  const startedCommand: HostDesktopCommand = {
+    type: "deskpet:chat-started",
+    botId,
+    sessionKey,
+    ...(sessionId ? { sessionId } : {}),
+    runId,
+    text: trimmed,
+    startedAt,
+  };
+
+  broadcastDesktopCommand({ type: "desktop:open-web-path", path });
+  broadcastDesktopCommand(startedCommand);
+  setTimeout(() => broadcastDesktopCommand(startedCommand), 500);
+  setTimeout(() => broadcastDesktopCommand(startedCommand), 1500);
+
+  return {
+    ok: true,
+    path,
+  };
+}
+
+function registerDeskpetCurrentChat(
+  input: HostInvokePayloadMap["desktop:deskpet-register-current-chat"],
+): HostInvokeResultMap["desktop:deskpet-register-current-chat"] {
+  const botId = input.botId.trim();
+  const sessionKey = input.sessionKey.trim();
+  const sessionId = input.sessionId?.trim();
+
+  if (!botId || !sessionKey) {
+    throw new Error("当前会话信息不完整，暂时无法回复。");
+  }
+
+  deskpetCurrentChatTarget = {
+    botId,
+    sessionKey,
+    ...(sessionId ? { sessionId } : {}),
+  };
+
+  return { ok: true };
+}
+
+function getDeskpetCurrentChatPath(): string | null {
+  if (!deskpetCurrentChatTarget) {
+    return null;
+  }
+
+  if (deskpetCurrentChatTarget.sessionId) {
+    return `/workspace/sessions/${deskpetCurrentChatTarget.sessionId}`;
+  }
+
+  return buildDeskpetPendingSessionPath({
+    botId: deskpetCurrentChatTarget.botId,
+    sessionKey: deskpetCurrentChatTarget.sessionKey,
+  });
+}
+
+function appendDeskpetReplyFocus(path: string): string {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}deskpetReplyFocusAt=${Date.now()}`;
+}
+
+function openDeskpetCurrentChat(
+  sender: Electron.WebContents,
+  input?: HostInvokePayloadMap["desktop:deskpet-open-current-chat"],
+): HostInvokeResultMap["desktop:deskpet-open-current-chat"] {
+  const basePath = getDeskpetCurrentChatPath() ?? "/workspace";
+  const path =
+    input?.intent === "reply" ? appendDeskpetReplyFocus(basePath) : basePath;
+
+  broadcastDesktopCommand({
+    type: "desktop:open-web-path",
+    path,
+  });
+  showPrimaryWindow(sender);
+  return { ok: true, path };
+}
+
+function pauseDeskpetCurrentReply(
+  sender: Electron.WebContents,
+): HostInvokeResultMap["desktop:deskpet-pause-current-reply"] {
+  if (!deskpetCurrentChatTarget) {
+    showPrimaryWindow(sender);
+    return { ok: false };
+  }
+
+  broadcastDesktopCommand({
+    type: "deskpet:pause-current-reply",
+    sessionKey: deskpetCurrentChatTarget.sessionKey,
+    ...(deskpetCurrentChatTarget.sessionId
+      ? { sessionId: deskpetCurrentChatTarget.sessionId }
+      : {}),
+  });
+  showPrimaryWindow(sender);
+  return { ok: true };
+}
+
+async function replyDeskpetCurrentChat(
+  runtimeConfig: DesktopRuntimeConfig,
+  text: string,
+): Promise<HostInvokeResultMap["desktop:deskpet-reply-current-chat"]> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("请输入回复内容。");
+  }
+
+  if (!deskpetCurrentChatTarget) {
+    throw new Error("还没有可回复的会话。");
+  }
+
+  await fetchControllerJson<unknown>(
+    `${runtimeConfig.urls.controllerBase}/api/v1/chat/local`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        botId: deskpetCurrentChatTarget.botId,
+        sessionKey: deskpetCurrentChatTarget.sessionKey,
+        message: {
+          type: "text",
+          content: trimmed,
+        },
+      }),
+    },
+  );
+
+  const replyCommand: HostDesktopCommand = {
+    type: "deskpet:current-chat-replied",
+    sessionKey: deskpetCurrentChatTarget.sessionKey,
+    text: trimmed,
+    ...(deskpetCurrentChatTarget.sessionId
+      ? { sessionId: deskpetCurrentChatTarget.sessionId }
+      : {}),
+  };
+
+  if (deskpetCurrentChatTarget.sessionId) {
+    broadcastDesktopCommand({
+      type: "desktop:open-web-path",
+      path: `/workspace/sessions/${deskpetCurrentChatTarget.sessionId}`,
+    });
+  }
+
+  broadcastDesktopCommand(replyCommand);
+  setTimeout(() => broadcastDesktopCommand(replyCommand), 400);
+  setTimeout(() => broadcastDesktopCommand(replyCommand), 1000);
+
+  return { ok: true };
+}
+
 const nativeCrashTestTitles = {
   main: "desktop.main.crash",
   renderer: "desktop.renderer.crash",
@@ -374,6 +669,7 @@ export function registerIpcHandlers(
   runtimeConfig: DesktopRuntimeConfig,
   diagnosticsReporter: DesktopDiagnosticsReporter | null,
   coldStartReady?: Promise<void>,
+  onDeskpetActivity?: (mood: DesktopDeskpetMood) => void,
 ): () => void {
   ensureDesktopDevRendererLogTracking();
 
@@ -696,6 +992,132 @@ export function registerIpcHandlers(
             });
           }
           return updated;
+        }
+
+        case "desktop:deskpet-start-chat": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:deskpet-start-chat"];
+          const result = await startDeskpetChat(
+            runtimeConfig,
+            typedPayload.text,
+          );
+          broadcastDesktopCommand({
+            type: "deskpet:set-mood",
+            mood: "lobster-replying",
+            source: "auto",
+            durationMs: 8000,
+          });
+          showPrimaryWindow(_event.sender);
+          return result;
+        }
+
+        case "desktop:deskpet-register-current-chat": {
+          return registerDeskpetCurrentChat(
+            payload as HostInvokePayloadMap["desktop:deskpet-register-current-chat"],
+          );
+        }
+
+        case "desktop:deskpet-reply-current-chat": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:deskpet-reply-current-chat"];
+          const result = await replyDeskpetCurrentChat(
+            runtimeConfig,
+            typedPayload.text,
+          );
+          broadcastDesktopCommand({
+            type: "deskpet:set-mood",
+            mood: "lobster-replying",
+            source: "auto",
+            durationMs: 8000,
+          });
+          showPrimaryWindow(_event.sender);
+          return result;
+        }
+
+        case "desktop:deskpet-open-current-chat": {
+          return openDeskpetCurrentChat(
+            _event.sender,
+            payload as HostInvokePayloadMap["desktop:deskpet-open-current-chat"],
+          );
+        }
+
+        case "desktop:deskpet-pause-current-reply": {
+          return pauseDeskpetCurrentReply(_event.sender);
+        }
+
+        case "desktop:deskpet-activity": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:deskpet-activity"];
+          if (!app.isPackaged) {
+            console.info("[deskpet-debug:main] desktop:deskpet-activity", {
+              mood: typedPayload.mood,
+              durationMs: typedPayload.durationMs,
+              hasReplyText: Boolean(typedPayload.replyText?.trim()),
+            });
+          }
+          broadcastDesktopCommand({
+            type: "deskpet:set-mood",
+            mood: typedPayload.mood,
+            source: "auto",
+            durationMs: typedPayload.durationMs,
+            replyText: typedPayload.replyText,
+          });
+          onDeskpetActivity?.(typedPayload.mood);
+          return { ok: true };
+        }
+
+        case "desktop:deskpet-move-window": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:deskpet-move-window"];
+          const window = BrowserWindow.fromWebContents(_event.sender);
+          if (!window || window.isDestroyed()) {
+            return { ok: false };
+          }
+
+          const bounds = window.getBounds();
+          const maxStep = 120;
+          const deltaX = Math.round(
+            Math.max(-maxStep, Math.min(maxStep, typedPayload.deltaX)),
+          );
+          const deltaY = Math.round(
+            Math.max(-maxStep, Math.min(maxStep, typedPayload.deltaY)),
+          );
+          const display = screen.getDisplayNearestPoint({
+            x: bounds.x + bounds.width / 2 + deltaX,
+            y: bounds.y + bounds.height / 2 + deltaY,
+          });
+          const { workArea } = display;
+          const nextX = Math.max(
+            workArea.x,
+            Math.min(
+              workArea.x + workArea.width - bounds.width,
+              bounds.x + deltaX,
+            ),
+          );
+          const nextY = Math.max(
+            workArea.y,
+            Math.min(
+              workArea.y + workArea.height - bounds.height,
+              bounds.y + deltaY,
+            ),
+          );
+
+          window.setPosition(nextX, nextY, false);
+          return { ok: true };
+        }
+
+        case "desktop:deskpet-set-mouse-events": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:deskpet-set-mouse-events"];
+          const window = BrowserWindow.fromWebContents(_event.sender);
+          if (!window || window.isDestroyed()) {
+            return { ok: false };
+          }
+
+          window.setIgnoreMouseEvents(Boolean(typedPayload.ignore), {
+            forward: typedPayload.forward ?? true,
+          });
+          return { ok: true };
         }
 
         case "desktop:report-error": {

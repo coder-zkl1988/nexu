@@ -501,6 +501,9 @@ const en = {
   "settings.desktop.showInTaskbar": "Show in taskbar",
   "settings.desktop.showInTaskbarHint":
     "Show Tabby in the taskbar; when off, it stays in the system tray only",
+  "settings.desktop.deskpet": "Desktop pet",
+  "settings.desktop.deskpetHint":
+    "Show the floating Tabby pet on your desktop and sync it with runtime status.",
   "settings.desktop.updateFailed": "Failed to update desktop setting",
   "settings.data.analytics": "Usage analytics",
   "settings.data.analyticsHint": "Help improve Tabby with anonymous usage data",

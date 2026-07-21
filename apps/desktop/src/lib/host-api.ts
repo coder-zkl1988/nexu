@@ -186,6 +186,59 @@ export async function cancelMiniMaxOauth() {
   return getHostBridge().invoke("desktop:cancel-minimax-oauth", undefined);
 }
 
+export async function startDeskpetChat(text: string) {
+  return getHostBridge().invoke("desktop:deskpet-start-chat", { text });
+}
+
+export async function registerDeskpetCurrentChat(input: {
+  botId: string;
+  sessionKey: string;
+  sessionId?: string;
+}) {
+  return getHostBridge().invoke("desktop:deskpet-register-current-chat", input);
+}
+
+export async function replyDeskpetCurrentChat(text: string) {
+  return getHostBridge().invoke("desktop:deskpet-reply-current-chat", {
+    text,
+  });
+}
+
+export async function openDeskpetCurrentChat(input?: {
+  intent?: "open" | "reply";
+}) {
+  return getHostBridge().invoke("desktop:deskpet-open-current-chat", input);
+}
+
+export async function pauseDeskpetCurrentReply() {
+  return getHostBridge().invoke(
+    "desktop:deskpet-pause-current-reply",
+    undefined,
+  );
+}
+
+export async function moveDeskpetWindow(
+  deltaX: number,
+  deltaY: number,
+): Promise<boolean> {
+  const result = await getHostBridge().invoke("desktop:deskpet-move-window", {
+    deltaX,
+    deltaY,
+  });
+  return result.ok;
+}
+
+export async function setDeskpetMouseEvents(input: {
+  ignore: boolean;
+  forward?: boolean;
+}): Promise<boolean> {
+  const result = await getHostBridge().invoke(
+    "desktop:deskpet-set-mouse-events",
+    input,
+  );
+  return result.ok;
+}
+
 export function onDesktopCommand(
   listener: (command: HostDesktopCommand) => void,
 ): () => void {

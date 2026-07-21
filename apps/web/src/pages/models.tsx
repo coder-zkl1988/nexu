@@ -277,7 +277,13 @@ type ModelsHostInvokeBridge = {
     ): Promise<DesktopShellPreferences>;
     (
       channel: "desktop:update-shell-preferences",
-      payload: { launchAtLogin?: boolean; showInDock?: boolean },
+      payload: {
+        launchAtLogin?: boolean;
+        showInDock?: boolean;
+        deskpetEnabled?: boolean;
+        crashReportsEnabled?: boolean;
+        sessionReplayEnabled?: boolean;
+      },
     ): Promise<DesktopShellPreferences>;
   };
 };
@@ -285,6 +291,7 @@ type ModelsHostInvokeBridge = {
 type DesktopShellPreferences = {
   launchAtLogin: boolean;
   showInDock: boolean;
+  deskpetEnabled: boolean;
   supportsLaunchAtLogin: boolean;
   supportsShowInDock: boolean;
   crashReportsEnabled: boolean;
@@ -720,6 +727,7 @@ function _GeneralSettings() {
     mutationFn: async (input: {
       launchAtLogin?: boolean;
       showInDock?: boolean;
+      deskpetEnabled?: boolean;
       crashReportsEnabled?: boolean;
       sessionReplayEnabled?: boolean;
     }) => {
@@ -1079,9 +1087,7 @@ function _GeneralSettings() {
         </div>
       </div>
 
-      {shellPreferences &&
-      (shellPreferences.supportsLaunchAtLogin ||
-        shellPreferences.supportsShowInDock) ? (
+      {shellPreferences ? (
         <div className="overflow-hidden rounded-xl border border-border bg-surface-1">
           <div className="border-b border-border px-5 py-4">
             <div className="flex items-center gap-2">
@@ -1135,6 +1141,26 @@ function _GeneralSettings() {
                 />
               </div>
             ) : null}
+
+            <div className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-medium text-text-primary">
+                  {t("settings.desktop.deskpet")}
+                </div>
+                <div className="mt-0.5 text-[11px] text-text-tertiary">
+                  {t("settings.desktop.deskpetHint")}
+                </div>
+              </div>
+              <Switch
+                checked={shellPreferences.deskpetEnabled}
+                disabled={updateShellPreferences.isPending}
+                onCheckedChange={(checked) => {
+                  void updateShellPreferences.mutateAsync({
+                    deskpetEnabled: checked,
+                  });
+                }}
+              />
+            </div>
           </div>
         </div>
       ) : null}
