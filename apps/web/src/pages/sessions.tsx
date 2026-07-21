@@ -1608,25 +1608,6 @@ export function SessionsPage() {
 
   useEffect(() => {
     if (
-      !waitingForReply ||
-      !awaitingDeskpetSuccessRef.current ||
-      !latestAssistantReplyText
-    ) {
-      return;
-    }
-
-    logDeskpetHostDebug("assistant reply history fallback; finish waiting", {
-      replyText: latestAssistantReplyText,
-    });
-    activeRunIdRef.current = null;
-    setWaitingForReply(false);
-    sentAtRef.current = 0;
-    deskpetReplyStartedAtRef.current = 0;
-    setPendingMessages([]);
-  }, [latestAssistantReplyText, waitingForReply]);
-
-  useEffect(() => {
-    if (
       !awaitingDeskpetSuccessRef.current ||
       waitingForReply ||
       !latestAssistantReplyText

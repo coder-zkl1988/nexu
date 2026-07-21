@@ -9,6 +9,7 @@ import {
   webContents,
 } from "electron";
 import {
+  type DesktopDeskpetMood,
   type DesktopDevDomSnapshotResult,
   type DesktopDevEvalResult,
   type DesktopDevEvalSerializableValue,
@@ -668,6 +669,7 @@ export function registerIpcHandlers(
   runtimeConfig: DesktopRuntimeConfig,
   diagnosticsReporter: DesktopDiagnosticsReporter | null,
   coldStartReady?: Promise<void>,
+  onDeskpetActivity?: (mood: DesktopDeskpetMood) => void,
 ): () => void {
   ensureDesktopDevRendererLogTracking();
 
@@ -1060,6 +1062,7 @@ export function registerIpcHandlers(
             durationMs: typedPayload.durationMs,
             replyText: typedPayload.replyText,
           });
+          onDeskpetActivity?.(typedPayload.mood);
           return { ok: true };
         }
 

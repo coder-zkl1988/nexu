@@ -2337,6 +2337,9 @@ app.whenReady().then(async () => {
     runtimeConfig,
     diagnosticsReporter,
     coldStartReady,
+    (mood) => {
+      currentDeskpetMood = mood;
+    },
   );
   unsubscribeDeskpetRuntime = orchestrator.subscribe(handleDeskpetRuntimeEvent);
   // Provide orchestrator-mode quit fallback for app:quit IPC when launchd

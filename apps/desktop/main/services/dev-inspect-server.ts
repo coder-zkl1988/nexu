@@ -36,7 +36,7 @@ function getDesktopDevTargetContents(): Electron.WebContents {
     (window) => !window.isDestroyed(),
   );
   const targetWindow =
-    windows.find((window) => window.getTitle() === "Tabby Deskpet") ??
+    windows.find((window) => window.getTitle() !== "Tabby Deskpet") ??
     windows[0];
 
   if (!targetWindow) {
