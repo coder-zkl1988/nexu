@@ -25,7 +25,12 @@ const TYPE_TITLES: Record<CreatableType, string> = {
 
 /**
  * Create a new node of `type`, positioned so its left-edge midpoint lands at
- * `at`, then connect `fromId` → new node.
+ * `at`, then connect it to `fromId`.
+ *
+ * `handleType` mirrors which connect handle the drag started from: "source"
+ * (the default, right-side handle) connects fromId → new node; "target"
+ * (left-side handle — dragged out looking for an upstream feed) connects
+ * new node → fromId.
  *
  * Returns null without creating anything if `fromId` no longer exists in the
  * store (e.g. was deleted between gesture start and menu close).
@@ -34,6 +39,7 @@ export function createConnectedNode(
   fromId: string,
   type: CreatableType,
   at: { x: number; y: number },
+  handleType: "source" | "target" = "source",
 ): CanvasNode | null {
   const exists = getCanvasState().nodes.some((n) => n.id === fromId);
   if (!exists) return null;
@@ -54,7 +60,11 @@ export function createConnectedNode(
       : {}),
   });
 
-  connectNodes(fromId, newNode.id);
+  if (handleType === "source") {
+    connectNodes(fromId, newNode.id);
+  } else {
+    connectNodes(newNode.id, fromId);
+  }
 
   return newNode;
 }

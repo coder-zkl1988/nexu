@@ -100,6 +100,16 @@ describe("canvas-dialogs module store", () => {
     expect(getCanvasDialog()).toEqual({ kind: "angle", nodeId: "angle-1" });
   });
 
+  it("preview kind round-trips through open/close", () => {
+    openCanvasDialog({ kind: "preview", nodeId: "preview-node-1" });
+    expect(getCanvasDialog()).toEqual({
+      kind: "preview",
+      nodeId: "preview-node-1",
+    });
+    closeCanvasDialog();
+    expect(getCanvasDialog()).toBeNull();
+  });
+
   it("nodeId-less assets kind round-trips through open/close", () => {
     openCanvasDialog({ kind: "assets" });
     expect(getCanvasDialog()).toEqual({ kind: "assets" });

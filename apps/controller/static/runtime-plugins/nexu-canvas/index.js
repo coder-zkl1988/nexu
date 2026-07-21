@@ -71,8 +71,12 @@ function renderMirror(mirror) {
   if (assets.length > 0) {
     lines.push("assets (use insert_asset with the id):");
     for (const asset of assets) {
+      const tagSuffix =
+        Array.isArray(asset.tags) && asset.tags.length > 0
+          ? ` tags:${asset.tags.join(",")}`
+          : "";
       lines.push(
-        `  # ${asset.id} [${asset.kind}] ${JSON.stringify(String(asset.title || ""))}`,
+        `  # ${asset.id} [${asset.kind}] ${JSON.stringify(String(asset.title || ""))}${tagSuffix}`,
       );
     }
   }
@@ -115,7 +119,7 @@ function buildCanvasOpResult(ops, summary) {
         text: JSON.stringify({
           proposed: true,
           opCount: ops.length,
-          note: "The canvas edit is proposed to the user as a confirm card. Reply with ONE short confirmation sentence. Do NOT restate every op, and do NOT call canvas_op again for the same edit.",
+          note: "The canvas edit is proposed to the user as a confirm card. Reply with ONE short confirmation sentence. Do NOT restate every op, and do NOT call canvas_op again for the same edit. If the user later clicks apply and it partially or fully fails, you will receive a follow-up user-role message shaped {type:\"canvas_op_result\",applied,errors}: applied ops did happen, but each string in errors describes one op that did NOT (e.g. an unknown node id or a duplicate edge) — explain the failure in plain language and, if the fix is obvious (a stale id, a backwards connect direction), propose a corrected canvas_op.",
         }),
       },
     ],
@@ -130,10 +134,11 @@ const CANVAS_OP_DESCRIPTION = `Emit a batch of canvas operations to edit the Nex
 
 READ FIRST: call canvas_read to get current node ids (and saved asset ids) before referencing them.
 WIRING NEW NODES: give each add_node (or insert_asset) a client-chosen "ref" handle; later ops in the SAME batch target that new node with "ref:<name>" (e.g. add_node ref "a", then connect from "ref:a" to an existing node id). target / from / to accept a real node id OR "ref:<name>".
+CONNECTION DIRECTION: connect{from,to} means "from" FEEDS "to" — an edge INTO a node is what that node's own generation/config reads as upstream input (text -> prompt, image -> reference image). To feed a text or image node into a generation/config node, "from" must be the text/image node and "to" must be the node it feeds. Wiring it backwards creates a valid edge that silently contributes nothing.
 Ops:
 - structural: add_node{ref,nodeType,title?,x?,y?,content?}; update_node{target,title?,x?,y?,w?,h?,content?}; delete_node{target}; connect{from,to}; delete_connection{connectionId}; set_viewport{x,y,scale}; select{targets[]}; run_generation{target,prompt?}. nodeType ∈ text|image|video|audio|config.
 - image editing (on an existing image node): crop_image{target,x,y,w,h}; split_image{target,rows,cols}; upscale_image{target,targetLongEdge:1024|2048|4096,algorithm:high|low|pixel}; enhance_image{target,operation:super-resolve|multi-angle,targetLongEdge?,horizontalDeg?,pitchDeg?,distance?,wideAngle?,prompt?}; describe_image{target}.
-- asset library: save_asset{target} (store a node's content as a reusable asset); insert_asset{assetId,ref?,x?,y?} (assetId comes from canvas_read's asset list).
+- asset library: save_asset{target,tags?} (store a node's content as a reusable asset; tags = up to 8 short labels for library filtering); insert_asset{assetId,ref?,x?,y?} (assetId comes from canvas_read's asset list).
 enhance_image / describe_image need a servable image (a generated/served image, not a freshly uploaded dataURL).
 Keep batches focused (≤50 ops). After calling, reply with one short confirmation — do not restate the ops.`;
 

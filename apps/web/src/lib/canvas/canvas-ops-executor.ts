@@ -50,6 +50,7 @@ import {
   updateNode,
 } from "./canvas-store";
 import { runConfigGeneration } from "./config-node-logic";
+import { applyConnectionEffects } from "./connection-effects";
 import { servableSourceOf } from "./prompt-panel-utils";
 
 export interface CanvasOpBatchInput {
@@ -184,6 +185,16 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
         if (!connection) {
           errors.push(`无法连接（重复或无效边）：${op.from} → ${op.to}`);
           break;
+        }
+        // Match the manual drag gesture's contract (infinite-canvas.tsx):
+        // a successful connect also runs push-on-connect effects (e.g.
+        // image -> XHS editor feeds the post image), so an agent-issued
+        // connect behaves identically to a human dragging the same edge.
+        const liveNodes = getCanvasState().nodes;
+        const fromNode = liveNodes.find((n) => n.id === fromId);
+        const toNode = liveNodes.find((n) => n.id === toId);
+        if (fromNode && toNode) {
+          applyConnectionEffects(fromNode, toNode);
         }
         applied += 1;
         break;
@@ -338,7 +349,7 @@ export function applyCanvasOps(batch: CanvasOpBatchInput): ApplyResult {
         // split the coalesced undo step.
         const id = resolveTarget(op.target);
         if (!id) break;
-        deferredGenerations.push(() => void saveNodeAsAsset(id));
+        deferredGenerations.push(() => void saveNodeAsAsset(id, op.tags));
         applied += 1;
         break;
       }

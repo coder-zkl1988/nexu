@@ -117,16 +117,12 @@ async function controllerGet(path) {
 // apps/web/src/lib/a2ui/index.ts).
 const NEXU_A2UI_CATALOG = "https://nexu.app/a2ui/custom-catalog.json";
 
-/** Build A2UI v0.9 JSONL (createSurface + updateComponents). */
+/** Build A2UI JSONL: a single createSurface with inline components (v1.0 form). */
 function generateA2UIJSONL(surfaceId, components, catalogId) {
-  const createSurface = catalogId ? { surfaceId, catalogId } : { surfaceId };
-  return [
-    JSON.stringify({ version: "v0.9", createSurface }),
-    JSON.stringify({
-      version: "v0.9",
-      updateComponents: { surfaceId, components },
-    }),
-  ].join("\n");
+  const createSurface = catalogId
+    ? { surfaceId, catalogId, components }
+    : { surfaceId, components };
+  return JSON.stringify({ version: "v0.9", createSurface });
 }
 
 /**

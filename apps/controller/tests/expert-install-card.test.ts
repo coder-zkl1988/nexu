@@ -3,21 +3,34 @@ import { describe, expect, it } from "vitest";
 // builder so this guards the actual card the chat UI renders.
 import { buildInstallCard } from "../static/runtime-plugins/find-expert/index.js";
 
+type InstallCardComponent = {
+  id: string;
+  type: string;
+  expert?: Record<string, unknown>;
+  question?: string;
+};
+
 type A2UIMessage = {
-  createSurface?: { surfaceId: string; catalogId?: string };
+  createSurface?: {
+    surfaceId: string;
+    catalogId?: string;
+    components?: InstallCardComponent[];
+  };
   updateComponents?: {
     surfaceId: string;
-    components: Array<{
-      id: string;
-      type: string;
-      expert?: Record<string, unknown>;
-      question?: string;
-    }>;
+    components: InstallCardComponent[];
   };
 };
 
 function parse(jsonl: string): A2UIMessage[] {
   return jsonl.split("\n").map((line) => JSON.parse(line));
+}
+
+/** Components arrive inline on createSurface (v1.0 form) or via updateComponents. */
+function findComponents(messages: A2UIMessage[]): InstallCardComponent[] {
+  return messages.flatMap(
+    (m) => m.createSurface?.components ?? m.updateComponents?.components ?? [],
+  );
 }
 
 describe("buildInstallCard", () => {
@@ -41,15 +54,13 @@ describe("buildInstallCard", () => {
   });
 
   it("renders a single ExpertInstallCard reusing the experts-page face", () => {
-    const components = messages.find((m) => m.updateComponents)
-      ?.updateComponents?.components;
+    const components = findComponents(messages);
     expect(components).toHaveLength(1);
     expect(components?.[0]?.type).toBe("ExpertInstallCard");
   });
 
   it("passes the full expert + question so the card + delegate flow have data", () => {
-    const card = messages.find((m) => m.updateComponents)?.updateComponents
-      ?.components[0];
+    const card = findComponents(messages)[0];
     expect(card?.expert).toMatchObject({
       slug: "tiktok-strategist",
       name: "抖音策略师",

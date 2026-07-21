@@ -68,8 +68,9 @@ describe("HoverToolbar", () => {
     // Toolbar container present
     expect(markup).toContain("data-canvas-hover-toolbar=");
 
-    // All five base actions
+    // All six base actions
     expect(markup).toContain('data-canvas-hover-action="info"');
+    expect(markup).toContain('data-canvas-hover-action="preview"');
     expect(markup).toContain('data-canvas-hover-action="download"');
     expect(markup).toContain('data-canvas-hover-action="replace"');
     expect(markup).toContain('data-canvas-hover-action="lock"');
@@ -79,7 +80,7 @@ describe("HoverToolbar", () => {
     expect(markup).toContain("data-canvas-lock-toggle=");
   });
 
-  it("image WITHOUT content → no download, no lock; replace and info/delete present", () => {
+  it("image WITHOUT content → no preview, no download, no lock; upload (not replace) and info/delete present", () => {
     addNode({
       type: "image",
       title: "empty-image",
@@ -90,12 +91,15 @@ describe("HoverToolbar", () => {
     // Toolbar present
     expect(markup).toContain("data-canvas-hover-toolbar=");
 
-    // info, replace, delete must be present
+    // info, upload (reference-parity label for empty images), delete must be present
     expect(markup).toContain('data-canvas-hover-action="info"');
-    expect(markup).toContain('data-canvas-hover-action="replace"');
+    expect(markup).toContain('data-canvas-hover-action="upload"');
+    expect(markup).toContain("上传图片");
     expect(markup).toContain('data-canvas-hover-action="delete"');
 
-    // download and lock must be absent (no content)
+    // preview, replace, download and lock must be absent (no content)
+    expect(markup).not.toContain('data-canvas-hover-action="preview"');
+    expect(markup).not.toContain('data-canvas-hover-action="replace"');
     expect(markup).not.toContain('data-canvas-hover-action="download"');
     expect(markup).not.toContain('data-canvas-hover-action="lock"');
     expect(markup).not.toContain("data-canvas-lock-toggle=");

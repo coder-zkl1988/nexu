@@ -6,19 +6,30 @@
  * multi-insert) / delete. Hydrates assets on open.
  */
 
-import { AudioLines, Clapperboard, Plus, Trash2 } from "lucide-react";
+import {
+  AudioLines,
+  Clapperboard,
+  Plus,
+  Tag,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   type CanvasAsset,
+  addAsset,
+  collectAssetTags,
   ensureAssetsLoaded,
   filterAssets,
   insertAssetToCanvas,
   paginateAssets,
   removeAsset,
+  updateAssetTags,
   useCanvasAssets,
 } from "./canvas-assets";
 import { closeCanvasDialog } from "./canvas-dialogs";
+import { mediaTypeForMime, readFilesAsDataUrls } from "./canvas-ingest";
 import { CanvasModal } from "./canvas-modal";
 
 const KIND_TABS: ReadonlyArray<{
@@ -36,15 +47,17 @@ export function AssetPickerDialog() {
   const { assets } = useCanvasAssets();
   const [kind, setKind] = useState<CanvasAsset["kind"] | "all">("all");
   const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     void ensureAssetsLoaded();
   }, []);
 
+  const allTags = useMemo(() => collectAssetTags(assets), [assets]);
   const filtered = useMemo(
-    () => filterAssets(assets, kind, query),
-    [assets, kind, query],
+    () => filterAssets(assets, kind, query, tagFilter),
+    [assets, kind, query, tagFilter],
   );
   const {
     pageItems,
@@ -80,17 +93,90 @@ export function AssetPickerDialog() {
           ))}
         </div>
 
-        {/* Search */}
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(1);
-          }}
-          placeholder="搜索素材…"
-          className="w-full rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
-        />
+        {/* Search + upload */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(1);
+            }}
+            placeholder="搜索素材…"
+            className="min-w-0 flex-1 rounded-lg border border-border bg-surface-1 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
+          />
+          <label
+            aria-label="上传素材"
+            title="上传素材"
+            data-asset-upload="true"
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:bg-surface-2 hover:text-text-primary"
+          >
+            <Upload size={13} />
+            上传
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*,audio/*"
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                if (files.length === 0) return;
+                void readFilesAsDataUrls(files).then((inputs) => {
+                  for (const input of inputs) {
+                    const uploadKind = mediaTypeForMime(input.type);
+                    if (!uploadKind) continue;
+                    void addAsset({
+                      kind: uploadKind,
+                      title: input.name.replace(/\.[^.]+$/, ""),
+                      content: input.dataUrl,
+                      mimeType: input.type,
+                    });
+                  }
+                });
+              }}
+            />
+          </label>
+        </div>
+
+        {/* Tag filter chips (only when any asset carries tags) */}
+        {allTags.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              data-asset-tag-filter="all"
+              onClick={() => {
+                setTagFilter(null);
+                setPage(1);
+              }}
+              className={`rounded-full px-2 py-0.5 text-[11px] border ${
+                tagFilter === null
+                  ? "border-sky-500 text-sky-500 bg-sky-500/10"
+                  : "border-border text-text-secondary hover:bg-surface-2"
+              }`}
+            >
+              全部标签
+            </button>
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                data-asset-tag-filter={tag}
+                onClick={() => {
+                  setTagFilter((prev) => (prev === tag ? null : tag));
+                  setPage(1);
+                }}
+                className={`rounded-full px-2 py-0.5 text-[11px] border ${
+                  tagFilter === tag
+                    ? "border-sky-500 text-sky-500 bg-sky-500/10"
+                    : "border-border text-text-secondary hover:bg-surface-2"
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {/* Grid */}
         {pageItems.length === 0 ? (
@@ -135,12 +221,60 @@ export function AssetPickerDialog() {
 }
 
 function AssetCard({ asset }: { asset: CanvasAsset }) {
+  const [editingTags, setEditingTags] = useState(false);
+  const [tagsDraft, setTagsDraft] = useState("");
+
+  const commitTags = () => {
+    setEditingTags(false);
+    void updateAssetTags(asset.id, tagsDraft.split(/[,，\s]+/).filter(Boolean));
+  };
+
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface-1 p-2">
       <AssetPreview asset={asset} />
       <p className="truncate text-xs text-text-primary" title={asset.title}>
         {asset.title}
       </p>
+      {editingTags ? (
+        <input
+          type="text"
+          ref={(el) => el?.focus()}
+          value={tagsDraft}
+          data-asset-tags-input={asset.id}
+          onChange={(e) => setTagsDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitTags();
+            if (e.key === "Escape") setEditingTags(false);
+          }}
+          onBlur={commitTags}
+          placeholder="标签，空格分隔"
+          className="w-full rounded border border-border bg-surface-2 px-1.5 py-0.5 text-[11px] outline-none"
+        />
+      ) : (
+        <div className="flex min-h-[18px] flex-wrap items-center gap-1">
+          {(asset.tags ?? []).map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary"
+            >
+              {tag}
+            </span>
+          ))}
+          <button
+            type="button"
+            aria-label="编辑标签"
+            title="编辑标签"
+            data-asset-tags-edit={asset.id}
+            onClick={() => {
+              setTagsDraft((asset.tags ?? []).join(" "));
+              setEditingTags(true);
+            }}
+            className="flex size-4 items-center justify-center rounded text-text-tertiary hover:bg-surface-2 hover:text-text-primary"
+          >
+            <Tag size={10} />
+          </button>
+        </div>
+      )}
       <div className="flex items-center gap-1">
         <button
           type="button"

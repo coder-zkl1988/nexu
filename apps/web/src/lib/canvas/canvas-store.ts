@@ -608,13 +608,24 @@ export function removeNodes(ids: readonly string[]): void {
       return { ...node, metadata };
     });
 
+  const survivingConnections = state.connections.filter(
+    (connection) =>
+      !gone.has(connection.fromNodeId) && !gone.has(connection.toNodeId),
+  );
+  // A selected connection can be cascade-removed here (e.g. the hover
+  // toolbar's delete button removes a node directly, bypassing
+  // selectConnection/selectNodes' own selection bookkeeping). Leaving
+  // selectedConnectionId pointing at a gone connection makes the next
+  // deleteSelection() call a silent no-op — see removeConnection below.
+  const selectedConnectionGone =
+    state.selectedConnectionId !== null &&
+    !survivingConnections.some((c) => c.id === state.selectedConnectionId);
+
   setState({
     nodes: survivingNodes,
-    connections: state.connections.filter(
-      (connection) =>
-        !gone.has(connection.fromNodeId) && !gone.has(connection.toNodeId),
-    ),
+    connections: survivingConnections,
     selectedNodeIds: state.selectedNodeIds.filter((id) => !gone.has(id)),
+    ...(selectedConnectionGone ? { selectedConnectionId: null } : {}),
   });
 }
 
@@ -634,6 +645,8 @@ export function connectNodes(
   toNodeId: string,
 ): CanvasConnection | null {
   if (fromNodeId === toNodeId) return null;
+  const nodeIds = new Set(state.nodes.map((node) => node.id));
+  if (!nodeIds.has(fromNodeId) || !nodeIds.has(toNodeId)) return null;
   const exists = state.connections.some(
     (connection) =>
       connection.fromNodeId === fromNodeId && connection.toNodeId === toNodeId,

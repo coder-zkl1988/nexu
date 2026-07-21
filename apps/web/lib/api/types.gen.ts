@@ -6622,6 +6622,7 @@ export type PostApiV1MediaGenerateImageData = {
         quality?: 'auto' | 'high' | 'medium' | 'low';
         aspectRatio?: string;
         size?: string;
+        transparentBackground?: boolean;
         sourceImage?: string;
         maskDataUrl?: string;
     };

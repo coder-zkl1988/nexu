@@ -62,11 +62,16 @@ export function buildCanvasMirror(): CanvasMirror {
       scale: state.viewport.scale,
     },
     selectedNodeIds: [...state.selectedNodeIds],
-    // Compact asset list (id/kind/title only — no content) so the agent can
-    // reference saved assets with insert_asset.
+    // Compact asset list (id/kind/title/tags — no content) so the agent can
+    // reference saved assets with insert_asset and reuse existing tags.
     assets: getCanvasAssets()
       .assets.slice(0, 2000)
-      .map((asset) => ({ id: asset.id, kind: asset.kind, title: asset.title })),
+      .map((asset) => ({
+        id: asset.id,
+        kind: asset.kind,
+        title: asset.title,
+        ...(asset.tags && asset.tags.length > 0 ? { tags: asset.tags } : {}),
+      })),
   };
 }
 

@@ -9,6 +9,9 @@ export function VideoComponent({ comp, resolve }: Props) {
   const source = String(resolve(comp.source) ?? "");
   const autoplay = resolve(comp.autoplay) === true;
   const muted = resolve(comp.muted) === true;
+  const posterUrl = comp.posterUrl
+    ? String(resolve(comp.posterUrl) ?? "")
+    : undefined;
 
   return (
     <video
@@ -16,6 +19,7 @@ export function VideoComponent({ comp, resolve }: Props) {
       src={source}
       autoPlay={autoplay}
       muted={muted}
+      poster={posterUrl || undefined}
       controls
     />
   );

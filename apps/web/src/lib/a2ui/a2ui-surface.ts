@@ -12,56 +12,32 @@ export function createSurfaceManager() {
     if (msg.version !== "v0.9") return;
 
     if ("createSurface" in msg) {
-      const { surfaceId, catalogId } = msg.createSurface;
-      surfaces.set(surfaceId, {
+      const { surfaceId, catalogId, components, dataModel } = msg.createSurface;
+      const surface: SurfaceState = {
         surfaceId,
         catalogId:
           catalogId ?? "https://a2ui.org/specification/v0_9/basic_catalog.json",
         components: new Map(),
         dataModel: {},
         rootComponentIds: [],
-      });
+      };
+      surfaces.set(surfaceId, surface);
+
+      // Inline initial state (adopted from A2UI v1.0): a single createSurface
+      // can carry the full component tree and data model.
+      if (dataModel && typeof dataModel === "object") {
+        for (const [key, value] of Object.entries(dataModel)) {
+          surface.dataModel[key] = value;
+        }
+      }
+      if (Array.isArray(components)) {
+        applyComponents(surface, components);
+      }
     } else if ("updateComponents" in msg) {
       const surface = surfaces.get(msg.updateComponents.surfaceId);
       if (!surface) return;
 
-      const parentSet = new Set<ComponentId>();
-      for (const comp of msg.updateComponents.components) {
-        surface.components.set(comp.id, comp);
-        parentSet.add(comp.id);
-      }
-
-      // Remove any component IDs that appear as children from the root set
-      for (const comp of msg.updateComponents.components) {
-        const children = getDirectChildren(comp);
-        if (Array.isArray(children)) {
-          for (const childId of children) {
-            parentSet.delete(childId);
-          }
-        }
-      }
-
-      // Collect all child IDs referenced by components in this update
-      const childrenInUpdate = new Set<ComponentId>();
-      for (const comp of msg.updateComponents.components) {
-        const children = getDirectChildren(comp);
-        if (Array.isArray(children)) {
-          for (const childId of children) {
-            childrenInUpdate.add(childId);
-          }
-        }
-      }
-
-      // Merge with existing roots: keep existing roots unless they now have a parent
-      for (const id of parentSet) {
-        if (!surface.rootComponentIds.includes(id)) {
-          surface.rootComponentIds.push(id);
-        }
-      }
-      // Remove roots that are now children of another component in this update
-      surface.rootComponentIds = surface.rootComponentIds.filter(
-        (id) => parentSet.has(id) || !childrenInUpdate.has(id),
-      );
+      applyComponents(surface, msg.updateComponents.components);
     } else if ("updateDataModel" in msg) {
       const surface = surfaces.get(msg.updateDataModel.surfaceId);
       if (!surface) return;
@@ -119,6 +95,50 @@ export function createSurfaceManager() {
 }
 
 export type SurfaceManager = ReturnType<typeof createSurfaceManager>;
+
+/** Merge a batch of components into a surface and recompute root IDs. */
+function applyComponents(
+  surface: SurfaceState,
+  components: A2UIComponent[],
+): void {
+  const parentSet = new Set<ComponentId>();
+  for (const comp of components) {
+    surface.components.set(comp.id, comp);
+    parentSet.add(comp.id);
+  }
+
+  // Remove any component IDs that appear as children from the root set
+  for (const comp of components) {
+    const children = getDirectChildren(comp);
+    if (Array.isArray(children)) {
+      for (const childId of children) {
+        parentSet.delete(childId);
+      }
+    }
+  }
+
+  // Collect all child IDs referenced by components in this update
+  const childrenInUpdate = new Set<ComponentId>();
+  for (const comp of components) {
+    const children = getDirectChildren(comp);
+    if (Array.isArray(children)) {
+      for (const childId of children) {
+        childrenInUpdate.add(childId);
+      }
+    }
+  }
+
+  // Merge with existing roots: keep existing roots unless they now have a parent
+  for (const id of parentSet) {
+    if (!surface.rootComponentIds.includes(id)) {
+      surface.rootComponentIds.push(id);
+    }
+  }
+  // Remove roots that are now children of another component in this update
+  surface.rootComponentIds = surface.rootComponentIds.filter(
+    (id) => parentSet.has(id) || !childrenInUpdate.has(id),
+  );
+}
 
 function getDirectChildren(comp: A2UIComponent): ComponentId[] | null {
   if ("children" in comp && comp.children) {

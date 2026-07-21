@@ -175,6 +175,12 @@ const COMPONENT_SCHEMAS = [
       min: { type: "number" },
       max: { type: "number" },
       step: { type: "number" },
+      steps: {
+        type: "integer",
+        minimum: 1,
+        description:
+          "Number of discrete divisions across the range; the slider snaps to (max - min) / steps intervals. Takes precedence over step.",
+      },
     },
   },
   {
@@ -323,6 +329,10 @@ const COMPONENT_SCHEMAS = [
       source: { type: "string", description: "Video URL" },
       autoplay: { type: "boolean" },
       muted: { type: "boolean" },
+      posterUrl: {
+        type: "string",
+        description: "Preview image URL shown before the video plays",
+      },
     },
   },
   {
@@ -468,41 +478,16 @@ const COMPONENT_SCHEMAS = [
  * and event-based actions ONLY.
  */
 function generateA2UIJSONL(surfaceId, components, initialData, catalogId) {
-  const lines = [];
-
-  const createSurface = { surfaceId };
+  // Single-message form adopted from A2UI v1.0: createSurface carries the
+  // whole component tree and initial data model, so the renderer never sees
+  // a half-built surface.
+  const createSurface = { surfaceId, components };
   if (catalogId) createSurface.catalogId = catalogId;
-
-  lines.push(
-    JSON.stringify({
-      version: "v0.9",
-      createSurface,
-    }),
-  );
-
-  lines.push(
-    JSON.stringify({
-      version: "v0.9",
-      updateComponents: { surfaceId, components },
-    }),
-  );
-
   if (initialData && typeof initialData === "object") {
-    for (const [key, value] of Object.entries(initialData)) {
-      lines.push(
-        JSON.stringify({
-          version: "v0.9",
-          updateDataModel: {
-            surfaceId,
-            path: `/${key}`,
-            value,
-          },
-        }),
-      );
-    }
+    createSurface.dataModel = initialData;
   }
 
-  return lines.join("\n");
+  return JSON.stringify({ version: "v0.9", createSurface });
 }
 
 const plugin = {

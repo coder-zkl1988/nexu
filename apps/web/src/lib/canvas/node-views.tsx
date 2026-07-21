@@ -2,6 +2,7 @@
 import { A2UIRenderer } from "@/lib/a2ui";
 import { Group, ImagePlus, Music2, Video } from "lucide-react";
 import { type ReactNode, memo, useState } from "react";
+import { openCanvasDialog } from "./canvas-dialogs";
 import { retryNodeTask } from "./canvas-generation";
 import { memberIdsOf } from "./canvas-groups";
 import {
@@ -51,6 +52,7 @@ function TextNodeContent({ node }: { node: CanvasNode }) {
       <textarea
         // biome-ignore lint/a11y/noAutofocus: edit mode intentionally auto-focuses
         autoFocus
+        data-canvas-wheel-exempt="true"
         className="h-full w-full select-text resize-none bg-transparent font-mono text-sm outline-none"
         style={{ fontSize }}
         value={content}
@@ -71,7 +73,8 @@ function TextNodeContent({ node }: { node: CanvasNode }) {
   return (
     <div
       data-canvas-text-display
-      className="h-full w-full select-none overflow-hidden whitespace-pre-wrap font-mono text-sm"
+      data-canvas-wheel-exempt="true"
+      className="h-full w-full select-none overflow-y-auto whitespace-pre-wrap font-mono text-sm"
       style={{ fontSize }}
       onDoubleClick={() => setEditing(true)}
     >
@@ -254,7 +257,7 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   if (node.metadata.content) {
     return <ImageNodeContent node={node} />;
   }
-  return <EmptyImageNode node={node} />;
+  return <EmptyImageNode />;
 }
 
 /**
@@ -274,7 +277,12 @@ function ImageNodeContent({ node }: { node: CanvasNode }) {
   const hasDims = naturalWidth !== undefined && naturalHeight !== undefined;
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative h-full w-full"
+      onDoubleClick={() =>
+        openCanvasDialog({ kind: "preview", nodeId: node.id })
+      }
+    >
       <img
         src={node.metadata.content}
         alt={node.title}
@@ -309,34 +317,18 @@ function ImageNodeContent({ node }: { node: CanvasNode }) {
  * Empty image node (reference-parity): a quiet soft-filled placeholder —
  * icon chip + label, nothing else. Generation moved entirely to the
  * PromptPanel below the selected node (model/quality/aspect/count live
- * there); upload stays available by clicking the placeholder.
+ * there); upload lives on the hover toolbar's "上传图片" button (HoverToolbar
+ * in hover-toolbar.tsx), matching the reference app's node-level toolbar.
  */
-function EmptyImageNode({ node }: { node: CanvasNode }) {
+function EmptyImageNode() {
   return (
-    <label className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl bg-surface-2/60 text-text-tertiary transition-colors hover:bg-surface-2">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl bg-surface-2/60 text-text-tertiary">
       <div className="flex size-14 items-center justify-center rounded-2xl bg-surface-2">
         <ImagePlus size={24} className="opacity-40" />
       </div>
       <span className="text-[10px] tracking-[0.18em] opacity-70">
         空图片节点
       </span>
-      <input
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            updateNode(node.id, {
-              title: file.name,
-              metadata: { content: String(reader.result) },
-            });
-          };
-          reader.readAsDataURL(file);
-        }}
-      />
-    </label>
+    </div>
   );
 }

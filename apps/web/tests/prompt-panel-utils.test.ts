@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mentionQueryAt,
+  mergeUpstreamPrompt,
   servablePathFromUrl,
   servableSourceOf,
   upstreamSummary,
@@ -233,5 +234,39 @@ describe("upstreamSummary", () => {
       2,
     );
     expect(result).toBe("参考图 2");
+  });
+});
+
+describe("mergeUpstreamPrompt", () => {
+  it("joins local prompt then upstream prompts, blank-line separated", () => {
+    expect(mergeUpstreamPrompt("a landscape", ["always mention a cat"])).toBe(
+      "a landscape\n\nalways mention a cat",
+    );
+  });
+
+  it("local prompt alone (no upstream) is unchanged", () => {
+    expect(mergeUpstreamPrompt("a landscape", [])).toBe("a landscape");
+  });
+
+  it("upstream text alone (empty local draft) still produces a usable prompt", () => {
+    expect(mergeUpstreamPrompt("", ["always mention a cat"])).toBe(
+      "always mention a cat",
+    );
+  });
+
+  it("trims each part and drops empty/whitespace-only entries", () => {
+    expect(mergeUpstreamPrompt("  a landscape  ", ["  ", "a cat", ""])).toBe(
+      "a landscape\n\na cat",
+    );
+  });
+
+  it("multiple upstream text nodes join in order", () => {
+    expect(mergeUpstreamPrompt("base", ["one", "two"])).toBe(
+      "base\n\none\n\ntwo",
+    );
+  });
+
+  it("both empty yields an empty string", () => {
+    expect(mergeUpstreamPrompt("  ", ["", "  "])).toBe("");
   });
 });

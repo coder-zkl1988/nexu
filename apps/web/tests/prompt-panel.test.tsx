@@ -15,7 +15,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasNode } from "../src/lib/canvas/canvas-store";
-import { __resetCanvasForTests, addNode } from "../src/lib/canvas/canvas-store";
+import {
+  __resetCanvasForTests,
+  addNode,
+  connectNodes,
+} from "../src/lib/canvas/canvas-store";
 import { PromptPanel } from "../src/lib/canvas/prompt-panel";
 import {
   buildAudioGenOpts,
@@ -273,5 +277,136 @@ describe("buildAudioGenOpts", () => {
         instructions: "",
       }),
     ).toEqual({});
+  });
+});
+
+describe("buildImageGenOpts transparent background", () => {
+  it("emits transparentBackground only when enabled", () => {
+    const base = {
+      count: 1,
+      model: "",
+      quality: "auto" as const,
+      aspectRatio: "",
+      size: "",
+    };
+    expect(buildImageGenOpts({ ...base, transparentBackground: true })).toEqual(
+      { transparentBackground: true },
+    );
+    expect(
+      buildImageGenOpts({ ...base, transparentBackground: false }),
+    ).toEqual({});
+    expect(buildImageGenOpts(base)).toEqual({});
+  });
+
+  it("renders the 透明背景 toggle group in the image settings popover contract", () => {
+    // The popover is closed under static markup; the group is pinned via the
+    // settings summary contract + the pure builder above. Render the panel to
+    // ensure the chip row still mounts for image nodes.
+    const node = addNode({ type: "image", title: "图" });
+    const markup = renderPanel(node);
+    expect(markup).toContain("data-canvas-image-settings-toggle");
+  });
+});
+
+describe("PromptPanel upstream reference thumbnails", () => {
+  it("renders real thumbnails of upstream images in the summary strip", () => {
+    const source = addNode({
+      type: "image",
+      title: "参考图",
+      metadata: { content: "data:image/png;base64,AAAA" },
+    });
+    const target = addNode({ type: "image", title: "生成目标" });
+    connectNodes(source.id, target.id);
+
+    const markup = renderPanel(target);
+    expect(markup).toContain('src="data:image/png;base64,AAAA"');
+  });
+
+  it("renders no thumbnail strip without upstream images", () => {
+    const node = addNode({ type: "image", title: "孤立节点" });
+    const markup = renderPanel(node);
+    expect(markup).not.toContain("data:image/png");
+  });
+
+  it("hides upstream image thumbnails/count for a video target — the reference never reaches the request", () => {
+    const source = addNode({
+      type: "image",
+      title: "参考图",
+      metadata: { content: "data:image/png;base64,AAAA" },
+    });
+    const target = addNode({ type: "video", title: "视频目标" });
+    connectNodes(source.id, target.id);
+
+    const markup = renderPanel(target);
+    expect(markup).not.toContain("data:image/png");
+    expect(markup).not.toContain("参考图");
+  });
+
+  it("hides upstream image thumbnails/count for an audio target", () => {
+    const source = addNode({
+      type: "image",
+      title: "参考图",
+      metadata: { content: "data:image/png;base64,AAAA" },
+    });
+    const target = addNode({ type: "audio", title: "音频目标" });
+    connectNodes(source.id, target.id);
+
+    const markup = renderPanel(target);
+    expect(markup).not.toContain("data:image/png");
+    expect(markup).not.toContain("参考图");
+  });
+
+  it("never shows upstream video/audio counts — no consumer forwards them to any generation call", () => {
+    const videoSource = addNode({
+      type: "video",
+      title: "参考视频",
+      metadata: { content: "/api/v1/media/state-file?path=%2Fv.mp4" },
+    });
+    const audioSource = addNode({
+      type: "audio",
+      title: "参考音频",
+      metadata: { content: "/api/v1/media/state-file?path=%2Fa.mp3" },
+    });
+    const target = addNode({ type: "image", title: "生成目标" });
+    connectNodes(videoSource.id, target.id);
+    connectNodes(audioSource.id, target.id);
+
+    const markup = renderPanel(target);
+    expect(markup).not.toContain("视频 1");
+    expect(markup).not.toContain("音频 1");
+  });
+});
+
+// Send-button disabled state is driven by mergedPrompt (local draft + upstream
+// text), not the raw local draft — proves a connected text node alone is
+// enough to enable generation, matching the "文本 N" badge's implied contract.
+// Slices up to `class=` (not the tag's closing `>`) so the button's own
+// `disabled:opacity-40` Tailwind variant class never false-positives this
+// check — React SSR renders a true boolean `disabled` prop as `disabled=""`
+// immediately before the class attribute, never inside it.
+function generateButtonDisabled(markup: string): boolean {
+  const idx = markup.indexOf('data-canvas-panel-generate="true"');
+  const classIdx = markup.indexOf("class=", idx);
+  return markup.slice(idx, classIdx).includes("disabled=");
+}
+
+describe("PromptPanel upstream text feeds the merged prompt", () => {
+  it("connected text node alone (empty local draft) enables the send button", () => {
+    const source = addNode({
+      type: "text",
+      title: "风格说明",
+      metadata: { content: "always mention a cat" },
+    });
+    const target = addNode({ type: "image", title: "生成目标" });
+    connectNodes(source.id, target.id);
+
+    const markup = renderPanel(target);
+    expect(generateButtonDisabled(markup)).toBe(false);
+  });
+
+  it("no local draft and no upstream text keeps the send button disabled", () => {
+    const node = addNode({ type: "image", title: "孤立节点" });
+    const markup = renderPanel(node);
+    expect(generateButtonDisabled(markup)).toBe(true);
   });
 });

@@ -312,6 +312,62 @@ describe("applyCanvasOps — per-op mapping", () => {
   });
 });
 
+describe("applyCanvasOps — connect runs push-on-connect effects", () => {
+  it("agent-issued connect{image, XHSEditor} feeds the post's image list, same as a manual drag", async () => {
+    const { seedBatch, getBatch } = await import(
+      "../src/lib/a2ui/custom-components/xhs-batch-store"
+    );
+    const { upsertA2UINode } = await import("../src/lib/canvas/canvas-store");
+    seedBatch("batch-1", [
+      {
+        id: "post-1",
+        title: "t",
+        content: "c",
+        images: [],
+        hashtags: [],
+        deviceId: "",
+      },
+    ]);
+    upsertA2UINode(
+      "sidebar:xhs-editor-batch-1-post-1",
+      "xhs",
+      [
+        {
+          version: "v0.9",
+          updateComponents: {
+            surfaceId: "sidebar:xhs-editor-batch-1-post-1",
+            components: [
+              {
+                id: "xhs-editor",
+                type: "XHSEditor",
+                batchId: "batch-1",
+                postId: "post-1",
+              } as never,
+            ],
+          },
+        },
+      ],
+      () => {},
+    );
+    const img = addNode({
+      type: "image",
+      title: "cover",
+      metadata: { content: "data:image/png;base64,COVER" },
+    });
+    const editorNode = getCanvasState().nodes.find((n) => n.type === "a2ui");
+    if (!editorNode) throw new Error("editor node missing");
+
+    const result = applyCanvasOps({
+      ops: [{ op: "connect", from: img.id, to: editorNode.id }],
+    });
+
+    expect(result.applied).toBe(1);
+    expect(getBatch("batch-1").posts[0]?.images).toEqual([
+      "data:image/png;base64,COVER",
+    ]);
+  });
+});
+
 describe("applyCanvasOps — run_generation seam", () => {
   it("dispatches generateImageIntoNode for a non-config target", () => {
     const node = addNode({ type: "image", title: "img" });
@@ -540,7 +596,20 @@ describe("applyCanvasOps — asset-library ops", () => {
     expect(result.applied).toBe(1);
     expect(result.errors).toEqual([]);
     expect(mockSaveAsset).toHaveBeenCalledTimes(1);
-    expect(mockSaveAsset).toHaveBeenCalledWith(node.id);
+    expect(mockSaveAsset).toHaveBeenCalledWith(node.id, undefined);
+  });
+
+  it("save_asset forwards agent-provided tags", () => {
+    const node = addNode({
+      type: "text",
+      title: "note",
+      metadata: { content: "hello" },
+    });
+    const result = applyCanvasOps({
+      ops: [{ op: "save_asset", target: node.id, tags: ["文案", "小红书"] }],
+    });
+    expect(result.applied).toBe(1);
+    expect(mockSaveAsset).toHaveBeenCalledWith(node.id, ["文案", "小红书"]);
   });
 
   it("save_asset on an unknown target errors and does not call saveNodeAsAsset", () => {
@@ -563,7 +632,7 @@ describe("applyCanvasOps — asset-library ops", () => {
     expect(result.applied).toBe(2);
     expect(result.errors).toEqual([]);
     const created = getCanvasState().nodes[0];
-    expect(mockSaveAsset).toHaveBeenCalledWith(created?.id);
+    expect(mockSaveAsset).toHaveBeenCalledWith(created?.id, undefined);
   });
 
   it("insert_asset inserts a node synchronously and registers it (ref-able)", () => {

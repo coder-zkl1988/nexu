@@ -42,6 +42,7 @@ import {
   imageQualityLabel,
   imageSettingsSummary,
   mentionQueryAt,
+  mergeUpstreamPrompt,
   upstreamSummary,
   usableReferencePaths,
   videoSettingsSummary,
@@ -93,6 +94,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const [imageQuality, setImageQuality] = useState<ImageQuality>("auto");
   const [imageAspect, setImageAspect] = useState<string>("");
   const [imageSize, setImageSize] = useState<string>("");
+  const [imageTransparent, setImageTransparent] = useState(false);
   // Image settings popover (reference-parity: params live behind a summary
   // chip, not inline). Closed on node switch via the keyed state below.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -127,17 +129,42 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const upstream = collectUpstream(nodeId);
   const upstreamNodes = collectUpstreamNodes(nodeId);
   const usablePaths = usableReferencePaths(upstream.images);
-  const summary = upstreamSummary(upstream, usablePaths.length);
+  // Image references only ever reach the backend request in image mode —
+  // video/audio generation has no reference-media field at all. Showing the
+  // image thumbnails/count for a video/audio node would promise something
+  // that silently never happens, so the summary only reflects what THIS
+  // node's generate call actually consumes. Upstream video/audio content has
+  // no consumer anywhere yet, so it never appears in the summary either.
+  const isImageNode = node.type === "image";
+  const summary = upstreamSummary(
+    {
+      prompts: upstream.prompts,
+      images: isImageNode ? upstream.images : [],
+      videos: [],
+      audios: [],
+    },
+    isImageNode ? usablePaths.length : 0,
+  );
+  // The actual prompt sent to generation: the panel's own draft plus any
+  // connected upstream text nodes (matches config-node-logic.ts's plan
+  // builder so the "文本 N" badge above isn't a decoration).
+  const mergedPrompt = mergeUpstreamPrompt(prompt, upstream.prompts);
 
-  // Mention candidates: upstream nodes with non-empty titles
+  // Mention candidates: upstream nodes with non-empty titles. Image nodes
+  // carry their content as a thumbnail so the dropdown shows the real
+  // picture being referenced (reference-parity v0.9 paradigm).
   const mentionCandidates = upstreamNodes
-    .map((n) => n.title)
-    .filter((t) => t.trim() !== "");
+    .filter((n) => n.title.trim() !== "")
+    .map((n) => ({
+      title: n.title,
+      thumbnail:
+        n.type === "image" && n.metadata.content ? n.metadata.content : null,
+    }));
 
   // Filter by query (case-insensitive contains)
   const filteredCandidates = mentionActive
-    ? mentionCandidates.filter((title) =>
-        title.toLowerCase().includes(mentionQuery.toLowerCase()),
+    ? mentionCandidates.filter((c) =>
+        c.title.toLowerCase().includes(mentionQuery.toLowerCase()),
       )
     : [];
 
@@ -211,7 +238,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
       } else if (e.key === "Enter") {
         e.preventDefault();
         const candidate = filteredCandidates[mentionHighlight];
-        if (candidate !== undefined) insertMention(candidate);
+        if (candidate !== undefined) insertMention(candidate.title);
       } else if (e.key === "Escape") {
         e.preventDefault();
         setMentionActive(false);
@@ -222,12 +249,11 @@ export function PromptPanel({ node }: PromptPanelProps) {
 
   // Fire generation
   const handleGenerate = useCallback(() => {
-    const trimmed = prompt.trim();
-    if (!trimmed || isGenerating) return;
+    if (!mergedPrompt || isGenerating) return;
     if (node.type === "image") {
       void generateImageIntoNode(
         nodeId,
-        trimmed,
+        mergedPrompt,
         buildImageGenOpts({
           referenceImages: usablePaths.length > 0 ? usablePaths : undefined,
           count: imageCount,
@@ -235,12 +261,13 @@ export function PromptPanel({ node }: PromptPanelProps) {
           quality: imageQuality,
           aspectRatio: imageAspect,
           size: imageSize,
+          transparentBackground: imageTransparent,
         }),
       );
     } else if (node.type === "video") {
       void generateVideoIntoNode(
         nodeId,
-        trimmed,
+        mergedPrompt,
         buildVideoGenOpts({
           durationSeconds: videoDuration,
           resolution: videoResolution,
@@ -253,7 +280,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
     } else if (node.type === "audio") {
       void generateAudioIntoNode(
         nodeId,
-        trimmed,
+        mergedPrompt,
         buildAudioGenOpts({
           voice: audioVoice,
           speed: audioSpeed,
@@ -264,7 +291,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
       );
     }
   }, [
-    prompt,
+    mergedPrompt,
     isGenerating,
     node.type,
     nodeId,
@@ -274,6 +301,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
     imageQuality,
     imageAspect,
     imageSize,
+    imageTransparent,
     videoDuration,
     videoResolution,
     videoAspect,
@@ -312,8 +340,31 @@ export function PromptPanel({ node }: PromptPanelProps) {
         e.stopPropagation();
       }}
     >
-      {/* Upstream summary line */}
-      <div className="mb-1.5 px-1 text-text-tertiary truncate">{summary}</div>
+      {/* Upstream summary line: real thumbnails of the images that will feed
+          generation (max 4 = backend reference cap), then the text summary.
+          Image-only — video/audio generation has no reference-media field,
+          so showing thumbnails there would imply a feed that never happens. */}
+      <div className="mb-1.5 flex items-center gap-1.5 px-1">
+        {isImageNode
+          ? upstream.images
+              .slice(0, 4)
+              .map((src) => (
+                <img
+                  key={src}
+                  src={src}
+                  alt=""
+                  className="size-6 shrink-0 rounded object-cover ring-1 ring-border"
+                  draggable={false}
+                />
+              ))
+          : null}
+        {isImageNode && upstream.images.length > 4 ? (
+          <span className="shrink-0 text-text-tertiary">
+            +{upstream.images.length - 4}
+          </span>
+        ) : null}
+        <span className="min-w-0 truncate text-text-tertiary">{summary}</span>
+      </div>
 
       {/* Prompt textarea + mention dropdown (relative container) */}
       <div className="relative">
@@ -337,22 +388,30 @@ export function PromptPanel({ node }: PromptPanelProps) {
             className="absolute left-0 z-50 max-h-32 overflow-y-auto rounded border border-border bg-surface-1 shadow-md"
             style={{ bottom: "100%", marginBottom: 2, minWidth: 120 }}
           >
-            {filteredCandidates.map((title, idx) => (
-              <li key={title}>
+            {filteredCandidates.map((candidate, idx) => (
+              <li key={candidate.title}>
                 <button
                   type="button"
                   className={
                     idx === mentionHighlight
-                      ? "w-full px-2 py-1 text-left text-xs bg-surface-2 text-text-primary"
-                      : "w-full px-2 py-1 text-left text-xs hover:bg-surface-2 text-text-secondary"
+                      ? "flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs bg-surface-2 text-text-primary"
+                      : "flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs hover:bg-surface-2 text-text-secondary"
                   }
                   onPointerDown={(e: MouseEvent) => {
                     // Prevent blur on the textarea
                     e.preventDefault();
                   }}
-                  onClick={() => insertMention(title)}
+                  onClick={() => insertMention(candidate.title)}
                 >
-                  @{title}
+                  {candidate.thumbnail ? (
+                    <img
+                      src={candidate.thumbnail}
+                      alt=""
+                      className="size-5 shrink-0 rounded object-cover ring-1 ring-border"
+                      draggable={false}
+                    />
+                  ) : null}
+                  <span className="min-w-0 truncate">@{candidate.title}</span>
                 </button>
               </li>
             ))}
@@ -431,7 +490,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
           type="button"
           data-canvas-panel-generate="true"
           aria-label="生成"
-          disabled={isGenerating || !prompt.trim()}
+          disabled={isGenerating || !mergedPrompt}
           onClick={handleGenerate}
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
           className="ml-auto flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-fg)] transition-opacity hover:opacity-90 disabled:opacity-40"
@@ -510,6 +569,20 @@ export function PromptPanel({ node }: PromptPanelProps) {
                       {n} 张
                     </ParamPill>
                   ))}
+                </SettingsGroup>
+                <SettingsGroup label="透明背景">
+                  <ParamPill
+                    active={!imageTransparent}
+                    onClick={() => setImageTransparent(false)}
+                  >
+                    关
+                  </ParamPill>
+                  <ParamPill
+                    active={imageTransparent}
+                    onClick={() => setImageTransparent(true)}
+                  >
+                    开
+                  </ParamPill>
                 </SettingsGroup>
               </>
             )}

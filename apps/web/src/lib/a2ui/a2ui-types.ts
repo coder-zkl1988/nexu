@@ -116,6 +116,8 @@ export interface VideoComponent extends BaseComponent {
   source: DynamicString;
   autoplay?: DynamicBoolean;
   muted?: DynamicBoolean;
+  /** Preview image shown before playback (adopted from A2UI v1.0). */
+  posterUrl?: DynamicString;
 }
 
 export interface AudioPlayerComponent extends BaseComponent {
@@ -217,6 +219,12 @@ export interface SliderComponent extends BaseComponent {
   min?: DynamicNumber;
   max?: DynamicNumber;
   step?: DynamicNumber;
+  /**
+   * Number of discrete divisions across the range; the slider snaps to
+   * (max - min) / steps intervals (adopted from A2UI v1.0). Takes
+   * precedence over `step` when both are present.
+   */
+  steps?: number;
   path?: string;
 }
 
@@ -255,6 +263,11 @@ export interface CreateSurfaceMessage {
   createSurface: {
     surfaceId: string;
     catalogId?: string;
+    /** Inline initial components (adopted from A2UI v1.0) — lets a single
+     * message build the whole UI instead of a separate updateComponents. */
+    components?: A2UIComponent[];
+    /** Inline initial data model state (adopted from A2UI v1.0). */
+    dataModel?: Record<string, unknown>;
   };
 }
 

@@ -25,6 +25,26 @@ function shouldLog(level: LogLevel): boolean {
   return LEVEL_ORDER[level] >= LEVEL_ORDER[getLevel()];
 }
 
+/**
+ * Error instances carry `message`/`stack` as non-enumerable own properties,
+ * so a plain JSON.stringify silently drops them (a well-known JS footgun) —
+ * `logger.error({ err: someError }, ...)` logged only `{"name":"..."}`, with
+ * the actual failure reason lost. This replacer expands any Error found
+ * anywhere in the payload (nested included) into a plain, fully-enumerable
+ * object before serialization.
+ */
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (value instanceof Error) {
+    return {
+      ...value,
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  return value;
+}
+
 function write(
   level: LogLevel,
   message: string,
@@ -42,7 +62,7 @@ function write(
     ...(details ?? {}),
   };
 
-  const line = JSON.stringify(payload);
+  const line = JSON.stringify(payload, jsonReplacer);
   if (level === "error") {
     console.error(line);
     return;

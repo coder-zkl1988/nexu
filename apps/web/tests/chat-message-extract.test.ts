@@ -53,3 +53,51 @@ describe("OpenClaw internal-context stripping", () => {
     expect(extracted.text).toBe("普通消息内容");
   });
 });
+
+describe("canvas_op_result round-trip", () => {
+  it("detects the machine round-trip and exposes applied/errors, hiding the raw JSON", () => {
+    const extracted = extractMessage({
+      role: "user",
+      content: JSON.stringify({
+        type: "canvas_op_result",
+        applied: 1,
+        errors: ["未找到节点：does-not-exist"],
+      }),
+    });
+    expect(extracted.canvasOpResult).toEqual({
+      applied: 1,
+      errors: ["未找到节点：does-not-exist"],
+    });
+    expect(extracted.text).toBe("");
+  });
+
+  it("is null for ordinary text that merely mentions the phrase", () => {
+    const extracted = extractMessage({
+      role: "user",
+      content: "canvas_op_result 是什么意思？",
+    });
+    expect(extracted.canvasOpResult).toBeNull();
+    expect(extracted.text).toContain("canvas_op_result");
+  });
+
+  it("is null for malformed JSON", () => {
+    const extracted = extractMessage({
+      role: "user",
+      content: '{"type":"canvas_op_result", not valid json',
+    });
+    expect(extracted.canvasOpResult).toBeNull();
+  });
+
+  it("a2ui_action takes priority when a message somehow matches both shapes", () => {
+    const extracted = extractMessage({
+      role: "user",
+      content: JSON.stringify({
+        type: "a2ui_action",
+        actionName: "confirm",
+        data: { canvas_op_result: true },
+      }),
+    });
+    expect(extracted.a2uiAction).toEqual({ actionName: "confirm" });
+    expect(extracted.canvasOpResult).toBeNull();
+  });
+});

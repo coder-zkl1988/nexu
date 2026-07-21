@@ -30,6 +30,8 @@ export type CanvasAsset = {
   title: string;
   content: string;
   mimeType?: string;
+  /** Optional labels for library filtering (agent- or user-assigned). */
+  tags?: string[];
   createdAt: string;
 };
 

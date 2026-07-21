@@ -183,6 +183,10 @@ export interface ExtractedMessage {
   a2uiAction: { actionName: string } | null;
   /** S8 chat-drives-canvas: a validated canvas-op batch → renders a confirm card. */
   canvasOpBatch: CanvasOpBatchView | null;
+  /** Machine round-trip reporting a canvas-op apply failure back to the agent
+   * (canvas-op-card.tsx, sent only when applyCanvasOps() returned errors) —
+   * shown as a chip, never as raw JSON. */
+  canvasOpResult: { applied: number; errors: string[] } | null;
   images: ImageBlockInfo[];
   fileCards: FileCardInfo[];
 }
@@ -376,12 +380,16 @@ export function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   // sent as a JSON text message carrying the full payload (including base64
   // images); render a friendly chip instead of dumping raw JSON/base64.
   const a2uiAction = parseA2UIAction(text);
+  // Same round-trip pattern for a canvas-op apply failure reported back to
+  // the agent (canvas-op-card.tsx) — mutually exclusive with a2uiAction.
+  const canvasOpResult = a2uiAction ? null : parseCanvasOpResult(text);
+  const isMachineRoundTrip = Boolean(a2uiAction || canvasOpResult);
 
   // Parse <file> XML blocks from text so they render as file cards instead of raw markup
   const parsedFiles = parseFileBlocksFromText(text);
 
   return {
-    text: a2uiAction ? "" : parsedFiles.cleanText,
+    text: isMachineRoundTrip ? "" : parsedFiles.cleanText,
     replyContextText,
     senderName,
     hasToolCall,
@@ -390,9 +398,12 @@ export function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     a2uiMessages,
     sidebarA2UI: null,
     a2uiAction,
-    canvasOpBatch: a2uiAction ? null : canvasOpBatch,
-    images: a2uiAction ? [] : images,
-    fileCards: a2uiAction ? [] : [...fileCards, ...parsedFiles.fileCards],
+    canvasOpBatch: isMachineRoundTrip ? null : canvasOpBatch,
+    canvasOpResult,
+    images: isMachineRoundTrip ? [] : images,
+    fileCards: isMachineRoundTrip
+      ? []
+      : [...fileCards, ...parsedFiles.fileCards],
   };
 }
 
@@ -412,6 +423,37 @@ function parseA2UIAction(text: string): { actionName: string } | null {
     };
     if (parsed?.type === "a2ui_action") {
       return { actionName: String(parsed.actionName ?? "") };
+    }
+  } catch {
+    // not JSON — fall through
+  }
+  return null;
+}
+
+/**
+ * Detect a `canvas_op_result` machine message (canvas-op-card.tsx reporting
+ * an apply failure back to the agent — only sent when applyCanvasOps()
+ * returned errors, never on a clean apply). Returns the applied count and
+ * error list, or null.
+ */
+function parseCanvasOpResult(
+  text: string,
+): { applied: number; errors: string[] } | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") || !trimmed.includes("canvas_op_result")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      type?: string;
+      applied?: number;
+      errors?: string[];
+    };
+    if (parsed?.type === "canvas_op_result") {
+      return {
+        applied: Number(parsed.applied ?? 0),
+        errors: Array.isArray(parsed.errors) ? parsed.errors.map(String) : [],
+      };
     }
   } catch {
     // not JSON — fall through

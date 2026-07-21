@@ -149,6 +149,7 @@ export class MediaGenerationService {
     quality?: "auto" | "high" | "medium" | "low";
     aspectRatio?: string;
     size?: string;
+    transparentBackground?: boolean;
   }): Promise<GenerateMediaResult> {
     const mediaRoot = path.resolve(this.deps.openclawStateDir, "media");
 
@@ -222,6 +223,11 @@ export class MediaGenerationService {
     }
     if (input.size !== undefined) {
       imageHints.push(`Size: ${input.size}`);
+    }
+    if (input.transparentBackground === true) {
+      imageHints.push(
+        "Transparent background: output PNG with a transparent (alpha) background, no backdrop.",
+      );
     }
     if (imageHints.length > 0) {
       lines.push(

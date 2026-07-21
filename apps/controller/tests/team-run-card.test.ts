@@ -5,35 +5,48 @@ import teamPlugin, {
   buildTeamRunCard,
 } from "../static/runtime-plugins/nexu-team/index.js";
 
+type RunCardComponent = {
+  id: string;
+  type: string;
+  run?: {
+    teamId: string;
+    boardId: string;
+    parentCardId: string;
+    title: string;
+    runId?: string;
+    workflowId?: string;
+    steps: Array<{
+      id: string;
+      name: string;
+      assigneeName: string;
+      cardId: string;
+      dependsOn: string[];
+      type?: string;
+    }>;
+  };
+};
+
 type A2UIMessage = {
-  createSurface?: { surfaceId: string; catalogId?: string };
+  createSurface?: {
+    surfaceId: string;
+    catalogId?: string;
+    components?: RunCardComponent[];
+  };
   updateComponents?: {
     surfaceId: string;
-    components: Array<{
-      id: string;
-      type: string;
-      run?: {
-        teamId: string;
-        boardId: string;
-        parentCardId: string;
-        title: string;
-        runId?: string;
-        workflowId?: string;
-        steps: Array<{
-          id: string;
-          name: string;
-          assigneeName: string;
-          cardId: string;
-          dependsOn: string[];
-          type?: string;
-        }>;
-      };
-    }>;
+    components: RunCardComponent[];
   };
 };
 
 function parse(jsonl: string): A2UIMessage[] {
   return jsonl.split("\n").map((line) => JSON.parse(line));
+}
+
+/** Components arrive inline on createSurface (v1.0 form) or via updateComponents. */
+function findComponents(messages: A2UIMessage[]): RunCardComponent[] {
+  return messages.flatMap(
+    (m) => m.createSurface?.components ?? m.updateComponents?.components ?? [],
+  );
 }
 
 describe("buildTeamRunCard", () => {
@@ -71,8 +84,7 @@ describe("buildTeamRunCard", () => {
   });
 
   it("emits a TeamRunCard component carrying the full run identity + steps", () => {
-    const component = messages.find((m) => m.updateComponents)?.updateComponents
-      ?.components[0];
+    const component = findComponents(messages)[0];
     expect(component?.type).toBe("TeamRunCard");
     expect(component?.run).toMatchObject({
       teamId: "team-1",
@@ -109,8 +121,7 @@ describe("buildTeamRunCard", () => {
       title: "auto",
       steps: [],
     });
-    const component = parse(autoJsonl).find((m) => m.updateComponents)
-      ?.updateComponents?.components[0];
+    const component = findComponents(parse(autoJsonl))[0];
     expect(component?.run).not.toHaveProperty("runId");
     expect(component?.run).not.toHaveProperty("workflowId");
   });
@@ -226,8 +237,7 @@ describe("expert_run_auto run card", () => {
     const block = result.content[0].text
       .replace(/^```a2ui\n/, "")
       .replace(/\n```$/, "");
-    const run = parse(block).find((m) => m.updateComponents)?.updateComponents
-      ?.components[0]?.run;
+    const run = findComponents(parse(block))[0]?.run;
     // runId flows through; auto runs have no approval gate, so no workflowId.
     expect(run?.runId).toBe("run-9");
     expect(run).not.toHaveProperty("workflowId");

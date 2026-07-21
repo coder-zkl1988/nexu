@@ -13,7 +13,12 @@ export function SliderComponent({ comp, resolve, write }: Props) {
   const value = (resolve(comp.value) as number) ?? 0;
   const min = (resolve(comp.min) as number) ?? 0;
   const max = (resolve(comp.max) as number) ?? 100;
-  const step = (resolve(comp.step) as number) ?? 1;
+  // v1.0 `steps` divides the range into N discrete intervals and wins over
+  // the legacy `step` size when both are present.
+  const step =
+    typeof comp.steps === "number" && comp.steps >= 1 && max > min
+      ? (max - min) / comp.steps
+      : ((resolve(comp.step) as number) ?? 1);
 
   const bindPath = comp.path ?? getBindingPath(comp.value) ?? `/${comp.id}`;
 

@@ -12,13 +12,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetCanvasAssetsForTests,
+  collectAssetTags,
   ensureAssetsLoaded,
   filterAssets,
   getCanvasAssets,
   insertAssetToCanvas,
+  normalizeTags,
   paginateAssets,
   removeAsset,
   saveNodeAsAsset,
+  updateAssetTags,
 } from "../src/lib/canvas/canvas-assets";
 import type {
   AssetStorage,
@@ -345,5 +348,56 @@ describe("paginateAssets", () => {
     expect(pageItems).toHaveLength(0);
     expect(page).toBe(1);
     expect(pageCount).toBe(1);
+  });
+});
+
+describe("asset tags", () => {
+  it("normalizeTags trims, dedupes, drops empties, caps at 8", () => {
+    expect(normalizeTags([" a ", "a", "", "b"])).toEqual(["a", "b"]);
+    expect(
+      normalizeTags(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]),
+    ).toHaveLength(8);
+  });
+
+  it("collectAssetTags returns unique tags in first-seen order", () => {
+    const assets = [
+      { tags: ["风景", "封面"] },
+      { tags: ["封面", "人物"] },
+      {},
+    ] as CanvasAsset[];
+    expect(collectAssetTags(assets)).toEqual(["风景", "封面", "人物"]);
+  });
+
+  it("filterAssets filters by exact tag and matches query against tags", () => {
+    const assets = [
+      { id: "a", kind: "image", title: "海报", tags: ["小红书"] },
+      { id: "b", kind: "image", title: "配图", tags: ["公众号"] },
+      { id: "c", kind: "text", title: "文案" },
+    ] as CanvasAsset[];
+    expect(filterAssets(assets, "all", "", "小红书").map((x) => x.id)).toEqual([
+      "a",
+    ]);
+    expect(filterAssets(assets, "all", "公众").map((x) => x.id)).toEqual(["b"]);
+    expect(filterAssets(assets, "all", "", null)).toHaveLength(3);
+  });
+
+  it("saveNodeAsAsset stores normalized tags; updateAssetTags edits them", async () => {
+    await ensureAssetsLoaded();
+    const node = addNode({
+      type: "text",
+      title: "笔记",
+      metadata: { content: "内容" },
+    });
+    await saveNodeAsAsset(node.id, [" 文案 ", "文案", "初稿"]);
+    const saved = getCanvasAssets().assets[0];
+    expect(saved).toBeDefined();
+    if (!saved) return;
+    expect(saved.tags).toEqual(["文案", "初稿"]);
+
+    await updateAssetTags(saved.id, ["终稿"]);
+    expect(getCanvasAssets().assets[0]?.tags).toEqual(["终稿"]);
+
+    await updateAssetTags(saved.id, []);
+    expect(getCanvasAssets().assets[0]?.tags).toBeUndefined();
   });
 });

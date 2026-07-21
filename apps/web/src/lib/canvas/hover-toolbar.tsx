@@ -21,10 +21,12 @@ import {
   ImagePlus,
   Info,
   Lock,
+  Maximize2,
   RefreshCw,
   Rotate3d,
   Trash2,
   Unlock,
+  Upload,
   ZoomIn,
 } from "lucide-react";
 import { useState } from "react";
@@ -112,6 +114,20 @@ export function HoverToolbar({
         <Info size={13} />
       </ToolbarButton>
 
+      {/* preview — image WITH content only: opens the full-size lightbox */}
+      {type === "image" && hasContent ? (
+        <ToolbarButton
+          actionKey="preview"
+          label="放大预览"
+          title="放大预览"
+          onClick={() => {
+            openCanvasDialog({ kind: "preview", nodeId: id });
+          }}
+        >
+          <Maximize2 size={13} />
+        </ToolbarButton>
+      ) : null}
+
       {/* download — only when content present AND type in image/video/audio */}
       {hasContent && isMedia ? (
         <ToolbarButton
@@ -131,8 +147,15 @@ export function HoverToolbar({
         </ToolbarButton>
       ) : null}
 
-      {/* replace — image/video/audio regardless of content */}
-      {isMedia ? <ReplaceButton node={node} /> : null}
+      {/* upload/replace — image/video/audio regardless of content.
+          Empty image nodes read "上传图片" (reference parity, matches the
+          node's own empty-state hint); everything else reads "替换素材". */}
+      {isMedia ? (
+        <ReplaceButton
+          node={node}
+          isEmptyImage={type === "image" && !hasContent}
+        />
+      ) : null}
 
       {/* lock — image/video WITH content */}
       {isContentMedia ? (
@@ -392,23 +415,30 @@ function ToolbarButton({
   );
 }
 
-function ReplaceButton({ node }: { node: CanvasNode }) {
+function ReplaceButton({
+  node,
+  isEmptyImage,
+}: {
+  node: CanvasNode;
+  isEmptyImage: boolean;
+}) {
   const accept =
     node.type === "video"
       ? "video/*"
       : node.type === "audio"
         ? "audio/*"
         : "image/*";
+  const label = isEmptyImage ? "上传图片" : "替换素材";
 
   return (
     <label
-      data-canvas-hover-action="replace"
-      aria-label="替换素材"
-      title="替换素材"
+      data-canvas-hover-action={isEmptyImage ? "upload" : "replace"}
+      aria-label={label}
+      title={label}
       className="cursor-pointer rounded p-1 hover:bg-surface-2"
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <RefreshCw size={13} />
+      {isEmptyImage ? <Upload size={13} /> : <RefreshCw size={13} />}
       <input
         type="file"
         accept={accept}

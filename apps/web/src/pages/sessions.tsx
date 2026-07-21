@@ -40,6 +40,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   CheckCircle2,
+  CircleAlert,
   FileImage,
   FileText,
   Loader2,
@@ -286,8 +287,13 @@ function isSidebarBoundSurface(
 ): boolean {
   if (surfaceId.startsWith("sidebar:")) return true;
   for (const m of msgs) {
-    if (!("updateComponents" in m)) continue;
-    for (const comp of m.updateComponents?.components ?? []) {
+    const components =
+      "updateComponents" in m
+        ? (m.updateComponents?.components ?? [])
+        : "createSurface" in m
+          ? (m.createSurface?.components ?? [])
+          : [];
+    for (const comp of components) {
       const type = (comp as { type?: string }).type ?? "";
       if (SIDEBAR_DOC_COMPONENT_TYPES.has(type)) return true;
     }
@@ -720,12 +726,14 @@ function ChatBubble({
   msg,
   extracted,
   onA2UIAction,
+  onCanvasOpApplied,
   onOpenSidebar,
   showAvatar = true,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
   onA2UIAction?: (actionName: string, context: Record<string, unknown>) => void;
+  onCanvasOpApplied?: (result: { applied: number; errors: string[] }) => void;
   onOpenSidebar?: (payload: SidebarA2UIPayload) => void;
   /** False for consecutive same-sender messages — renders an alignment spacer instead. */
   showAvatar?: boolean;
@@ -744,6 +752,7 @@ function ChatBubble({
     sidebarA2UI,
     a2uiAction,
     canvasOpBatch,
+    canvasOpResult,
     images,
     fileCards,
   } = resolvedExtracted;
@@ -792,6 +801,19 @@ function ChatBubble({
             </span>
           </div>
         )}
+        {canvasOpResult && (
+          <div
+            data-canvas-op-result
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--color-danger)]/25 bg-[var(--color-danger-subtle)] px-3 py-1.5 text-[12px]"
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-danger-subtle)] text-[var(--color-danger)]">
+              <CircleAlert className="size-[13px]" />
+            </span>
+            <span className="font-medium text-text-primary">
+              画布操作应用失败（{canvasOpResult.errors.length} 项）
+            </span>
+          </div>
+        )}
         {hasText && (
           <div
             data-deskpet-reply-preview={isBot ? text : undefined}
@@ -816,7 +838,9 @@ function ChatBubble({
         {isBot && sidebarA2UI && onOpenSidebar && (
           <SidebarA2UIButton payload={sidebarA2UI} onOpen={onOpenSidebar} />
         )}
-        {isBot && canvasOpBatch && <CanvasOpCard batch={canvasOpBatch} />}
+        {isBot && canvasOpBatch && (
+          <CanvasOpCard batch={canvasOpBatch} onApplied={onCanvasOpApplied} />
+        )}
         <div className="flex items-center gap-1 pl-1">
           {time && <div className="text-[10px] text-text-muted">{time}</div>}
           {isBot && hasText && <SpeakButton text={text} />}
@@ -1053,6 +1077,33 @@ export function SessionsPage() {
               type: "a2ui_action",
               actionName,
               data: context,
+            }),
+          },
+        },
+      });
+    },
+    [selectedBot, id, session?.sessionKey],
+  );
+
+  // Report a canvas-op apply failure back into the session so the agent's
+  // NEXT turn can see it (the courier tool only proposes the batch — actual
+  // apply happens later, client-side, when the user clicks 应用, so this is
+  // the only channel back). Skipped on a clean apply: the agent already
+  // assumes success per its own tool instructions, so nothing to add.
+  const onCanvasOpApplied = useCallback(
+    (result: { applied: number; errors: string[] }) => {
+      if (result.errors.length === 0) return;
+      if (!selectedBot || !id || !session?.sessionKey) return;
+      void postApiV1ChatLocal({
+        body: {
+          botId: selectedBot.id,
+          sessionKey: session.sessionKey,
+          message: {
+            type: "text",
+            content: JSON.stringify({
+              type: "canvas_op_result",
+              applied: result.applied,
+              errors: result.errors,
             }),
           },
         },
@@ -1861,6 +1912,7 @@ export function SessionsPage() {
       if (extracted.sidebarA2UI) return true;
       if (extracted.a2uiAction) return true;
       if (extracted.canvasOpBatch) return true;
+      if (extracted.canvasOpResult) return true;
       if (extracted.images.length > 0) return true;
       if (extracted.fileCards.length > 0) return true;
       return false;
@@ -2124,6 +2176,7 @@ export function SessionsPage() {
                     extracted={extracted}
                     showAvatar={showAvatar}
                     onA2UIAction={onA2UIAction}
+                    onCanvasOpApplied={onCanvasOpApplied}
                     onOpenSidebar={(payload) => {
                       openWith(
                         payload.surfaceId,

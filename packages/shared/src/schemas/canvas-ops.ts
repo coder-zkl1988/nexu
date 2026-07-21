@@ -136,6 +136,8 @@ export const canvasOpSchema = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("save_asset"),
     target: z.string().min(1),
+    /** Optional labels stored on the asset for library filtering. */
+    tags: z.array(z.string().min(1).max(24)).max(8).optional(),
   }),
   z.object({
     op: z.literal("insert_asset"),
@@ -196,14 +198,15 @@ export type CanvasMirrorConnection = z.infer<
 >;
 
 /**
- * One saved asset in the compact mirror. Only id/kind/title are surfaced so the
- * agent can reference an asset with insert_asset — the asset content itself is
- * never leaked into the mirror.
+ * One saved asset in the compact mirror. Only id/kind/title/tags are surfaced
+ * so the agent can reference an asset with insert_asset — the asset content
+ * itself is never leaked into the mirror.
  */
 export const canvasMirrorAssetSchema = z.object({
   id: z.string().max(MIRROR_ID_MAX),
   kind: z.enum(["text", "image", "video", "audio"]),
   title: z.string().max(MIRROR_TITLE_MAX),
+  tags: z.array(z.string().min(1).max(24)).max(8).optional(),
 });
 export type CanvasMirrorAsset = z.infer<typeof canvasMirrorAssetSchema>;
 

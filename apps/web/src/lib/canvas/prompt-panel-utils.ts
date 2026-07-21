@@ -182,6 +182,24 @@ export function upstreamSummary(
   return parts.length === 0 ? "无上游输入" : parts.join(" · ");
 }
 
+/**
+ * Merge the panel's own typed prompt with connected upstream text-node
+ * content, matching config-node-logic.ts's buildConfigGenerationPlan
+ * pattern exactly: local prompt first, then each non-empty trimmed upstream
+ * prompt, joined with a blank line. Without this, the "文本 N" upstream
+ * summary badge implies a connected text node feeds generation when it
+ * previously didn't — see resource-references.ts's own docstring ("an edge
+ * INTO a node means this feeds your generation").
+ */
+export function mergeUpstreamPrompt(
+  localPrompt: string,
+  upstreamPrompts: ReadonlyArray<string>,
+): string {
+  return [localPrompt.trim(), ...upstreamPrompts.map((p) => p.trim())]
+    .filter((p) => p.length > 0)
+    .join("\n\n");
+}
+
 // ── generation option builders (W5) ────────────────────────────
 //
 // Map the panel's per-mode settings state into the `generate*IntoNode` opts.
@@ -207,6 +225,8 @@ export type ImageGenSettings = {
   aspectRatio: string;
   /** "1K" | "2K" | "4K"; "" = omit. */
   size: string;
+  /** false (default) = omit. */
+  transparentBackground?: boolean;
 };
 
 export type ImageGenOpts = {
@@ -216,6 +236,7 @@ export type ImageGenOpts = {
   quality?: ImageQuality;
   aspectRatio?: string;
   size?: string;
+  transparentBackground?: boolean;
 };
 
 export function buildImageGenOpts(s: ImageGenSettings): ImageGenOpts {
@@ -228,6 +249,9 @@ export function buildImageGenOpts(s: ImageGenSettings): ImageGenOpts {
     ...(s.quality !== "auto" ? { quality: s.quality } : {}),
     ...(s.aspectRatio !== "" ? { aspectRatio: s.aspectRatio } : {}),
     ...(s.size !== "" ? { size: s.size } : {}),
+    ...(s.transparentBackground === true
+      ? { transparentBackground: true }
+      : {}),
   };
 }
 

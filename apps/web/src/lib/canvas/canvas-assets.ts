@@ -76,7 +76,10 @@ export function ensureAssetsLoaded(): Promise<void> {
  * Node must be text/image/video/audio with non-empty content.
  * Optimistic state update + storage.put. Returns false (no write) otherwise.
  */
-export async function saveNodeAsAsset(nodeId: string): Promise<boolean> {
+export async function saveNodeAsAsset(
+  nodeId: string,
+  tags?: string[],
+): Promise<boolean> {
   const node = getCanvasState().nodes.find((n) => n.id === nodeId);
   if (!node) return false;
   if (!isAssetKind(node.type)) return false;
@@ -92,6 +95,7 @@ export async function saveNodeAsAsset(nodeId: string): Promise<boolean> {
     ...(node.metadata.mimeType !== undefined
       ? { mimeType: node.metadata.mimeType }
       : {}),
+    ...(tags && tags.length > 0 ? { tags: normalizeTags(tags) } : {}),
     createdAt: new Date().toISOString(),
   };
 
@@ -99,6 +103,48 @@ export async function saveNodeAsAsset(nodeId: string): Promise<boolean> {
   setState({ assets: [asset, ...state.assets] });
   await getActiveAssetStorage().put(asset);
   return true;
+}
+
+/**
+ * Add an asset directly (素材库 dialog upload path). Optimistic + storage.put,
+ * newest first — same contract as saveNodeAsAsset without a source node.
+ */
+export async function addAsset(input: {
+  kind: CanvasAsset["kind"];
+  title: string;
+  content: string;
+  mimeType?: string;
+  tags?: string[];
+}): Promise<CanvasAsset> {
+  const asset: CanvasAsset = {
+    id: genId("asset"),
+    kind: input.kind,
+    title: input.title,
+    content: input.content,
+    ...(input.mimeType !== undefined ? { mimeType: input.mimeType } : {}),
+    ...(input.tags && input.tags.length > 0
+      ? { tags: normalizeTags(input.tags) }
+      : {}),
+    createdAt: new Date().toISOString(),
+  };
+  setState({ assets: [asset, ...state.assets] });
+  await getActiveAssetStorage().put(asset);
+  return asset;
+}
+
+/** Replace an asset's tags (deduped/trimmed; empty result clears them). */
+export async function updateAssetTags(
+  id: string,
+  tags: string[],
+): Promise<void> {
+  const existing = state.assets.find((a) => a.id === id);
+  if (!existing) return;
+  const normalized = normalizeTags(tags);
+  const { tags: _dropped, ...withoutTags } = existing;
+  const next: CanvasAsset =
+    normalized.length > 0 ? { ...existing, tags: normalized } : withoutTags;
+  setState({ assets: state.assets.map((a) => (a.id === id ? next : a)) });
+  await getActiveAssetStorage().put(next);
 }
 
 /** Remove an asset from state and storage. */
@@ -127,19 +173,59 @@ export function insertAssetToCanvas(id: string): CanvasNode | null {
 
 // ── Pure helpers ───────────────────────────────────────────────
 
+/** Trim, drop empties, dedupe (first occurrence wins), cap at 8. */
+export function normalizeTags(tags: ReadonlyArray<string>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const tag = raw.trim();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    out.push(tag);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** Unique tags across all assets, first-seen order, capped for chip rows. */
+export function collectAssetTags(
+  assets: ReadonlyArray<CanvasAsset>,
+  cap = 20,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const asset of assets) {
+    for (const tag of asset.tags ?? []) {
+      if (seen.has(tag)) continue;
+      seen.add(tag);
+      out.push(tag);
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
+
 /**
- * Filter assets by kind ("all" = no kind filter) and a case-insensitive,
- * trimmed title substring query (empty query = all).
+ * Filter assets by kind ("all" = no kind filter), a case-insensitive,
+ * trimmed title-or-tag substring query (empty query = all), and an optional
+ * exact tag (null = all).
  */
 export function filterAssets(
   assets: CanvasAsset[],
   kind: CanvasAsset["kind"] | "all",
   query: string,
+  tag: string | null = null,
 ): CanvasAsset[] {
   const q = query.trim().toLowerCase();
   return assets.filter((asset) => {
     if (kind !== "all" && asset.kind !== kind) return false;
-    if (q && !asset.title.toLowerCase().includes(q)) return false;
+    if (tag !== null && !(asset.tags ?? []).includes(tag)) return false;
+    if (q) {
+      const haystack = [asset.title, ...(asset.tags ?? [])]
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
 }

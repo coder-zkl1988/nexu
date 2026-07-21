@@ -17,6 +17,7 @@ export type CanvasDialogState =
   | { kind: "upscale"; nodeId: string }
   | { kind: "mask"; nodeId: string }
   | { kind: "angle"; nodeId: string }
+  | { kind: "preview"; nodeId: string }
   | { kind: "assets" }
   | { kind: "prompt-library"; nodeId: string }
   | null;

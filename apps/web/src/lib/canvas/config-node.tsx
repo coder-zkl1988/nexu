@@ -133,12 +133,17 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
         </div>
       </div>
 
-      {/* Typed upstream input chips + composer toggle (reference chips row) */}
+      {/* Typed upstream input chips + composer toggle (reference chips row).
+          Only shows what THIS mode's generation call actually consumes:
+          prompts always, reference images only in image mode. Upstream
+          video/audio content has no consumer anywhere yet (no request field
+          for it), so no chip claims otherwise — see resource-references.ts's
+          docstring vs. config-node-logic.ts's buildConfigGenerationPlan. */}
       <div className="flex flex-wrap gap-1.5" onPointerDown={stopProp}>
         <InputChip label="提示词" value={`${upstream.prompts.length} 个`} />
-        <InputChip label="参考图" value={`${imageCount} 张`} />
-        <InputChip label="参考视频" value={`${upstream.videos.length} 个`} />
-        <InputChip label="参考音频" value={`${upstream.audios.length} 个`} />
+        {mode === "image" ? (
+          <InputChip label="参考图" value={`${imageCount} 张`} />
+        ) : null}
         <button
           type="button"
           onClick={() => setComposerOpen((v) => !v)}

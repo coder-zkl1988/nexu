@@ -227,16 +227,11 @@ export function UpscaleDialog({
                 </button>
                 <button
                   type="button"
-                  disabled={!sourceImage}
-                  title={sourceImage ? undefined : "需为已生成的图片"}
-                  onClick={() => setUpscaleMode("ai")}
-                  className={`flex-1 px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                    upscaleMode === "ai"
-                      ? "bg-sky-500 text-white"
-                      : "bg-surface-1 text-text-primary hover:bg-surface-2"
-                  }`}
+                  disabled
+                  title="暂不支持：当前没有可用的图生图超分技能"
+                  className="flex-1 cursor-not-allowed bg-surface-1 px-4 py-1.5 text-sm text-text-tertiary opacity-40 transition-colors"
                 >
-                  AI 超分辨率
+                  AI 超分辨率（暂不支持）
                 </button>
               </div>
             </div>

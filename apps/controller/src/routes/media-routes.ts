@@ -140,6 +140,7 @@ export function registerMediaRoutes(
           quality: input.quality,
           aspectRatio: input.aspectRatio,
           size: input.size,
+          transparentBackground: input.transparentBackground,
         });
         return c.json(result, 200);
       } catch (error) {

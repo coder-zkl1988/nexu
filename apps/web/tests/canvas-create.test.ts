@@ -61,6 +61,27 @@ describe("createConnectedNode", () => {
     expect(conn).toBeDefined();
   });
 
+  it("handleType 'target' reverses the connection: new node → fromId", () => {
+    const origin = addNode({ type: "text", title: "Origin" });
+    const created = createConnectedNode(
+      origin.id,
+      "image",
+      { x: 400, y: 300 },
+      "target",
+    );
+
+    const state = getCanvasState();
+    const conn = state.connections.find(
+      (c) => c.fromNodeId === created?.id && c.toNodeId === origin.id,
+    );
+    expect(conn).toBeDefined();
+    expect(
+      state.connections.some(
+        (c) => c.fromNodeId === origin.id && c.toNodeId === created?.id,
+      ),
+    ).toBe(false);
+  });
+
   it("a. new node is selected after creation", () => {
     const source = addNode({ type: "text", title: "Source" });
     const created = createConnectedNode(source.id, "image", { x: 400, y: 300 });

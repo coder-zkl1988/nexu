@@ -968,4 +968,57 @@ describe("SessionsPage", () => {
     expect(markup).not.toContain("```canvas-op");
     expect(markup).not.toContain('"add_node"');
   });
+
+  it("renders a failure chip for a canvas_op_result round-trip, never the raw JSON", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["session-meta", "sess-canvas-op-result"], {
+      id: "sess-canvas-op-result",
+      title: "画布助手",
+      channelType: "web",
+      messageCount: 1,
+      lastMessageAt: "2026-07-07T03:33:00.000Z",
+      metadata: {},
+    });
+    // Mirrors what CanvasOpCard posts back via postApiV1ChatLocal when the
+    // user clicks 应用 and applyCanvasOps() returns errors (canvas-op-card.tsx).
+    queryClient.setQueryData(["chat-history", "sess-canvas-op-result"], {
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: JSON.stringify({
+            type: "canvas_op_result",
+            applied: 1,
+            errors: ["未找到节点：does-not-exist"],
+          }),
+          timestamp: new Date("2026-07-07T03:33:00.000Z").getTime(),
+          createdAt: "2026-07-07T03:33:00.000Z",
+        },
+      ],
+    });
+
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter
+            initialEntries={["/workspace/sessions/sess-canvas-op-result"]}
+          >
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(markup).toContain("data-canvas-op-result");
+    expect(markup).toContain("画布操作应用失败（1 项）");
+    expect(markup).not.toContain("canvas_op_result");
+    expect(markup).not.toContain("does-not-exist");
+  });
 });

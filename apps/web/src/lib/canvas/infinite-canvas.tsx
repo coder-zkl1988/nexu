@@ -30,6 +30,7 @@ import {
 } from "./canvas-clipboard";
 import { createConnectedNode } from "./canvas-create";
 import { CanvasDialogs } from "./canvas-dialogs-mount";
+import { exportNodesAsZip } from "./canvas-export";
 import { FloatingMenu, clampMenuPosition } from "./canvas-floating-menu";
 import { type ResizeCorner, computeResizeGeometry } from "./canvas-geometry";
 import { groupIdForPoint, memberIdsOf } from "./canvas-groups";
@@ -216,6 +217,14 @@ function targetAnchor(node: Pick<CanvasNode, "position" | "size">) {
   return { x: node.position.x, y: node.position.y + node.size.height / 2 };
 }
 
+/** Live-drag preview anchor: whichever side the grabbed handle sits on. */
+function connectHandleAnchor(
+  node: Pick<CanvasNode, "position" | "size">,
+  handleType: "source" | "target",
+) {
+  return handleType === "source" ? sourceAnchor(node) : targetAnchor(node);
+}
+
 type GestureState =
   | { kind: "pan"; startX: number; startY: number; origin: CanvasViewport }
   | {
@@ -233,7 +242,7 @@ type GestureState =
       origin: { x: number; y: number; width: number; height: number };
       lockRatio: boolean;
     }
-  | { kind: "connect"; fromId: string }
+  | { kind: "connect"; fromId: string; handleType: "source" | "target" }
   | { kind: "marquee"; additive: boolean };
 
 type ContextMenuState =
@@ -248,6 +257,7 @@ type ContextMenuState =
 
 type ConnectMenuState = {
   fromId: string;
+  handleType: "source" | "target";
   screenX: number;
   screenY: number;
   worldX: number;
@@ -290,6 +300,32 @@ function connectMenuIcon(
 /** Render-order rank: group nodes (0) sort before all other nodes (1). */
 function groupRank(node: CanvasNode): number {
   return node.type === "group" ? 0 : 1;
+}
+
+/**
+ * The node a drop point would hit, respecting render z-order (group nodes
+ * always sit behind everything else — see the render sort above) rather than
+ * raw node-array order. Without this, a drop on a node that overlaps a
+ * later-created group could resolve to the group instead of the node
+ * actually on top.
+ */
+export function topmostNodeAtPoint(
+  nodes: ReadonlyArray<CanvasNode>,
+  point: { x: number; y: number },
+  excludeId?: string,
+): CanvasNode | undefined {
+  return [...nodes]
+    .sort((a, b) => groupRank(a) - groupRank(b))
+    .reverse()
+    .find(
+      (node) =>
+        node.id !== excludeId &&
+        !isHiddenBatchChild(node, nodes) &&
+        point.x >= node.position.x &&
+        point.x <= node.position.x + node.size.width &&
+        point.y >= node.position.y &&
+        point.y <= node.position.y + node.size.height,
+    );
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -481,23 +517,20 @@ export function CanvasSurface({ className }: { className?: string }) {
         setConnectPreview(null);
         const point = toWorld(event.clientX, event.clientY);
         const liveNodes = getCanvasState().nodes;
-        const target = [...liveNodes]
-          .reverse()
-          .find(
-            (node) =>
-              node.id !== gesture.fromId &&
-              !isHiddenBatchChild(node, liveNodes) &&
-              point.x >= node.position.x &&
-              point.x <= node.position.x + node.size.width &&
-              point.y >= node.position.y &&
-              point.y <= node.position.y + node.size.height,
-          );
+        const target = topmostNodeAtPoint(liveNodes, point, gesture.fromId);
         if (target) {
-          const created = connectNodes(gesture.fromId, target.id);
-          const source = liveNodes.find((node) => node.id === gesture.fromId);
-          if (created && source) {
+          // A "target" handle drag means the dropped-on node feeds the
+          // origin node (left handle = incoming), so from/to swap.
+          const fromId =
+            gesture.handleType === "source" ? gesture.fromId : target.id;
+          const toId =
+            gesture.handleType === "source" ? target.id : gesture.fromId;
+          const created = connectNodes(fromId, toId);
+          const fromNode = liveNodes.find((node) => node.id === fromId);
+          const toNode = liveNodes.find((node) => node.id === toId);
+          if (created && fromNode && toNode) {
             // Edges carry data: e.g. image → XHS editor feeds the post image.
-            applyConnectionEffects(source, target);
+            applyConnectionEffects(fromNode, toNode);
           }
         } else {
           // No target node hit — open the create-node menu at the drop point.
@@ -517,6 +550,7 @@ export function CanvasSurface({ className }: { className?: string }) {
           );
           setConnectMenu({
             fromId: gesture.fromId,
+            handleType: gesture.handleType,
             screenX,
             screenY,
             worldX: point.x,
@@ -662,11 +696,15 @@ export function CanvasSurface({ className }: { className?: string }) {
   );
 
   const beginConnect = useCallback(
-    (event: React.PointerEvent, nodeId: string) => {
+    (
+      event: React.PointerEvent,
+      nodeId: string,
+      handleType: "source" | "target",
+    ) => {
       if (event.button !== 0) return;
       event.stopPropagation();
       setConnectPreview(toWorld(event.clientX, event.clientY));
-      beginGesture(event, { kind: "connect", fromId: nodeId });
+      beginGesture(event, { kind: "connect", fromId: nodeId, handleType });
     },
     [beginGesture, toWorld],
   );
@@ -807,10 +845,11 @@ export function CanvasSurface({ className }: { className?: string }) {
   }, []);
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const connectSource =
-    gestureRef.current?.kind === "connect"
-      ? nodeById.get(gestureRef.current.fromId)
-      : null;
+  const connectGesture =
+    gestureRef.current?.kind === "connect" ? gestureRef.current : null;
+  const connectSource = connectGesture
+    ? nodeById.get(connectGesture.fromId)
+    : null;
   const gridStyle =
     gridBackgroundStyle(gridMode, viewport.scale, viewport) ?? undefined;
 
@@ -945,9 +984,12 @@ export function CanvasSurface({ className }: { className?: string }) {
               />
             );
           })}
-          {connectSource && connectPreview ? (
+          {connectSource && connectGesture && connectPreview ? (
             <path
-              d={connectionPath(sourceAnchor(connectSource), connectPreview)}
+              d={connectionPath(
+                connectHandleAnchor(connectSource, connectGesture.handleType),
+                connectPreview,
+              )}
               fill="none"
               className="stroke-sky-500"
               strokeWidth={2}
@@ -1037,6 +1079,23 @@ export function CanvasSurface({ className }: { className?: string }) {
                 }}
               />
               <ContextMenuItem
+                label={
+                  selectedNodeIds.length > 1 &&
+                  selectedNodeIds.includes(contextMenu.id)
+                    ? `导出 ${selectedNodeIds.length} 个元素`
+                    : "导出"
+                }
+                onClick={() => {
+                  const ids =
+                    selectedNodeIds.length > 1 &&
+                    selectedNodeIds.includes(contextMenu.id)
+                      ? selectedNodeIds
+                      : [contextMenu.id];
+                  void exportNodesAsZip(ids);
+                  setContextMenu(null);
+                }}
+              />
+              <ContextMenuItem
                 label="删除"
                 onClick={() => {
                   removeNodes([contextMenu.id]);
@@ -1079,10 +1138,12 @@ export function CanvasSurface({ className }: { className?: string }) {
               type="button"
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-text-primary hover:bg-surface-2"
               onClick={() => {
-                createConnectedNode(connectMenu.fromId, type, {
-                  x: connectMenu.worldX,
-                  y: connectMenu.worldY,
-                });
+                createConnectedNode(
+                  connectMenu.fromId,
+                  type,
+                  { x: connectMenu.worldX, y: connectMenu.worldY },
+                  connectMenu.handleType,
+                );
                 setConnectMenu(null);
               }}
             >
@@ -1102,6 +1163,11 @@ export function CanvasSurface({ className }: { className?: string }) {
 // ── Node view (memoized frame + geometry-insensitive body) ─────
 
 type NodeGestureHandler = (event: React.PointerEvent, nodeId: string) => void;
+type ConnectGestureHandler = (
+  event: React.PointerEvent,
+  nodeId: string,
+  handleType: "source" | "target",
+) => void;
 type ResizeGestureHandler = (
   event: React.PointerEvent,
   nodeId: string,
@@ -1119,7 +1185,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
   selected: boolean;
   onHeaderDown: NodeGestureHandler;
   onResizeDown: ResizeGestureHandler;
-  onConnectDown: NodeGestureHandler;
+  onConnectDown: ConnectGestureHandler;
 }) {
   // Media with content renders full-bleed like the reference cards. a2ui
   // editor surfaces (XHSEditor/MarkdownEditor) are self-contained cards too —
@@ -1140,6 +1206,11 @@ const CanvasNodeView = memo(function CanvasNodeView({
   // BEHIND their members (rendered on top) even when the group itself is
   // selected — "groups render behind everything else" must hold in every state.
   const isGroup = node.type === "group";
+
+  // Groups and team-step nodes take no upstream/downstream data — connecting
+  // to/from them is a no-op wiring dead end, so don't show handles that
+  // invite it.
+  const connectable = node.type !== "group" && node.type !== "team-step";
 
   // Batch group state
   const batchChildIds = node.metadata.batch?.childIds;
@@ -1298,22 +1369,44 @@ const CanvasNodeView = memo(function CanvasNodeView({
         />
       ) : null}
 
-      {/* Connect handle: 48px hit zone with a 12px dot, shown on
-          hover/selection (reference paradigm), drag to another node. */}
-      <button
-        type="button"
-        aria-label="connect from node"
-        data-canvas-connect-handle={node.id}
-        className={cn(
-          "absolute -right-6 top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150",
-          selected
-            ? "pointer-events-auto opacity-100"
-            : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
-        )}
-        onPointerDown={(event) => onConnectDown(event, node.id)}
-      >
-        <span className="size-3 rounded-full border-2 border-sky-500 bg-surface-1 transition-transform hover:scale-125" />
-      </button>
+      {/* Connect handles: 48px hit zone with a 12px dot on each side
+          (reference paradigm) — left = target (drag out for an upstream
+          feed), right = source (drag out to feed a downstream node). Shown
+          on hover/selection, drag to another node. Groups and team-step
+          nodes don't participate in the connection graph, so they get no
+          handles at all — see `connectable` above. */}
+      {connectable ? (
+        <>
+          <button
+            type="button"
+            aria-label="connect into node"
+            data-canvas-connect-handle-target={node.id}
+            className={cn(
+              "absolute -left-6 top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150",
+              selected
+                ? "pointer-events-auto opacity-100"
+                : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+            )}
+            onPointerDown={(event) => onConnectDown(event, node.id, "target")}
+          >
+            <span className="size-3 rounded-full border-2 border-sky-500 bg-surface-1 transition-transform hover:scale-125" />
+          </button>
+          <button
+            type="button"
+            aria-label="connect from node"
+            data-canvas-connect-handle-source={node.id}
+            className={cn(
+              "absolute -right-6 top-1/2 z-30 flex size-12 -translate-y-1/2 cursor-crosshair items-center justify-center transition-opacity duration-150",
+              selected
+                ? "pointer-events-auto opacity-100"
+                : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+            )}
+            onPointerDown={(event) => onConnectDown(event, node.id, "source")}
+          >
+            <span className="size-3 rounded-full border-2 border-sky-500 bg-surface-1 transition-transform hover:scale-125" />
+          </button>
+        </>
+      ) : null}
       {/* Resize: four invisible 28px corner zones (cursor is the affordance). */}
       <div
         data-canvas-resize-handle={node.id}

@@ -80,7 +80,16 @@ function nodeTypeLabel(type: string): string {
   }
 }
 
-export function CanvasOpCard({ batch }: { batch: CanvasOpBatchView }) {
+export function CanvasOpCard({
+  batch,
+  onApplied,
+}: {
+  batch: CanvasOpBatchView;
+  /** Called with the raw applyCanvasOps() result after 应用 — lets the
+   * caller report a failure back into the chat session so the agent's next
+   * turn can see it (toast alone never reaches the agent). */
+  onApplied?: (result: { applied: number; errors: string[] }) => void;
+}) {
   const [applied, setApplied] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -104,6 +113,7 @@ export function CanvasOpCard({ batch }: { batch: CanvasOpBatchView }) {
     if (result.errors.length > 0) {
       toast.error(`${result.errors.length} 项未能应用`);
     }
+    onApplied?.(result);
     setApplied(true);
   };
 

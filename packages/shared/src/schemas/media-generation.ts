@@ -42,6 +42,8 @@ export const generateImageRequestSchema = z
     aspectRatio: z.string().max(16).optional(),
     /** Output size hint, e.g. "1024x1024", "2K", "4K". Best-effort. */
     size: z.string().max(32).optional(),
+    /** Generate with a transparent (alpha) background. Best-effort hint. */
+    transparentBackground: z.boolean().optional(),
     /**
      * Source image for inpaint / img2img. Servable absolute path under the
      * OpenClaw media dir. When provided the agent edits this image rather

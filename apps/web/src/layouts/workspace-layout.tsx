@@ -14,7 +14,7 @@ import {
   useA2UISidebar,
 } from "@/lib/a2ui/a2ui-sidebar-context";
 import { authClient } from "@/lib/auth-client";
-import { useCanvas } from "@/lib/canvas/canvas-store";
+import { exportBoardAsZip } from "@/lib/canvas/canvas-export";
 import { CanvasBoardTitle } from "@/lib/canvas/canvas-toolbar";
 import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
 import { openExternalUrl } from "@/lib/desktop-links";
@@ -35,6 +35,7 @@ import {
   CircleHelp,
   CirclePlus,
   Clock,
+  FileDown,
   GitBranch,
   Home,
   Info,
@@ -473,7 +474,6 @@ function WorkspaceLayoutContent() {
   const isResizing = useRef(false);
   const { isOpen: rightSidebarOpen, close: closeRightSidebar } =
     useA2UISidebar();
-  const { nodes: canvasNodes } = useCanvas();
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
     return saved
@@ -1921,13 +1921,19 @@ function WorkspaceLayoutContent() {
           <div className="flex min-h-[34px] items-center justify-between border-b border-[var(--color-border-subtle)] px-4 pb-2 pt-2 md:pt-[40px]">
             <div className="flex min-w-0 flex-1 items-center pr-2">
               <CanvasBoardTitle />
-              {canvasNodes.length > 0 ? (
-                <span className="ml-2 shrink-0 text-xs font-normal text-[var(--color-text-tertiary)]">
-                  {canvasNodes.length}
-                </span>
-              ) : null}
             </div>
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void exportBoardAsZip()}
+                title="导出画布"
+                aria-label="导出画布"
+                data-canvas-header-export="true"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+              >
+                <FileDown size={14} />
+              </button>
               <button
                 type="button"
                 onClick={toggleRightSidebarMaximize}

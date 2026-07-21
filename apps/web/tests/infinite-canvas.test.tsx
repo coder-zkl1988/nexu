@@ -1,9 +1,19 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachBatchChildren,
   toggleBatchExpanded,
 } from "../src/lib/canvas/canvas-batch";
+
+// Mock hooks used by TeamStepNodeContent to avoid a QueryClient requirement
+// when rendering via renderToStaticMarkup (same pattern as hover-toolbar.test.tsx).
+vi.mock("../src/hooks/use-teams", () => ({
+  useTeamBoard: () => ({ data: undefined, isLoading: false }),
+}));
+vi.mock("../src/hooks/use-team-workflows", () => ({
+  useWorkflowApprovals: () => ({ data: undefined }),
+  useApproveWorkflowStep: () => ({ mutate: vi.fn() }),
+}));
 import { __resetCanvasBoardsForTests } from "../src/lib/canvas/canvas-boards";
 import {
   __flushCanvasHistoryForTests,
@@ -16,6 +26,7 @@ import {
   moveNodes,
   redo,
   removeNodes,
+  selectConnection,
   selectNodes,
   undo,
   upsertA2UINode,
@@ -35,6 +46,7 @@ import {
   fitViewport,
   gridBackgroundSize,
   gridBackgroundStyle,
+  topmostNodeAtPoint,
   zoomAtPoint,
 } from "../src/lib/canvas/infinite-canvas";
 import { shouldStoreNaturalSize } from "../src/lib/canvas/node-views";
@@ -134,6 +146,14 @@ describe("canvas store", () => {
     expect(getCanvasState().connections).toHaveLength(1);
   });
 
+  it("rejects a connection referencing a node id that doesn't exist", () => {
+    const a = addNode({ type: "text", title: "A" });
+    expect(connectNodes(a.id, "does-not-exist")).toBeNull();
+    expect(connectNodes("does-not-exist", a.id)).toBeNull();
+    expect(connectNodes("ghost-1", "ghost-2")).toBeNull();
+    expect(getCanvasState().connections).toHaveLength(0);
+  });
+
   it("moveNodes moves a multi-selection in one state update", () => {
     const a = addNode({ type: "text", title: "A" });
     const b = addNode({ type: "text", title: "B" });
@@ -160,6 +180,27 @@ describe("canvas store", () => {
     const state = getCanvasState();
     expect(state.nodes.map((n) => n.id)).toEqual([b.id]);
     expect(state.connections).toHaveLength(0);
+  });
+
+  it("removing a node clears selectedConnectionId when the selection is cascade-deleted", () => {
+    const a = addNode({ type: "text", title: "A" });
+    const b = addNode({ type: "text", title: "B" });
+    const edge = connectNodes(a.id, b.id);
+    selectConnection(edge?.id ?? null);
+    expect(getCanvasState().selectedConnectionId).toBe(edge?.id);
+    removeNodes([a.id]);
+    expect(getCanvasState().selectedConnectionId).toBeNull();
+  });
+
+  it("removing a node preserves selectedConnectionId when an unrelated connection is selected", () => {
+    const a = addNode({ type: "text", title: "A" });
+    const b = addNode({ type: "text", title: "B" });
+    const c = addNode({ type: "text", title: "C" });
+    connectNodes(a.id, b.id);
+    const untouched = connectNodes(b.id, c.id);
+    selectConnection(untouched?.id ?? null);
+    removeNodes([a.id]);
+    expect(getCanvasState().selectedConnectionId).toBe(untouched?.id);
   });
 
   it("undo/redo restores node and connection snapshots", () => {
@@ -302,6 +343,62 @@ describe("canvas store", () => {
   });
 });
 
+describe("topmostNodeAtPoint", () => {
+  it("resolves to the visually topmost node, not the most-recently-created one", () => {
+    // A text node created first, then a group created afterward that
+    // overlaps it. Groups always render behind everything else, so the drop
+    // should still hit the text node even though the group is later in
+    // creation order.
+    const text = addNode({
+      type: "text",
+      title: "note",
+      position: { x: 0, y: 0 },
+      size: { width: 300, height: 180 },
+    });
+    const group = addNode({
+      type: "group",
+      title: "group",
+      position: { x: -50, y: -50 },
+      size: { width: 800, height: 600 },
+    });
+    const point = { x: 50, y: 50 }; // inside both
+    const hit = topmostNodeAtPoint(getCanvasState().nodes, point);
+    expect(hit?.id).toBe(text.id);
+    expect(hit?.id).not.toBe(group.id);
+  });
+
+  it("excludes the given node id even if it's the topmost match", () => {
+    const a = addNode({
+      type: "text",
+      title: "A",
+      position: { x: 0, y: 0 },
+      size: { width: 300, height: 180 },
+    });
+    const b = addNode({
+      type: "text",
+      title: "B",
+      position: { x: 0, y: 0 },
+      size: { width: 300, height: 180 },
+    });
+    const point = { x: 50, y: 50 };
+    expect(topmostNodeAtPoint(getCanvasState().nodes, point, b.id)?.id).toBe(
+      a.id,
+    );
+  });
+
+  it("returns undefined when nothing is under the point", () => {
+    addNode({
+      type: "text",
+      title: "A",
+      position: { x: 0, y: 0 },
+      size: { width: 300, height: 180 },
+    });
+    expect(
+      topmostNodeAtPoint(getCanvasState().nodes, { x: 9999, y: 9999 }),
+    ).toBeUndefined();
+  });
+});
+
 describe("CanvasSurface", () => {
   it("renders nodes, edges, toolbar and selection state from the store", () => {
     const a = addNode({
@@ -371,6 +468,13 @@ describe("CanvasSurface", () => {
     expect(markup).toContain('data-resize-corner="se"');
   });
 
+  it("renders both a target (left) and source (right) connect handle per node (reference parity)", () => {
+    const node = addNode({ type: "text", title: "节点" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain(`data-canvas-connect-handle-target="${node.id}"`);
+    expect(markup).toContain(`data-canvas-connect-handle-source="${node.id}"`);
+  });
+
   it("renders lock toggle button for image node with content, absent for text node", () => {
     addNode({
       type: "image",
@@ -395,6 +499,18 @@ describe("CanvasSurface", () => {
     addNode({ type: "image", title: "empty image" });
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).not.toContain("data-canvas-lock-toggle");
+  });
+
+  it("text node display and edit modes opt out of canvas wheel-zoom so long content scrolls natively", () => {
+    addNode({
+      type: "text",
+      title: "笔记",
+      metadata: { content: "一段很长的文字…" },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain("data-canvas-text-display");
+    expect(markup).toContain('data-canvas-wheel-exempt="true"');
+    expect(markup).toContain("overflow-y-auto");
   });
 
   it("a node with task.status=generating renders data-canvas-node-generating", () => {
@@ -482,6 +598,41 @@ describe("group node markup", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).not.toContain(`data-canvas-hover-toolbar="${group.id}"`);
   });
+
+  it("a group node renders no connect handles — it's not part of the connection graph", () => {
+    const group = addNode({ type: "group", title: "组" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain(
+      `data-canvas-connect-handle-target="${group.id}"`,
+    );
+    expect(markup).not.toContain(
+      `data-canvas-connect-handle-source="${group.id}"`,
+    );
+  });
+
+  it("a team-step node renders no connect handles either", () => {
+    const step = addNode({
+      type: "team-step",
+      title: "step-1",
+      metadata: {
+        step: { teamId: "t1", cardId: "c1", assigneeName: "Agent" },
+      },
+    });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain(
+      `data-canvas-connect-handle-target="${step.id}"`,
+    );
+    expect(markup).not.toContain(
+      `data-canvas-connect-handle-source="${step.id}"`,
+    );
+  });
+
+  it("an ordinary text node still gets both connect handles", () => {
+    const text = addNode({ type: "text", title: "note" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).toContain(`data-canvas-connect-handle-target="${text.id}"`);
+    expect(markup).toContain(`data-canvas-connect-handle-source="${text.id}"`);
+  });
 });
 
 describe("PromptPanel visibility", () => {
@@ -553,6 +704,47 @@ describe("ConfigNode markup", () => {
   it("toolbar contains 生成配置 button", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).toContain("生成配置");
+  });
+
+  it("config node never shows 参考视频/参考音频 chips — no mode forwards them to generation", () => {
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "image" } },
+    });
+    const videoSource = addNode({
+      type: "video",
+      title: "视频",
+      metadata: { content: "/api/v1/media/state-file?path=%2Fv.mp4" },
+    });
+    const audioSource = addNode({
+      type: "audio",
+      title: "音频",
+      metadata: { content: "/api/v1/media/state-file?path=%2Fa.mp3" },
+    });
+    connectNodes(videoSource.id, config.id);
+    connectNodes(audioSource.id, config.id);
+
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+    expect(markup).not.toContain("参考视频");
+    expect(markup).not.toContain("参考音频");
+  });
+
+  it("config node shows 参考图 only in image mode — other modes never forward image references", () => {
+    addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "image" } },
+    });
+    expect(renderToStaticMarkup(<CanvasSurface />)).toContain("参考图");
+
+    __resetCanvasForTests();
+    addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: { config: { mode: "text" } },
+    });
+    expect(renderToStaticMarkup(<CanvasSurface />)).not.toContain("参考图");
   });
 
   it("connect menu offers all five creatable types (real menu constant)", () => {

@@ -19826,6 +19826,9 @@
                     "type": "string",
                     "maxLength": 32
                   },
+                  "transparentBackground": {
+                    "type": "boolean"
+                  },
                   "sourceImage": {
                     "type": "string",
                     "minLength": 1
