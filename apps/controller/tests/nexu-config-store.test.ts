@@ -1304,6 +1304,48 @@ describe("NexuConfigStore", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("connectDesktopCloud surfaces a concise error when device registration hits a bot challenge", async () => {
+    const store = new NexuConfigStore(env);
+    const challengeHtml = `<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title></head><body>${"challenge ".repeat(500)}</body></html>`;
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      expect(String(input)).toBe(
+        "https://tabbyapi.picaso.studio/api/auth/device-register",
+      );
+      return new Response(challengeHtml, {
+        status: 403,
+        headers: {
+          "content-type": "text/html; charset=UTF-8",
+          "cf-mitigated": "challenge",
+        },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await store.connectDesktopCloud();
+
+    expect(result.error).toBeDefined();
+    expect(result.error).not.toContain("<!DOCTYPE");
+    expect(result.error).toContain("challenge");
+    expect(result.error?.length ?? 0).toBeLessThan(320);
+  });
+
+  it("connectDesktopCloud truncates long non-challenge registration errors", async () => {
+    const store = new NexuConfigStore(env);
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("x".repeat(5000), {
+          status: 500,
+          headers: { "content-type": "text/plain" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await store.connectDesktopCloud();
+
+    expect(result.error).toContain("HTTP 500");
+    expect(result.error?.length ?? 0).toBeLessThan(400);
+  });
+
   it("getDesktopRewardsStatus preserves connected state when cloud returns 401 auth_failed", async () => {
     await mkdir(path.join(rootDir, ".nexu"), { recursive: true });
     await writeFile(

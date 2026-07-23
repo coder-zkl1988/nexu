@@ -157,6 +157,27 @@ function describeFetchError(error: unknown): string {
   return parts.join(" | ");
 }
 
+const MAX_CLOUD_ERROR_BODY_LENGTH = 300;
+
+async function describeCloudErrorResponse(res: Response): Promise<string> {
+  const body = await res.text().catch(() => "");
+  const contentType = res.headers.get("content-type") ?? "";
+  const looksLikeHtml =
+    contentType.includes("text/html") ||
+    /^\s*<(!doctype|html)[\s>]/i.test(body);
+  if (res.headers.get("cf-mitigated") === "challenge" || looksLikeHtml) {
+    return `HTTP ${res.status}: blocked by a bot-protection challenge before reaching the cloud API. The current network/proxy exit IP is likely flagged - switch the proxy node or bypass the proxy for this domain, then retry.`;
+  }
+  const compact = body.replace(/\s+/g, " ").trim();
+  const truncated =
+    compact.length > MAX_CLOUD_ERROR_BODY_LENGTH
+      ? `${compact.slice(0, MAX_CLOUD_ERROR_BODY_LENGTH)}…`
+      : compact;
+  return truncated.length > 0
+    ? `HTTP ${res.status}: ${truncated}`
+    : `HTTP ${res.status}`;
+}
+
 function buildLinkModelsUrl(baseUrl: string): string {
   return new URL(
     "v1/models",
@@ -2745,7 +2766,16 @@ export class NexuConfigStore {
     }
 
     if (!res.ok) {
-      return { error: `Failed to register device: ${await res.text()}` };
+      const detail = await describeCloudErrorResponse(res);
+      logger.warn(
+        {
+          url: registerUrl,
+          status: res.status,
+          cfRay: res.headers.get("cf-ray") ?? undefined,
+        },
+        "desktop_cloud_connect_register_rejected",
+      );
+      return { error: `Failed to register device: ${detail}` };
     }
 
     await this.setDesktopCloudState({
