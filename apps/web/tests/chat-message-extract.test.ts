@@ -101,3 +101,63 @@ describe("canvas_op_result round-trip", () => {
     expect(extracted.canvasOpResult).toBeNull();
   });
 });
+
+describe("execution trace extraction", () => {
+  it("preserves every tool call with its id and arguments", () => {
+    const extracted = extractMessage({
+      role: "assistant",
+      content: [
+        { type: "text", text: "Checking both devices." },
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "device_get_status",
+          arguments: { deviceId: "device-a" },
+        },
+        {
+          type: "tool_use",
+          id: "call-2",
+          name: "exec",
+          input: { command: "sleep 1" },
+        },
+      ],
+    });
+
+    expect(extracted.text).toBe("Checking both devices.");
+    expect(extracted.hasToolCall).toBe(true);
+    expect(extracted.toolCalls).toEqual([
+      {
+        id: "call-1",
+        name: "device_get_status",
+        arguments: { deviceId: "device-a" },
+      },
+      {
+        id: "call-2",
+        name: "exec",
+        arguments: { command: "sleep 1" },
+      },
+    ]);
+  });
+
+  it("keeps explicit reasoning separate from the user-facing answer text", () => {
+    const extracted = extractMessage({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "I should inspect the device first." },
+        { type: "reasoning", text: "The previous status may be stale." },
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "device_get_status",
+          arguments: {},
+        },
+      ],
+    });
+
+    expect(extracted.text).toBe("");
+    expect(extracted.reasoning).toEqual([
+      "I should inspect the device first.",
+      "The previous status may be stale.",
+    ]);
+  });
+});

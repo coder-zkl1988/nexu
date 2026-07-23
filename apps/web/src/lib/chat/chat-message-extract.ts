@@ -163,6 +163,12 @@ export interface FileCardInfo {
   size?: number;
 }
 
+export interface ToolCallInfo {
+  id: string | null;
+  name: string;
+  arguments: unknown;
+}
+
 export interface SidebarA2UIPayload {
   surfaceId: string;
   messages: A2UIMessage[];
@@ -174,6 +180,8 @@ export interface ExtractedMessage {
   senderName: string | null;
   hasToolCall: boolean;
   toolCallSummary: string | null;
+  toolCalls: ToolCallInfo[];
+  reasoning: string[];
   hasA2UI: boolean;
   a2uiMessages: A2UIMessage[] | null;
   /** Sidebar-bound A2UI rendered as a jump button instead of inline. */
@@ -268,6 +276,8 @@ export function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
   let replyContextText: string | null = null;
   let hasToolCall = false;
   let toolCallSummary: string | null = null;
+  const toolCalls: ToolCallInfo[] = [];
+  const reasoning: string[] = [];
   let hasA2UI = false;
   let a2uiMessages: A2UIMessage[] | null = null;
   const images: ImageBlockInfo[] = [];
@@ -314,6 +324,28 @@ export function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
         hasToolCall = true;
         const name = String(b?.name ?? b?.toolName ?? "tool");
         toolCallSummary = name;
+        toolCalls.push({
+          id:
+            typeof b?.id === "string"
+              ? b.id
+              : typeof b?.toolCallId === "string"
+                ? b.toolCallId
+                : null,
+          name,
+          arguments: b?.arguments ?? b?.input ?? null,
+        });
+      } else if (
+        b?.type === "thinking" ||
+        b?.type === "reasoning" ||
+        b?.type === "reasoning_content" ||
+        b?.type === "analysis"
+      ) {
+        const reasoningText = String(
+          b?.thinking ?? b?.reasoning ?? b?.text ?? b?.content ?? "",
+        ).trim();
+        if (reasoningText.length > 0) {
+          reasoning.push(reasoningText);
+        }
       } else if (b?.type === "a2ui" && typeof b.data === "object" && b.data) {
         hasA2UI = true;
         if (!a2uiMessages) a2uiMessages = [];
@@ -394,6 +426,8 @@ export function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
     senderName,
     hasToolCall,
     toolCallSummary,
+    toolCalls,
+    reasoning,
     hasA2UI,
     a2uiMessages,
     sidebarA2UI: null,

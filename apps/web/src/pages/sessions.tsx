@@ -31,15 +31,24 @@ import {
   type FileCardInfo,
   type ImageBlockInfo,
   type SidebarA2UIPayload,
+  type ToolCallInfo,
   extractMessage,
   stripMediaMarkerLines,
 } from "@/lib/chat/chat-message-extract";
+import {
+  type TranscriptEntry,
+  buildTranscriptItems,
+  stripRenderedAssistantText,
+} from "@/lib/chat/chat-transcript-groups";
+import { invokeDesktopHost } from "@/lib/desktop-host";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
+  Brain,
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   FileImage,
   FileText,
@@ -47,8 +56,10 @@ import {
   MessageSquare,
   PanelRight,
   Square,
+  Terminal,
   Volume2,
   WifiOff,
+  Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -151,10 +162,6 @@ function SpeakButton({ text }: { text: string }) {
   );
 }
 
-function isDeskpetHostChannel(channel: string): boolean {
-  return channel.startsWith("desktop:deskpet");
-}
-
 function logDeskpetHostDebug(
   message: string,
   data?: Record<string, unknown>,
@@ -162,58 +169,10 @@ function logDeskpetHostDebug(
   console.info("[deskpet-debug:web]", message, data ?? {});
 }
 
-function invokeDesktopHost(channel: string, payload: unknown): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
-  if (!candidate || typeof candidate !== "object") {
-    if (isDeskpetHostChannel(channel)) {
-      logDeskpetHostDebug("nexuHost missing", { channel, payload });
-    }
-    return;
-  }
-
-  const invoke = Reflect.get(candidate as Record<string, unknown>, "invoke");
-  if (typeof invoke !== "function") {
-    if (isDeskpetHostChannel(channel)) {
-      logDeskpetHostDebug("nexuHost.invoke missing", { channel, payload });
-    }
-    return;
-  }
-
-  const invokeHost = invoke as (
-    channel: string,
-    payload: unknown,
-  ) => Promise<unknown>;
-
-  if (isDeskpetHostChannel(channel)) {
-    logDeskpetHostDebug("invoke start", { channel, payload });
-  }
-
-  void invokeHost(channel, payload)
-    .then((result) => {
-      if (isDeskpetHostChannel(channel)) {
-        logDeskpetHostDebug("invoke success", { channel, result });
-      }
-    })
-    .catch((error) => {
-      if (isDeskpetHostChannel(channel)) {
-        logDeskpetHostDebug("invoke failed", {
-          channel,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      // Non-desktop web builds do not expose the host bridge.
-    });
-}
-
 const DESKPET_REPLYING_DURATION_MS = 8000;
 const DESKPET_REPLYING_REFRESH_MS = 1800;
 const DESKPET_SUCCESS_DURATION_MS = 5000;
-const DESKPET_SUCCESS_REPLY_RETRY_MS = 800;
-const DESKPET_SUCCESS_REPLY_MAX_RETRIES = 10;
+const DESKPET_ERROR_DURATION_MS = 4200;
 const DESKPET_TYPING_WORKING_DURATION_MS = 1600;
 const DESKPET_TYPING_NOTIFY_INTERVAL_MS = 700;
 
@@ -545,27 +504,350 @@ interface ChatMessageData {
   toolCallId?: string;
 }
 
-function ArtifactCard({ summary }: { summary: string | null }) {
+function summarizeToolArguments(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "";
+  }
+
+  const normalizeText = (text: string): string =>
+    text
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  const args = value as Record<string, unknown>;
+  const preferredKeys = [
+    "command",
+    "task",
+    "query",
+    "path",
+    "url",
+    "action",
+    "skill",
+    "sessionId",
+    "deviceId",
+  ];
+  const preferredValue = preferredKeys
+    .map((key) => args[key])
+    .find(
+      (candidate) =>
+        typeof candidate === "string" && candidate.trim().length > 0,
+    );
+  if (typeof preferredValue === "string") {
+    return normalizeText(preferredValue);
+  }
+
+  if (Array.isArray(args.tasks)) {
+    const taskSummaries = args.tasks.flatMap((task, index) => {
+      if (!task || typeof task !== "object" || Array.isArray(task)) {
+        return [];
+      }
+      const taskRecord = task as Record<string, unknown>;
+      if (typeof taskRecord.task !== "string" || !taskRecord.task.trim()) {
+        return [];
+      }
+      const devicePrefix =
+        typeof taskRecord.deviceId === "string" && taskRecord.deviceId.trim()
+          ? `${taskRecord.deviceId.trim()}: `
+          : "";
+      return `${index + 1}. ${devicePrefix}${normalizeText(taskRecord.task)}`;
+    });
+    if (taskSummaries.length > 0) {
+      return taskSummaries.join("\n\n");
+    }
+  }
+
+  const fallbackValue = Object.values(args).find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
+  return typeof fallbackValue === "string" ? normalizeText(fallbackValue) : "";
+}
+
+type ExecutionStep =
+  | {
+      id: string;
+      kind: "reasoning" | "narration";
+      text: string;
+      streaming?: boolean;
+    }
+  | {
+      id: string;
+      kind: "tool";
+      toolCall: ToolCallInfo;
+    };
+
+function buildExecutionSteps(
+  entries: TranscriptEntry<ChatMessageData>[],
+): ExecutionStep[] {
+  const steps: ExecutionStep[] = [];
+
+  for (const entry of entries) {
+    entry.extracted.reasoning.forEach((text, index) => {
+      steps.push({
+        id: `${entry.msg.id}:reasoning:${index}`,
+        kind: "reasoning",
+        text,
+      });
+    });
+
+    const narration = entry.extracted.text.trim();
+    if (narration) {
+      steps.push({
+        id: `${entry.msg.id}:narration`,
+        kind: "narration",
+        text: narration,
+      });
+    }
+
+    entry.extracted.toolCalls.forEach((toolCall, index) => {
+      steps.push({
+        id: toolCall.id ?? `${entry.msg.id}:tool:${index}`,
+        kind: "tool",
+        toolCall,
+      });
+    });
+  }
+
+  return steps;
+}
+
+function ToolCallGlyph({ name }: { name: string }) {
+  const normalized = name.toLowerCase();
+  if (
+    normalized === "exec" ||
+    normalized === "process" ||
+    normalized.includes("shell") ||
+    normalized.includes("bash")
+  ) {
+    return <Terminal className="size-[14px]" />;
+  }
+  return <Wrench className="size-[14px]" />;
+}
+
+function ExecutionToolRow({
+  toolCall,
+  active,
+}: {
+  toolCall: ToolCallInfo;
+  active: boolean;
+}) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   const formattedSummary =
-    formatToolCallSummary(summary) ?? t("sessions.chat.toolActivity");
+    formatToolCallSummary(toolCall.name) ?? t("sessions.chat.toolActivity");
+  const argumentSummary = summarizeToolArguments(toolCall.arguments);
+  const expandable = argumentSummary.length > 96;
 
   return (
     <div
-      data-tool-card={summary ?? undefined}
-      data-tool-card-variant="inline-chip"
-      className="mt-0.5 inline-flex max-w-full items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--color-success)_12%,transparent)] bg-[rgba(0,163,101,0.06)] px-2.5 py-1.5 text-[12px] shadow-none"
+      data-tool-card={toolCall.name}
+      data-tool-card-variant="execution-row"
+      className="flex min-w-0 items-start gap-2.5 py-1.5 text-[12px] leading-5"
     >
-      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-success-muted)] text-[var(--color-success)]">
-        <CheckCircle2 className="size-[13px]" />
+      <span
+        className={cn(
+          "flex size-5 shrink-0 items-center justify-center",
+          active ? "text-[var(--color-info)]" : "text-[var(--color-success)]",
+        )}
+      >
+        {active ? (
+          <Loader2 className="size-[13px] animate-spin" />
+        ) : (
+          <CheckCircle2 className="size-[13px]" />
+        )}
       </span>
-      <span className="min-w-0 max-w-[16rem] truncate font-medium text-text-primary">
-        {formattedSummary}
+      <span
+        className={cn(
+          "flex size-5 shrink-0 items-center justify-center",
+          active ? "text-[var(--color-info)]" : "text-text-muted",
+        )}
+      >
+        <ToolCallGlyph name={toolCall.name} />
       </span>
-      <span className="shrink-0 text-text-muted/70">·</span>
-      <span className="shrink-0 text-[11px] font-medium text-[var(--color-success)]">
-        {t("sessions.chat.toolCompleted")}
-      </span>
+      {expandable ? (
+        <button
+          type="button"
+          data-tool-arguments-toggle={toolCall.name}
+          aria-expanded={expanded}
+          title={t(
+            expanded
+              ? "sessions.chat.collapseToolDetails"
+              : "sessions.chat.expandToolDetails",
+          )}
+          onClick={() => setExpanded((value) => !value)}
+          className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 text-left"
+        >
+          <span className="shrink-0 font-medium text-text-secondary">
+            {formattedSummary}
+          </span>
+          <span
+            className={cn(
+              "min-w-0 font-mono text-[11px] text-text-muted",
+              expanded ? "whitespace-pre-wrap break-words" : "truncate",
+            )}
+          >
+            {argumentSummary}
+          </span>
+          <ChevronDown
+            className={cn(
+              "mt-0.5 size-4 shrink-0 text-text-muted transition-transform",
+              !expanded && "-rotate-90",
+            )}
+          />
+        </button>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="shrink-0 font-medium text-text-secondary">
+            {formattedSummary}
+          </span>
+          {argumentSummary && (
+            <span className="min-w-0 truncate font-mono text-[11px] text-text-muted">
+              {argumentSummary}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExecutionActivityGroup({
+  id,
+  entries,
+  active,
+  showAvatar,
+  liveText = "",
+}: {
+  id: string;
+  entries: TranscriptEntry<ChatMessageData>[];
+  active: boolean;
+  showAvatar: boolean;
+  liveText?: string;
+}) {
+  const { t } = useTranslation();
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? active;
+  const persistedSteps = buildExecutionSteps(entries);
+  const liveStepText =
+    liveText.trim() ||
+    (active && entries.length === 0 ? t("sessions.chat.thinking") : "");
+  const steps: ExecutionStep[] = liveStepText
+    ? [
+        ...persistedSteps,
+        {
+          id: `${id}:streaming`,
+          kind: "narration",
+          text: liveStepText,
+          streaming: true,
+        },
+      ]
+    : persistedSteps;
+  const toolCount = entries.reduce(
+    (count, entry) => count + entry.extracted.toolCalls.length,
+    0,
+  );
+  const stepCount = Math.max(toolCount, entries.length, 1);
+  let lastToolStepIndex = -1;
+  for (let index = steps.length - 1; index >= 0; index -= 1) {
+    if (steps[index]?.kind === "tool") {
+      lastToolStepIndex = index;
+      break;
+    }
+  }
+  const time = formatTs(entries[entries.length - 1]?.msg.timestamp);
+
+  return (
+    <div
+      data-execution-group={id}
+      data-execution-state={active ? "running" : "completed"}
+      className="group/execution flex items-start gap-3"
+    >
+      {showAvatar ? (
+        <img
+          src={BOT_AVATAR}
+          alt=""
+          className="mt-0 -ml-1 h-9 w-9 shrink-0 object-contain"
+        />
+      ) : (
+        <div aria-hidden className="-ml-1 h-9 w-9 shrink-0" />
+      )}
+      <div className="min-w-0 max-w-[44rem] flex-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setManualOpen(!open)}
+          className="flex min-h-8 max-w-full items-center gap-2 py-0.5 text-left text-[13px] text-text-muted transition-colors hover:text-text-primary"
+        >
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 transition-transform",
+              !open && "-rotate-90",
+            )}
+          />
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border bg-surface-1 text-[11px] font-medium text-text-secondary">
+            {stepCount}
+          </span>
+          <span className="truncate">
+            {active
+              ? t("sessions.chat.stepsRunning", { count: stepCount })
+              : t("sessions.chat.stepsCompleted", { count: stepCount })}
+          </span>
+        </button>
+        <div
+          hidden={!open}
+          className="ml-2 mt-1 border-l border-border/80 pl-5"
+        >
+          {steps.map((step, index) => {
+            if (step.kind === "tool") {
+              return (
+                <ExecutionToolRow
+                  key={step.id}
+                  toolCall={step.toolCall}
+                  active={active && index === lastToolStepIndex}
+                />
+              );
+            }
+
+            return (
+              <div
+                key={step.id}
+                data-execution-detail={step.kind}
+                className="flex items-start gap-2.5 py-1.5 text-[12px] leading-5 text-text-muted"
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-5 shrink-0 items-center justify-center",
+                    active && index === steps.length - 1
+                      ? "text-[var(--color-info)]"
+                      : "text-text-muted",
+                  )}
+                >
+                  {step.streaming ? (
+                    <Loader2 className="size-[13px] animate-spin" />
+                  ) : (
+                    <Brain className="size-[14px]" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 text-[11px] font-medium text-text-muted">
+                    {step.kind === "reasoning"
+                      ? t("sessions.chat.reasoningStep")
+                      : t("sessions.chat.processNote")}
+                  </div>
+                  <div className="text-text-secondary">
+                    <ChatMarkdown content={step.text} />
+                    {step.streaming && (
+                      <span className="inline-block h-3.5 w-1 animate-pulse bg-text-secondary align-text-bottom" />
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {time && (
+          <div className="mt-1 pl-1 text-[10px] text-text-muted">{time}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -729,6 +1011,7 @@ function ChatBubble({
   onCanvasOpApplied,
   onOpenSidebar,
   showAvatar = true,
+  presentation = "full",
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
@@ -737,6 +1020,7 @@ function ChatBubble({
   onOpenSidebar?: (payload: SidebarA2UIPayload) => void;
   /** False for consecutive same-sender messages — renders an alignment spacer instead. */
   showAvatar?: boolean;
+  presentation?: "full" | "artifacts-only";
 }) {
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
@@ -745,8 +1029,6 @@ function ChatBubble({
     replyContextText,
     // biome-ignore lint/correctness/noUnusedVariables: used in extractMessage return shape
     senderName,
-    hasToolCall,
-    toolCallSummary,
     hasA2UI,
     a2uiMessages,
     sidebarA2UI,
@@ -759,6 +1041,7 @@ function ChatBubble({
   const time = formatTs(msg.timestamp);
   const isBot = msg.role === "assistant";
   const hasText = text.trim().length > 0;
+  const showText = presentation === "full" && hasText;
   const hasReplyContext = (replyContextText?.trim().length ?? 0) > 0;
   const hasMedia = images.length > 0 || fileCards.length > 0;
 
@@ -766,6 +1049,7 @@ function ChatBubble({
     <div
       data-chat-message={msg.id}
       data-chat-role={msg.role}
+      data-chat-presentation={presentation}
       className="group/bubble flex gap-3 items-start"
     >
       {showAvatar ? (
@@ -814,7 +1098,7 @@ function ChatBubble({
             </span>
           </div>
         )}
-        {hasText && (
+        {showText && (
           <div
             data-deskpet-reply-preview={isBot ? text : undefined}
             className={cn(
@@ -827,9 +1111,6 @@ function ChatBubble({
             <ChatMarkdown content={text} />
           </div>
         )}
-        {isBot && hasToolCall && !sidebarA2UI && (
-          <ArtifactCard summary={toolCallSummary} />
-        )}
         {isBot && hasA2UI && a2uiMessages && (
           <div className="mt-1 w-full min-w-[20rem] max-w-full rounded-[20px] border border-border bg-surface-1 px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
             <A2UIRenderer messages={a2uiMessages} onAction={onA2UIAction} />
@@ -841,12 +1122,24 @@ function ChatBubble({
         {isBot && canvasOpBatch && (
           <CanvasOpCard batch={canvasOpBatch} onApplied={onCanvasOpApplied} />
         )}
-        <div className="flex items-center gap-1 pl-1">
-          {time && <div className="text-[10px] text-text-muted">{time}</div>}
-          {isBot && hasText && <SpeakButton text={text} />}
-        </div>
+        {presentation === "full" && (
+          <div className="flex items-center gap-1 pl-1">
+            {time && <div className="text-[10px] text-text-muted">{time}</div>}
+            {isBot && hasText && <SpeakButton text={text} />}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function hasPersistentAssistantOutput(extracted: ExtractedMessage): boolean {
+  return (
+    extracted.hasA2UI ||
+    extracted.sidebarA2UI !== null ||
+    extracted.canvasOpBatch !== null ||
+    extracted.images.length > 0 ||
+    extracted.fileCards.length > 0
   );
 }
 
@@ -859,7 +1152,9 @@ export function SessionsPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const deskpetReplyFocusToken = searchParams.get("deskpetReplyFocusAt");
+  const [deskpetReplyFocusToken, setDeskpetReplyFocusToken] = useState<
+    string | null
+  >(null);
   const endRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { openWith } = useA2UISidebar();
@@ -941,10 +1236,31 @@ export function SessionsPage() {
           });
           return;
         }
+        if (!deskpetReplyPendingRef.current) {
+          setStreamingText("");
+          latestStreamingReplyTextRef.current = "";
+          void queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          return;
+        }
+        const replyText =
+          latestStreamingReplyTextRef.current ||
+          latestAssistantReplyTextRef.current;
+        logDeskpetHostDebug("run final; send success", { replyText });
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "success",
+          durationMs: DESKPET_SUCCESS_DURATION_MS,
+          replyText,
+        });
+        deskpetReplyPendingRef.current = false;
         activeRunIdRef.current = null;
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
+        deskpetReplyStartedAtRef.current = 0;
+        latestAssistantReplyTextRef.current = "";
+        latestStreamingReplyTextRef.current = "";
         setPendingMessages([]);
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
@@ -960,10 +1276,17 @@ export function SessionsPage() {
           return;
         }
         activeRunIdRef.current = null;
+        deskpetReplyPendingRef.current = false;
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
         deskpetReplyStartedAtRef.current = 0;
+        latestAssistantReplyTextRef.current = "";
+        latestStreamingReplyTextRef.current = "";
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
       onError: (error) => {
@@ -978,10 +1301,17 @@ export function SessionsPage() {
           return;
         }
         activeRunIdRef.current = null;
+        deskpetReplyPendingRef.current = false;
         setStreamingText("");
         setWaitingForReply(false);
         sentAtRef.current = 0;
         deskpetReplyStartedAtRef.current = 0;
+        latestAssistantReplyTextRef.current = "";
+        latestStreamingReplyTextRef.current = "";
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
     });
@@ -1129,13 +1459,11 @@ export function SessionsPage() {
   const deskpetReplyStartedAtRef = useRef(0);
   /** runId of the chat run this composer is waiting on (null = any run). */
   const activeRunIdRef = useRef<string | null>(null);
-  const awaitingDeskpetSuccessRef = useRef(false);
-  const lastDeskpetSuccessTextRef = useRef("");
+  const deskpetReplyPendingRef = useRef(false);
   const latestAssistantReplyTextRef = useRef("");
   const latestStreamingReplyTextRef = useRef("");
   const handledDeskpetPendingKeyRef = useRef("");
   const lastDeskpetTypingNotifyAtRef = useRef(0);
-  const wasWaitingForDeskpetReplyRef = useRef(false);
 
   const markDeskpetReplyWaiting = useCallback(
     ({
@@ -1148,8 +1476,7 @@ export function SessionsPage() {
       sentAtRef.current = Date.now();
       deskpetReplyStartedAtRef.current = sentAtRef.current;
       activeRunIdRef.current = runId || null;
-      awaitingDeskpetSuccessRef.current = true;
-      lastDeskpetSuccessTextRef.current = "";
+      deskpetReplyPendingRef.current = true;
       latestAssistantReplyTextRef.current = "";
       latestStreamingReplyTextRef.current = pendingReplyText.slice(0, 280);
       setWaitingForReply(true);
@@ -1157,16 +1484,6 @@ export function SessionsPage() {
         mood: "lobster-replying",
         durationMs: DESKPET_REPLYING_DURATION_MS,
       });
-
-      if (pendingReplyText) {
-        window.setTimeout(() => {
-          activeRunIdRef.current = null;
-          setWaitingForReply(false);
-          sentAtRef.current = 0;
-          deskpetReplyStartedAtRef.current = 0;
-          setPendingMessages([]);
-        }, 900);
-      }
     },
     [],
   );
@@ -1178,8 +1495,7 @@ export function SessionsPage() {
     sentAtRef.current = 0;
     deskpetReplyStartedAtRef.current = 0;
     activeRunIdRef.current = null;
-    awaitingDeskpetSuccessRef.current = false;
-    lastDeskpetSuccessTextRef.current = "";
+    deskpetReplyPendingRef.current = false;
     latestAssistantReplyTextRef.current = "";
     latestStreamingReplyTextRef.current = "";
     handledDeskpetPendingKeyRef.current = "";
@@ -1229,6 +1545,16 @@ export function SessionsPage() {
 
   useEffect(() => {
     return onDesktopHostCommand((command) => {
+      if (
+        command.type === "desktop:open-web-path" &&
+        command.focusReply &&
+        id &&
+        command.path === `/workspace/sessions/${id}`
+      ) {
+        setDeskpetReplyFocusToken(String(Date.now()));
+        return;
+      }
+
       if (command.type === "deskpet:chat-started") {
         const commandSessionId =
           typeof command.sessionId === "string" ? command.sessionId : null;
@@ -1345,8 +1671,7 @@ export function SessionsPage() {
       const now = Date.now();
       sentAtRef.current = now;
       deskpetReplyStartedAtRef.current = now;
-      awaitingDeskpetSuccessRef.current = true;
-      lastDeskpetSuccessTextRef.current = "";
+      deskpetReplyPendingRef.current = true;
       latestAssistantReplyTextRef.current = "";
       latestStreamingReplyTextRef.current = "";
       setWaitingForReply(true);
@@ -1408,10 +1733,18 @@ export function SessionsPage() {
           // start). Roll the optimistic bubble back and show a friendly notice
           // instead of leaving the composer stuck "waiting".
           activeRunIdRef.current = null;
+          deskpetReplyPendingRef.current = false;
           setWaitingForReply(false);
+          deskpetReplyStartedAtRef.current = 0;
+          latestAssistantReplyTextRef.current = "";
+          latestStreamingReplyTextRef.current = "";
           setPendingMessages((prev) =>
             prev.filter((m) => m.id !== optimisticId),
           );
+          invokeDesktopHost("desktop:deskpet-activity", {
+            mood: "error",
+            durationMs: DESKPET_ERROR_DURATION_MS,
+          });
           toast.info(
             t("sessions.chat.sessionBusy", {
               defaultValue: "上一条消息还在处理中，请等当前任务完成后再发送。",
@@ -1427,9 +1760,16 @@ export function SessionsPage() {
         });
       } catch {
         activeRunIdRef.current = null;
+        deskpetReplyPendingRef.current = false;
         setWaitingForReply(false);
         setPendingMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         deskpetReplyStartedAtRef.current = 0;
+        latestAssistantReplyTextRef.current = "";
+        latestStreamingReplyTextRef.current = "";
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
       }
     },
     [selectedBot, id, session?.sessionKey, queryClient, t],
@@ -1472,8 +1812,11 @@ export function SessionsPage() {
       });
       if (data) {
         activeRunIdRef.current = null;
+        deskpetReplyPendingRef.current = false;
         setWaitingForReply(false);
         sentAtRef.current = 0;
+        latestAssistantReplyTextRef.current = "";
+        latestStreamingReplyTextRef.current = "";
         queryClient.invalidateQueries({ queryKey: ["chat-run-status", id] });
         if ((data.deviceTasksCancelled ?? 0) > 0) {
           toast.success(
@@ -1505,6 +1848,8 @@ export function SessionsPage() {
     refetchInterval: 3000,
   });
   const sessionBusy = runStatus?.busy === true;
+  const replyInProgress =
+    waitingForReply || sessionBusy || streamingText.trim().length > 0;
 
   useEffect(() => {
     return onDesktopHostCommand((command) => {
@@ -1577,10 +1922,17 @@ export function SessionsPage() {
   useEffect(() => {
     if (waitingForReply) {
       waitingTimerRef.current = setTimeout(() => {
+        deskpetReplyPendingRef.current = false;
         setWaitingForReply(false);
         sentAtRef.current = 0;
         deskpetReplyStartedAtRef.current = 0;
+        latestAssistantReplyTextRef.current = "";
+        latestStreamingReplyTextRef.current = "";
         setPendingMessages([]);
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
       }, 120_000);
     }
     return () => {
@@ -1638,49 +1990,7 @@ export function SessionsPage() {
     if (latestAssistantReplyText) {
       latestAssistantReplyTextRef.current = latestAssistantReplyText;
     }
-
-    if (
-      awaitingDeskpetSuccessRef.current &&
-      latestAssistantReplyText &&
-      lastDeskpetSuccessTextRef.current !== latestAssistantReplyText
-    ) {
-      lastDeskpetSuccessTextRef.current = latestAssistantReplyText;
-      awaitingDeskpetSuccessRef.current = false;
-      logDeskpetHostDebug("assistant reply visible; send success immediately", {
-        replyText: latestAssistantReplyText,
-      });
-      invokeDesktopHost("desktop:deskpet-activity", {
-        mood: "success",
-        durationMs: DESKPET_SUCCESS_DURATION_MS,
-        replyText: latestAssistantReplyText,
-      });
-    }
   }, [latestAssistantReplyText]);
-
-  useEffect(() => {
-    if (
-      !awaitingDeskpetSuccessRef.current ||
-      waitingForReply ||
-      !latestAssistantReplyText
-    ) {
-      return;
-    }
-
-    if (lastDeskpetSuccessTextRef.current === latestAssistantReplyText) {
-      return;
-    }
-
-    lastDeskpetSuccessTextRef.current = latestAssistantReplyText;
-    awaitingDeskpetSuccessRef.current = false;
-    logDeskpetHostDebug("assistant reply detected; send success bubble", {
-      replyText: latestAssistantReplyText,
-    });
-    invokeDesktopHost("desktop:deskpet-activity", {
-      mood: "success",
-      durationMs: DESKPET_SUCCESS_DURATION_MS,
-      replyText: latestAssistantReplyText,
-    });
-  }, [latestAssistantReplyText, waitingForReply]);
 
   useEffect(() => {
     if (!waitingForReply) {
@@ -1688,19 +1998,13 @@ export function SessionsPage() {
       return;
     }
 
-    if (awaitingDeskpetSuccessRef.current) {
-      logDeskpetHostDebug("waitingForReply true; send lobster-replying");
-      invokeDesktopHost("desktop:deskpet-activity", {
-        mood: "lobster-replying",
-        durationMs: DESKPET_REPLYING_DURATION_MS,
-      });
-    }
+    logDeskpetHostDebug("waitingForReply true; send lobster-replying");
+    invokeDesktopHost("desktop:deskpet-activity", {
+      mood: "lobster-replying",
+      durationMs: DESKPET_REPLYING_DURATION_MS,
+    });
 
     const timer = window.setInterval(() => {
-      if (!awaitingDeskpetSuccessRef.current) {
-        return;
-      }
-
       logDeskpetHostDebug(
         "waitingForReply heartbeat; refresh lobster-replying",
       );
@@ -1714,84 +2018,6 @@ export function SessionsPage() {
       window.clearInterval(timer);
     };
   }, [waitingForReply]);
-
-  useEffect(() => {
-    if (!wasWaitingForDeskpetReplyRef.current) {
-      wasWaitingForDeskpetReplyRef.current = waitingForReply;
-      return;
-    }
-
-    if (waitingForReply) {
-      return;
-    }
-
-    if (!awaitingDeskpetSuccessRef.current) {
-      wasWaitingForDeskpetReplyRef.current = false;
-      return;
-    }
-
-    let retryCount = 0;
-    let timer: number | null = null;
-    const sendSuccess = async () => {
-      let replyText = latestAssistantReplyTextRef.current;
-
-      if (!replyText && id) {
-        try {
-          const { data } = await getApiV1SessionsByIdMessages({
-            path: { id },
-            query: { limit: 200 },
-          });
-          const messages = ((data as Record<string, unknown> | undefined)
-            ?.messages ?? []) as ChatMessageData[];
-          replyText = getLatestAssistantReplyTextFromMessages(messages, {
-            afterTimestamp: deskpetReplyStartedAtRef.current,
-          });
-          if (replyText) {
-            latestAssistantReplyTextRef.current = replyText;
-          }
-        } catch (error) {
-          logDeskpetHostDebug("success reply fetch failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      if (!replyText && retryCount < DESKPET_SUCCESS_REPLY_MAX_RETRIES) {
-        retryCount += 1;
-        void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
-        timer = window.setTimeout(() => {
-          void sendSuccess();
-        }, DESKPET_SUCCESS_REPLY_RETRY_MS);
-        return;
-      }
-
-      logDeskpetHostDebug("waitingForReply completed; send success", {
-        replyText,
-        retryCount,
-      });
-      invokeDesktopHost("desktop:deskpet-activity", {
-        mood: "success",
-        durationMs: DESKPET_SUCCESS_DURATION_MS,
-        replyText,
-      });
-      awaitingDeskpetSuccessRef.current = false;
-      lastDeskpetSuccessTextRef.current = replyText;
-      latestStreamingReplyTextRef.current = "";
-      deskpetReplyStartedAtRef.current = 0;
-    };
-
-    timer = window.setTimeout(() => {
-      void sendSuccess();
-    }, 0);
-
-    wasWaitingForDeskpetReplyRef.current = false;
-    return () => {
-      if (timer) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, [id, queryClient, waitingForReply]);
-
   // Enrich assistant messages with A2UI from matching render_a2ui toolResults.
   // render_a2ui results contain A2UI JSONL in ```a2ui code blocks, but
   // ChatBubble only renders A2UI for assistant (bot) messages.
@@ -1909,6 +2135,7 @@ export function SessionsPage() {
       if (extracted.text.trim().length > 0) return true;
       if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
       if (extracted.hasToolCall) return true;
+      if (extracted.reasoning.length > 0) return true;
       if (extracted.sidebarA2UI) return true;
       if (extracted.a2uiAction) return true;
       if (extracted.canvasOpBatch) return true;
@@ -1917,6 +2144,7 @@ export function SessionsPage() {
       if (extracted.fileCards.length > 0) return true;
       return false;
     });
+  const transcriptItems = buildTranscriptItems(enrichedMessages);
 
   // Auto-open the sidebar when a NEW sidebar surface arrives during a live
   // conversation.  Surfaces already present on initial load stay closed —
@@ -1981,12 +2209,46 @@ export function SessionsPage() {
     endRef.current?.scrollIntoView({ behavior: "instant" });
   }, [chatData, waitingForReply, pendingMessages.length]);
 
-  // Whether the thread currently ends with an assistant message — the
-  // Thinking/streaming bubbles then drop their avatar to read as a
+  // Whether the thread currently ends with an assistant message — a
+  // provisional execution group then drops its avatar to read as a
   // continuation of the same reply run.
   const lastDisplayedIsAssistant =
     enrichedMessages.length > 0 &&
     enrichedMessages[enrichedMessages.length - 1]?.msg.role === "assistant";
+  let latestUserTranscriptIndex = -1;
+  for (let index = transcriptItems.length - 1; index >= 0; index -= 1) {
+    const item = transcriptItems[index];
+    const entry =
+      item?.kind === "message"
+        ? item.entry
+        : item?.entries[item.entries.length - 1];
+    if (entry?.msg.role === "user") {
+      latestUserTranscriptIndex = index;
+      break;
+    }
+  }
+  let currentRunActivityIndex = -1;
+  for (
+    let index = transcriptItems.length - 1;
+    index > latestUserTranscriptIndex;
+    index -= 1
+  ) {
+    if (transcriptItems[index]?.kind === "activity") {
+      currentRunActivityIndex = index;
+      break;
+    }
+  }
+  const renderedAssistantTextsSinceLatestUser = transcriptItems
+    .slice(latestUserTranscriptIndex + 1)
+    .flatMap((item) => (item.kind === "message" ? [item.entry] : item.entries))
+    .filter((entry) => entry.msg.role === "assistant")
+    .flatMap((entry) => [...entry.extracted.reasoning, entry.extracted.text])
+    .map((text) => text.trim())
+    .filter(Boolean);
+  const visibleStreamingText = stripRenderedAssistantText(
+    stripMediaMarkerLines(streamingText),
+    renderedAssistantTextsSinceLatestUser,
+  );
 
   if (!id) {
     return <EmptyState />;
@@ -2137,10 +2399,24 @@ export function SessionsPage() {
               data-chat-layout="centered"
               className="mx-auto flex max-w-[800px] flex-col gap-5"
             >
-              {enrichedMessages.flatMap(({ msg, extracted }, idx, arr) => {
-                const msgTime = msg.timestamp ?? 0;
-                const prevTime =
-                  idx > 0 ? (arr[idx - 1]?.msg.timestamp ?? 0) : 0;
+              {transcriptItems.flatMap((item, idx, arr) => {
+                const firstEntry =
+                  item.kind === "message" ? item.entry : item.entries[0];
+                const lastEntry =
+                  item.kind === "message"
+                    ? item.entry
+                    : item.entries[item.entries.length - 1];
+                if (!firstEntry || !lastEntry) {
+                  return [];
+                }
+
+                const previousItem = idx > 0 ? arr[idx - 1] : undefined;
+                const previousLastEntry =
+                  previousItem?.kind === "message"
+                    ? previousItem.entry
+                    : previousItem?.entries[previousItem.entries.length - 1];
+                const msgTime = firstEntry.msg.timestamp ?? 0;
+                const prevTime = previousLastEntry?.msg.timestamp ?? 0;
                 const divider =
                   newSessionDividerTime &&
                   msgTime >= newSessionDividerTime &&
@@ -2160,81 +2436,74 @@ export function SessionsPage() {
                         </div>,
                       ]
                     : [];
-                // Collapse avatars for consecutive assistant messages — only
-                // the first message of a run shows the bot avatar.  A "new
-                // conversation" divider restarts the run.
+                const role = firstEntry.msg.role;
+                const previousRole = previousLastEntry?.msg.role;
                 const showAvatar =
-                  msg.role !== "assistant" ||
+                  role !== "assistant" ||
                   divider.length > 0 ||
                   idx === 0 ||
-                  arr[idx - 1]?.msg.role !== "assistant";
+                  previousRole !== "assistant";
+                const openSidebar = (payload: SidebarA2UIPayload): void => {
+                  openWith(payload.surfaceId, payload.messages, onA2UIAction, {
+                    size: sidebarSurfaceDefaultSize(payload.messages),
+                  });
+                };
+
+                if (item.kind === "message") {
+                  return [
+                    ...divider,
+                    <ChatBubble
+                      key={item.entry.msg.id}
+                      msg={item.entry.msg}
+                      extracted={item.entry.extracted}
+                      showAvatar={showAvatar}
+                      onA2UIAction={onA2UIAction}
+                      onCanvasOpApplied={onCanvasOpApplied}
+                      onOpenSidebar={openSidebar}
+                    />,
+                  ];
+                }
+
+                const activityActive =
+                  replyInProgress && idx === currentRunActivityIndex;
+                const artifactBubbles = item.entries
+                  .filter((entry) =>
+                    hasPersistentAssistantOutput(entry.extracted),
+                  )
+                  .map((entry) => (
+                    <ChatBubble
+                      key={`${entry.msg.id}:artifacts`}
+                      msg={entry.msg}
+                      extracted={entry.extracted}
+                      showAvatar={false}
+                      presentation="artifacts-only"
+                      onA2UIAction={onA2UIAction}
+                      onCanvasOpApplied={onCanvasOpApplied}
+                      onOpenSidebar={openSidebar}
+                    />
+                  ));
+
                 return [
                   ...divider,
-                  <ChatBubble
-                    key={msg.id}
-                    msg={msg}
-                    extracted={extracted}
+                  <ExecutionActivityGroup
+                    key={item.id}
+                    id={item.id}
+                    entries={item.entries}
+                    active={activityActive}
                     showAvatar={showAvatar}
-                    onA2UIAction={onA2UIAction}
-                    onCanvasOpApplied={onCanvasOpApplied}
-                    onOpenSidebar={(payload) => {
-                      openWith(
-                        payload.surfaceId,
-                        payload.messages,
-                        onA2UIAction,
-                        { size: sidebarSurfaceDefaultSize(payload.messages) },
-                      );
-                    }}
+                    liveText={activityActive ? visibleStreamingText : ""}
                   />,
+                  ...artifactBubbles,
                 ];
               })}
-              {waitingForReply && !streamingText && (
-                <div className="flex gap-3 items-start">
-                  {lastDisplayedIsAssistant ? (
-                    <div aria-hidden className="shrink-0 w-9 h-9 -ml-1" />
-                  ) : (
-                    <img
-                      src={BOT_AVATAR}
-                      alt=""
-                      className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
-                    />
-                  )}
-                  <div className="inline-flex items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                    <Loader2
-                      size={14}
-                      className="animate-spin text-text-muted"
-                    />
-                    <span className="text-[13px] text-text-muted">
-                      {t("sessions.chat.thinking", {
-                        defaultValue: "Thinking...",
-                      })}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {waitingForReply && streamingText && (
-                <div className="flex gap-3 items-start">
-                  {lastDisplayedIsAssistant ? (
-                    <div aria-hidden className="shrink-0 w-9 h-9 -ml-1" />
-                  ) : (
-                    <img
-                      src={BOT_AVATAR}
-                      alt=""
-                      className="shrink-0 w-9 h-9 -ml-1 mt-0 object-contain"
-                    />
-                  )}
-                  <div className="rounded-[20px] border border-border bg-surface-1 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] max-w-[80%]">
-                    <p
-                      className="text-[13px] text-text-secondary whitespace-pre-wrap break-words"
-                      data-deskpet-reply-preview={stripMediaMarkerLines(
-                        streamingText,
-                      )}
-                    >
-                      {stripMediaMarkerLines(streamingText)}
-                      <span className="inline-block w-1.5 h-4 ml-0.5 bg-text-secondary animate-pulse align-text-bottom" />
-                    </p>
-                  </div>
-                </div>
+              {replyInProgress && currentRunActivityIndex < 0 && (
+                <ExecutionActivityGroup
+                  id={`activity:streaming:${id}`}
+                  entries={[]}
+                  active
+                  showAvatar={!lastDisplayedIsAssistant}
+                  liveText={visibleStreamingText}
+                />
               )}
               <div ref={endRef} />
             </div>

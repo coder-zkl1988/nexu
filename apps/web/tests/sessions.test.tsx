@@ -38,6 +38,18 @@ vi.mock("react-i18next", () => ({
       if (key === "sessions.chat.toolCompleted") {
         return "Completed";
       }
+      if (key === "sessions.chat.stepsCompleted" && values?.count != null) {
+        return `${String(values.count)} steps completed`;
+      }
+      if (key === "sessions.chat.stepsRunning" && values?.count != null) {
+        return `Running ${String(values.count)} steps`;
+      }
+      if (key === "sessions.chat.reasoningStep") {
+        return "Thought";
+      }
+      if (key === "sessions.chat.processNote") {
+        return "Process note";
+      }
       if (key === "sessions.chat.replyLabel") {
         return "Localized Reply";
       }
@@ -102,6 +114,9 @@ function renderSessionsPage(): string {
           {
             type: "toolCall",
             name: "google-calendar",
+            arguments: {
+              task: "Review every calendar event for the next seven days, compare attendee availability, flag scheduling conflicts, and return a complete recommendation without omitting any event details.",
+            },
           },
         ],
         timestamp: new Date("2026-03-20T08:58:00.000Z").getTime(),
@@ -136,13 +151,21 @@ describe("SessionsPage", () => {
     expect(markup).toContain("Open in Slack");
   });
 
-  it("renders assistant tool activity as a compact execution chip", () => {
+  it("renders assistant tool activity as a compact execution group", () => {
     const markup = renderSessionsPage();
 
     expect(markup).toContain('data-chat-layout="centered"');
+    expect(markup).toContain("data-execution-group=");
+    expect(markup).toContain('data-execution-state="completed"');
+    expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain('data-tool-card="google-calendar"');
-    expect(markup).toContain('data-tool-card-variant="inline-chip"');
-    expect(markup).toContain(">Completed<");
+    expect(markup).toContain('data-tool-card-variant="execution-row"');
+    expect(markup).toContain('data-tool-arguments-toggle="google-calendar"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain(
+      "return a complete recommendation without omitting any event details.",
+    );
+    expect(markup).toContain(">1 steps completed<");
     expect(markup).toContain("Google Calendar");
     expect(markup).not.toContain(">Localized Tool Activity<");
   });
