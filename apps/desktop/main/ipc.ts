@@ -445,6 +445,11 @@ async function startDeskpetChat(
         sessionKey,
         runId,
       });
+  deskpetCurrentChatTarget = {
+    botId,
+    sessionKey,
+    ...(sessionId ? { sessionId } : {}),
+  };
   const startedCommand: HostDesktopCommand = {
     type: "deskpet:chat-started",
     botId,
@@ -501,22 +506,16 @@ function getDeskpetCurrentChatPath(): string | null {
   });
 }
 
-function appendDeskpetReplyFocus(path: string): string {
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}deskpetReplyFocusAt=${Date.now()}`;
-}
-
 function openDeskpetCurrentChat(
   sender: Electron.WebContents,
   input?: HostInvokePayloadMap["desktop:deskpet-open-current-chat"],
 ): HostInvokeResultMap["desktop:deskpet-open-current-chat"] {
-  const basePath = getDeskpetCurrentChatPath() ?? "/workspace";
-  const path =
-    input?.intent === "reply" ? appendDeskpetReplyFocus(basePath) : basePath;
+  const path = getDeskpetCurrentChatPath() ?? "/workspace";
 
   broadcastDesktopCommand({
     type: "desktop:open-web-path",
     path,
+    ...(input?.intent === "reply" ? { focusReply: true } : {}),
   });
   showPrimaryWindow(sender);
   return { ok: true, path };
@@ -550,7 +549,8 @@ async function replyDeskpetCurrentChat(
     throw new Error("请输入回复内容。");
   }
 
-  if (!deskpetCurrentChatTarget) {
+  const target = deskpetCurrentChatTarget;
+  if (!target) {
     throw new Error("还没有可回复的会话。");
   }
 
@@ -560,8 +560,8 @@ async function replyDeskpetCurrentChat(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        botId: deskpetCurrentChatTarget.botId,
-        sessionKey: deskpetCurrentChatTarget.sessionKey,
+        botId: target.botId,
+        sessionKey: target.sessionKey,
         message: {
           type: "text",
           content: trimmed,
@@ -572,17 +572,15 @@ async function replyDeskpetCurrentChat(
 
   const replyCommand: HostDesktopCommand = {
     type: "deskpet:current-chat-replied",
-    sessionKey: deskpetCurrentChatTarget.sessionKey,
+    sessionKey: target.sessionKey,
     text: trimmed,
-    ...(deskpetCurrentChatTarget.sessionId
-      ? { sessionId: deskpetCurrentChatTarget.sessionId }
-      : {}),
+    ...(target.sessionId ? { sessionId: target.sessionId } : {}),
   };
 
-  if (deskpetCurrentChatTarget.sessionId) {
+  if (target.sessionId) {
     broadcastDesktopCommand({
       type: "desktop:open-web-path",
-      path: `/workspace/sessions/${deskpetCurrentChatTarget.sessionId}`,
+      path: `/workspace/sessions/${target.sessionId}`,
     });
   }
 
@@ -591,6 +589,20 @@ async function replyDeskpetCurrentChat(
   setTimeout(() => broadcastDesktopCommand(replyCommand), 1000);
 
   return { ok: true };
+}
+
+async function sendDeskpetMessage(
+  runtimeConfig: DesktopRuntimeConfig,
+  text: string,
+): Promise<HostInvokeResultMap["desktop:deskpet-send-message"]> {
+  if (!deskpetCurrentChatTarget) {
+    const result = await startDeskpetChat(runtimeConfig, text);
+    return { ...result, mode: "started" };
+  }
+
+  const path = getDeskpetCurrentChatPath() ?? "/workspace";
+  await replyDeskpetCurrentChat(runtimeConfig, text);
+  return { ok: true, mode: "replied", path };
 }
 
 const nativeCrashTestTitles = {
@@ -994,6 +1006,22 @@ export function registerIpcHandlers(
           return updated;
         }
 
+        case "desktop:deskpet-send-message": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:deskpet-send-message"];
+          const result = await sendDeskpetMessage(
+            runtimeConfig,
+            typedPayload.text,
+          );
+          broadcastDesktopCommand({
+            type: "deskpet:set-mood",
+            mood: "lobster-replying",
+            source: "auto",
+            durationMs: 8000,
+          });
+          return result;
+        }
+
         case "desktop:deskpet-start-chat": {
           const typedPayload =
             payload as HostInvokePayloadMap["desktop:deskpet-start-chat"];
@@ -1007,7 +1035,6 @@ export function registerIpcHandlers(
             source: "auto",
             durationMs: 8000,
           });
-          showPrimaryWindow(_event.sender);
           return result;
         }
 
@@ -1030,7 +1057,6 @@ export function registerIpcHandlers(
             source: "auto",
             durationMs: 8000,
           });
-          showPrimaryWindow(_event.sender);
           return result;
         }
 

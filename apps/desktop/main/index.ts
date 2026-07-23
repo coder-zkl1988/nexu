@@ -20,6 +20,7 @@ import {
   screen,
   session,
   shell,
+  webContents,
 } from "electron";
 import { getOpenclawSkillsDir } from "../shared/desktop-paths";
 import type {
@@ -85,6 +86,7 @@ import {
   getDesktopShellPreferences,
   readCrashReportsConsent,
   setDesktopShellPreferencesRuntimeHandler,
+  updateDesktopShellPreferences,
 } from "./services/desktop-shell-preferences";
 import {
   startDesktopDevInspectServer,
@@ -984,7 +986,7 @@ function showDeskpetContextMenu(): void {
     {
       label: "隐藏桌宠",
       click: () => {
-        deskpetWindow?.hide();
+        updateDesktopShellPreferences({ deskpetEnabled: false });
       },
     },
   ]).popup({ window: deskpetWindow });
@@ -1759,6 +1761,16 @@ async function ensureWindowsTray(): Promise<void> {
   });
 }
 
+function broadcastShellPreferencesUpdated(): void {
+  for (const contents of webContents.getAllWebContents()) {
+    if (!contents.isDestroyed()) {
+      contents.send("host:desktop-command", {
+        type: "desktop:shell-preferences-updated",
+      });
+    }
+  }
+}
+
 function applyResidentEntryPreferences(
   preferences: DesktopShellPreferences,
 ): void {
@@ -2330,6 +2342,7 @@ app.whenReady().then(async () => {
   }
   setDesktopShellPreferencesRuntimeHandler((preferences) => {
     applyResidentEntryPreferences(preferences);
+    broadcastShellPreferencesUpdated();
   });
   applyDesktopShellPreferencesOnStartup();
   unsubscribeIpc = registerIpcHandlers(
@@ -2526,7 +2539,17 @@ app.whenReady().then(async () => {
       return;
     }
 
-    focusMainWindow();
+    setImmediate(() => {
+      if (
+        deskpetWindow &&
+        !deskpetWindow.isDestroyed() &&
+        deskpetWindow.isFocused()
+      ) {
+        return;
+      }
+
+      focusMainWindow();
+    });
   });
 
   app.once("before-quit", () => {

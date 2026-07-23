@@ -186,6 +186,10 @@ export async function cancelMiniMaxOauth() {
   return getHostBridge().invoke("desktop:cancel-minimax-oauth", undefined);
 }
 
+export async function sendDeskpetMessage(text: string) {
+  return getHostBridge().invoke("desktop:deskpet-send-message", { text });
+}
+
 export async function startDeskpetChat(text: string) {
   return getHostBridge().invoke("desktop:deskpet-start-chat", { text });
 }

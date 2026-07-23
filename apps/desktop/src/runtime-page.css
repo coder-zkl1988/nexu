@@ -74,6 +74,123 @@ body:has(.deskpet-root) {
   filter: drop-shadow(0 10px 18px rgba(102, 48, 18, 0.18));
 }
 
+.deskpet-chat-composer {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  width: min(430px, calc(100vw - 18px));
+  transform: translateX(-50%);
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(255, 224, 197, 0.14);
+  border-radius: 18px;
+  background: rgba(31, 30, 28, 0.96);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 26px
+    rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(20px);
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.deskpet-chat-composer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px;
+  gap: 7px;
+  align-items: center;
+}
+
+.deskpet-chat-input {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  max-height: 76px;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 238, 219, 0.12);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 248, 238, 0.96);
+  caret-color: #ff7540;
+  font: 400 14px / 1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  user-select: text;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-chat-input::placeholder {
+  color: rgba(255, 238, 219, 0.46);
+}
+
+.deskpet-chat-input:focus {
+  border-color: rgba(248, 103, 47, 0.62);
+  box-shadow: 0 0 0 2px rgba(248, 103, 47, 0.13);
+}
+
+.deskpet-chat-input:disabled {
+  opacity: 0.7;
+}
+
+.deskpet-chat-icon-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 238, 219, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 248, 238, 0.72);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.deskpet-chat-icon-button:hover:not(:disabled) {
+  border-color: rgba(255, 238, 219, 0.18);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff8ef;
+}
+
+.deskpet-chat-icon-button:focus-visible {
+  outline: 2px solid rgba(248, 103, 47, 0.42);
+  outline-offset: 2px;
+}
+
+.deskpet-chat-icon-button.is-send {
+  border-color: #f8672f;
+  background: #f8672f;
+  color: #fff8ef;
+}
+
+.deskpet-chat-icon-button.is-send:hover:not(:disabled) {
+  border-color: #ff7a45;
+  background: #ff7a45;
+}
+
+.deskpet-chat-icon-button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.deskpet-chat-error {
+  margin: 0 2px;
+  color: #ffac90;
+  font: 500 12px / 1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.deskpet-chat-spinner {
+  animation: deskpet-chat-spin 0.8s linear infinite;
+}
+
+@keyframes deskpet-chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .deskpet-reply-panel {
   position: absolute;
   top: max(14px, 7vh);
@@ -123,11 +240,8 @@ body:has(.deskpet-root) {
 
 .deskpet-reply-bubble {
   position: relative;
-  display: grid;
+  display: block;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
   min-height: 25px;
   -webkit-app-region: no-drag;
 }
@@ -197,38 +311,6 @@ body:has(.deskpet-root) {
   to {
     transform: translateY(-50%) rotate(360deg);
   }
-}
-
-.deskpet-reply-open-button {
-  position: relative;
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid rgba(255, 238, 219, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  color: rgba(255, 248, 238, 0.76);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-.deskpet-reply-open-button:hover {
-  background: rgba(248, 103, 47, 0.18);
-  color: #fff8ef;
-}
-
-.deskpet-reply-open-button:focus-visible {
-  outline: 2px solid rgba(248, 103, 47, 0.34);
-  outline-offset: 2px;
-}
-
-.deskpet-reply-open-icon {
-  display: block;
-  flex: 0 0 auto;
 }
 
 .deskpet-task-panel {
@@ -359,7 +441,6 @@ body:has(.deskpet-root) {
   min-height: 32px;
 }
 
-.deskpet-task-action-button,
 .deskpet-task-close {
   display: inline-flex;
   position: relative;
@@ -379,22 +460,15 @@ body:has(.deskpet-root) {
   -webkit-app-region: no-drag;
 }
 
-.deskpet-task-action-button:hover,
 .deskpet-task-close:hover {
   border-color: rgba(255, 238, 219, 0.14);
   background: rgba(255, 255, 255, 0.16);
   color: #fff8ef;
 }
 
-.deskpet-task-action-button:focus-visible,
 .deskpet-task-close:focus-visible {
   outline: 2px solid rgba(248, 103, 47, 0.34);
   outline-offset: 2px;
-}
-
-.deskpet-task-action-icon {
-  display: block;
-  flex: 0 0 auto;
 }
 
 .deskpet-task-indicator {
@@ -405,18 +479,6 @@ body:has(.deskpet-root) {
   flex: 0 0 32px;
   place-items: center;
   border-radius: 999px;
-}
-
-button.deskpet-task-indicator {
-  padding: 0;
-  border: 0;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-
-button.deskpet-task-indicator:focus-visible {
-  outline: 2px solid rgba(248, 103, 47, 0.34);
-  outline-offset: 2px;
 }
 
 .deskpet-task-indicator.is-working {
@@ -443,10 +505,6 @@ button.deskpet-task-indicator:focus-visible {
 .deskpet-task-indicator.is-complete {
   background: #f8672f;
   color: #fff8ef;
-}
-
-button.deskpet-task-indicator.is-complete:hover {
-  background: #ff7040;
 }
 
 .deskpet-task-indicator.is-complete::before {
@@ -478,42 +536,6 @@ button.deskpet-task-indicator.is-complete:hover {
 
 .deskpet-task-panel.is-lobster-replying .deskpet-task-summary {
   min-height: auto;
-}
-
-.deskpet-task-followup {
-  display: flex;
-  width: 100%;
-  min-height: 36px;
-  align-items: center;
-  padding: 0 18px;
-  border: 1px solid rgba(255, 238, 219, 0.16);
-  border-radius: 999px;
-  background: rgba(16, 16, 15, 0.7);
-  color: rgba(255, 238, 219, 0.72);
-  caret-color: #f8672f;
-  font: 400 14px / 1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  outline: none;
-  text-align: left;
-  -webkit-app-region: no-drag;
-}
-
-.deskpet-task-followup::placeholder {
-  color: rgba(255, 238, 219, 0.7);
-  opacity: 1;
-}
-
-.deskpet-task-followup:hover {
-  border-color: rgba(255, 238, 219, 0.22);
-  background: rgba(22, 22, 20, 0.84);
-  color: rgba(255, 248, 238, 0.88);
-}
-
-.deskpet-task-followup:focus {
-  border-color: rgba(248, 103, 47, 0.5);
-  background: rgba(18, 18, 17, 0.92);
-  color: rgba(255, 248, 238, 0.94);
-  box-shadow: 0 0 0 2px rgba(248, 103, 47, 0.16);
 }
 
 .desktop-shell {

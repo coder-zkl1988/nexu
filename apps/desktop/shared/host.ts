@@ -30,6 +30,7 @@ export const hostInvokeChannels = [
   "desktop:cancel-minimax-oauth",
   "desktop:get-shell-preferences",
   "desktop:update-shell-preferences",
+  "desktop:deskpet-send-message",
   "desktop:deskpet-start-chat",
   "desktop:deskpet-register-current-chat",
   "desktop:deskpet-reply-current-chat",
@@ -166,6 +167,9 @@ export type HostInvokePayloadMap = {
     deskpetEnabled?: boolean;
     crashReportsEnabled?: boolean;
     sessionReplayEnabled?: boolean;
+  };
+  "desktop:deskpet-send-message": {
+    text: string;
   };
   "desktop:deskpet-start-chat": {
     text: string;
@@ -498,6 +502,11 @@ export type HostInvokeResultMap = {
     crashReportsEnabled: boolean;
     sessionReplayEnabled: boolean;
   };
+  "desktop:deskpet-send-message": {
+    ok: true;
+    mode: "started" | "replied";
+    path: string;
+  };
   "desktop:deskpet-start-chat": {
     ok: true;
     path: string;
@@ -693,6 +702,7 @@ export type HostDesktopCommand =
   | {
       type: "desktop:open-web-path";
       path: string;
+      focusReply?: boolean;
     }
   | {
       type: "deskpet:current-chat-replied";
@@ -732,6 +742,9 @@ export type HostDesktopCommand =
   | {
       type: "deskpet:set-size";
       size: DesktopDeskpetSize;
+    }
+  | {
+      type: "desktop:shell-preferences-updated";
     };
 
 export type RuntimeUnitSnapshot = Omit<RuntimeUnitState, "logTail">;

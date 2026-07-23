@@ -149,6 +149,36 @@ function AnalyticsSessionSync() {
   return null;
 }
 
+function DesktopShellPreferencesSync() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
+    if (!candidate || typeof candidate !== "object") {
+      return;
+    }
+
+    const onDesktopCommand = Reflect.get(candidate, "onDesktopCommand");
+    if (typeof onDesktopCommand !== "function") {
+      return;
+    }
+
+    return onDesktopCommand.call(candidate, (command: { type?: string }) => {
+      if (command.type === "desktop:shell-preferences-updated") {
+        void queryClient.invalidateQueries({
+          queryKey: ["desktop-shell-preferences"],
+        });
+      }
+    }) as (() => void) | undefined;
+  }, [queryClient]);
+
+  return null;
+}
+
 function DesktopRewardsSync() {
   const queryClient = useQueryClient();
 
@@ -200,6 +230,7 @@ ReactDOM.createRoot(root).render(
           <DesktopAnalyticsBootstrap />
           <AnalyticsSessionSync />
           <DesktopRewardsSync />
+          <DesktopShellPreferencesSync />
           <App />
           <Toaster position="top-right" />
         </BrowserRouter>

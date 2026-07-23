@@ -1,6 +1,6 @@
-import { Square } from "lucide-react";
+import { LoaderCircle, SendHorizontal, X } from "lucide-react";
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
+  type FormEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -27,13 +27,16 @@ import teaseLobsterAssetUrl from "../assets/deskpet/tease-lobster.webp";
 import workingAssetUrl from "../assets/deskpet/working.webp";
 import yawnAssetUrl from "../assets/deskpet/yawn.webp";
 import {
+  isDeskpetTaskMood,
+  resolveDeskpetMood,
+  resolveDeskpetTaskDurationMs,
+} from "../lib/deskpet-state";
+import {
   getRuntimeState,
   moveDeskpetWindow,
   onDesktopCommand,
   onRuntimeEvent,
-  openDeskpetCurrentChat,
-  pauseDeskpetCurrentReply,
-  replyDeskpetCurrentChat,
+  sendDeskpetMessage,
   setDeskpetMouseEvents,
 } from "../lib/host-api";
 import { applyRuntimeEvent } from "../lib/runtime-state";
@@ -90,19 +93,10 @@ const IDLE_REST_DELAY_MS = 10_000;
 const IDLE_PEEK_DELAY_MS = 30_000;
 const PEEK_RETURN_REST_DELAY_MS = 5000;
 const PET_TEASE_CLICK_INTERVAL_MS = 280;
+const CHAT_COMPOSER_IDLE_TIMEOUT_MS = 10_000;
 const PET_TEASE_HINT_MESSAGE = "双击可以逗一逗";
-const DESKPET_REPLY_PAGE_INTERVAL_MS = 2600;
-const DESKPET_REPLY_LINE_CHAR_LIMIT = 24;
-const DESKPET_REPLY_MAX_CHARS = 420;
 const DESKPET_HIT_AREA_SELECTOR = "[data-deskpet-hit-area]";
 const DESKPET_PET_HIT_AREA_SELECTOR = "[data-deskpet-pet-hit-area]";
-
-const DESKPET_DIALOGUE_MOODS = new Set<DesktopDeskpetMood>([
-  "error",
-  "lobster-replying",
-  "success",
-  "working",
-]);
 
 type PetGestureMode = "pending" | "move" | "tease";
 type ReplyBubblePlacement = "near-top";
@@ -116,31 +110,6 @@ type PetGesture = {
   startScreenY: number;
   totalDistance: number;
 };
-
-function ReturnConversationIcon({
-  className,
-  size,
-}: {
-  className?: string;
-  size: number;
-}) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      fill="currentColor"
-      height={size}
-      stroke="currentColor"
-      strokeLinejoin="round"
-      strokeWidth={0.1}
-      viewBox="0 0 1024 1024"
-      width={size}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M512 898.844444c-51.2 0-96.711111-11.377778-142.222222-28.444444-5.688889 0-5.688889-5.688889-11.377778-5.688889h-5.688889l-136.533333 22.755556c-17.066667 5.688889-34.133333 5.688889-51.2 0-17.066667-5.688889-28.444444-17.066667-34.133334-34.133334-5.688889-17.066667-5.688889-28.444444 0-51.2l22.755556-142.222222v-5.688889c-17.066667-45.511111-22.755556-91.022222-22.755556-142.222222 0-210.488889 170.666667-386.844444 386.844445-386.844444 210.488889 0 386.844444 170.666667 386.844444 386.844444-5.688889 210.488889-182.044444 386.844444-392.533333 386.844444z m-153.6-119.466666h17.066667c5.688889 0 11.377778 5.688889 22.755555 5.688889 34.133333 17.066667 73.955556 22.755556 113.777778 22.755555 164.977778 0 301.511111-136.533333 301.511111-301.511111S676.977778 204.8 512 204.8C347.022222 216.177778 216.177778 347.022222 216.177778 512c0 39.822222 5.688889 73.955556 22.755555 113.777778 5.688889 11.377778 5.688889 17.066667 5.688889 22.755555v39.822223L227.555556 807.822222l113.777777-28.444444h17.066667z" />
-    </svg>
-  );
-}
 
 function getRandomReplyBubblePlacement(): ReplyBubblePlacement {
   return "near-top";
@@ -245,97 +214,13 @@ function getTaskStatusText(mood: DesktopDeskpetMood): string | null {
 
 function getReplyPreviewText(replyText: string | null): string {
   const normalized = (replyText ?? "").replace(/\s+/g, " ").trim();
-  return normalized || "已完成，可以继续和我说。";
-}
-
-function normalizeReplyTextForPages(replyText: string | null): string {
-  const trimmed = (replyText ?? "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/\t/g, " ")
-    .trim();
-
-  if (!trimmed) {
-    return "已完成，可以继续和我说。";
+  if (!normalized) {
+    return "任务已完成。";
   }
 
-  if (trimmed.length <= DESKPET_REPLY_MAX_CHARS) {
-    return trimmed;
-  }
-
-  return `${trimmed.slice(0, DESKPET_REPLY_MAX_CHARS).trim()}...`;
-}
-
-function findReplyLineBreakIndex(text: string, limit: number): number {
-  if (text.length <= limit) {
-    return text.length;
-  }
-
-  const max = Math.min(text.length, limit);
-  const min = Math.max(8, Math.floor(limit * 0.58));
-  const breakChars = new Set([
-    " ",
-    "，",
-    "。",
-    "、",
-    "：",
-    "；",
-    "！",
-    "？",
-    ",",
-    ".",
-    ":",
-    ";",
-    "!",
-    "?",
-    ")",
-    "）",
-  ]);
-
-  for (let index = max; index >= min; index -= 1) {
-    if (breakChars.has(text[index - 1] ?? "")) {
-      return index;
-    }
-  }
-
-  return max;
-}
-
-function splitReplyTextIntoLines(replyText: string | null): string[] {
-  const normalized = normalizeReplyTextForPages(replyText);
-  const sourceLines = normalized
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-  const lines: string[] = [];
-
-  for (const sourceLine of sourceLines) {
-    let remaining = sourceLine;
-    while (remaining.length > DESKPET_REPLY_LINE_CHAR_LIMIT) {
-      const breakIndex = findReplyLineBreakIndex(
-        remaining,
-        DESKPET_REPLY_LINE_CHAR_LIMIT,
-      );
-      lines.push(remaining.slice(0, breakIndex).trim());
-      remaining = remaining.slice(breakIndex).trim();
-    }
-
-    if (remaining) {
-      lines.push(remaining);
-    }
-  }
-
-  return lines.length > 0 ? lines : ["已完成，可以继续和我说。"];
-}
-
-function getReplyDisplayPages(replyText: string | null): string[] {
-  const lines = splitReplyTextIntoLines(replyText);
-  const pages: string[] = [];
-
-  for (let index = 0; index < lines.length; index += 2) {
-    pages.push(lines.slice(index, index + 2).join("\n"));
-  }
-
-  return pages;
+  return normalized.length > 180
+    ? `${normalized.slice(0, 180).trim()}...`
+    : normalized;
 }
 
 function getTaskSummaryText(
@@ -351,6 +236,20 @@ function getTaskSummaryText(
   }
 
   return getReplyPreviewText(replyText);
+}
+
+function getDeskpetChatErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes("上一条消息还在处理中")) {
+    return "Tabby 还在回复，请稍后再发。";
+  }
+
+  if (message.includes("没有找到可用的默认助手")) {
+    return "还没有可用的助手。";
+  }
+
+  return "发送失败，请稍后重试。";
 }
 
 function isInsideEllipse(
@@ -401,6 +300,8 @@ export function DesktopDeskpetApp() {
   const idlePeekTimerRef = useRef<number | null>(null);
   const idleRestTimerRef = useRef<number | null>(null);
   const messageTimerRef = useRef<number | null>(null);
+  const chatIdleTimerRef = useRef<number | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const petGestureRef = useRef<PetGesture | null>(null);
   const petClickCountRef = useRef(0);
   const petClickTimerRef = useRef<number | null>(null);
@@ -424,11 +325,13 @@ export function DesktopDeskpetApp() {
     null,
   );
   const [isMovingPet, setIsMovingPet] = useState(false);
+  const [isChatComposerOpen, setIsChatComposerOpen] = useState(false);
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatError, setChatError] = useState<string | null>(null);
   const [lastInteractionAt, setLastInteractionAt] = useState(() => Date.now());
   const [replyPreviewText, setReplyPreviewText] = useState<string | null>(null);
-  const [replyPageIndex, setReplyPageIndex] = useState(0);
   const [isDialogueDismissed, setIsDialogueDismissed] = useState(false);
-  const [followupText, setFollowupText] = useState("");
   const [replyBubblePlacement, setReplyBubblePlacement] =
     useState<ReplyBubblePlacement>("near-top");
   const [spriteReplayKey, setSpriteReplayKey] = useState(0);
@@ -466,6 +369,15 @@ export function DesktopDeskpetApp() {
     messageTimerRef.current = null;
   }, []);
 
+  const clearChatIdleTimer = useCallback(() => {
+    if (chatIdleTimerRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(chatIdleTimerRef.current);
+    chatIdleTimerRef.current = null;
+  }, []);
+
   const setMousePassthrough = useCallback((ignore: boolean) => {
     if (mouseEventsIgnoredRef.current === ignore) {
       return;
@@ -476,6 +388,25 @@ export function DesktopDeskpetApp() {
       mouseEventsIgnoredRef.current = !ignore;
     });
   }, []);
+
+  const scheduleChatIdleDismiss = useCallback(() => {
+    clearChatIdleTimer();
+    if (!isChatComposerOpen || isSendingChat) {
+      return;
+    }
+
+    chatIdleTimerRef.current = window.setTimeout(() => {
+      setIsChatComposerOpen(false);
+      setChatError(null);
+      setMousePassthrough(true);
+      chatIdleTimerRef.current = null;
+    }, CHAT_COMPOSER_IDLE_TIMEOUT_MS);
+  }, [
+    clearChatIdleTimer,
+    isChatComposerOpen,
+    isSendingChat,
+    setMousePassthrough,
+  ]);
 
   const clearTaskTimer = useCallback(() => {
     if (taskTimerRef.current === null) {
@@ -493,6 +424,7 @@ export function DesktopDeskpetApp() {
       durationMs = 2600,
     ) => {
       clearMessageTimer();
+      setManualMood(null);
       setSpriteReplayKey((key) => key + 1);
       setActivityMood(nextMood);
       if (message) {
@@ -556,17 +488,38 @@ export function DesktopDeskpetApp() {
       );
       clearTaskTimer();
       clearIdleTimers();
+      clearChatIdleTimer();
       clearMessageTimer();
       clearPetClickTimer();
       unsubscribe();
     };
   }, [
+    clearChatIdleTimer,
     clearIdleTimers,
     clearMessageTimer,
     clearPetClickTimer,
     clearTaskTimer,
     setMousePassthrough,
   ]);
+
+  useEffect(() => {
+    if (!isChatComposerOpen) {
+      return;
+    }
+
+    setMousePassthrough(false);
+    const frameId = window.requestAnimationFrame(() => {
+      chatInputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isChatComposerOpen, setMousePassthrough]);
+
+  useEffect(() => {
+    scheduleChatIdleDismiss();
+
+    return clearChatIdleTimer;
+  }, [clearChatIdleTimer, scheduleChatIdleDismiss]);
 
   useEffect(() => {
     const updateMousePassthrough = (event: MouseEvent | PointerEvent) => {
@@ -626,24 +579,29 @@ export function DesktopDeskpetApp() {
           return;
         }
 
-        if (command.replyText?.trim()) {
-          setReplyPreviewText(command.replyText.trim());
-        }
         setSpriteReplayKey((key) => key + 1);
-        if (DESKPET_DIALOGUE_MOODS.has(command.mood)) {
+        if (isDeskpetTaskMood(command.mood)) {
+          clearChatIdleTimer();
+          setIsChatComposerOpen(false);
+          setChatError(null);
+          setMousePassthrough(true);
+          setReplyPreviewText(
+            command.mood === "success"
+              ? (command.replyText?.trim() ?? null)
+              : null,
+          );
           setTaskMood(command.mood);
           setInteractionMessage(null);
-          setReplyPageIndex(0);
           setIsDialogueDismissed(false);
           clearTaskTimer();
-          const taskDurationMs =
-            command.mood === "success" ? undefined : command.durationMs;
-          if (taskDurationMs) {
-            taskTimerRef.current = window.setTimeout(() => {
-              setTaskMood(null);
-              taskTimerRef.current = null;
-            }, taskDurationMs);
-          }
+          const taskDurationMs = resolveDeskpetTaskDurationMs(
+            command.mood,
+            command.durationMs,
+          );
+          taskTimerRef.current = window.setTimeout(() => {
+            setTaskMood(null);
+            taskTimerRef.current = null;
+          }, taskDurationMs ?? 0);
           return;
         }
 
@@ -670,18 +628,18 @@ export function DesktopDeskpetApp() {
         setSize(command.size);
       }
     });
-  }, [clearTaskTimer]);
+  }, [clearChatIdleTimer, clearTaskTimer, setMousePassthrough]);
 
-  const baseMood =
-    manualMood ?? runtimeMood ?? resolveMoodFromRuntime(runtimeState);
+  const baseMood = runtimeMood ?? resolveMoodFromRuntime(runtimeState);
   const effectiveInactivityMood =
     baseMood === "idle" || baseMood === "rest" ? inactivityMood : null;
-  const mood =
-    taskMood ??
-    manualMood ??
-    activityMood ??
-    effectiveInactivityMood ??
-    baseMood;
+  const mood = resolveDeskpetMood({
+    activityMood,
+    inactivityMood: effectiveInactivityMood,
+    manualMood,
+    runtimeMood: baseMood,
+    taskMood,
+  });
   const assetUrl = DESKPET_ASSETS[mood];
   const label = DESKPET_LABELS[mood];
   const imageScale = SIZE_SCALE[size] * (MOOD_SCALE[mood] ?? 1);
@@ -693,15 +651,7 @@ export function DesktopDeskpetApp() {
     !isDialogueDismissed &&
     (mood === "working" || mood === "lobster-replying" || mood === "success");
   const shouldShowTaskSummary = mood !== "working";
-  const replyDisplayPages = useMemo(
-    () => (mood === "success" ? getReplyDisplayPages(replyPreviewText) : []),
-    [mood, replyPreviewText],
-  );
-  const taskSummary =
-    mood === "success"
-      ? (replyDisplayPages[replyPageIndex % replyDisplayPages.length] ??
-        getReplyPreviewText(replyPreviewText))
-      : getTaskSummaryText(mood, replyPreviewText);
+  const taskSummary = getTaskSummaryText(mood, replyPreviewText);
   const isSingleLineTaskSummary = !taskSummary.includes("\n");
   const isReplyTaskPanel = mood === "success";
   const taskPanelClassName = ["deskpet-task-panel", `is-${mood}`]
@@ -715,20 +665,6 @@ export function DesktopDeskpetApp() {
     }),
     [imageOffsetY, imageScale],
   );
-
-  useEffect(() => {
-    if (mood !== "success" || replyDisplayPages.length <= 1) {
-      return;
-    }
-
-    const timer = window.setInterval(() => {
-      setReplyPageIndex((index) => (index + 1) % replyDisplayPages.length);
-    }, DESKPET_REPLY_PAGE_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [mood, replyDisplayPages.length]);
 
   useEffect(() => {
     console.info(
@@ -822,6 +758,52 @@ export function DesktopDeskpetApp() {
     petTeaseHintShownRef.current = true;
     showTemporaryMessage(PET_TEASE_HINT_MESSAGE, 1800);
   }, [activityMood, interactionMessage, mood, showTemporaryMessage]);
+
+  const closeChatComposer = useCallback(() => {
+    if (isSendingChat) {
+      return;
+    }
+
+    clearChatIdleTimer();
+    setIsChatComposerOpen(false);
+    setChatError(null);
+    setMousePassthrough(true);
+  }, [clearChatIdleTimer, isSendingChat, setMousePassthrough]);
+
+  const openChatComposer = useCallback(() => {
+    if (taskMood === "working" || taskMood === "lobster-replying") {
+      showTemporaryMessage("Tabby 正在回复，请稍后再发");
+      return;
+    }
+
+    clearMessageTimer();
+    setInteractionMessage(null);
+    setChatError(null);
+    setIsDialogueDismissed(true);
+    setIsChatComposerOpen(true);
+  }, [clearMessageTimer, showTemporaryMessage, taskMood]);
+
+  const handleChatSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const text = chatDraft.trim();
+    if (!text || isSendingChat) {
+      return;
+    }
+
+    setChatError(null);
+    setIsSendingChat(true);
+    try {
+      await sendDeskpetMessage(text);
+      setChatDraft("");
+      setIsChatComposerOpen(false);
+      setIsDialogueDismissed(false);
+    } catch (error) {
+      console.warn("[deskpet] failed to send chat message", error);
+      setChatError(getDeskpetChatErrorMessage(error));
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
 
   const handlePetPointerDown = (
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -937,34 +919,6 @@ export function DesktopDeskpetApp() {
     }
   };
 
-  const handleReplyInCurrentChat = async () => {
-    try {
-      const result = await openDeskpetCurrentChat({ intent: "reply" });
-      if (!result.ok) {
-        showTemporaryMessage("还没有可回复的会话");
-      }
-    } catch {
-      showTemporaryMessage("打开回复失败");
-    }
-  };
-
-  const handlePauseCurrentReply = async () => {
-    try {
-      const result = await pauseDeskpetCurrentReply();
-      if (!result.ok) {
-        showTemporaryMessage("还没有可暂停的回复");
-        return;
-      }
-
-      clearTaskTimer();
-      setTaskMood(null);
-      setReplyPageIndex(0);
-      showTemporaryMessage("已暂停回复");
-    } catch {
-      showTemporaryMessage("暂停回复失败");
-    }
-  };
-
   const handleTaskActionPointerDown = (
     event: ReactPointerEvent<HTMLElement>,
   ) => {
@@ -972,47 +926,10 @@ export function DesktopDeskpetApp() {
     setMousePassthrough(false);
   };
 
-  const handleSubmitFollowup = async () => {
-    const text = followupText.trim();
-    if (!text) {
-      return;
-    }
-
-    setFollowupText("");
-    clearTaskTimer();
-    setTaskMood("lobster-replying");
-    setReplyPageIndex(0);
-    setIsDialogueDismissed(false);
-
-    try {
-      await replyDeskpetCurrentChat(text);
-    } catch {
-      setTaskMood("success");
-      setFollowupText(text);
-      showTemporaryMessage("发送失败，请再试一次");
-    }
-  };
-
-  const handleFollowupKeyDown = (
-    event: ReactKeyboardEvent<HTMLInputElement>,
-  ) => {
-    event.stopPropagation();
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) {
-      return;
-    }
-
-    event.preventDefault();
-    void handleSubmitFollowup();
-  };
-
   const dismissTaskPanel = () => {
     clearTaskTimer();
     setIsDialogueDismissed(true);
-
-    if (mood === "success") {
-      setTaskMood(null);
-      setReplyPageIndex(0);
-    }
+    setTaskMood(null);
   };
 
   return (
@@ -1023,7 +940,79 @@ export function DesktopDeskpetApp() {
       onKeyDownCapture={() => setLastInteractionAt(Date.now())}
       onPointerDownCapture={() => setLastInteractionAt(Date.now())}
     >
-      {shouldShowTaskPanel ? (
+      {isChatComposerOpen ? (
+        <form
+          className="deskpet-chat-composer"
+          data-deskpet-hit-area
+          onPointerDown={handleTaskActionPointerDown}
+          onSubmit={handleChatSubmit}
+        >
+          <div className="deskpet-chat-composer-row">
+            <textarea
+              aria-label="输入消息"
+              className="deskpet-chat-input"
+              disabled={isSendingChat}
+              maxLength={8000}
+              onChange={(event) => {
+                setChatDraft(event.target.value);
+                scheduleChatIdleDismiss();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeChatComposer();
+                  return;
+                }
+
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder="和 Tabby 说点什么"
+              ref={chatInputRef}
+              rows={2}
+              value={chatDraft}
+            />
+            <button
+              aria-label="关闭输入框"
+              className="deskpet-chat-icon-button is-close"
+              disabled={isSendingChat}
+              onClick={closeChatComposer}
+              title="关闭"
+              type="button"
+            >
+              <X aria-hidden="true" size={17} strokeWidth={2.4} />
+            </button>
+            <button
+              aria-label="发送消息"
+              className="deskpet-chat-icon-button is-send"
+              disabled={isSendingChat || !chatDraft.trim()}
+              title="发送"
+              type="submit"
+            >
+              {isSendingChat ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="deskpet-chat-spinner"
+                  size={18}
+                />
+              ) : (
+                <SendHorizontal aria-hidden="true" size={18} />
+              )}
+            </button>
+          </div>
+          {chatError ? (
+            <p className="deskpet-chat-error" role="alert">
+              {chatError}
+            </p>
+          ) : null}
+        </form>
+      ) : shouldShowTaskPanel ? (
         <div className={taskPanelClassName} data-deskpet-hit-area>
           <div className="deskpet-task-header">
             <div className="deskpet-task-copy">
@@ -1038,45 +1027,10 @@ export function DesktopDeskpetApp() {
               ) : null}
             </div>
             <div className="deskpet-task-actions">
-              <button
-                aria-label="回复"
-                className="deskpet-task-action-button is-open-session"
-                onClick={handleReplyInCurrentChat}
-                onPointerDown={handleTaskActionPointerDown}
-                title="回复"
-                type="button"
-              >
-                <ReturnConversationIcon
-                  className="deskpet-task-action-icon"
-                  size={22}
-                />
-              </button>
-              {mood === "lobster-replying" ? (
-                <button
-                  aria-label="暂停回复"
-                  className="deskpet-task-action-button is-pause-reply"
-                  onClick={handlePauseCurrentReply}
-                  onPointerDown={handleTaskActionPointerDown}
-                  title="暂停回复"
-                  type="button"
-                >
-                  <Square
-                    aria-hidden="true"
-                    className="deskpet-task-action-icon"
-                    fill="currentColor"
-                    size={14}
-                    strokeWidth={0}
-                  />
-                </button>
-              ) : null}
               {mood === "success" ? (
-                <button
-                  aria-label="完成对话"
-                  className="deskpet-task-indicator is-complete is-action"
-                  onClick={dismissTaskPanel}
-                  onPointerDown={handleTaskActionPointerDown}
-                  title="完成对话"
-                  type="button"
+                <span
+                  aria-label="已完成"
+                  className="deskpet-task-indicator is-complete"
                 />
               ) : (
                 <span
@@ -1084,17 +1038,15 @@ export function DesktopDeskpetApp() {
                   className="deskpet-task-indicator is-working"
                 />
               )}
-              {!isReplyTaskPanel ? (
-                <button
-                  aria-label="关闭气泡"
-                  className="deskpet-task-close"
-                  onClick={dismissTaskPanel}
-                  onPointerDown={handleTaskActionPointerDown}
-                  type="button"
-                >
-                  ×
-                </button>
-              ) : null}
+              <button
+                aria-label="关闭气泡"
+                className="deskpet-task-close"
+                onClick={dismissTaskPanel}
+                onPointerDown={handleTaskActionPointerDown}
+                type="button"
+              >
+                ×
+              </button>
             </div>
           </div>
 
@@ -1111,19 +1063,6 @@ export function DesktopDeskpetApp() {
               {taskSummary}
             </p>
           ) : null}
-          {isReplyTaskPanel ? (
-            <input
-              aria-label="继续跟进，按回车发送"
-              className="deskpet-task-followup"
-              onChange={(event) => setFollowupText(event.target.value)}
-              onKeyDown={handleFollowupKeyDown}
-              onPointerDown={handleTaskActionPointerDown}
-              placeholder="继续跟进"
-              title="输入后按回车发送"
-              type="text"
-              value={followupText}
-            />
-          ) : null}
         </div>
       ) : activeBubbleText ? (
         <div
@@ -1138,27 +1077,12 @@ export function DesktopDeskpetApp() {
         >
           <div className="deskpet-reply-bubble" title={activeBubbleText}>
             <span className="deskpet-reply-text">{activeBubbleText}</span>
-            {!isThinkingBubble ? (
-              <button
-                aria-label="回复"
-                className="deskpet-reply-open-button"
-                onClick={handleReplyInCurrentChat}
-                onPointerDown={handleTaskActionPointerDown}
-                title="回复"
-                type="button"
-              >
-                <ReturnConversationIcon
-                  className="deskpet-reply-open-icon"
-                  size={18}
-                />
-              </button>
-            ) : null}
           </div>
         </div>
       ) : null}
 
       <button
-        aria-label="双击逗一逗 Tabby 桌宠，拖动可移动"
+        aria-label="单击和 Tabby 对话并摸摸，双击逗一逗，拖动可移动"
         className={
           isMovingPet ? "deskpet-trigger is-moving" : "deskpet-trigger"
         }
@@ -1174,6 +1098,7 @@ export function DesktopDeskpetApp() {
           if (petClickCountRef.current >= 2) {
             petClickCountRef.current = 0;
             clearPetClickTimer();
+            closeChatComposer();
             triggerPetTease(false);
             return;
           }
@@ -1182,7 +1107,8 @@ export function DesktopDeskpetApp() {
           petClickTimerRef.current = window.setTimeout(() => {
             petClickCountRef.current = 0;
             petClickTimerRef.current = null;
-            triggerPetTease();
+            triggerPetTease(false);
+            openChatComposer();
           }, PET_TEASE_CLICK_INTERVAL_MS);
         }}
         onPointerCancel={handlePetPointerEnd}

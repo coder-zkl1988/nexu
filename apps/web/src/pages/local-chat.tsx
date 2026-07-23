@@ -3,6 +3,7 @@ import {
   ChatInputArea,
   type PendingAttachment,
 } from "@/components/chat-input-area";
+import { invokeDesktopHost } from "@/lib/desktop-host";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,8 +12,15 @@ import {
   getApiV1Bots,
   getApiV1BotsDefault,
   postApiV1ChatLocalStart,
+  putApiV1BotsDefault,
 } from "../../lib/api/sdk.gen";
 import { buildPendingSessionPath } from "../lib/local-chat-pending";
+
+const DESKPET_TYPING_DURATION_MS = 1600;
+const DESKPET_TYPING_NOTIFY_INTERVAL_MS = 700;
+const DESKPET_SUBMIT_DURATION_MS = 2200;
+const DESKPET_REPLYING_DURATION_MS = 8000;
+const DESKPET_ERROR_DURATION_MS = 4200;
 
 export function LocalChatPage() {
   const { t } = useTranslation();
@@ -25,6 +33,7 @@ export function LocalChatPage() {
   const [waitingReply, setWaitingReply] = useState(false);
 
   const contextKeyRef = useRef<string>("");
+  const lastDeskpetTypingNotifyAtRef = useRef(0);
   const urlBotResolvedRef = useRef(false);
   // Unique per visit to this page, so starting a new conversation never
   // resumes an existing session for the same bot. The page navigates away as
@@ -42,6 +51,18 @@ export function LocalChatPage() {
   });
   const bots = (botsData?.bots ?? []) as BotItem[];
   const activeBots = bots.filter((b) => b.status === "active");
+
+  // Resolver-selected default bot (explicit defaultBotId → system bot →
+  // slug order). Only fetched once bots exist — with zero active bots the
+  // createDefaultBot mutation below owns the lazy-create path.
+  const { data: defaultBotData, isError: defaultBotFailed } = useQuery({
+    queryKey: ["bots", "default"],
+    queryFn: async () => {
+      const { data } = await getApiV1BotsDefault();
+      return data;
+    },
+    enabled: activeBots.length > 0,
+  });
 
   // Auto-create a default bot when none exist
   const createDefaultBot = useMutation({
@@ -71,7 +92,7 @@ export function LocalChatPage() {
     }
   }, [noActiveBots, botsLoading, createDefaultBot, createError]);
 
-  // Auto-select bot: prefer URL botId, then first active bot
+  // Auto-select bot: prefer URL botId, then the resolver-selected default
   useEffect(() => {
     if (activeBots.length === 0 || selectedBot) return;
 
@@ -85,16 +106,62 @@ export function LocalChatPage() {
       }
     }
 
-    // Fall back to first active bot
-    if (activeBots[0]) {
+    // Fall back to the desktop default bot; first active bot only when the
+    // default lookup failed (keeps the page usable if the endpoint errors).
+    if (defaultBotData) {
+      const inList = activeBots.find((b) => b.id === defaultBotData.id);
+      setSelectedBot(inList ?? (defaultBotData as BotItem));
+      return;
+    }
+    if (defaultBotFailed && activeBots[0]) {
       setSelectedBot(activeBots[0]);
     }
-  }, [activeBots, selectedBot, urlBotId]);
+  }, [activeBots, selectedBot, urlBotId, defaultBotData, defaultBotFailed]);
 
   // Bot selection
   const handleSelectBot = useCallback((bot: BotItem) => {
     setSelectedBot(bot);
   }, []);
+
+  const setDefaultBot = useMutation({
+    mutationFn: async (botId: string) => {
+      const { data } = await putApiV1BotsDefault({ body: { botId } });
+      return data;
+    },
+    onSuccess: () => {
+      // Prefix match also refreshes ["bots", "default"].
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
+    },
+  });
+  const handleSetDefaultBot = useCallback(
+    (bot: BotItem) => {
+      setDefaultBot.mutate(bot.id);
+    },
+    [setDefaultBot],
+  );
+
+  const handleDeskpetTyping = useCallback(
+    (text: string) => {
+      if (waitingReply || !text.trim()) {
+        return;
+      }
+
+      const now = Date.now();
+      if (
+        now - lastDeskpetTypingNotifyAtRef.current <
+        DESKPET_TYPING_NOTIFY_INTERVAL_MS
+      ) {
+        return;
+      }
+
+      lastDeskpetTypingNotifyAtRef.current = now;
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "working",
+        durationMs: DESKPET_TYPING_DURATION_MS,
+      });
+    },
+    [waitingReply],
+  );
 
   // Send message, then leave the new-conversation page as soon as OpenClaw
   // acknowledges chat.send. PendingSessionPage resolves the real session later.
@@ -113,6 +180,10 @@ export function LocalChatPage() {
 
       try {
         setWaitingReply(true);
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "working",
+          durationMs: DESKPET_SUBMIT_DURATION_MS,
+        });
 
         const onlyImage = atts.length === 1 ? atts[0] : undefined;
         const isImageOnly = onlyImage?.type === "image" && !text.trim();
@@ -141,7 +212,7 @@ export function LocalChatPage() {
                     : undefined,
               };
 
-        const { data: responseData } = await postApiV1ChatLocalStart({
+        const result = await postApiV1ChatLocalStart({
           body: {
             botId,
             sessionKey: newSessionKey,
@@ -149,14 +220,19 @@ export function LocalChatPage() {
           },
         });
 
-        if (contextKeyRef.current !== ctxKey) {
+        if (result.error) {
           setWaitingReply(false);
+          invokeDesktopHost("desktop:deskpet-activity", {
+            mood: "error",
+            durationMs: DESKPET_ERROR_DURATION_MS,
+          });
           return;
         }
 
-        const session = responseData?.session ?? null;
-        if (session?.id) {
-          navigate(`/workspace/sessions/${session.id}`);
+        const responseData = result.data;
+
+        if (contextKeyRef.current !== ctxKey) {
+          setWaitingReply(false);
           return;
         }
 
@@ -164,6 +240,23 @@ export function LocalChatPage() {
           typeof responseData?.message?.runId === "string"
             ? responseData.message.runId
             : undefined;
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "lobster-replying",
+          durationMs: DESKPET_REPLYING_DURATION_MS,
+        });
+
+        const session = responseData?.session ?? null;
+        if (session?.id) {
+          navigate(`/workspace/sessions/${session.id}`, {
+            state: {
+              deskpetPendingRunId: runId,
+              deskpetPendingSessionKey:
+                responseData?.sessionKey ?? newSessionKey,
+            },
+          });
+          return;
+        }
+
         const pendingText = text.trim()
           ? text
           : isImageOnly
@@ -183,6 +276,10 @@ export function LocalChatPage() {
         );
       } catch {
         setWaitingReply(false);
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
       }
     },
     [selectedBot, navigate],
@@ -231,7 +328,10 @@ export function LocalChatPage() {
                   bots={bots}
                   selectedBot={selectedBot}
                   onSelectBot={handleSelectBot}
+                  defaultBotId={defaultBotData?.id ?? null}
+                  onSetDefaultBot={handleSetDefaultBot}
                   onSend={sendMessage}
+                  onTyping={handleDeskpetTyping}
                   sending={false}
                   waitingReply={waitingReply}
                   disabled={!selectedBot || isCreatingBot}

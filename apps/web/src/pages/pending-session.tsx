@@ -1,5 +1,6 @@
 import { type BotItem, ChatInputArea } from "@/components/chat-input-area";
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
+import { invokeDesktopHost } from "@/lib/desktop-host";
 import {
   getPendingSessionBotName,
   getPendingSessionText,
@@ -17,28 +18,7 @@ const BOT_AVATAR = "/images/claw-avatar.png";
 const USER_AVATAR = "/images/tabby-avatar.png";
 const DESKPET_REPLYING_DURATION_MS = 8000;
 const DESKPET_SUCCESS_DURATION_MS = 5000;
-
-function invokeDesktopHost(channel: string, payload: unknown): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
-  if (!candidate || typeof candidate !== "object") {
-    return;
-  }
-
-  const invoke = Reflect.get(candidate as Record<string, unknown>, "invoke");
-  if (typeof invoke !== "function") {
-    return;
-  }
-
-  void (invoke as (channel: string, payload: unknown) => Promise<unknown>).call(
-    candidate,
-    channel,
-    payload,
-  );
-}
+const DESKPET_ERROR_DURATION_MS = 4200;
 
 type PendingStatus = "starting" | "streaming" | "error";
 
@@ -57,6 +37,7 @@ export function PendingSessionPage() {
   const [streamingText, setStreamingText] = useState("");
   const [status, setStatus] = useState<PendingStatus>("starting");
   const resolvedRef = useRef(false);
+  const replyCompletedRef = useRef(false);
   const latestStreamingTextRef = useRef("");
 
   const { data: botsData } = useQuery({
@@ -81,13 +62,14 @@ export function PendingSessionPage() {
       void queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
       navigate(`/workspace/sessions/${sessionId}`, {
         replace: true,
-        state: params
-          ? {
-              deskpetPendingReplyText: latestStreamingTextRef.current,
-              deskpetPendingRunId: params.runId,
-              deskpetPendingSessionKey: params.sessionKey,
-            }
-          : undefined,
+        state:
+          params && !replyCompletedRef.current
+            ? {
+                deskpetPendingReplyText: latestStreamingTextRef.current,
+                deskpetPendingRunId: params.runId,
+                deskpetPendingSessionKey: params.sessionKey,
+              }
+            : undefined,
       });
     },
     [navigate, params, queryClient],
@@ -117,6 +99,7 @@ export function PendingSessionPage() {
 
     let cancelled = false;
     resolvedRef.current = false;
+    replyCompletedRef.current = false;
     setStatus("starting");
     setStreamingText("");
     latestStreamingTextRef.current = "";
@@ -137,6 +120,10 @@ export function PendingSessionPage() {
         if (cancelled || !session?.id) {
           if (!cancelled && !resolvedRef.current) {
             setStatus("error");
+            invokeDesktopHost("desktop:deskpet-activity", {
+              mood: "error",
+              durationMs: DESKPET_ERROR_DURATION_MS,
+            });
           }
           return;
         }
@@ -145,6 +132,10 @@ export function PendingSessionPage() {
       .catch(() => {
         if (!cancelled && !resolvedRef.current) {
           setStatus("error");
+          invokeDesktopHost("desktop:deskpet-activity", {
+            mood: "error",
+            durationMs: DESKPET_ERROR_DURATION_MS,
+          });
         }
       });
 
@@ -165,6 +156,7 @@ export function PendingSessionPage() {
         });
       },
       onFinal: () => {
+        replyCompletedRef.current = true;
         invokeDesktopHost("desktop:deskpet-activity", {
           mood: "success",
           durationMs: DESKPET_SUCCESS_DURATION_MS,
@@ -174,9 +166,17 @@ export function PendingSessionPage() {
       },
       onAborted: () => {
         setStatus("error");
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
       },
       onError: () => {
         setStatus("error");
+        invokeDesktopHost("desktop:deskpet-activity", {
+          mood: "error",
+          durationMs: DESKPET_ERROR_DURATION_MS,
+        });
       },
     });
     client.connect();
