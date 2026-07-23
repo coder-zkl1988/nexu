@@ -14,6 +14,7 @@ import {
   Plus,
   Presentation,
   Sparkles,
+  Star,
   Users,
   X,
   Zap,
@@ -50,6 +51,10 @@ export interface ChatInputAreaProps {
   bots: BotItem[];
   selectedBot: BotItem | null;
   onSelectBot: (bot: BotItem) => void;
+  /** Id of the desktop default bot — its row shows a 默认 badge. */
+  defaultBotId?: string | null;
+  /** When provided, non-default bot rows expose a 设为默认 action. */
+  onSetDefaultBot?: (bot: BotItem) => void;
   onSend: (
     text: string,
     attachments: PendingAttachment[],
@@ -219,11 +224,15 @@ function BotSelector({
   selected,
   onSelect,
   showAdd,
+  defaultBotId,
+  onSetDefault,
 }: {
   bots: BotItem[];
   selected: BotItem | null;
   onSelect: (bot: BotItem) => void;
   showAdd?: boolean;
+  defaultBotId?: string | null;
+  onSetDefault?: (bot: BotItem) => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -325,18 +334,44 @@ function BotSelector({
                 </div>
               ) : (
                 expertBots.map((bot) => (
-                  <button
-                    key={bot.id}
-                    type="button"
-                    onClick={() => {
-                      onSelect(bot);
-                      setOpen(false);
-                    }}
-                    className={rowClass(selected?.id === bot.id)}
-                  >
-                    <Sparkles size={13} className="shrink-0 text-text-muted" />
-                    <span className="truncate">{bot.name}</span>
-                  </button>
+                  <div key={bot.id} className="group flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelect(bot);
+                        setOpen(false);
+                      }}
+                      className={cn(
+                        rowClass(selected?.id === bot.id),
+                        "min-w-0 flex-1",
+                      )}
+                    >
+                      <Sparkles
+                        size={13}
+                        className="shrink-0 text-text-muted"
+                      />
+                      <span className="truncate">{bot.name}</span>
+                      {bot.id === defaultBotId && (
+                        <span className="ml-1 shrink-0 rounded bg-surface-2 px-1 text-[10px] leading-4 text-text-muted">
+                          {t("localChat.defaultBadge", {
+                            defaultValue: "默认",
+                          })}
+                        </span>
+                      )}
+                    </button>
+                    {onSetDefault && bot.id !== defaultBotId && (
+                      <button
+                        type="button"
+                        title={t("localChat.setDefault", {
+                          defaultValue: "设为默认",
+                        })}
+                        onClick={() => onSetDefault(bot)}
+                        className="mr-2 hidden shrink-0 rounded p-1 text-text-muted transition-colors hover:text-accent group-hover:block"
+                      >
+                        <Star size={12} />
+                      </button>
+                    )}
+                  </div>
                 ))
               )
             ) : teams.length === 0 ? (
@@ -405,6 +440,8 @@ export function ChatInputArea({
   bots,
   selectedBot,
   onSelectBot,
+  defaultBotId = null,
+  onSetDefaultBot,
   onSend,
   onTyping,
   onCancel,
@@ -702,6 +739,8 @@ export function ChatInputArea({
                 selected={selectedBot}
                 onSelect={onSelectBot}
                 showAdd={showAddBot}
+                defaultBotId={defaultBotId}
+                onSetDefault={onSetDefaultBot}
               />
             ) : selectedBot ? (
               <span className="text-[12px] text-text-muted">

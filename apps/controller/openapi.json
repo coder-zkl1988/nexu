@@ -60,6 +60,14 @@
                             "nullable": true,
                             "default": null
                           },
+                          "origin": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "system"
+                            ],
+                            "default": "user"
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -176,6 +184,14 @@
                       "nullable": true,
                       "default": null
                     },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -247,6 +263,14 @@
                       "nullable": true,
                       "default": null
                     },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -271,6 +295,138 @@
           },
           "500": {
             "description": "Failed to get or create default bot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Bots"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "botId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bot set as the desktop default",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "poolId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "paused",
+                        "deleted"
+                      ]
+                    },
+                    "modelId": {
+                      "type": "string"
+                    },
+                    "systemPrompt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "expertSlug": {
+                      "type": "string",
+                      "nullable": true,
+                      "default": null
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "poolId",
+                    "status",
+                    "modelId",
+                    "systemPrompt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bot is not active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Bot not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -345,6 +501,14 @@
                       "type": "string",
                       "nullable": true,
                       "default": null
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
                     },
                     "createdAt": {
                       "type": "string"
@@ -464,6 +628,14 @@
                       "type": "string",
                       "nullable": true,
                       "default": null
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
                     },
                     "createdAt": {
                       "type": "string"
@@ -599,6 +771,14 @@
                       "nullable": true,
                       "default": null
                     },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -697,6 +877,14 @@
                       "type": "string",
                       "nullable": true,
                       "default": null
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "system"
+                      ],
+                      "default": "user"
                     },
                     "createdAt": {
                       "type": "string"
@@ -20688,6 +20876,15 @@
                         "title": {
                           "type": "string",
                           "maxLength": 1000
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 24
+                          },
+                          "maxItems": 8
                         }
                       },
                       "required": [
@@ -20889,6 +21086,15 @@
                           "title": {
                             "type": "string",
                             "maxLength": 1000
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 24
+                            },
+                            "maxItems": 8
                           }
                         },
                         "required": [

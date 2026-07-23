@@ -1388,6 +1388,8 @@ const zhCN = {
   "localChat.selectBot": "选择机器人",
   "localChat.noBots": "暂无可用机器人",
   "localChat.selectBotFirst": "请先在上方选择机器人",
+  "localChat.defaultBadge": "默认",
+  "localChat.setDefault": "设为默认",
   "localChat.waiting": "等待回复中…",
   "localChat.inputPlaceholder": "问问 Tabby（Enter 发送，Shift+Enter 换行）",
   "localChat.attachFile": "附加图片或文件",

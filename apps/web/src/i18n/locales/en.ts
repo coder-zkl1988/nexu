@@ -1480,6 +1480,8 @@ const en = {
   "localChat.selectBot": "Select a bot",
   "localChat.noBots": "No active bots yet",
   "localChat.selectBotFirst": "Select a bot above to start chatting",
+  "localChat.defaultBadge": "Default",
+  "localChat.setDefault": "Set as default",
   "localChat.waiting": "Waiting for reply…",
   "localChat.inputPlaceholder":
     "Ask Tabby… (Enter to send, Shift+Enter for newline)",

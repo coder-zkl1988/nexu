@@ -79,6 +79,43 @@ export function registerBotRoutes(
 
   app.openapi(
     createRoute({
+      method: "put",
+      path: "/api/v1/bots/default",
+      tags: ["Bots"],
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({ botId: z.string().min(1) }),
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: botResponseSchema } },
+          description: "Bot set as the desktop default",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Bot is not active",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Bot not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { botId } = c.req.valid("json");
+      const bot = await container.agentService.setDefaultBot(botId);
+      return c.json(bot, 200);
+    },
+  );
+
+  app.openapi(
+    createRoute({
       method: "get",
       path: "/api/v1/bots/{botId}",
       tags: ["Bots"],

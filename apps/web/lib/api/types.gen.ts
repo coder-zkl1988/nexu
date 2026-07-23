@@ -21,6 +21,7 @@ export type GetApiV1BotsResponses = {
             modelId: string;
             systemPrompt: string;
             expertSlug?: string;
+            origin?: 'user' | 'system';
             createdAt: string;
             updatedAt: string;
         }>;
@@ -56,6 +57,7 @@ export type PostApiV1BotsResponses = {
         modelId: string;
         systemPrompt: string;
         expertSlug?: string;
+        origin?: 'user' | 'system';
         createdAt: string;
         updatedAt: string;
     };
@@ -94,12 +96,60 @@ export type GetApiV1BotsDefaultResponses = {
         modelId: string;
         systemPrompt: string;
         expertSlug?: string;
+        origin?: 'user' | 'system';
         createdAt: string;
         updatedAt: string;
     };
 };
 
 export type GetApiV1BotsDefaultResponse = GetApiV1BotsDefaultResponses[keyof GetApiV1BotsDefaultResponses];
+
+export type PutApiV1BotsDefaultData = {
+    body: {
+        botId: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/bots/default';
+};
+
+export type PutApiV1BotsDefaultErrors = {
+    /**
+     * Bot is not active
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Bot not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PutApiV1BotsDefaultError = PutApiV1BotsDefaultErrors[keyof PutApiV1BotsDefaultErrors];
+
+export type PutApiV1BotsDefaultResponses = {
+    /**
+     * Bot set as the desktop default
+     */
+    200: {
+        id: string;
+        name: string;
+        slug: string;
+        poolId: string;
+        status: 'active' | 'paused' | 'deleted';
+        modelId: string;
+        systemPrompt: string;
+        expertSlug?: string;
+        origin?: 'user' | 'system';
+        createdAt: string;
+        updatedAt: string;
+    };
+};
+
+export type PutApiV1BotsDefaultResponse = PutApiV1BotsDefaultResponses[keyof PutApiV1BotsDefaultResponses];
 
 export type DeleteApiV1BotsByBotIdData = {
     body?: never;
@@ -154,6 +204,7 @@ export type GetApiV1BotsByBotIdResponses = {
         modelId: string;
         systemPrompt: string;
         expertSlug?: string;
+        origin?: 'user' | 'system';
         createdAt: string;
         updatedAt: string;
     };
@@ -198,6 +249,7 @@ export type PatchApiV1BotsByBotIdResponses = {
         modelId: string;
         systemPrompt: string;
         expertSlug?: string;
+        origin?: 'user' | 'system';
         createdAt: string;
         updatedAt: string;
     };
@@ -238,6 +290,7 @@ export type PostApiV1BotsByBotIdPauseResponses = {
         modelId: string;
         systemPrompt: string;
         expertSlug?: string;
+        origin?: 'user' | 'system';
         createdAt: string;
         updatedAt: string;
     };
@@ -278,6 +331,7 @@ export type PostApiV1BotsByBotIdResumeResponses = {
         modelId: string;
         systemPrompt: string;
         expertSlug?: string;
+        origin?: 'user' | 'system';
         createdAt: string;
         updatedAt: string;
     };
@@ -6936,6 +6990,7 @@ export type GetApiV1CanvasMirrorResponses = {
             id: string;
             kind: 'text' | 'image' | 'video' | 'audio';
             title: string;
+            tags?: Array<string>;
         }>;
     };
 };
@@ -6970,6 +7025,7 @@ export type PostApiV1CanvasMirrorData = {
             id: string;
             kind: 'text' | 'image' | 'video' | 'audio';
             title: string;
+            tags?: Array<string>;
         }>;
     };
     path?: never;

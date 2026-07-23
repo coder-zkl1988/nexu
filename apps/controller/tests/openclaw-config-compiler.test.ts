@@ -157,6 +157,67 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("marks the desktop defaultBotId agent as the default agent", () => {
+    const now = new Date().toISOString();
+    const botBase = {
+      poolId: null,
+      status: "active",
+      modelId: "anthropic/claude-sonnet-4",
+      systemPrompt: null,
+      origin: "user",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = compileOpenClawConfig(
+      createConfig({
+        bots: [
+          { ...botBase, id: "bot-a", name: "A", slug: "aaa" },
+          { ...botBase, id: "bot-z", name: "Z", slug: "zzz" },
+        ],
+        desktop: { defaultBotId: "bot-z" },
+      } as unknown as Partial<NexuConfig>),
+      createEnv(),
+    );
+
+    const defaultFlags = Object.fromEntries(
+      result.agents.list.map((agent) => [agent.id, agent.default]),
+    );
+    expect(defaultFlags).toEqual({ "bot-a": false, "bot-z": true });
+  });
+
+  it("marks the system bot as the default agent when no defaultBotId is set", () => {
+    const now = new Date().toISOString();
+    const botBase = {
+      poolId: null,
+      status: "active",
+      modelId: "anthropic/claude-sonnet-4",
+      systemPrompt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = compileOpenClawConfig(
+      createConfig({
+        bots: [
+          { ...botBase, id: "bot-a", name: "A", slug: "aaa", origin: "user" },
+          {
+            ...botBase,
+            id: "bot-sys",
+            name: "Tabby",
+            slug: "zzz-tabby",
+            origin: "system",
+          },
+        ],
+        desktop: {},
+      } as unknown as Partial<NexuConfig>),
+      createEnv(),
+    );
+
+    const defaultFlags = Object.fromEntries(
+      result.agents.list.map((agent) => [agent.id, agent.default]),
+    );
+    expect(defaultFlags).toEqual({ "bot-a": false, "bot-sys": true });
+  });
+
   it("emits sub-agent delegation config on every agent (in-chat auto-routing)", () => {
     const result = compileOpenClawConfig(createConfig(), createEnv());
     expect(result.agents.list.length).toBeGreaterThan(0);

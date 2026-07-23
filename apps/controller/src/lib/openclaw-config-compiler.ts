@@ -9,6 +9,7 @@ import {
   compileChannelsConfig,
   resolveManagedChannelPluginId,
 } from "./channel-binding-compiler.js";
+import { resolveDefaultBotFromConfig } from "./default-bot.js";
 import {
   buildProviderRuntimeModelId,
   buildProviderRuntimeModelRef,
@@ -379,10 +380,15 @@ function compileAgentList(
     left.localeCompare(right),
   );
 
+  // Which agent OpenClaw's unbound entrypoints land on. Resolution order is
+  // explicit defaultBotId → system bot → first active bot by slug; the list
+  // itself stays slug-sorted for deterministic output.
+  const resolvedDefault = resolveDefaultBotFromConfig(config);
+
   return config.bots
     .filter((bot) => bot.status === "active")
     .sort((left, right) => left.slug.localeCompare(right.slug))
-    .map((bot, index) => {
+    .map((bot) => {
       const workspaceSlugs = [
         ...(workspaceSkillsByAgent?.get(bot.id) ?? []),
       ].sort((left, right) => left.localeCompare(right));
@@ -399,7 +405,7 @@ function compileAgentList(
         id: bot.id,
         name: bot.name,
         workspace: `${env.openclawStateDir}/agents/${bot.id}`,
-        default: index === 0,
+        default: bot.id === resolvedDefault?.id,
         model: bot.modelId
           ? { primary: resolveModelId(config, env, bot.modelId, oauthState) }
           : undefined,

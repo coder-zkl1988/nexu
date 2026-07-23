@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
+  BotOrigin,
   BotResponse,
   ChannelResponse,
   ConnectDingtalkInput,
@@ -978,48 +979,6 @@ export class NexuConfigStore {
     return config.bots.find((bot) => bot.id === botId) ?? null;
   }
 
-  async getOrCreateDefaultBot(): Promise<BotResponse> {
-    const existing = await this.listBots();
-    if (existing.length > 0) {
-      const firstBot = existing[0];
-      if (firstBot) {
-        logger.info(
-          {
-            botId: firstBot.id,
-            slug: firstBot.slug,
-            workspacePath: path.join(
-              this.env.openclawStateDir,
-              "agents",
-              firstBot.id,
-            ),
-            existingBotCount: existing.length,
-            resolution: "reused_existing",
-          },
-          "default_bot_resolution",
-        );
-        return firstBot;
-      }
-    }
-
-    const config = await this.getConfig();
-    const bot = await this.createBot({
-      name: "nexu Assistant",
-      slug: "nexu-assistant",
-      modelId: config.runtime.defaultModelId,
-    });
-    logger.info(
-      {
-        botId: bot.id,
-        slug: bot.slug,
-        workspacePath: path.join(this.env.openclawStateDir, "agents", bot.id),
-        existingBotCount: existing.length,
-        resolution: "created_implicit_default",
-      },
-      "default_bot_resolution",
-    );
-    return bot;
-  }
-
   async createBot(input: {
     name: string;
     slug: string;
@@ -1027,6 +986,7 @@ export class NexuConfigStore {
     modelId?: string;
     poolId?: string;
     expertSlug?: string | null;
+    origin?: BotOrigin;
   }): Promise<BotResponse> {
     // Dedup: if expertSlug is set and an active bot with the same expertSlug
     // already exists, return the existing bot instead of creating a duplicate.
@@ -1058,6 +1018,7 @@ export class NexuConfigStore {
       modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
       systemPrompt: input.systemPrompt ?? null,
       expertSlug: input.expertSlug ?? null,
+      origin: input.origin ?? "user",
       createdAt,
       updatedAt: createdAt,
     };
@@ -1134,6 +1095,16 @@ export class NexuConfigStore {
     }));
 
     return updatedBot;
+  }
+
+  async setDesktopDefaultBot(botId: string): Promise<void> {
+    await this.store.update((config) => ({
+      ...config,
+      desktop: {
+        ...config.desktop,
+        defaultBotId: botId,
+      },
+    }));
   }
 
   async deleteBot(botId: string): Promise<boolean> {

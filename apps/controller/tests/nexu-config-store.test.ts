@@ -1346,6 +1346,68 @@ describe("NexuConfigStore", () => {
     expect(result.error?.length ?? 0).toBeLessThan(400);
   });
 
+  it("defaults bot origin to user for legacy persisted bots", async () => {
+    const store = new NexuConfigStore(env);
+    await mkdir(path.dirname(env.nexuConfigPath), { recursive: true });
+    await writeFile(
+      env.nexuConfigPath,
+      JSON.stringify({
+        $schema: "https://nexu.io/config.json",
+        schemaVersion: 1,
+        app: {},
+        bots: [
+          {
+            id: "legacy-bot",
+            name: "Legacy",
+            slug: "legacy",
+            poolId: null,
+            status: "active",
+            modelId: "anthropic/claude-sonnet-4",
+            systemPrompt: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        runtime: {},
+        providers: [],
+        integrations: [],
+        channels: [],
+        templates: {},
+        desktop: {},
+        secrets: {},
+      }),
+      "utf8",
+    );
+
+    const bots = await store.listBots();
+    expect(bots[0]?.origin).toBe("user");
+  });
+
+  it("persists system origin through createBot", async () => {
+    const store = new NexuConfigStore(env);
+    const created = await store.createBot({
+      name: "Tabby",
+      slug: "tabby-local-chat",
+      origin: "system",
+    });
+
+    expect(created.origin).toBe("system");
+    const reloaded = await store.getBot(created.id);
+    expect(reloaded?.origin).toBe("system");
+  });
+
+  it("setDesktopDefaultBot persists desktop.defaultBotId", async () => {
+    const store = new NexuConfigStore(env);
+    const created = await store.createBot({ name: "Alpha", slug: "alpha" });
+
+    await store.setDesktopDefaultBot(created.id);
+
+    const config = await store.getConfig();
+    expect((config.desktop as Record<string, unknown>).defaultBotId).toBe(
+      created.id,
+    );
+  });
+
   it("getDesktopRewardsStatus preserves connected state when cloud returns 401 auth_failed", async () => {
     await mkdir(path.join(rootDir, ".nexu"), { recursive: true });
     await writeFile(
