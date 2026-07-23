@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import zhCN from "#web/i18n/locales/zh-CN";
-import { HomePage } from "#web/pages/home";
+import { HomePage, shouldShowHomeOnboarding } from "#web/pages/home";
 import { RewardsPage } from "#web/pages/rewards";
 
 vi.mock("@/lib/api", () => ({}));
@@ -159,6 +159,30 @@ function renderRewardsPage(rewardsStatus?: {
 }
 
 describe("HomePage", () => {
+  it("only shows onboarding after channels and sessions both load successfully", () => {
+    expect(
+      shouldShowHomeOnboarding({
+        channelsLoaded: false,
+        sessionsLoaded: true,
+        hasOperationalContext: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowHomeOnboarding({
+        channelsLoaded: true,
+        sessionsLoaded: false,
+        hasOperationalContext: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowHomeOnboarding({
+        channelsLoaded: true,
+        sessionsLoaded: true,
+        hasOperationalContext: false,
+      }),
+    ).toBe(true);
+  });
+
   it("does not render the removed rewards teaser card on the home page", () => {
     const markup = renderHomePage();
 

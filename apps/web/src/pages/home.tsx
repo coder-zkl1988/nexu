@@ -68,6 +68,18 @@ type LiveStatusResponse = {
   };
 };
 
+export function shouldShowHomeOnboarding({
+  channelsLoaded,
+  sessionsLoaded,
+  hasOperationalContext,
+}: {
+  channelsLoaded: boolean;
+  sessionsLoaded: boolean;
+  hasOperationalContext: boolean;
+}): boolean {
+  return channelsLoaded && sessionsLoaded && !hasOperationalContext;
+}
+
 function formatRelativeTime(
   date: string | null | undefined,
   t: (key: string, opts?: Record<string, unknown>) => string,
@@ -465,24 +477,26 @@ export function HomePage() {
     },
   });
 
-  const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
+  const { data: sessionsData, isSuccess: sessionsLoaded } = useQuery({
     queryKey: ["sessions"],
     queryFn: async () => {
-      const { data } = await getApiV1Sessions();
+      const { data } = await getApiV1Sessions({ throwOnError: true });
       return data;
     },
+    refetchInterval: (query) => (query.state.status === "error" ? 3000 : false),
   });
 
   const sessions = sessionsData?.sessions ?? [];
   const hasSessionHistory = sessions.length > 0;
 
-  const { data: channelsData, isLoading: channelsLoading } = useQuery({
+  const { data: channelsData, isSuccess: channelsLoaded } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data } = await getApiV1Channels();
+      const { data } = await getApiV1Channels({ throwOnError: true });
       return data;
     },
-    refetchInterval: hasSessionHistory ? 3000 : false,
+    refetchInterval: (query) =>
+      hasSessionHistory || query.state.status === "error" ? 3000 : false,
   });
 
   const { messagesToday, lastActiveAt } = useMemo(() => {
@@ -631,10 +645,34 @@ export function HomePage() {
     }
   }, [liveStatus, pendingChannelId, t]);
 
+  if (!channelsLoaded || !sessionsLoaded) {
+    return (
+      <div className="h-full flex items-center justify-center px-6">
+        <div className="flex flex-col items-center text-center">
+          <img
+            src="/images/tabby-mascot.png"
+            alt="Tabby"
+            className="w-24 h-24 object-contain opacity-70"
+          />
+          <div className="mt-4 flex items-center gap-2 text-[12px] text-text-muted">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] animate-pulse" />
+            <span>{t("home.status.subtitle.starting")}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* ══════════════════════════════════════════════════════════════════════
      Scene A: First-run — No channels connected (Idle state)
      ══════════════════════════════════════════════════════════════════════ */
-  if (!hasOperationalContext && !channelsLoading && !sessionsLoading) {
+  if (
+    shouldShowHomeOnboarding({
+      channelsLoaded,
+      sessionsLoaded,
+      hasOperationalContext,
+    })
+  ) {
     return (
       <div className="h-full overflow-y-auto">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
