@@ -22,6 +22,17 @@ describe("SessionRunRegistry", () => {
     expect(registry.isBusy("s1")).toBe(false);
   });
 
+  it("clears all active turns when the gateway disconnects", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1");
+    registry.markStarted("s2");
+
+    registry.handleGatewayDisconnect();
+
+    expect(registry.isBusy("s1")).toBe(false);
+    expect(registry.isBusy("s2")).toBe(false);
+  });
+
   it("clears the active turn on terminal chat events", () => {
     const registry = new SessionRunRegistry();
     registry.markStarted("s1");

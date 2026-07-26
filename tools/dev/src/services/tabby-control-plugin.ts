@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -49,21 +49,40 @@ export async function ensureTabbyControlPluginStaged(): Promise<void> {
     const extensionsDir = join(runtimeConfig.openclawStateDir, "extensions");
     const stagedPlugin = join(extensionsDir, "tabby-control");
 
-    // Already staged — repeat starts skip the bundle entirely.
-    if (existsSync(join(stagedPlugin, "openclaw.plugin.json"))) {
-      return;
-    }
-
     const tabbyControlDir = await resolveTabbyControlDir();
     const distNexu = tabbyControlDir
       ? join(tabbyControlDir, "dist-nexu", "tabby-control")
       : null;
     if (!distNexu || !existsSync(join(distNexu, "openclaw.plugin.json"))) {
+      if (existsSync(join(stagedPlugin, "openclaw.plugin.json"))) {
+        return;
+      }
       logger.warn(
         "tabby-control source not found — device control plugin unavailable in this worktree; " +
           'run "pnpm build:nexu" in the tabby-control repo or set TABBY_CONTROL_DIR',
         { tabbyControlDir },
       );
+      return;
+    }
+
+    const comparisonFiles = [
+      join("dist", "build-info.json"),
+      join("generated", "phone-skills.manifest.json"),
+    ];
+    const stagedIsCurrent =
+      existsSync(join(stagedPlugin, "openclaw.plugin.json")) &&
+      (
+        await Promise.all(
+          comparisonFiles.map(async (relativePath) => {
+            const [source, staged] = await Promise.all([
+              readFile(join(distNexu, relativePath), "utf8"),
+              readFile(join(stagedPlugin, relativePath), "utf8"),
+            ]);
+            return source === staged;
+          }),
+        ).catch(() => [false])
+      ).every(Boolean);
+    if (stagedIsCurrent) {
       return;
     }
 
@@ -99,6 +118,7 @@ export async function ensureTabbyControlPluginStaged(): Promise<void> {
     }
 
     await mkdir(extensionsDir, { recursive: true });
+    await rm(stagedPlugin, { recursive: true, force: true });
     await cp(bundled, stagedPlugin, { recursive: true, force: true });
     logger.info("staged tabby-control plugin into openclaw extensions", {
       stagedPlugin,

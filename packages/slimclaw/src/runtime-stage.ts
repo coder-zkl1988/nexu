@@ -14,7 +14,8 @@ import { basename, dirname, relative, resolve } from "node:path";
 
 const OPENCLAW_PACKAGE_PATCH_DIRNAME = "openclaw";
 const STAGE_MANIFEST_FILENAME = "manifest.json";
-const STAGE_PATCH_VERSION = "2026-07-17-slimclaw-runtime-stage-v8";
+const STAGE_PATCH_VERSION = "2026-07-24-slimclaw-runtime-stage-v9";
+const NODE_NETWORK_COMPAT_IMPORT = 'import "./nexu-node-network-compat.cjs";';
 const REPLY_OUTCOME_HELPER_SEARCH = `
 const sessionKey = normalizeOptionalString(ctx.SessionKey) ?? normalizeOptionalString(ctx.CommandTargetSessionKey);
 	const startTime = diagnosticsEnabled ? Date.now() : 0;
@@ -440,6 +441,25 @@ async function readOverlayFiles(
   }
 
   return patchedFiles;
+}
+
+async function patchOpenclawEntryForNodeNetworkCompatibility(
+  sourceOpenclawRoot: string,
+): Promise<Map<string, string>> {
+  const relativeEntryPath = "openclaw.mjs";
+  const entryPath = resolve(sourceOpenclawRoot, relativeEntryPath);
+  const source = await readFile(entryPath, "utf8");
+
+  if (source.includes(NODE_NETWORK_COMPAT_IMPORT)) {
+    return new Map([[relativeEntryPath, source]]);
+  }
+
+  const firstLineEnd = source.indexOf("\n");
+  const patched =
+    source.startsWith("#!") && firstLineEnd >= 0
+      ? `${source.slice(0, firstLineEnd + 1)}${NODE_NETWORK_COMPAT_IMPORT}\n${source.slice(firstLineEnd + 1)}`
+      : `${NODE_NETWORK_COMPAT_IMPORT}\n${source}`;
+  return new Map([[relativeEntryPath, patched]]);
 }
 
 function applyExactReplacement(
@@ -926,6 +946,7 @@ async function collectFingerprintFiles(
   const files: Array<{ label: string; path: string }> = [];
   const sourceCandidates = [
     resolve(sourceOpenclawRoot, "package.json"),
+    resolve(sourceOpenclawRoot, "openclaw.mjs"),
     resolve(
       sourceOpenclawRoot,
       "dist",
@@ -1078,7 +1099,13 @@ export async function prepareSlimclawRuntimeStageInternal(
     stagedOpenclawRoot,
     options.log,
   );
-  const patchedFiles = new Map([...overlayFiles, ...bridgePatchedFiles]);
+  const entryPatchedFiles =
+    await patchOpenclawEntryForNodeNetworkCompatibility(stagedOpenclawRoot);
+  const patchedFiles = new Map([
+    ...overlayFiles,
+    ...bridgePatchedFiles,
+    ...entryPatchedFiles,
+  ]);
 
   for (const [patchRelativePath, patchedSource] of patchedFiles) {
     await writeFile(

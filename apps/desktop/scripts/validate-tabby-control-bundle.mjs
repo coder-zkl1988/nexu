@@ -22,7 +22,22 @@ const REQUIRED_VERSION = "2026.3.3";
 
 // RPC methods apps/controller/src/services/device-control-service.ts calls. A
 // bundle missing any of these cannot satisfy the controller at runtime.
-const REQUIRED_METHODS = ["device_set_vlm_credential", "device_push_media"];
+const REQUIRED_METHODS = [
+  "device_set_vlm_credential",
+  "device_push_media",
+  "device_get_task_results",
+];
+
+const REQUIRED_DECLARED_TOOLS = [
+  "device_list",
+  "device_execute_task",
+  "device_execute_task_all",
+  "device_execute_batch",
+  "device_get_task_results",
+  "device_cancel_task",
+  "device_get_status",
+  "device_execute_skill",
+];
 
 function fail(message) {
   console.error(`::error::[validate-tabby-control] ${message}`);
@@ -62,6 +77,24 @@ for (const method of REQUIRED_METHODS) {
   if (!indexSource.includes(method)) {
     fail(
       `bundled tabby-control is missing RPC method "${method}" — stale plugin, refusing to ship. The CI ref must point at a tabby-control commit that has it (currently \`main\`).`,
+    );
+  }
+}
+
+let manifest;
+try {
+  manifest = JSON.parse(
+    readFileSync(path.join(pluginDir, "openclaw.plugin.json"), "utf8"),
+  );
+} catch {
+  fail(`bundled plugin has no valid openclaw.plugin.json at ${pluginDir}`);
+}
+
+const declaredTools = new Set(manifest.contracts?.tools ?? []);
+for (const tool of REQUIRED_DECLARED_TOOLS) {
+  if (!declaredTools.has(tool)) {
+    fail(
+      `bundled tabby-control manifest does not declare tool "${tool}" — OpenClaw will reject the runtime registration.`,
     );
   }
 }

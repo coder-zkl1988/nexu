@@ -389,6 +389,8 @@ The phone-side VLM uses a **dual-layer autonomous architecture** that supports m
   - Describe each sub-task in natural language and send it to the phone via `device_execute_task`
   - The phone VLM runs autonomously within each sub-task (screenshot → analyze → act → …), then reports back
   - You only verify results at **sub-task boundaries**, no per-step involvement needed
+  - After a tool returns a terminal result, immediately summarize each phone's successes, failures, artifacts, and unfinished work to the user; never leave the conversation at “running”
+  - If a tool call times out, the connection drops, or the desktop restarts, call `device_get_task_results` first to recover completed work before summarizing; never blindly rerun completed tasks
   - **Advantage**: Multiple phones can execute in parallel; you only block at boundaries
 
 - **Fallback mode (step-by-step via device_execute_skill)**:

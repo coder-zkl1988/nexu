@@ -263,9 +263,9 @@ export function WelcomePage() {
                 className="flex items-center cursor-pointer text-accent"
               >
                 <img
-                  src="/brand/logo-black-1.svg"
-                  alt="nexu"
-                  className="h-5 w-auto object-contain"
+                  src="/images/happytabby-logo.png"
+                  alt="HappyTabby"
+                  className="h-7 w-auto object-contain"
                 />
               </button>
               <div className="flex items-center gap-3">

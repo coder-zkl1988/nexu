@@ -57,6 +57,11 @@ export class SessionRunRegistry {
     this.active.delete(sessionKey);
   }
 
+  /** Clear runs whose terminal events were lost with the gateway connection. */
+  handleGatewayDisconnect(): void {
+    this.active.clear();
+  }
+
   /** Whether a non-stale turn is currently active for `sessionKey`. */
   isBusy(sessionKey: string): boolean {
     const startedAt = this.active.get(sessionKey);

@@ -288,7 +288,11 @@ async function patchTabbyControlTaskDescription(outputDir) {
           "            'tasks=[{deviceId:dev1, task:在小红书搜索羽毛球，浏览前10篇笔记并逐篇总结要点},',\n" +
           "            '{deviceId:dev2, task:在小红书搜索足球，浏览前10篇笔记并逐篇总结要点},',\n" +
           "            '{deviceId:dev3, task:在小红书搜索匹克球，浏览前10篇笔记并逐篇总结要点}]。',\n" +
-          "            'More parts than devices → put the remainder in a follow-up batch after this returns.',",
+          "            'More parts than devices → put the remainder in a follow-up batch after this returns.',\n" +
+          "            'IF THIS RETURNS AN ERROR (cancelled / timed out / connection lost): the devices may',\n" +
+          "            'have finished the work anyway — the phone keeps going after the call gives up. Call',\n" +
+          "            'device_get_task_results FIRST to recover what they produced, and only re-run the parts',\n" +
+          "            'that are genuinely missing. Re-running blindly repeats minutes of work already done.',",
       );
       distChanged = true;
     }

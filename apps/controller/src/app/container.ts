@@ -179,6 +179,7 @@ export async function createContainer(): Promise<ControllerContainer> {
   wsClient.onChatEvent((payload) =>
     sessionRunRegistry.handleChatEvent(payload),
   );
+  wsClient.onDisconnected(() => sessionRunRegistry.handleGatewayDisconnect());
   const controlPlaneHealth = new ControlPlaneHealthService(
     gatewayService,
     wsClient,

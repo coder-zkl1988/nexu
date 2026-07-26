@@ -343,6 +343,7 @@ export class OpenClawWsClient {
   private tickTimer: NodeJS.Timeout | null = null;
   private connectTimer: NodeJS.Timeout | null = null;
   private onConnectedCallback: (() => void) | null = null;
+  private onDisconnectedCallback: (() => void) | null = null;
   private onGatewayShutdownCallback:
     | ((payload: {
         restartExpectedMs: number | null;
@@ -366,6 +367,11 @@ export class OpenClawWsClient {
   /** Register a callback fired once each time the WS handshake completes. */
   onConnected(cb: () => void): void {
     this.onConnectedCallback = cb;
+  }
+
+  /** Register a callback fired when an established gateway connection closes. */
+  onDisconnected(cb: () => void): void {
+    this.onDisconnectedCallback = cb;
   }
 
   onGatewayShutdown(
@@ -854,6 +860,7 @@ export class OpenClawWsClient {
   }
 
   private cleanup(): void {
+    const wasConnected = this._connected;
     this._connected = false;
     if (this.tickTimer) {
       clearInterval(this.tickTimer);
@@ -869,6 +876,16 @@ export class OpenClawWsClient {
       p.reject(new Error("openclaw gateway disconnected"));
     }
     this.pending.clear();
+    if (wasConnected) {
+      try {
+        this.onDisconnectedCallback?.();
+      } catch (err) {
+        logger.warn(
+          { error: err instanceof Error ? err.message : String(err) },
+          "openclaw_ws_on_disconnected_callback_error",
+        );
+      }
+    }
   }
 
   /**
