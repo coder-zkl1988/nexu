@@ -6,10 +6,7 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-}
-
-body:has(.deskpet-root) {
-  background: transparent;
+  background-color: rgba(0, 0, 0, 0);
 }
 
 *,

@@ -105,6 +105,11 @@ import { SleepGuard, type SleepGuardLogEntry } from "./sleep-guard";
 import { ComponentUpdater } from "./updater/component-updater";
 import { StartupHealthCheck } from "./updater/rollback";
 import { UpdateManager } from "./updater/update-manager";
+import {
+  TRANSPARENT_WINDOW_BACKGROUND_COLOR,
+  resolveDeskpetWindowChromeOptions,
+  resolveMainWindowChromeOptions,
+} from "./window-chrome";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1850,17 +1855,8 @@ function createMainWindow(): BrowserWindow {
     height: 720,
     minWidth: needsSetupExtraction ? 1280 : 1120,
     minHeight: 720,
-    backgroundColor: isMacOS ? "#00000000" : "#0B1020",
     title: "tabby",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 18 },
-    ...(isMacOS
-      ? {
-          transparent: true,
-          vibrancy: "sidebar" as const,
-          visualEffectState: "followWindow" as const,
-        }
-      : {}),
+    ...resolveMainWindowChromeOptions(process.platform),
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -2097,15 +2093,12 @@ function createDeskpetWindow(): BrowserWindow {
     minHeight: DESKPET_WINDOW_SIZES.small,
     maxWidth: DESKPET_WINDOW_SIZES.large,
     maxHeight: DESKPET_WINDOW_SIZES.large,
-    transparent: true,
-    frame: false,
+    ...resolveDeskpetWindowChromeOptions(),
     resizable: false,
     movable: true,
     show: false,
     skipTaskbar: true,
     alwaysOnTop: deskpetAlwaysOnTop,
-    hasShadow: false,
-    backgroundColor: "#00000000",
     title: "Tabby Deskpet",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -2117,6 +2110,7 @@ function createDeskpetWindow(): BrowserWindow {
   });
 
   deskpetWindow = window;
+  window.setBackgroundColor(TRANSPARENT_WINDOW_BACKGROUND_COLOR);
   window.setAlwaysOnTop(deskpetAlwaysOnTop, "floating");
   window.setIgnoreMouseEvents(true, { forward: true });
   positionDeskpetWindow(window);
@@ -2141,7 +2135,12 @@ function createDeskpetWindow(): BrowserWindow {
   );
 
   window.once("ready-to-show", () => {
+    window.setBackgroundColor(TRANSPARENT_WINDOW_BACKGROUND_COLOR);
     window.showInactive();
+  });
+
+  window.webContents.on("did-finish-load", () => {
+    window.setBackgroundColor(TRANSPARENT_WINDOW_BACKGROUND_COLOR);
   });
 
   window.on("closed", () => {

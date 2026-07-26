@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import {
   access,
   cp,
@@ -8,7 +9,9 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path, { basename } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import type { ControllerEnv } from "../app/env.js";
+import { logger } from "../lib/logger.js";
 
 const BUNDLED_PLUGIN_IDS = new Set([
   "dingtalk-connector",
@@ -20,12 +23,20 @@ const BUNDLED_PLUGIN_IDS = new Set([
   "whatsapp",
 ]);
 
+interface BundledPluginInstall {
+  pluginId: string;
+  packageName: string;
+  rootDir: string;
+  version?: string;
+}
+
 export class OpenClawRuntimePluginWriter {
   constructor(private readonly env: ControllerEnv) {}
 
   async ensurePlugins(): Promise<void> {
     await mkdir(this.env.openclawExtensionsDir, { recursive: true });
     const handledPluginIds = await this.ensureBundledPlugins();
+    await this.migrateShadowedManagedNpmInstalls(handledPluginIds);
 
     let entries: import("node:fs").Dirent[];
     try {
@@ -117,6 +128,218 @@ export class OpenClawRuntimePluginWriter {
     }
 
     return handledPluginIds;
+  }
+
+  private async readBundledPluginInstalls(
+    handledPluginIds: ReadonlySet<string>,
+  ): Promise<BundledPluginInstall[]> {
+    const installs: BundledPluginInstall[] = [];
+    for (const pluginId of handledPluginIds) {
+      const roots = [
+        path.join(this.env.openclawExtensionsDir, pluginId),
+        ...(this.env.openclawBuiltinExtensionsDir
+          ? [path.join(this.env.openclawBuiltinExtensionsDir, pluginId)]
+          : []),
+      ];
+      for (const root of roots) {
+        try {
+          const parsed: unknown = JSON.parse(
+            await readFile(path.join(root, "package.json"), "utf8"),
+          );
+          if (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            "name" in parsed &&
+            typeof parsed.name === "string"
+          ) {
+            installs.push({
+              pluginId,
+              packageName: parsed.name,
+              rootDir: root,
+              ...("version" in parsed && typeof parsed.version === "string"
+                ? { version: parsed.version }
+                : {}),
+            });
+            break;
+          }
+        } catch {
+          // Try the next materialized source for this plugin.
+        }
+      }
+    }
+
+    return installs;
+  }
+
+  private migratePersistedPluginInstallRecords(
+    installs: readonly BundledPluginInstall[],
+  ): boolean {
+    const databasePath = path.join(
+      this.env.openclawStateDir,
+      "state",
+      "openclaw.sqlite",
+    );
+    if (!existsSync(databasePath)) {
+      return true;
+    }
+    let database: DatabaseSync;
+    try {
+      database = new DatabaseSync(databasePath, {
+        open: true,
+        timeout: 2_000,
+      });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return true;
+      }
+      logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        "bundled_plugin_install_record_migration_open_failed",
+      );
+      return false;
+    }
+
+    try {
+      const table = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'installed_plugin_index'",
+        )
+        .get();
+      if (!table) {
+        return true;
+      }
+
+      const row = database
+        .prepare(
+          "SELECT install_records_json FROM installed_plugin_index WHERE index_key = ?",
+        )
+        .get("installed-plugin-index") as
+        | { install_records_json?: unknown }
+        | undefined;
+      if (!row || typeof row.install_records_json !== "string") {
+        return true;
+      }
+
+      const parsed: unknown = JSON.parse(row.install_records_json);
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        return false;
+      }
+      const records = parsed as Record<string, unknown>;
+      let changed = false;
+      for (const install of installs) {
+        const current = records[install.pluginId];
+        if (
+          typeof current !== "object" ||
+          current === null ||
+          !("source" in current) ||
+          current.source === "path"
+        ) {
+          continue;
+        }
+        if (
+          !("installPath" in current) ||
+          typeof current.installPath !== "string" ||
+          !current.installPath.includes(
+            `${path.sep}npm${path.sep}projects${path.sep}`,
+          )
+        ) {
+          continue;
+        }
+
+        records[install.pluginId] = {
+          source: "path",
+          sourcePath: install.rootDir,
+          installPath: install.rootDir,
+          ...(install.version ? { version: install.version } : {}),
+        };
+        changed = true;
+      }
+
+      if (changed) {
+        database
+          .prepare(
+            "UPDATE installed_plugin_index SET install_records_json = ?, updated_at_ms = ? WHERE index_key = ?",
+          )
+          .run(JSON.stringify(records), Date.now(), "installed-plugin-index");
+        logger.info(
+          { pluginIds: installs.map((install) => install.pluginId) },
+          "bundled_plugin_install_records_migrated",
+        );
+      }
+      return true;
+    } catch (err: unknown) {
+      logger.warn(
+        { error: err instanceof Error ? err.message : String(err) },
+        "bundled_plugin_install_record_migration_failed",
+      );
+      return false;
+    } finally {
+      database.close();
+    }
+  }
+
+  private async migrateShadowedManagedNpmInstalls(
+    handledPluginIds: ReadonlySet<string>,
+  ): Promise<void> {
+    const installs = await this.readBundledPluginInstalls(handledPluginIds);
+    const bundledPackageNames = new Set(
+      installs.map((install) => install.packageName),
+    );
+
+    if (bundledPackageNames.size === 0) {
+      return;
+    }
+
+    // OpenClaw's shipped-install migration keeps existing records. Replace
+    // stale npm records first so deleting the shadow copy cannot trigger an
+    // automatic reinstall on the next gateway boot.
+    if (!this.migratePersistedPluginInstallRecords(installs)) {
+      return;
+    }
+
+    const projectsDir = path.join(this.env.openclawStateDir, "npm", "projects");
+    let projects: import("node:fs").Dirent[];
+    try {
+      projects = await readdir(projectsDir, { withFileTypes: true });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
+      }
+      throw err;
+    }
+
+    for (const project of projects) {
+      if (!project.isDirectory()) {
+        continue;
+      }
+      const projectDir = path.join(projectsDir, project.name);
+      try {
+        const parsed: unknown = JSON.parse(
+          await readFile(path.join(projectDir, "package.json"), "utf8"),
+        );
+        if (
+          typeof parsed !== "object" ||
+          parsed === null ||
+          !("dependencies" in parsed) ||
+          typeof parsed.dependencies !== "object" ||
+          parsed.dependencies === null
+        ) {
+          continue;
+        }
+        const shadowsBundledPlugin = Object.keys(parsed.dependencies).some(
+          (packageName) => bundledPackageNames.has(packageName),
+        );
+        if (shadowsBundledPlugin) {
+          await rm(projectDir, { recursive: true, force: true });
+        }
+      } catch {
+        // Leave malformed or unrelated projects for OpenClaw diagnostics.
+      }
+    }
   }
 
   private async exists(targetPath: string): Promise<boolean> {

@@ -10,6 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
 import { OpenClawRuntimePluginWriter } from "../src/runtime/slimclaw-runtime-plugin-writer.js";
@@ -24,6 +25,7 @@ describe("OpenClawRuntimePluginWriter", () => {
       bundledRuntimePluginsDir: path.join(rootDir, "bundled-plugins"),
       runtimePluginTemplatesDir: path.join(rootDir, "runtime-plugins"),
       openclawExtensionsDir: path.join(rootDir, "extensions"),
+      openclawStateDir: path.join(rootDir, "state"),
       openclawSkillsDir: path.join(rootDir, "skills"),
     } as ControllerEnv;
   });
@@ -223,6 +225,114 @@ describe("OpenClawRuntimePluginWriter", () => {
         "utf8",
       ),
     ).toContain('"name": "silk-wasm"');
+  });
+
+  it("removes managed npm projects shadowed by bundled plugins", async () => {
+    const bundledPluginDir = path.join(
+      env.bundledRuntimePluginsDir,
+      "openclaw-lark",
+    );
+    const projectsDir = path.join(env.openclawStateDir, "npm", "projects");
+    const shadowedProject = path.join(projectsDir, "lark-install");
+    const unrelatedProject = path.join(projectsDir, "other-install");
+
+    await mkdir(bundledPluginDir, { recursive: true });
+    await writeFile(
+      path.join(bundledPluginDir, "package.json"),
+      '{ "name": "@larksuite/openclaw-lark" }\n',
+    );
+    await mkdir(shadowedProject, { recursive: true });
+    await writeFile(
+      path.join(shadowedProject, "package.json"),
+      '{ "dependencies": { "@larksuite/openclaw-lark": "2026.7.16" } }\n',
+    );
+    await mkdir(unrelatedProject, { recursive: true });
+    await writeFile(
+      path.join(unrelatedProject, "package.json"),
+      '{ "dependencies": { "other-plugin": "1.0.0" } }\n',
+    );
+
+    const writer = new OpenClawRuntimePluginWriter(env);
+    await writer.ensurePlugins();
+
+    await expect(access(shadowedProject)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(access(unrelatedProject)).resolves.toBeUndefined();
+  });
+
+  it("migrates shadowed npm install records to bundled paths", async () => {
+    const bundledPluginDir = path.join(
+      env.bundledRuntimePluginsDir,
+      "openclaw-lark",
+    );
+    const databaseDir = path.join(env.openclawStateDir, "state");
+    const databasePath = path.join(databaseDir, "openclaw.sqlite");
+    await mkdir(bundledPluginDir, { recursive: true });
+    await writeFile(
+      path.join(bundledPluginDir, "package.json"),
+      '{ "name": "@larksuite/openclaw-lark", "version": "2026.7.9" }\n',
+    );
+    await mkdir(databaseDir, { recursive: true });
+
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE installed_plugin_index (
+        index_key TEXT PRIMARY KEY,
+        install_records_json TEXT NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      )
+    `);
+    database
+      .prepare(
+        "INSERT INTO installed_plugin_index (index_key, install_records_json, updated_at_ms) VALUES (?, ?, ?)",
+      )
+      .run(
+        "installed-plugin-index",
+        JSON.stringify({
+          "openclaw-lark": {
+            source: "npm",
+            installPath: path.join(
+              env.openclawStateDir,
+              "npm",
+              "projects",
+              "lark-install",
+            ),
+          },
+          "other-plugin": {
+            source: "npm",
+            installPath: "/tmp/other-plugin",
+          },
+        }),
+        Date.now(),
+      );
+    database.close();
+
+    const writer = new OpenClawRuntimePluginWriter(env);
+    await writer.ensurePlugins();
+
+    const updatedDatabase = new DatabaseSync(databasePath);
+    const row = updatedDatabase
+      .prepare(
+        "SELECT install_records_json FROM installed_plugin_index WHERE index_key = ?",
+      )
+      .get("installed-plugin-index") as { install_records_json: string };
+    updatedDatabase.close();
+    const records = JSON.parse(row.install_records_json) as Record<
+      string,
+      Record<string, unknown>
+    >;
+
+    expect(records["openclaw-lark"]).toEqual({
+      source: "path",
+      sourcePath: path.join(env.openclawExtensionsDir, "openclaw-lark"),
+      installPath: path.join(env.openclawExtensionsDir, "openclaw-lark"),
+      version: "2026.7.9",
+    });
+    expect(records["other-plugin"]).toEqual({
+      source: "npm",
+      installPath: "/tmp/other-plugin",
+    });
   });
 
   it("prefers bundled wecom over the legacy runtime plugin source", async () => {

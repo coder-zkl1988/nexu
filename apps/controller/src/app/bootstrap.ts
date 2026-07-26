@@ -157,8 +157,17 @@ export async function bootstrapController(
     );
     logBootstrapStage("managed_stable_control_plane", stableStartedAt);
   } else {
-    // External bootstrap is attach + reconcile, not pre-start seeding.
-    logger.info({}, "controller_bootstrap_attaching_external_openclaw");
+    // launchd may start OpenClaw while the controller is still bootstrapping.
+    // Seed plugins and config before connecting so an incompatible persisted
+    // config cannot prevent the gateway from starting and deadlock bootstrap.
+    logger.info({}, "controller_bootstrap_preparing_external_openclaw");
+
+    container.runtimeState.bootPhase = "reconciling-runtime";
+    const syncStartedAt = Date.now();
+    const { configChanged } =
+      await container.openclawSyncService.syncAllImmediate();
+    container.openclawSyncService.beginSettling();
+    logBootstrapStage("external_sync", syncStartedAt, { configChanged });
 
     container.runtimeState.bootPhase = "attaching-external-runtime";
     const gatewayStartedAt = Date.now();
@@ -168,13 +177,6 @@ export async function bootstrapController(
       INITIAL_CONTROL_PLANE_READY_TIMEOUT_MS,
     );
     logBootstrapStage("external_gateway_connection", gatewayStartedAt);
-
-    container.runtimeState.bootPhase = "reconciling-runtime";
-    const syncStartedAt = Date.now();
-    const { configChanged } =
-      await container.openclawSyncService.syncAllImmediate();
-    container.openclawSyncService.beginSettling();
-    logBootstrapStage("external_sync", syncStartedAt, { configChanged });
 
     container.runtimeState.bootPhase = "stabilizing-runtime";
     const stableStartedAt = Date.now();
