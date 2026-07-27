@@ -1,6 +1,7 @@
 import { ChatInput, ChatInputAttachButton } from "@/components/chat-input";
 import { useCommunitySkills } from "@/hooks/use-community-catalog";
 import { useTeams } from "@/hooks/use-teams";
+import { subscribeExternalChatInput } from "@/lib/chat/external-chat-input";
 import { isImeComposing } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -76,6 +77,8 @@ export interface ChatInputAreaProps {
   modelReadOnly?: boolean;
   /** Change this value to focus the text input from an external action. */
   focusToken?: string | null;
+  /** Current session key for browser selections and annotated screenshots. */
+  externalInputSessionKey?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +457,7 @@ export function ChatInputArea({
   showModelSelector = true,
   modelReadOnly = false,
   focusToken = null,
+  externalInputSessionKey = null,
 }: ChatInputAreaProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
@@ -494,6 +498,21 @@ export function ChatInputArea({
       { ...att, id: crypto.randomUUID() },
     ]);
   }, []);
+
+  useEffect(() => {
+    if (!externalInputSessionKey) return;
+    return subscribeExternalChatInput(externalInputSessionKey, (external) => {
+      if (external.text?.trim()) {
+        setInput((current) =>
+          current.trim()
+            ? `${current.trimEnd()}\n\n${external.text?.trim()}`
+            : (external.text?.trim() ?? ""),
+        );
+      }
+      if (external.attachment) addAttachment(external.attachment);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    });
+  }, [addAttachment, externalInputSessionKey]);
 
   const removeAttachment = useCallback((id: string) => {
     setPendingAttachments((prev) => prev.filter((a) => a.id !== id));

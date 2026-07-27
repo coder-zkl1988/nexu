@@ -815,7 +815,8 @@ export function CanvasSurface({ className }: { className?: string }) {
   }, [toWorld, closeFloatingMenus]);
 
   // Space-key pan mode: track via ref for capture-phase handler (zero re-render cost).
-  // DOM attribute on the container drives cursor feedback via a CSS rule in index.css.
+  // Cursor feedback starts with the actual drag so a missed keyup cannot leave
+  // the idle canvas stuck alternating between default and grab cursors.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
@@ -823,16 +824,13 @@ export function CanvasSurface({ className }: { className?: string }) {
       if (event.repeat) return;
       event.preventDefault(); // prevent scrollable ancestors from scrolling
       spaceRef.current = true;
-      containerRef.current?.setAttribute("data-space-pan", "true");
     };
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
       spaceRef.current = false;
-      containerRef.current?.removeAttribute("data-space-pan");
     };
     const onBlur = () => {
       spaceRef.current = false;
-      containerRef.current?.removeAttribute("data-space-pan");
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -859,7 +857,7 @@ export function CanvasSurface({ className }: { className?: string }) {
       data-infinite-canvas="true"
       className={cn(
         "relative h-full w-full select-none overflow-hidden",
-        gestureActive ? "cursor-grabbing" : "cursor-grab",
+        gestureActive ? "cursor-grabbing" : "cursor-default",
         className,
       )}
       style={gridStyle}
@@ -1312,7 +1310,9 @@ const CanvasNodeView = memo(function CanvasNodeView({
       <div
         className={cn(
           "absolute right-2 top-2 z-30 flex items-center gap-0.5 rounded-lg border border-border bg-surface-1/85 px-1 py-0.5 shadow-sm backdrop-blur transition-opacity duration-150",
-          selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          selected
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
         )}
       >
         {/* Batch child: promote-to-primary star */}

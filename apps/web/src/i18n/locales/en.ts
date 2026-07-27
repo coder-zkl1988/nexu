@@ -950,6 +950,7 @@ const en = {
   "sessions.hoursAgo": "{{count}}h ago",
   "sessions.daysAgo": "{{count}}d ago",
   "sessions.chat.messages": "{{count}} messages",
+  "sessions.chat.browser": "Browser",
   "sessions.chat.canvas": "Canvas",
   "sessions.chat.lastActive": "Last active {{time}}",
   "sessions.chat.empty": "No messages yet",
@@ -974,6 +975,25 @@ const en = {
   "sessions.pending.waiting": "Waiting for {{name}} to reply...",
   "sessions.pending.streaming": "{{name}} is replying...",
   "sessions.pending.error": "Still waiting for the conversation...",
+
+  // ── Embedded Browser ──
+  "browser.title": "Browser",
+  "browser.address": "Address",
+  "browser.addressPlaceholder": "Enter a URL",
+  "browser.invalidUrl": "Enter a valid web address",
+  "browser.back": "Back",
+  "browser.forward": "Forward",
+  "browser.reload": "Reload",
+  "browser.openExternal": "Open externally",
+  "browser.maximize": "Expand browser",
+  "browser.restore": "Restore width",
+  "browser.artifacts": "Generated pages",
+  "browser.selectArtifact": "Select a web page",
+  "browser.artifactsError": "Could not load generated pages",
+  "browser.pageTitle": "Browser preview",
+  "browser.waiting": "Waiting for a web page",
+  "browser.waitingDescription":
+    "Generated pages from this conversation will open here automatically.",
 
   // ── Integrations Page ──
   "integrations.pageTitle": "Integrations",

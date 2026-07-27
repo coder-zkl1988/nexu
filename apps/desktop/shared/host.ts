@@ -43,6 +43,7 @@ export const hostInvokeChannels = [
   "desktop:get-rewards-status",
   "desktop:set-reward-balance",
   "desktop:rewards-updated",
+  "desktop:browser-control",
   "shell:open-external",
   "update:check",
   "update:get-capability",
@@ -88,6 +89,47 @@ export type DiagnosticsUploadResult = {
   warnings?: string[];
   errorMessage?: string;
 };
+
+export type DesktopBrowserControl =
+  | {
+      action: "show";
+      tabId: string;
+      url: string;
+      bounds: { x: number; y: number; width: number; height: number };
+    }
+  | { action: "hide" | "dispose" }
+  | {
+      action: "close-tab" | "state" | "select-element" | "capture";
+      tabId: string;
+    }
+  | { action: "navigate"; tabId: string; url: string }
+  | {
+      action: "command";
+      tabId: string;
+      command: "back" | "forward" | "reload" | "stop";
+    };
+
+export type DesktopBrowserControlResult =
+  | { kind: "ok" }
+  | {
+      kind: "state";
+      url: string;
+      title: string;
+      loading: boolean;
+      canGoBack: boolean;
+      canGoForward: boolean;
+    }
+  | {
+      kind: "selection";
+      selection: {
+        url: string;
+        selector: string;
+        tagName: string;
+        text: string;
+        ariaLabel: string;
+      } | null;
+    }
+  | { kind: "capture"; dataUrl: string };
 
 export type StartupProbeStatus = "ok" | "error";
 
@@ -212,6 +254,7 @@ export type HostInvokePayloadMap = {
     balance: number;
   };
   "desktop:rewards-updated": undefined;
+  "desktop:browser-control": DesktopBrowserControl;
   "shell:open-external": {
     url: string;
   };
@@ -547,6 +590,7 @@ export type HostInvokeResultMap = {
   "desktop:rewards-updated": {
     ok: boolean;
   };
+  "desktop:browser-control": DesktopBrowserControlResult;
   "shell:open-external": {
     ok: boolean;
   };

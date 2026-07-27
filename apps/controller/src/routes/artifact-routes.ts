@@ -7,6 +7,11 @@ import {
   updateArtifactSchema,
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
+import {
+  discoverLocalWebPreviews,
+  localWebPreviewAssetPathFromUrl,
+  readLocalWebPreviewFile,
+} from "../services/local-web-preview.js";
 import type { ControllerBindings } from "../types.js";
 
 const querySchema = z.object({
@@ -17,6 +22,11 @@ const querySchema = z.object({
 
 const artifactIdParamSchema = z.object({ id: z.string() });
 const artifactNotFoundSchema = z.object({ message: z.string() });
+const localPreviewParamSchema = z.object({
+  botId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
+  encodedRoot: z.string().regex(/^[A-Za-z0-9_-]+$/),
+});
+const localPreviewFileSchema = z.string().openapi({ format: "binary" });
 
 export function registerArtifactRoutes(
   app: OpenAPIHono<ControllerBindings>,
@@ -44,6 +54,55 @@ export function registerArtifactRoutes(
         await container.artifactService.createArtifact(c.req.valid("json")),
         201,
       ),
+  );
+
+  // Binary workspace assets are loaded by the sandboxed browser iframe, not
+  // by the generated frontend SDK. The decoded root and requested file are
+  // both constrained to the selected Bot workspace by readLocalWebPreviewFile.
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/artifacts/local-preview/{botId}/{encodedRoot}/*",
+      operationId: "getLocalWebPreviewAsset",
+      tags: ["Artifacts"],
+      request: { params: localPreviewParamSchema },
+      responses: {
+        200: {
+          content: {
+            "application/octet-stream": { schema: localPreviewFileSchema },
+          },
+          description: "Local preview asset",
+        },
+        404: {
+          content: { "text/plain": { schema: z.string() } },
+          description: "Local preview asset not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { botId, encodedRoot } = c.req.valid("param");
+      const assetPath = localWebPreviewAssetPathFromUrl({
+        requestUrl: c.req.url,
+        botId,
+        encodedRoot,
+      });
+      if (assetPath === null) return c.text("Not found", 404);
+
+      const file = await readLocalWebPreviewFile({
+        openclawStateDir: container.env.openclawStateDir,
+        botId,
+        encodedRoot,
+        assetPath,
+      });
+      if (!file) return c.text("Not found", 404);
+
+      return c.body(file.data, 200, {
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "no-store",
+        "Content-Type": file.contentType,
+        "X-Content-Type-Options": "nosniff",
+      });
+    },
   );
 
   app.openapi(
@@ -96,11 +155,37 @@ export function registerArtifactRoutes(
         },
       },
     }),
-    async (c) =>
-      c.json(
-        await container.artifactService.listArtifacts(c.req.valid("query")),
+    async (c) => {
+      const query = c.req.valid("query");
+      const listed = await container.artifactService.listArtifacts(query);
+      if (!query.sessionKey || query.offset > 0) {
+        return c.json(listed, 200);
+      }
+
+      const localPreviews = await discoverLocalWebPreviews({
+        openclawStateDir: container.env.openclawStateDir,
+        sessionKey: query.sessionKey,
+        requestOrigin: new URL(c.req.url).origin,
+      });
+      const storedPreviewUrls = new Set(
+        listed.artifacts.map((artifact) => artifact.previewUrl).filter(Boolean),
+      );
+      const uniqueLocalPreviews = localPreviews.filter(
+        (preview) => !storedPreviewUrls.has(preview.previewUrl),
+      );
+
+      return c.json(
+        {
+          ...listed,
+          artifacts: [...uniqueLocalPreviews, ...listed.artifacts].slice(
+            0,
+            query.limit,
+          ),
+          total: listed.total + uniqueLocalPreviews.length,
+        },
         200,
-      ),
+      );
+    },
   );
 
   app.openapi(
