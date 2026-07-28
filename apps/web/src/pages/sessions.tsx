@@ -13,6 +13,19 @@ import {
 } from "@/lib/a2ui/a2ui-sidebar-context";
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import {
+  closeBrowserPanel,
+  openBrowserPanel,
+  useBrowserPanel,
+} from "@/lib/browser/browser-panel-store";
+import {
+  createPreviewAutoOpenTracker,
+  observePreviewArtifact,
+} from "@/lib/browser/browser-preview-auto-open";
+import {
+  type PreviewArtifact,
+  selectLatestPreviewArtifact,
+} from "@/lib/browser/embedded-browser";
+import {
   type CanvasOpBatchView,
   CanvasOpCard,
 } from "@/lib/canvas/canvas-op-card";
@@ -52,9 +65,11 @@ import {
   CircleAlert,
   FileImage,
   FileText,
+  Globe,
   Loader2,
   MessageSquare,
   PanelRight,
+  Shapes,
   Square,
   Terminal,
   Volume2,
@@ -66,6 +81,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
+  getApiV1Artifacts,
   getApiV1Bots,
   getApiV1BotsByBotId,
   getApiV1Channels,
@@ -1158,6 +1174,7 @@ export function SessionsPage() {
   const endRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { openWith } = useA2UISidebar();
+  const browserPanel = useBrowserPanel();
 
   useEffect(() => {
     if (id) track("session_detail_view");
@@ -1172,6 +1189,49 @@ export function SessionsPage() {
     },
     enabled: !!id,
   });
+
+  const { data: previewArtifacts = [] } = useQuery({
+    queryKey: ["browser-artifacts", session?.sessionKey],
+    queryFn: async () => {
+      const { data, error } = await getApiV1Artifacts({
+        query: {
+          sessionKey: session?.sessionKey ?? "",
+          limit: 50,
+          offset: 0,
+        },
+      });
+      if (error) throw new Error("Unable to load preview artifacts");
+      return (data?.artifacts ?? []) as PreviewArtifact[];
+    },
+    enabled: Boolean(session?.sessionKey),
+    refetchInterval: 2000,
+  });
+  const latestPreviewArtifact = selectLatestPreviewArtifact([
+    ...previewArtifacts,
+  ]);
+  const previewAutoOpenTrackerRef = useRef(createPreviewAutoOpenTracker());
+
+  useEffect(() => {
+    const sessionKey = session?.sessionKey ?? null;
+    const observation = observePreviewArtifact({
+      tracker: previewAutoOpenTrackerRef.current,
+      sessionKey,
+      artifact: latestPreviewArtifact,
+      now: Date.now(),
+    });
+    previewAutoOpenTrackerRef.current = observation.tracker;
+
+    if (!observation.shouldOpen || !sessionKey) return;
+    if (browserPanel.isOpen && browserPanel.sessionKey === sessionKey) return;
+
+    setPanelOpen(false);
+    openBrowserPanel(sessionKey);
+  }, [
+    browserPanel.isOpen,
+    browserPanel.sessionKey,
+    latestPreviewArtifact,
+    session?.sessionKey,
+  ]);
 
   // Chat history — polls every 5s as reliable fallback. SSE invalidates for instant updates.
   const {
@@ -2155,6 +2215,12 @@ export function SessionsPage() {
   // Canvas workbench state: panelOpen drives the header entry button; nodes
   // feed the expired-a2ui self-heal below.
   const { panelOpen: canvasPanelOpen, nodes: canvasNodes } = useCanvas();
+  const browserSelected =
+    browserPanel.isOpen && browserPanel.sessionKey === session?.sessionKey;
+  const canvasSelected = !browserPanel.isOpen && canvasPanelOpen;
+  const browserHiddenWithContent =
+    !browserSelected && latestPreviewArtifact !== null;
+  const canvasHiddenWithContent = !canvasSelected && canvasNodes.length > 0;
 
   const sidebarSurfaceKey = sidebarPayloads.map((p) => p.surfaceId).join("|");
   const seenSidebarSurfacesRef = useRef<Set<string> | null>(null);
@@ -2171,6 +2237,7 @@ export function SessionsPage() {
     for (const payload of sidebarPayloads) {
       if (seen.has(payload.surfaceId)) continue;
       seen.add(payload.surfaceId);
+      closeBrowserPanel();
       openWith(payload.surfaceId, payload.messages, onA2UIAction, {
         size: sidebarSurfaceDefaultSize(payload.messages),
       });
@@ -2334,20 +2401,60 @@ export function SessionsPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              data-session-browser-toggle="true"
+              aria-pressed={browserSelected}
+              aria-label={t("sessions.chat.browser")}
+              title={t("sessions.chat.browser")}
+              disabled={!session?.sessionKey}
+              onClick={() => {
+                if (browserSelected) {
+                  closeBrowserPanel();
+                  return;
+                }
+                setPanelOpen(false);
+                openBrowserPanel(session?.sessionKey ?? "");
+              }}
+              className={cn(
+                "relative rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary disabled:opacity-40",
+                browserSelected &&
+                  "bg-surface-2 text-text-primary shadow-sm ring-1 ring-border",
+              )}
+            >
+              <Globe size={18} />
+              {browserHiddenWithContent && (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1 top-1 size-1.5 rounded-full bg-emerald-500 ring-2 ring-surface-1"
+                />
+              )}
+            </button>
             <button
               type="button"
               data-session-canvas-toggle="true"
-              aria-pressed={canvasPanelOpen}
+              aria-pressed={canvasSelected}
               aria-label={t("sessions.chat.canvas")}
               title={t("sessions.chat.canvas")}
-              onClick={() => setPanelOpen(!canvasPanelOpen)}
+              onClick={() => {
+                const shouldOpen = browserPanel.isOpen || !canvasPanelOpen;
+                closeBrowserPanel();
+                setPanelOpen(shouldOpen);
+              }}
               className={cn(
-                "rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
-                canvasPanelOpen && "text-sky-600",
+                "relative rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
+                canvasSelected &&
+                  "bg-surface-2 text-text-primary shadow-sm ring-1 ring-border",
               )}
             >
-              <PanelRight size={18} />
+              <Shapes size={18} />
+              {canvasHiddenWithContent && (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-1 top-1 size-1.5 rounded-full bg-emerald-500 ring-2 ring-surface-1"
+                />
+              )}
             </button>
             {!!session?.channelId &&
               platform !== "wechat" &&
@@ -2444,6 +2551,7 @@ export function SessionsPage() {
                   idx === 0 ||
                   previousRole !== "assistant";
                 const openSidebar = (payload: SidebarA2UIPayload): void => {
+                  closeBrowserPanel();
                   openWith(payload.surfaceId, payload.messages, onA2UIAction, {
                     size: sidebarSurfaceDefaultSize(payload.messages),
                   });
@@ -2530,6 +2638,7 @@ export function SessionsPage() {
             showBotSelector={false}
             modelReadOnly
             focusToken={deskpetReplyFocusToken}
+            externalInputSessionKey={session?.sessionKey ?? null}
           />
         </div>
       </div>

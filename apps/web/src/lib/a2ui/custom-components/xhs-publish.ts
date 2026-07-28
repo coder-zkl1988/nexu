@@ -10,6 +10,61 @@ export interface XHSPublishPost {
   hashtags: string[];
 }
 
+export interface XHSPublishResultItem {
+  postId?: string;
+  title: string;
+  deviceId: string;
+  status: "success" | "error";
+  message?: string;
+}
+
+export type XHSPublishResultSource = "editor" | "batch";
+
+type XHSPublishActionHandler = (
+  name: string,
+  context: Record<string, unknown>,
+) => void;
+
+function resultNeedsUserInput(result: XHSPublishResultItem): boolean {
+  if (result.status !== "error" || !result.message) return false;
+  return /请问|请选择|选择|确认|继续|还是|是否|需要/.test(result.message);
+}
+
+/**
+ * Report a user-triggered publish result back to the originating chat agent.
+ * The component already executed the phone task, so this is a terminal result
+ * event rather than another publish request. Keep the payload small: post body
+ * and base64 images must never be copied into the chat transcript.
+ */
+export function reportXhsPublishResults(
+  onAction: XHSPublishActionHandler | undefined,
+  input: {
+    source: XHSPublishResultSource;
+    batchId?: string;
+    results: XHSPublishResultItem[];
+  },
+): void {
+  if (!onAction || input.results.length === 0) return;
+
+  const successCount = input.results.filter(
+    (result) => result.status === "success",
+  ).length;
+  const errorCount = input.results.length - successCount;
+  const requiresUserInput = input.results.some(resultNeedsUserInput);
+
+  onAction("xhs_publish_result", {
+    source: input.source,
+    batchId: input.batchId,
+    terminal: true,
+    successCount,
+    errorCount,
+    requiresUserInput,
+    results: input.results,
+    agentInstruction:
+      "这是桌面组件已执行完成的手机端结果，不要自动重复发布。请向用户汇报结果；若 requiresUserInput 为 true，请根据失败消息向用户提问并等待答复。",
+  });
+}
+
 /** "image/png" → "png" for a stable gallery filename extension. */
 function extForMime(mimeType: string): string {
   const sub = mimeType.split("/")[1] ?? "png";

@@ -42,6 +42,14 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 - **`AuthLayout`** — Requires authenticated session, wraps all workspace routes.
 - **`WorkspaceLayout`** — Sidebar + main content area.
 
+### Session workbench
+
+Session detail pages expose browser and canvas controls beside the conversation header. Both modes share the resizable right-side workbench, and their header controls show an activity dot while the corresponding surface is open.
+
+The embedded browser supports up to eight tabs, navigation controls, generated-page auto-open, DOM element selection into the current chat input, and screenshot annotation into an image attachment. Arbitrary pages run in sandboxed Electron `WebContentsView` instances with Node integration disabled; the trusted application webview remains the only surface with the desktop preload bridge. In non-desktop web builds, the browser falls back to a sandboxed iframe without element selection or screenshot capture.
+
+Generated local pages are discovered from `index.html` / `index.htm` files under the active Bot workspace and served through the controller's constrained preview route. Preview file resolution must remain inside the selected project root after `realpath` resolution, including symlink checks.
+
 ## Channels
 
 Channel management lives at `/workspace/channels` ([`apps/web/src/pages/channels.tsx`](../apps/web/src/pages/channels.tsx)). Slack and Discord remain single-instance per workspace; Feishu and WeChat support multi-instance connections.

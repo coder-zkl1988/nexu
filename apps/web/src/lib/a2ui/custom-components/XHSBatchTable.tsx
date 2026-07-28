@@ -12,7 +12,11 @@ import {
   updatePost,
   useBatch,
 } from "./xhs-batch-store";
-import { publishXhsPost } from "./xhs-publish";
+import {
+  type XHSPublishResultItem,
+  publishXhsPost,
+  reportXhsPublishResults,
+} from "./xhs-publish";
 
 const NEXU_CATALOG = "https://nexu.app/a2ui/custom-catalog.json";
 
@@ -89,7 +93,7 @@ function buildEditorSurface(
   ];
 }
 
-export function XHSBatchTable({ comp }: CustomComponentProps) {
+export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
   const data = comp as unknown as XHSBatchData;
   const batchId = data.batchId ?? "default";
   const { openWith } = useA2UISidebar();
@@ -138,7 +142,7 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
     openWith(
       surfaceId,
       buildEditorSurface(surfaceId, batchId, post),
-      () => {},
+      onAction ?? (() => {}),
       {
         size: XHS_EDITOR_NODE_SIZE,
       },
@@ -154,7 +158,7 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
       openWith(
         surfaceId,
         buildEditorSurface(surfaceId, batchId, post),
-        () => {},
+        onAction ?? (() => {}),
         {
           title: post.title || `帖子 ${i + 1}`,
           position: fanoutPosition(i),
@@ -164,7 +168,7 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
     });
   };
 
-  const publishOne = async (post: XHSPost) => {
+  const publishOne = async (post: XHSPost): Promise<XHSPublishResultItem> => {
     try {
       await publishXhsPost(
         post.deviceId,
@@ -177,36 +181,77 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
         (phase) => setRowStatus(batchId, post.id, phase),
       );
       setRowStatus(batchId, post.id, "success");
+      return {
+        postId: post.id,
+        title: post.title,
+        deviceId: post.deviceId,
+        status: "success",
+        message: "手机端已完成发布",
+      };
     } catch (err) {
-      setRowStatus(
-        batchId,
-        post.id,
-        "error",
-        err instanceof Error ? err.message : "发布失败",
-      );
+      const message = err instanceof Error ? err.message : "发布失败";
+      setRowStatus(batchId, post.id, "error", message);
+      return {
+        postId: post.id,
+        title: post.title,
+        deviceId: post.deviceId,
+        status: "error",
+        message,
+      };
     }
   };
 
-  const publishAll = () => {
+  const publishAll = async () => {
     // Posts on the SAME phone must publish serially: the device rejects a second
     // task while busy, and each post pushes its images then picks "the latest N"
     // from the gallery — running them concurrently would collide on both. Posts
     // on DIFFERENT phones run in parallel.
     const byDevice = new Map<string, XHSPost[]>();
+    const preflightResults: XHSPublishResultItem[] = [];
     for (const post of posts) {
-      if (!post.deviceId || post.status === "publishing") continue;
+      if (
+        post.status === "success" ||
+        post.status === "pushing" ||
+        post.status === "publishing"
+      ) {
+        continue;
+      }
+      if (!post.deviceId) {
+        const message = "未分配在线设备";
+        setRowStatus(batchId, post.id, "error", message);
+        preflightResults.push({
+          postId: post.id,
+          title: post.title,
+          deviceId: "",
+          status: "error",
+          message,
+        });
+        continue;
+      }
       const group = byDevice.get(post.deviceId) ?? [];
       group.push(post);
       byDevice.set(post.deviceId, group);
     }
-    for (const group of byDevice.values()) {
-      void (async () => {
+
+    const deviceResults = await Promise.all(
+      [...byDevice.values()].map(async (group) => {
+        const results: XHSPublishResultItem[] = [];
         for (const post of group) {
-          await publishOne(post);
+          results.push(await publishOne(post));
         }
-      })();
-    }
+        return results;
+      }),
+    );
+    reportXhsPublishResults(onAction, {
+      source: "batch",
+      batchId,
+      results: [...preflightResults, ...deviceResults.flat()],
+    });
   };
+
+  const batchPublishing = posts.some(
+    (post) => post.status === "pushing" || post.status === "publishing",
+  );
 
   return (
     <div
@@ -251,8 +296,10 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
           </button>
           <button
             type="button"
-            onClick={publishAll}
-            disabled={posts.length === 0}
+            onClick={() => {
+              void publishAll();
+            }}
+            disabled={posts.length === 0 || batchPublishing}
             style={{
               padding: "5px 14px",
               borderRadius: 6,
@@ -261,10 +308,10 @@ export function XHSBatchTable({ comp }: CustomComponentProps) {
               color: "#fff",
               fontSize: 13,
               fontWeight: 500,
-              cursor: "pointer",
+              cursor: batchPublishing ? "not-allowed" : "pointer",
             }}
           >
-            全部发布
+            {batchPublishing ? "发布中…" : "全部发布"}
           </button>
         </div>
       </div>
