@@ -15,6 +15,8 @@ Nexu 桌面端增加两项本地自动化能力：
 
 使用 `driver: "extension"` 和固定 profile `openclaw`。profile 名必须是 `openclaw`：`defaultProfile` 只在 CLI 路径生效，agent 工具会退到 `profiles["openclaw"] ? "openclaw" : "user"`，而 `user` 意味着对真实 Chrome profile 走 CDP，必然以 "Could not find DevToolsActivePort" 失败。不启动 Playwright/Chromium 测试实例，不附着整个浏览器；扩展仅共享用户在 OpenClaw tab group 中主动连接的标签页。首版显式设置 `browser.evaluateEnabled=false`，不向模型暴露页面上下文任意 JavaScript 执行。
 
+**迁移注意**：profile 改名会使已完成的扩展配对失效——中继端口不变、配对串也不变，但扩展重连后不再上报任何标签页，表现为 `browser tabs` 返回空而连接看似正常。需要用户在扩展弹窗里 Unpair 再 Pair 一次。预览期可接受，但若将来再改 profile 名，必须同时给出重新配对的提示。
+
 扩展路径不使用 Chrome remote-debugging port，因此不会出现阻断式“Allow remote debugging?”确认框；Chrome 会显示可关闭的调试横幅。网站仍可能观察到 DevTools/CDP 相关信号，这是 Chrome 安全模型的一部分，不能通过隐藏标志可靠消除。Nexu 不承诺绕过反自动化、验证码或站点风控。
 
 ### Computer Use
