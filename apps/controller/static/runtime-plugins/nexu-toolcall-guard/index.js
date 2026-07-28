@@ -33,6 +33,17 @@
 const DEFAULT_THRESHOLD = 3;
 const MAX_TRACKED_RUNS = 500;
 const LOCAL_AUTOMATION_TOOL_PREFIXES = ["peekaboo__", "cua-driver__"];
+// Embedded-browser tools registered by the nexu-browser plugin. They drive a
+// browser that carries the user's own logins, so they are gated exactly like
+// desktop control: desktop main session only. Kept in sync with
+// EMBEDDED_BROWSER_TOOLS in apps/controller/src/lib/openclaw-config-compiler.ts.
+const EMBEDDED_BROWSER_TOOLS = new Set([
+  "browser_click",
+  "browser_open",
+  "browser_scroll",
+  "browser_snapshot",
+  "browser_type",
+]);
 const HOST_EXECUTION_TOOLS = new Set([
   "exec",
   "process",
@@ -196,6 +207,7 @@ function isEmptyParams(params) {
 function isLocalAutomationTool(toolName) {
   return (
     toolName === "browser" ||
+    EMBEDDED_BROWSER_TOOLS.has(toolName) ||
     LOCAL_AUTOMATION_TOOL_PREFIXES.some((prefix) => toolName?.startsWith(prefix))
   );
 }

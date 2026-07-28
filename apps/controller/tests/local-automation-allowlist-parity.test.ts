@@ -1,7 +1,10 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { CUA_TOOL_FILTER } from "../src/lib/openclaw-config-compiler.js";
+import {
+  CUA_TOOL_FILTER,
+  EMBEDDED_BROWSER_TOOLS,
+} from "../src/lib/openclaw-config-compiler.js";
 
 // The Computer Use surface is declared in two places that cannot import each
 // other: the compiled MCP `toolFilter.include` list (openclaw-config-compiler)
@@ -63,10 +66,11 @@ const DESKTOP_MAIN_CONTEXT = {
 async function isBlocked(
   beforeToolCall: HookHandler,
   toolName: string,
+  context: Record<string, unknown> = DESKTOP_MAIN_CONTEXT,
 ): Promise<boolean> {
   const result = await beforeToolCall(
     { toolName, params: { app: "Finder" } },
-    { ...DESKTOP_MAIN_CONTEXT, toolName },
+    { ...context, toolName },
   );
   return (
     typeof result === "object" &&
@@ -142,5 +146,53 @@ describe("local automation allowlist parity", () => {
 
   it("keeps the compiled filter free of duplicates", () => {
     expect(new Set(CUA_TOOL_FILTER).size).toBe(CUA_TOOL_FILTER.length);
+  });
+});
+
+// The embedded browser carries the user's own logins, so it is gated like
+// desktop control rather than like an ordinary tool. The compiler grants the
+// tool names; the guard decides who may call them. Same drift risk as above.
+describe("embedded browser session gate", () => {
+  it("lets the desktop main session call every granted tool", async () => {
+    const beforeToolCall = await loadBeforeToolCall();
+    for (const tool of EMBEDDED_BROWSER_TOOLS) {
+      expect(
+        await isBlocked(beforeToolCall, tool),
+        `${tool} is granted by the compiler but blocked in the desktop main session`,
+      ).toBe(false);
+    }
+  });
+
+  it("blocks every granted tool from an external channel", async () => {
+    const beforeToolCall = await loadBeforeToolCall();
+    for (const tool of EMBEDDED_BROWSER_TOOLS) {
+      expect(
+        await isBlocked(beforeToolCall, tool, {
+          sessionKey: "agent:bot-parity:main",
+          channelId: "slack",
+          runId: "run-parity",
+        }),
+        `${tool} is reachable from a channel — a Slack message could drive the user's logged-in browser`,
+      ).toBe(true);
+    }
+  });
+
+  it("blocks every granted tool from a session key it does not recognise", async () => {
+    const beforeToolCall = await loadBeforeToolCall();
+    for (const tool of EMBEDDED_BROWSER_TOOLS) {
+      expect(
+        await isBlocked(beforeToolCall, tool, {
+          sessionKey: "agent:bot-parity:slack-C123",
+          runId: "run-parity",
+        }),
+        `${tool} is reachable from a non-desktop session`,
+      ).toBe(true);
+    }
+  });
+
+  it("keeps the granted list free of duplicates", () => {
+    expect(new Set(EMBEDDED_BROWSER_TOOLS).size).toBe(
+      EMBEDDED_BROWSER_TOOLS.length,
+    );
   });
 });

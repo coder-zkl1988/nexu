@@ -112,7 +112,13 @@ export type DesktopBrowserControl =
   // handed out by `snapshot`, so the agent never has to guess coordinates.
   | { action: "snapshot"; tabId: string; maxNodes?: number }
   | { action: "click-ref"; tabId: string; ref: string }
-  | { action: "type-ref"; tabId: string; ref: string; text: string }
+  | {
+      action: "type-ref";
+      tabId: string;
+      ref: string;
+      text: string;
+      submit?: boolean;
+    }
   | { action: "scroll"; tabId: string; deltaY: number };
 
 export type DesktopBrowserControlResult =

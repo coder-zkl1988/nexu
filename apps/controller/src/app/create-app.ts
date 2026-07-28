@@ -3,6 +3,7 @@ import path from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { isTrustedLocalRequest } from "../lib/local-request-guard.js";
+import { registerAgentBrowserRoutes } from "../routes/agent-browser-routes.js";
 import { registerArtifactRoutes } from "../routes/artifact-routes.js";
 import { registerBotRoutes } from "../routes/bot-routes.js";
 import { registerCanvasRoutes } from "../routes/canvas-routes.js";
@@ -113,6 +114,7 @@ export function createApp(container: ControllerContainer) {
   registerScheduleRoutes(app, container);
   registerMediaRoutes(app, container);
   registerCanvasRoutes(app);
+  registerAgentBrowserRoutes(app, container);
 
   app.doc("/openapi.json", {
     openapi: "3.1.0",

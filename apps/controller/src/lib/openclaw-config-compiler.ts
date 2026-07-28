@@ -370,7 +370,18 @@ const WORKBOARD_WORKER_TOOLS = [
   "workboard_block",
 ];
 
-const BROWSER_TOOLS = ["browser"];
+// Embedded-browser tools, registered by the nexu-browser runtime plugin. These
+// are Nexu's own — they drive the browser panel inside the desktop app, not the
+// user's Chrome. Exported so tests can assert this stays in sync with the
+// independent allowlist inside static/runtime-plugins/nexu-toolcall-guard,
+// which is what stops an external channel from reaching them.
+export const EMBEDDED_BROWSER_TOOLS = [
+  "browser_click",
+  "browser_open",
+  "browser_scroll",
+  "browser_snapshot",
+  "browser_type",
+];
 // Exported so tests can assert this stays in sync with the independent
 // allowlist inside static/runtime-plugins/nexu-toolcall-guard. The two lists
 // are enforced at different layers (MCP tool filter vs. before_tool_call gate)
@@ -453,7 +464,7 @@ function compileAgentList(
           alsoAllow: [
             ...SUBAGENT_DELEGATION_TOOLS,
             ...WORKBOARD_WORKER_TOOLS,
-            ...(browserEnabled ? BROWSER_TOOLS : []),
+            ...(browserEnabled ? EMBEDDED_BROWSER_TOOLS : []),
           ],
         },
         subagents: { allowAgents: ["*"] },
@@ -504,14 +515,11 @@ function compilePlugins(
     "find-expert",
     "nexu-team",
     "nexu-canvas",
+    "nexu-browser",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
   const deviceControlEnabled = config.deviceControl.enabled;
-  const localAutomationPreviewEnabled = isLocalAutomationPreviewEnabled(env);
-  const browserEnabled =
-    localAutomationPreviewEnabled &&
-    config.localAutomation?.browser.enabled === true;
 
   // Sort and dedup defensively so `plugins.allow` is fully deterministic.
   // Without this, channel reorderings or brief status flaps change the
@@ -523,7 +531,6 @@ function compilePlugins(
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
       ...(deviceControlEnabled ? ["tabby-control"] : []),
-      ...(browserEnabled ? ["browser"] : []),
       // Workboard backs the team task board (decompose / dependencies /
       // dispatch). Bundled but disabled by default; enabling it adds a
       // plugin to plugins.allow which triggers a one-time gateway restart.
@@ -617,6 +624,14 @@ function compilePlugins(
           controllerUrl: `http://127.0.0.1:${env.port}`,
         },
       },
+      "nexu-browser": {
+        enabled: true,
+        config: {
+          // Same loopback pattern: every tool POSTs the command here and the
+          // controller relays it to the desktop browser panel.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+      },
       "nexu-toolcall-guard": {
         enabled: true,
         hooks: {
@@ -645,13 +660,6 @@ function compilePlugins(
                 wsPort: config.deviceControl.wsPort,
                 rpcPort: config.deviceControl.rpcPort,
               },
-            },
-          }
-        : {}),
-      ...(browserEnabled
-        ? {
-            browser: {
-              enabled: true,
             },
           }
         : {}),
@@ -705,29 +713,6 @@ export function compileOpenClawConfig(
     // that times out on restricted networks (e.g. China) and stalls startup.
     // The OpenClaw version is managed by slimclaw + the desktop auto-updater.
     update: { checkOnStart: false },
-    ...(isLocalAutomationPreviewEnabled(env) &&
-    config.localAutomation?.browser.enabled === true
-      ? {
-          browser: {
-            enabled: true,
-            evaluateEnabled: false,
-            // The profile must be named "openclaw". `defaultProfile` is only
-            // honoured on the CLI path; the agent tool falls back to
-            // `profiles["openclaw"] ? "openclaw" : "user"`, and "user" means
-            // CDP against the real Chrome profile — which fails with
-            // "Could not find DevToolsActivePort". Naming it "openclaw" makes
-            // the extension profile the default on both paths, so the agent
-            // does not have to be told to pass `profile` explicitly.
-            defaultProfile: "openclaw",
-            profiles: {
-              openclaw: {
-                driver: "extension",
-                color: "#0F766E",
-              },
-            },
-          },
-        }
-      : {}),
     ...(computerUseEnabled
       ? {
           mcp: {

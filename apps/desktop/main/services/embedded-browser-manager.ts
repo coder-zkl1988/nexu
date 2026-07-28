@@ -304,7 +304,13 @@ export class EmbeddedBrowserManager {
       return { kind: "ok" };
     }
     if (input.action === "type-ref") {
-      await typeIntoRef(tab.view.webContents, tab.refs, input.ref, input.text);
+      await typeIntoRef(
+        tab.view.webContents,
+        tab.refs,
+        input.ref,
+        input.text,
+        input.submit ?? false,
+      );
       return { kind: "ok" };
     }
     if (input.action === "scroll") {

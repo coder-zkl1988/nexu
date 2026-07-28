@@ -244,6 +244,7 @@ export async function typeIntoRef(
   refs: BrowserRefTable,
   ref: string,
   text: string,
+  submit = false,
 ): Promise<void> {
   const backendNodeId = refs.resolve(ref);
   if (backendNodeId === null) {
@@ -251,6 +252,20 @@ export async function typeIntoRef(
   }
   await send(contents, "DOM.focus", { backendNodeId });
   await send(contents, "Input.insertText", { text });
+  if (!submit) return;
+  // `Input.insertText` never produces key events, so a search box that submits
+  // on Enter would sit there filled in and unsubmitted. Enter is dispatched as
+  // real key events for exactly that reason.
+  for (const type of ["keyDown", "keyUp"] as const) {
+    await send(contents, "Input.dispatchKeyEvent", {
+      type,
+      key: "Enter",
+      code: "Enter",
+      windowsVirtualKeyCode: 13,
+      nativeVirtualKeyCode: 13,
+      text: type === "keyDown" ? "\r" : undefined,
+    });
+  }
 }
 
 export async function scrollBy(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
 import {
+  EMBEDDED_BROWSER_TOOLS,
   type OAuthConnectionState,
   compileOpenClawConfig,
   resolveControlUiRoot,
@@ -204,7 +205,7 @@ describe("compileOpenClawConfig", () => {
     expect(result.commands?.ownerAllowFrom).toBeUndefined();
   });
 
-  it("enables extension-backed control of explicitly paired Chrome tabs", () => {
+  it("grants the embedded browser tools instead of control of the user's Chrome", () => {
     const result = compileOpenClawConfig(
       createConfig({
         localAutomation: {
@@ -215,22 +216,35 @@ describe("compileOpenClawConfig", () => {
       createEnv(),
     );
 
-    expect(result.browser).toEqual({
-      enabled: true,
-      evaluateEnabled: false,
-      // Must be "openclaw": the agent tool ignores defaultProfile and falls
-      // back to profiles["openclaw"], otherwise to "user" (CDP against the
-      // real Chrome profile, which cannot work).
-      defaultProfile: "openclaw",
-      profiles: {
-        openclaw: { driver: "extension", color: "#0F766E" },
-      },
-    });
-    expect(result.plugins?.allow).toContain("browser");
-    expect(result.plugins?.entries?.browser).toEqual({ enabled: true });
-    expect(result.agents.list[0]?.tools?.alsoAllow).toContain("browser");
+    expect(result.agents.list[0]?.tools?.alsoAllow).toEqual(
+      expect.arrayContaining([...EMBEDDED_BROWSER_TOOLS]),
+    );
+    // OpenClaw's own browser tool drove the user's real Chrome through a
+    // paired extension. It is not compiled at all any more: the agent gets the
+    // browser panel inside the app, which needs no extension, no pairing, and
+    // carries no session the user did not open in it.
+    expect(result.browser).toBeUndefined();
+    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.plugins?.entries?.browser).toBeUndefined();
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
     expect(result.tools?.exec?.security).toBe("deny");
     expect(result.tools?.deny).toEqual(["exec", "process"]);
+  });
+
+  it("withholds the embedded browser tools while the switch is off", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: false },
+        },
+      }),
+      createEnv(),
+    );
+
+    for (const tool of EMBEDDED_BROWSER_TOOLS) {
+      expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(tool);
+    }
   });
 
   it("fails closed when local automation preview is disabled", () => {

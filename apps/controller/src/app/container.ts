@@ -22,6 +22,7 @@ import {
   createRuntimeState,
 } from "../runtime/state.js";
 import { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js";
+import { AgentBrowserBridge } from "../services/agent-browser-bridge.js";
 import { AgentService } from "../services/agent-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
@@ -131,6 +132,7 @@ export interface ControllerContainer {
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   deviceNameStore: DeviceNameStore;
+  agentBrowserBridge: AgentBrowserBridge;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   sessionRunRegistry: SessionRunRegistry;
@@ -757,6 +759,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     devicePollingService,
     deviceTaskHistoryStore,
     deviceNameStore: new DeviceNameStore(env.deviceNamesPath),
+    agentBrowserBridge: new AgentBrowserBridge(),
     wsClient,
     gatewayService,
     sessionRunRegistry,
