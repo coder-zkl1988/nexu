@@ -5,7 +5,6 @@ import dotenv from "dotenv";
 import { z } from "zod";
 import {
   resolveCuaAppBundle,
-  resolveCuaDriverSocket,
   supportsComputerUseBackend,
 } from "../lib/computer-use-platform.js";
 import { expandHomeDir } from "../lib/path-utils.js";
@@ -245,10 +244,6 @@ export const env = {
     parsed.COMPUTER_USE_BIN ? expandHomeDir(parsed.COMPUTER_USE_BIN) : null,
     process.platform,
   ),
-  computerUseCuaSocket: resolveCuaDriverSocket({
-    nexuHomeDir,
-    platform: process.platform,
-  }),
   openclawLogDir: expandHomeDir(
     parsed.OPENCLAW_LOG_DIR ?? path.join(nexuHomeDir, "logs", "openclaw"),
   ),

@@ -58,6 +58,28 @@ function runCapture(command, args) {
   });
 }
 
+/**
+ * `codesign -dv` reports on stderr, so stdout-only capture silently yields an
+ * empty string and every signature assertion against it passes vacuously.
+ */
+function runCaptureCombined(command, args) {
+  return new Promise((resolveRun, rejectRun) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const chunks = [];
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.stderr.on("data", (chunk) => chunks.push(chunk));
+    child.once("error", rejectRun);
+    child.once("exit", (code) => {
+      const output = Buffer.concat(chunks).toString("utf8");
+      if (code === 0) {
+        resolveRun(output);
+      } else {
+        rejectRun(new Error(`${command} exited with code ${code}: ${output}`));
+      }
+    });
+  });
+}
+
 async function findBinary(root, names) {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     const entryPath = resolve(root, entry.name);
@@ -129,17 +151,14 @@ try {
       "-R=notarized",
       bundlePath,
     ]);
-    const signature = await runCapture("codesign", [
+    const signingInfo = await runCaptureCombined("codesign", [
       "-dv",
       "--verbose=2",
       bundlePath,
-    ]).catch(() => "");
-    const signingInfo =
-      signature ||
-      (await runCapture("codesign", ["-dv", bundlePath]).catch(() => ""));
+    ]);
     if (!signingInfo.includes(`TeamIdentifier=${asset.teamId}`)) {
       throw new Error(
-        `${asset.appBundle} is not signed by the expected team ${asset.teamId}`,
+        `${asset.appBundle} is not signed by the expected team ${asset.teamId}; got:\n${signingInfo}`,
       );
     }
     const bundleId = (

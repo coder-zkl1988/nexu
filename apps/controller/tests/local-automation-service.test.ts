@@ -1,12 +1,4 @@
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  rm,
-  stat,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -289,10 +281,6 @@ describe("LocalAutomationService", () => {
       browser: { enabled: false },
       computerUse: { enabled: false },
     });
-    const socketDirectory = path.join(harness.root, "runtime");
-    await mkdir(socketDirectory);
-    await chmod(socketDirectory, 0o755);
-
     const next = await harness.service.updateConfig({
       computerUse: { enabled: true },
     });
@@ -300,29 +288,11 @@ describe("LocalAutomationService", () => {
     expect(next.computerUse.enabled).toBe(true);
     expect(harness.startProcess).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["serve", "--socket"]),
+      expect.arrayContaining(["serve", "--permission-mode"]),
       expect.any(Object),
     );
-    // A world-readable control socket would let any local process drive the
-    // desktop through our daemon.
-    expect((await stat(socketDirectory)).mode & 0o777).toBe(0o700);
     expect(harness.syncAll).toHaveBeenCalledOnce();
     expect(harness.restart).toHaveBeenCalledWith("local-automation-changed");
-  });
-
-  it("rejects a symlinked daemon socket directory", async () => {
-    const harness = await createHarness({
-      browser: { enabled: false },
-      computerUse: { enabled: false },
-    });
-    const targetDirectory = path.join(harness.root, "socket-target");
-    await mkdir(targetDirectory);
-    await symlink(targetDirectory, path.join(harness.root, "runtime"), "dir");
-
-    await expect(
-      harness.service.updateConfig({ computerUse: { enabled: true } }),
-    ).rejects.toThrow("Computer Use socket directory is unsafe");
-    expect(harness.getConfig().computerUse.enabled).toBe(false);
   });
 
   it("stops a partially started daemon when enable fails", async () => {
@@ -341,7 +311,7 @@ describe("LocalAutomationService", () => {
     expect(harness.getConfig().computerUse.enabled).toBe(false);
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["stop", "--socket"]),
+      ["stop"],
       expect.any(Object),
     );
     expect(harness.syncAll).not.toHaveBeenCalled();
@@ -363,7 +333,7 @@ describe("LocalAutomationService", () => {
     expect(harness.getConfig().computerUse.enabled).toBe(false);
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["stop", "--socket"]),
+      ["stop"],
       expect.any(Object),
     );
     expect(harness.syncAll).toHaveBeenCalledTimes(2);
@@ -466,7 +436,7 @@ describe("LocalAutomationService", () => {
 
     expect(harness.startProcess).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["serve", "--socket"]),
+      expect.arrayContaining(["serve", "--permission-mode"]),
       expect.any(Object),
     );
   });
@@ -485,7 +455,7 @@ describe("LocalAutomationService", () => {
     expect(harness.getConfig().computerUse.enabled).toBe(false);
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["stop", "--socket"]),
+      ["stop"],
       expect.any(Object),
     );
     expect(harness.syncAll).not.toHaveBeenCalled();
@@ -510,12 +480,13 @@ describe("LocalAutomationService", () => {
 
     expect(harness.startProcess).toHaveBeenCalledWith(
       expect.any(String),
+      // No --socket: the driver's own default is the only path
+      // `permissions status` discovers, and a NEXU_HOME-scoped one can exceed
+      // the 103-byte sun_path limit.
       expect.arrayContaining([
         "serve",
         "--embedded",
         "--parent-liveness-stdio",
-        "--socket",
-        expect.stringContaining("cua-driver.sock"),
         "--permission-mode",
         "standard",
       ]),
@@ -537,7 +508,7 @@ describe("LocalAutomationService", () => {
 
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      ["stop", "--socket", expect.stringContaining("cua-driver.sock")],
+      ["stop"],
       expect.objectContaining({
         env: expect.objectContaining({
           CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
@@ -568,7 +539,7 @@ describe("LocalAutomationService", () => {
 
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      ["stop", "--socket", expect.stringContaining("cua-driver.sock")],
+      ["stop"],
       expect.any(Object),
     );
   });
@@ -783,7 +754,7 @@ describe("LocalAutomationService", () => {
 
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      ["stop", "--socket", expect.stringContaining("cua-driver.sock")],
+      ["stop"],
       expect.any(Object),
     );
     expect(harness.kill).toHaveBeenCalledWith("SIGTERM");

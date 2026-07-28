@@ -15,24 +15,24 @@ export function createComputerUseInstanceId(nexuHomeDir: string): string {
 }
 
 /**
- * Control socket for the cua-driver daemon. Windows uses a named pipe; macOS
- * uses a Unix domain socket under NEXU_HOME.
+ * cua-driver owns its control socket, and nexu must not override it.
  *
- * Unlike the Peekaboo bridge socket this replaced, the path is not subject to
- * the 103-byte `sun_path` limit: the daemon is addressed through the driver's
- * own socket handling rather than a raw bind from this process, and the driver
- * is launched from its app bundle. Keep it under NEXU_HOME so instances with
- * different homes never share a daemon.
+ * Two things break when a custom `--socket` is passed:
+ *
+ * 1. `permissions status` does not honour it. The driver discovers its daemon
+ *    through the default socket only, so a custom path makes every permission
+ *    read report `daemon_running: false` — the macOS grant UI then shows
+ *    "unavailable" even with Accessibility and Screen Recording granted.
+ * 2. macOS caps `sun_path` at 103 bytes. A NEXU_HOME-scoped socket blows past
+ *    that for long homes and dev worktrees, and the daemon then fails to start
+ *    with no diagnostic at all.
+ *
+ * The driver's own default (`~/Library/Caches/cua-driver/cua-driver.sock`) is
+ * short by construction and already per-user. One daemon per user is also what
+ * the driver assumes, so sharing it across nexu instances is its intended
+ * model rather than a compromise.
  */
-export function resolveCuaDriverSocket(input: {
-  nexuHomeDir: string;
-  platform: NodeJS.Platform;
-}): string {
-  if (input.platform === "win32") {
-    return `\\\\.\\pipe\\nexu-cua-driver-${createComputerUseInstanceId(input.nexuHomeDir)}`;
-  }
-  return path.join(input.nexuHomeDir, "runtime", "cua-driver", "daemon.sock");
-}
+export const CUA_DRIVER_USES_DEFAULT_SOCKET = true;
 
 /**
  * macOS TCC grants attach to CuaDriver.app's signed bundle identity

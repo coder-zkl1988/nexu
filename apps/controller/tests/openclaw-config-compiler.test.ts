@@ -297,12 +297,7 @@ describe("compileOpenClawConfig", () => {
       transport: "stdio",
     });
     // The MCP process is a thin client of the daemon that owns the grants.
-    expect(server?.args).toEqual([
-      "mcp",
-      "--embedded",
-      "--socket",
-      "/tmp/nexu-test/runtime/cua-driver/daemon.sock",
-    ]);
+    expect(server?.args).toEqual(["mcp", "--embedded"]);
     expect(server?.toolFilter).toMatchObject({
       include: expect.arrayContaining([
         "click",
@@ -343,12 +338,7 @@ describe("compileOpenClawConfig", () => {
 
     expect(available.mcp?.servers["cua-driver"]).toMatchObject({
       command: process.execPath,
-      args: [
-        "mcp",
-        "--embedded",
-        "--socket",
-        "/tmp/nexu-test/runtime/cua-driver/daemon.sock",
-      ],
+      args: ["mcp", "--embedded"],
       env: {
         CUA_DRIVER_EMBEDDED: "1",
         CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",

@@ -1,6 +1,5 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -67,31 +66,6 @@ const DEFAULT_LOCAL_AUTOMATION_TIMING: LocalAutomationTiming = {
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function ensurePrivateDirectory(directoryPath: string): Promise<void> {
-  await mkdir(directoryPath, { recursive: true, mode: 0o700 });
-  let metadata = await lstat(directoryPath);
-  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
-    throw new Error(
-      `Computer Use socket directory is unsafe: ${directoryPath}`,
-    );
-  }
-  const userId = typeof process.getuid === "function" ? process.getuid() : null;
-  if (userId !== null && metadata.uid !== userId) {
-    throw new Error(
-      `Computer Use socket directory has the wrong owner: ${directoryPath}`,
-    );
-  }
-  if ((metadata.mode & 0o777) !== 0o700) {
-    await chmod(directoryPath, 0o700);
-    metadata = await lstat(directoryPath);
-  }
-  if ((metadata.mode & 0o777) !== 0o700) {
-    throw new Error(
-      `Computer Use socket directory is not private: ${directoryPath}`,
-    );
-  }
 }
 
 // `cua-driver permissions status --json`. The booleans reflect the daemon's own
@@ -600,11 +574,10 @@ export class LocalAutomationService {
       return false;
     }
     try {
-      await this.runCommand(
-        this.env.computerUseBin,
-        ["status", "--socket", this.env.computerUseCuaSocket],
-        { env: this.getCuaEnvironment(), timeout: 2_000 },
-      );
+      await this.runCommand(this.env.computerUseBin, ["status"], {
+        env: this.getCuaEnvironment(),
+        timeout: 2_000,
+      });
       return true;
     } catch {
       return false;
@@ -621,11 +594,10 @@ export class LocalAutomationService {
       this.cuaDaemonProcess = null;
       let stopSucceeded = false;
       try {
-        await this.runCommand(
-          this.env.computerUseBin,
-          ["stop", "--socket", this.env.computerUseCuaSocket],
-          { env: this.getCuaEnvironment(), timeout: 10_000 },
-        );
+        await this.runCommand(this.env.computerUseBin, ["stop"], {
+          env: this.getCuaEnvironment(),
+          timeout: 10_000,
+        });
         stopSucceeded = true;
       } finally {
         this.releaseCuaDaemonProcess(managedProcess, !stopSucceeded);
@@ -637,21 +609,14 @@ export class LocalAutomationService {
       if (this.cuaDaemonProcess !== null) {
         return;
       }
-      await this.runCommand(
-        this.env.computerUseBin,
-        ["stop", "--socket", this.env.computerUseCuaSocket],
-        { env: this.getCuaEnvironment(), timeout: 10_000 },
-      );
+      await this.runCommand(this.env.computerUseBin, ["stop"], {
+        env: this.getCuaEnvironment(),
+        timeout: 10_000,
+      });
     } else if (this.cuaDaemonProcess !== null) {
       this.releaseCuaDaemonProcess(this.cuaDaemonProcess, true);
       this.cuaDaemonProcess = null;
     }
-    if (!this.env.computerUseCuaSocket.startsWith("\\\\.\\pipe\\")) {
-      // A world-writable control socket would let any local process drive the
-      // desktop through our daemon.
-      await ensurePrivateDirectory(path.dirname(this.env.computerUseCuaSocket));
-    }
-
     if (this.env.computerUseAppBundle) {
       await this.startCuaDaemonFromAppBundle(this.env.computerUseAppBundle);
       return;
@@ -665,8 +630,6 @@ export class LocalAutomationService {
           "serve",
           "--embedded",
           "--parent-liveness-stdio",
-          "--socket",
-          this.env.computerUseCuaSocket,
           "--permission-mode",
           "standard",
         ],
@@ -700,11 +663,10 @@ export class LocalAutomationService {
       await delay(this.timing.cuaDaemonPollIntervalMs);
     }
 
-    await this.runCommand(
-      this.env.computerUseBin,
-      ["stop", "--socket", this.env.computerUseCuaSocket],
-      { env: this.getCuaEnvironment(), timeout: 10_000 },
-    ).catch(() => undefined);
+    await this.runCommand(this.env.computerUseBin, ["stop"], {
+      env: this.getCuaEnvironment(),
+      timeout: 10_000,
+    }).catch(() => undefined);
     if (this.cuaDaemonProcess === child) {
       this.cuaDaemonProcess = null;
     }
@@ -734,8 +696,6 @@ export class LocalAutomationService {
         appBundle,
         "--args",
         "serve",
-        "--socket",
-        this.env.computerUseCuaSocket,
         "--permission-mode",
         "standard",
       ],

@@ -1,35 +1,15 @@
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  createComputerUseInstanceId,
+  CUA_DRIVER_USES_DEFAULT_SOCKET,
   resolveCuaAppBundle,
-  resolveCuaDriverSocket,
   supportsComputerUseBackend,
 } from "../src/lib/computer-use-platform.js";
 
-describe("resolveCuaDriverSocket", () => {
-  it("keeps the POSIX control socket under NEXU_HOME", () => {
-    const nexuHomeDir = "/Users/test/.nexu";
-
-    expect(resolveCuaDriverSocket({ nexuHomeDir, platform: "darwin" })).toBe(
-      path.join(nexuHomeDir, "runtime", "cua-driver", "daemon.sock"),
-    );
-  });
-
-  it("gives each NEXU_HOME its own Windows pipe", () => {
-    const first = resolveCuaDriverSocket({
-      nexuHomeDir: "C:/Users/a/.nexu",
-      platform: "win32",
-    });
-    const second = resolveCuaDriverSocket({
-      nexuHomeDir: "C:/Users/b/.nexu",
-      platform: "win32",
-    });
-
-    expect(first).toContain("\\\\.\\pipe\\nexu-cua-driver-");
-    // Two homes must never share a daemon.
-    expect(first).not.toBe(second);
-    expect(first).toContain(createComputerUseInstanceId("C:/Users/a/.nexu"));
+describe("control socket", () => {
+  it("leaves the socket to the driver", () => {
+    // Overriding it breaks `permissions status` discovery and can exceed the
+    // 103-byte sun_path limit; both were observed on a real driver.
+    expect(CUA_DRIVER_USES_DEFAULT_SOCKET).toBe(true);
   });
 });
 

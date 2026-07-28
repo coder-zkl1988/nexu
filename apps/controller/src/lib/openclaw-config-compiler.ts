@@ -689,9 +689,6 @@ export function compileOpenClawConfig(
     env.computerUseBin !== null &&
     path.isAbsolute(env.computerUseBin) &&
     existsSync(env.computerUseBin);
-  const computerUseCuaSocket =
-    env.computerUseCuaSocket ??
-    path.join(env.nexuHomeDir, "runtime", "cua-driver", "daemon.sock");
 
   const openClawConfig: OpenClawConfig = {
     ...(disableMdnsDiscovery
@@ -735,7 +732,9 @@ export function compileOpenClawConfig(
                 // owns the platform grants, so this may run from the plain
                 // executable path.
                 command: env.computerUseBin,
-                args: ["mcp", "--embedded", "--socket", computerUseCuaSocket],
+                // No --socket: the driver must use its own default,
+                // which is the only one `permissions status` discovers.
+                args: ["mcp", "--embedded"],
                 env: {
                   CUA_DRIVER_EMBEDDED: "1",
                   CUA_DRIVER_HOST_BUNDLE_ID: "io.tabby.desktop",
