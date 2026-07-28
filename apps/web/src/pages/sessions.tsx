@@ -40,6 +40,7 @@ import {
   buildTranscriptItems,
   stripRenderedAssistantText,
 } from "@/lib/chat/chat-transcript-groups";
+import { classifyRunMessage } from "@/lib/chat/run-message-intent";
 import { invokeDesktopHost } from "@/lib/desktop-host";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,7 @@ import {
   FileImage,
   FileText,
   Loader2,
+  MessageCircleQuestion,
   MessageSquare,
   PanelRight,
   Square,
@@ -60,6 +62,7 @@ import {
   Volume2,
   WifiOff,
   Wrench,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -74,12 +77,15 @@ import {
   getApiV1SessionsByIdMessages,
   postApiV1ChatCancel,
   postApiV1ChatLocal,
+  postApiV1ChatSideQuestion,
+  postApiV1ChatSteer,
   postApiV1SessionsByIdReset,
   postApiV1TtsSpeak,
 } from "../../lib/api/sdk.gen";
 
 const BOT_AVATAR = "/images/claw-avatar.png";
 const USER_AVATAR = "/images/tabby-avatar.png";
+const SIDE_QUESTION_AUTO_DISMISS_MS = 8_000;
 
 /**
  * Speak-reply button for assistant bubbles (OpenClaw >=2026.7.1 tts.speak).
@@ -1143,6 +1149,63 @@ function hasPersistentAssistantOutput(extracted: ExtractedMessage): boolean {
   );
 }
 
+type SideQuestionView = {
+  runId: string | null;
+  question: string;
+  text: string;
+  status: "pending" | "done" | "error";
+};
+
+function SideQuestionPanel({
+  value,
+  onDismiss,
+}: {
+  value: SideQuestionView;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-side-question-result={value.status}
+      className="mb-2 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2.5"
+    >
+      <div className="flex items-start gap-2">
+        <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-sky-900">
+            <span>{t("sessions.chat.sideAnswer")}</span>
+            {value.status === "pending" && (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
+          </div>
+          <div className="mt-0.5 truncate text-[11px] text-sky-700">
+            {value.question}
+          </div>
+          {value.text && (
+            <div
+              className={cn(
+                "mt-2 text-sm",
+                value.status === "error" ? "text-red-700" : "text-text-primary",
+              )}
+            >
+              <ChatMarkdown content={value.text} />
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sky-700 transition-colors hover:bg-sky-100"
+          aria-label={t("sessions.chat.sideAnswerDismiss")}
+          title={t("sessions.chat.sideAnswerDismiss")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -1195,6 +1258,21 @@ export function SessionsPage() {
   // and invalidates chat history on final/aborted/error.
   // Polling (5s refetchInterval above) handles the fallback regardless of SSE state.
   const [streamingText, setStreamingText] = useState("");
+  const [sideQuestion, setSideQuestion] = useState<SideQuestionView | null>(
+    null,
+  );
+  const sideRunIdsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!sideQuestion || sideQuestion.status === "pending") return;
+    const completedSideQuestion = sideQuestion;
+    const timer = window.setTimeout(() => {
+      setSideQuestion((current) =>
+        current === completedSideQuestion ? null : current,
+      );
+    }, SIDE_QUESTION_AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [sideQuestion]);
 
   useEffect(() => {
     if (!id || !session?.botId || !session?.sessionKey) return;
@@ -1221,6 +1299,13 @@ export function SessionsPage() {
         });
       },
       onFinal: (final) => {
+        if (sideRunIdsRef.current.delete(final.runId)) {
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
+        void queryClient.invalidateQueries({
+          queryKey: ["chat-run-status", id],
+        });
         // OpenClaw emits ONE final per run, at run end (emitChatFinal fires
         // on jobState "done") — intermediate visible replies arrive only via
         // history polling.  So final IS the "whole reply finished" signal.
@@ -1237,8 +1322,6 @@ export function SessionsPage() {
           return;
         }
         if (!deskpetReplyPendingRef.current) {
-          setStreamingText("");
-          latestStreamingReplyTextRef.current = "";
           void queryClient.invalidateQueries({
             queryKey: ["chat-history", id],
           });
@@ -1265,6 +1348,13 @@ export function SessionsPage() {
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
       onAborted: (aborted) => {
+        if (sideRunIdsRef.current.delete(aborted.runId)) {
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
+        void queryClient.invalidateQueries({
+          queryKey: ["chat-run-status", id],
+        });
         if (
           activeRunIdRef.current &&
           aborted.runId &&
@@ -1290,6 +1380,13 @@ export function SessionsPage() {
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
       },
       onError: (error) => {
+        if (sideRunIdsRef.current.delete(error.runId)) {
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
+        void queryClient.invalidateQueries({
+          queryKey: ["chat-run-status", id],
+        });
         if (
           activeRunIdRef.current &&
           error.runId &&
@@ -1313,6 +1410,20 @@ export function SessionsPage() {
           durationMs: DESKPET_ERROR_DURATION_MS,
         });
         void queryClient.invalidateQueries({ queryKey: ["chat-history", id] });
+      },
+      onSideResult: (result) => {
+        sideRunIdsRef.current.add(result.runId);
+        setSideQuestion((current) => {
+          if (current?.runId && current.runId !== result.runId) {
+            return current;
+          }
+          return {
+            runId: result.runId,
+            question: result.question,
+            text: result.text,
+            status: result.isError ? "error" : "done",
+          };
+        });
       },
     });
 
@@ -1452,6 +1563,7 @@ export function SessionsPage() {
     }[]
   >([]);
   const [waitingForReply, setWaitingForReply] = useState(false);
+  const [runMessageSending, setRunMessageSending] = useState(false);
   const [newSessionDividerTime, setNewSessionDividerTime] = useState<
     number | null
   >(null);
@@ -1492,6 +1604,7 @@ export function SessionsPage() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: id triggers reset on session navigation
   useEffect(() => {
     setWaitingForReply(false);
+    setRunMessageSending(false);
     sentAtRef.current = 0;
     deskpetReplyStartedAtRef.current = 0;
     activeRunIdRef.current = null;
@@ -1501,6 +1614,8 @@ export function SessionsPage() {
     handledDeskpetPendingKeyRef.current = "";
     setPendingMessages([]);
     setStreamingText("");
+    setSideQuestion(null);
+    sideRunIdsRef.current.clear();
   }, [id]);
 
   useEffect(() => {
@@ -1775,6 +1890,91 @@ export function SessionsPage() {
     [selectedBot, id, session?.sessionKey, queryClient, t],
   );
 
+  const handleSideQuestion = useCallback(
+    async (question: string) => {
+      if (!selectedBot || !session?.sessionKey) return;
+      setRunMessageSending(true);
+      setSideQuestion({
+        runId: null,
+        question,
+        text: "",
+        status: "pending",
+      });
+      try {
+        const result = await postApiV1ChatSideQuestion({
+          body: {
+            botId: selectedBot.id,
+            sessionKey: session.sessionKey,
+            question,
+          },
+        });
+        if (result.error || !result.data?.accepted) {
+          throw new Error(
+            (result.error as { message?: string } | undefined)?.message ??
+              t("sessions.chat.sideQuestionFailed"),
+          );
+        }
+        if (result.data.runId) {
+          sideRunIdsRef.current.add(result.data.runId);
+        }
+        setSideQuestion((current) =>
+          current?.status === "pending"
+            ? { ...current, runId: result.data?.runId ?? null }
+            : current,
+        );
+      } catch (error) {
+        setSideQuestion({
+          runId: null,
+          question,
+          text:
+            error instanceof Error
+              ? error.message
+              : t("sessions.chat.sideQuestionFailed"),
+          status: "error",
+        });
+      } finally {
+        setRunMessageSending(false);
+      }
+    },
+    [selectedBot, session?.sessionKey, t],
+  );
+
+  const handleSteer = useCallback(
+    async (message: string) => {
+      if (!selectedBot || !id || !session?.sessionKey) return;
+      setRunMessageSending(true);
+      try {
+        const result = await postApiV1ChatSteer({
+          body: {
+            botId: selectedBot.id,
+            sessionKey: session.sessionKey,
+            message,
+          },
+        });
+        if (result.error || !result.data?.accepted) {
+          throw new Error(
+            (result.error as { message?: string } | undefined)?.message ??
+              t("sessions.chat.steerFailed"),
+          );
+        }
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["chat-history", id] }),
+          queryClient.invalidateQueries({ queryKey: ["chat-run-status", id] }),
+          queryClient.invalidateQueries({ queryKey: ["session-meta", id] }),
+        ]);
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t("sessions.chat.steerFailed"),
+        );
+      } finally {
+        setRunMessageSending(false);
+      }
+    },
+    [selectedBot, id, session?.sessionKey, queryClient, t],
+  );
+
   const handleDeskpetTyping = useCallback(
     (text: string) => {
       if (waitingForReply || !text.trim()) {
@@ -1799,7 +1999,7 @@ export function SessionsPage() {
   );
 
   const handleCancel = useCallback(async () => {
-    if (!session?.sessionKey || !selectedBot) return;
+    if (!session?.sessionKey || !selectedBot) return false;
     try {
       const { data } = await postApiV1ChatCancel({
         body: {
@@ -1826,11 +2026,42 @@ export function SessionsPage() {
           );
         }
         deskpetReplyStartedAtRef.current = 0;
+        return true;
       }
     } catch {
       // Silently ignore — the reply may have already finished
     }
+    return false;
   }, [session?.sessionKey, selectedBot, queryClient, id, t]);
+
+  const handleRunMessage = useCallback(
+    async (input: string) => {
+      const classified = classifyRunMessage(input);
+      if (classified.intent === "abort") {
+        if (await handleCancel()) {
+          toast.success(t("sessions.chat.runStopped"));
+        }
+        return;
+      }
+
+      if (!classified.message) {
+        toast.info(t("sessions.chat.runMessageEmpty"));
+        return;
+      }
+
+      if (classified.intent === "side-question") {
+        if (sideQuestion?.status === "pending") {
+          toast.info(t("sessions.chat.sideQuestionPending"));
+          return;
+        }
+        await handleSideQuestion(classified.message);
+        return;
+      }
+
+      await handleSteer(classified.message);
+    },
+    [handleCancel, handleSideQuestion, handleSteer, sideQuestion?.status, t],
+  );
 
   // Poll the session's active-run state so runs this composer did NOT start
   // (A2UI actions, automations, device tasks) still surface as a stop button
@@ -1850,6 +2081,12 @@ export function SessionsPage() {
   const sessionBusy = runStatus?.busy === true;
   const replyInProgress =
     waitingForReply || sessionBusy || streamingText.trim().length > 0;
+
+  useEffect(() => {
+    if (runStatus?.busy !== false || waitingForReply) return;
+    setStreamingText("");
+    latestStreamingReplyTextRef.current = "";
+  }, [runStatus?.busy, waitingForReply]);
 
   useEffect(() => {
     return onDesktopHostCommand((command) => {
@@ -1917,10 +2154,12 @@ export function SessionsPage() {
   // composer re-enables only on the run-level SSE final/aborted/error
   // (or the safety timeout below).
 
-  // Safety timeout: clear waitingForReply after 2 minutes regardless of SSE/polling state
+  // If the initial send was acknowledged but no terminal event arrived, clear
+  // the local waiting state only after the controller also reports no active
+  // run. A genuinely long run must never be presented as a timeout here.
   const waitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (waitingForReply) {
+    if (waitingForReply && !sessionBusy) {
       waitingTimerRef.current = setTimeout(() => {
         deskpetReplyPendingRef.current = false;
         setWaitingForReply(false);
@@ -1941,7 +2180,7 @@ export function SessionsPage() {
         waitingTimerRef.current = null;
       }
     };
-  }, [waitingForReply]);
+  }, [waitingForReply, sessionBusy]);
 
   // Optimistic messages: use text-based key so React reuses the DOM node
   // when the server message replaces the optimistic one
@@ -2302,13 +2541,13 @@ export function SessionsPage() {
     <div className="flex flex-col h-full">
       {/* Chat Header */}
       <div className="shrink-0 border-b border-border px-6 py-2 md:pt-3">
-        <div className="flex items-center justify-between">
-          <div className="flex gap-3 items-center">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <SessionPlatformBadge
               platform={platform}
               className="h-[34px] w-[34px] shrink-0"
             />
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-[15px] font-bold text-text-heading truncate">
                   {session?.title ?? id}
@@ -2514,6 +2753,12 @@ export function SessionsPage() {
       {/* Chat Input */}
       <div className="shrink-0 px-4 py-3">
         <div className="mx-auto w-full max-w-[800px]">
+          {sideQuestion && (
+            <SideQuestionPanel
+              value={sideQuestion}
+              onDismiss={() => setSideQuestion(null)}
+            />
+          )}
           <ChatInputArea
             bots={bots}
             selectedBot={selectedBot}
@@ -2523,6 +2768,10 @@ export function SessionsPage() {
             }}
             onTyping={handleDeskpetTyping}
             onCancel={handleCancel}
+            onRunMessage={(text) => {
+              void handleRunMessage(text);
+            }}
+            runMessageSending={runMessageSending}
             sending={false}
             waitingReply={waitingForReply || sessionBusy}
             disabled={!session?.botId}

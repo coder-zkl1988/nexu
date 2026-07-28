@@ -103,8 +103,14 @@ export interface LocalStreamAborted {
 }
 
 export interface LocalStreamSideResult {
+  kind: "btw";
   runId: string;
-  [key: string]: unknown;
+  sessionKey: string;
+  question: string;
+  text: string;
+  isError: boolean;
+  ts: number;
+  seq?: number;
 }
 
 export interface LocalStreamClientOptions {

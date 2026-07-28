@@ -50,6 +50,107 @@ describe("SessionRunRegistry", () => {
     expect(registry.isBusy("s1")).toBe(false);
   });
 
+  it("does not let a BTW side-run terminal event clear the main run", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1");
+    registry.handleChatSideResult({
+      kind: "btw",
+      runId: "side-1",
+      sessionKey: "s1",
+    });
+
+    registry.handleChatEvent({
+      runId: "side-1",
+      sessionKey: "s1",
+      state: "final",
+    });
+
+    expect(registry.isBusy("s1")).toBe(true);
+  });
+
+  it("does not let an interrupted run clear its replacement", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1", "original-run-1");
+    registry.markStarted("s1", "replacement-run-1");
+
+    registry.handleChatEvent({
+      runId: "original-run-1",
+      sessionKey: "s1",
+      state: "aborted",
+    });
+
+    expect(registry.isBusy("s1")).toBe(true);
+
+    registry.handleChatEvent({
+      runId: "replacement-run-1",
+      sessionKey: "s1",
+      state: "final",
+    });
+    expect(registry.isBusy("s1")).toBe(false);
+  });
+
+  it("keeps queued guidance busy across the primary-run handoff", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1", "primary-1");
+    registry.markStarted("s1", "guidance-1");
+
+    registry.handleChatEvent({
+      runId: "primary-1",
+      sessionKey: "s1",
+      state: "final",
+    });
+    expect(registry.isBusy("s1")).toBe(true);
+
+    registry.handleChatEvent({
+      runId: "guidance-1",
+      sessionKey: "s1",
+      state: "delta",
+    });
+    registry.handleChatEvent({
+      runId: "guidance-1",
+      sessionKey: "s1",
+      state: "final",
+    });
+    expect(registry.isBusy("s1")).toBe(false);
+  });
+
+  it("releases only the failed optimistic send reservation", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1", "primary-1");
+    registry.markStarted("s1");
+
+    registry.releasePendingStart("s1");
+
+    expect(registry.isBusy("s1")).toBe(true);
+    registry.handleChatEvent({
+      runId: "primary-1",
+      sessionKey: "s1",
+      state: "final",
+    });
+    expect(registry.isBusy("s1")).toBe(false);
+  });
+
+  it("attaches a gateway run id without reviving a finished optimistic run", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1");
+    registry.attachRunId("s1", "run-1");
+
+    registry.handleChatEvent({
+      runId: "other-run",
+      sessionKey: "s1",
+      state: "final",
+    });
+    expect(registry.isBusy("s1")).toBe(true);
+
+    registry.handleChatEvent({
+      runId: "run-1",
+      sessionKey: "s1",
+      state: "final",
+    });
+    registry.attachRunId("s1", "run-1");
+    expect(registry.isBusy("s1")).toBe(false);
+  });
+
   it("ignores malformed chat events", () => {
     const registry = new SessionRunRegistry();
     registry.markStarted("s1");
@@ -60,12 +161,21 @@ describe("SessionRunRegistry", () => {
     expect(registry.isBusy("s1")).toBe(true);
   });
 
-  it("uncorks a wedged session after the stale window (crash safety valve)", () => {
+  it("keeps active runs gated while events arrive and uncorks a silent wedged run", () => {
     vi.useFakeTimers();
     const registry = new SessionRunRegistry();
-    registry.markStarted("s1");
+    registry.markStarted("s1", "run-1");
+
+    vi.advanceTimersByTime(45 * 60_000);
+    registry.handleChatEvent({
+      runId: "run-1",
+      sessionKey: "s1",
+      state: "delta",
+    });
+    vi.advanceTimersByTime(45 * 60_000);
     expect(registry.isBusy("s1")).toBe(true);
-    vi.advanceTimersByTime(10 * 60_000 + 1);
+
+    vi.advanceTimersByTime(15 * 60_000 + 1);
     expect(registry.isBusy("s1")).toBe(false);
   });
 

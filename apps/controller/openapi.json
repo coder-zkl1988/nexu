@@ -7841,6 +7841,55 @@
                             "nullable": true
                           }
                         },
+                        "goal": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "objective": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "active",
+                                "paused",
+                                "blocked",
+                                "usage_limited",
+                                "budget_limited",
+                                "complete"
+                              ]
+                            },
+                            "tokensUsed": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "tokenBudget": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "lastStatusNote": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "number"
+                            },
+                            "updatedAt": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "objective",
+                            "status",
+                            "tokensUsed",
+                            "createdAt",
+                            "updatedAt"
+                          ]
+                        },
                         "createdAt": {
                           "type": "string"
                         },
@@ -7859,6 +7908,7 @@
                         "messageCount",
                         "lastMessageAt",
                         "metadata",
+                        "goal",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -7866,6 +7916,128 @@
                   },
                   "required": [
                     "session"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/side-question": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sessionKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "question": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "botId",
+                  "sessionKey",
+                  "question"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Side question accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "accepted",
+                    "runId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/steer": {
+      "post": {
+        "tags": [
+          "Chat"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "botId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sessionKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "botId",
+                  "sessionKey",
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guidance accepted for the active run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "accepted",
+                    "runId"
                   ]
                 }
               }
@@ -8039,6 +8211,55 @@
                             "nullable": true
                           }
                         },
+                        "goal": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "objective": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "active",
+                                "paused",
+                                "blocked",
+                                "usage_limited",
+                                "budget_limited",
+                                "complete"
+                              ]
+                            },
+                            "tokensUsed": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "tokenBudget": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "lastStatusNote": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "number"
+                            },
+                            "updatedAt": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "objective",
+                            "status",
+                            "tokensUsed",
+                            "createdAt",
+                            "updatedAt"
+                          ]
+                        },
                         "createdAt": {
                           "type": "string"
                         },
@@ -8057,6 +8278,7 @@
                         "messageCount",
                         "lastMessageAt",
                         "metadata",
+                        "goal",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -8291,6 +8513,55 @@
                             "nullable": true
                           }
                         },
+                        "goal": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "objective": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "active",
+                                "paused",
+                                "blocked",
+                                "usage_limited",
+                                "budget_limited",
+                                "complete"
+                              ]
+                            },
+                            "tokensUsed": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "tokenBudget": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "lastStatusNote": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "number"
+                            },
+                            "updatedAt": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "objective",
+                            "status",
+                            "tokensUsed",
+                            "createdAt",
+                            "updatedAt"
+                          ]
+                        },
                         "createdAt": {
                           "type": "string"
                         },
@@ -8309,6 +8580,7 @@
                         "messageCount",
                         "lastMessageAt",
                         "metadata",
+                        "goal",
                         "createdAt",
                         "updatedAt"
                       ]
@@ -8551,6 +8823,9 @@
                             "type": "string",
                             "nullable": true
                           },
+                          "aborted": {
+                            "type": "boolean"
+                          },
                           "toolName": {
                             "type": "string"
                           },
@@ -8686,6 +8961,55 @@
                         "nullable": true
                       }
                     },
+                    "goal": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "objective": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "paused",
+                            "blocked",
+                            "usage_limited",
+                            "budget_limited",
+                            "complete"
+                          ]
+                        },
+                        "tokensUsed": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "tokenBudget": {
+                          "type": "number",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "lastStatusNote": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "updatedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "objective",
+                        "status",
+                        "tokensUsed",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -8704,6 +9028,7 @@
                     "messageCount",
                     "lastMessageAt",
                     "metadata",
+                    "goal",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -8810,6 +9135,55 @@
                         "nullable": true
                       }
                     },
+                    "goal": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "objective": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "paused",
+                            "blocked",
+                            "usage_limited",
+                            "budget_limited",
+                            "complete"
+                          ]
+                        },
+                        "tokensUsed": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "tokenBudget": {
+                          "type": "number",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "lastStatusNote": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "updatedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "objective",
+                        "status",
+                        "tokensUsed",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -8828,6 +9202,7 @@
                     "messageCount",
                     "lastMessageAt",
                     "metadata",
+                    "goal",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -8959,6 +9334,55 @@
                               "nullable": true
                             }
                           },
+                          "goal": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "objective": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "active",
+                                  "paused",
+                                  "blocked",
+                                  "usage_limited",
+                                  "budget_limited",
+                                  "complete"
+                                ]
+                              },
+                              "tokensUsed": {
+                                "type": "number",
+                                "minimum": 0
+                              },
+                              "tokenBudget": {
+                                "type": "number",
+                                "minimum": 0,
+                                "exclusiveMinimum": true
+                              },
+                              "lastStatusNote": {
+                                "type": "string"
+                              },
+                              "createdAt": {
+                                "type": "number"
+                              },
+                              "updatedAt": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "objective",
+                              "status",
+                              "tokensUsed",
+                              "createdAt",
+                              "updatedAt"
+                            ]
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -8977,6 +9401,7 @@
                           "messageCount",
                           "lastMessageAt",
                           "metadata",
+                          "goal",
                           "createdAt",
                           "updatedAt"
                         ]
@@ -9065,6 +9490,55 @@
                         "nullable": true
                       }
                     },
+                    "goal": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "objective": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "paused",
+                            "blocked",
+                            "usage_limited",
+                            "budget_limited",
+                            "complete"
+                          ]
+                        },
+                        "tokensUsed": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "tokenBudget": {
+                          "type": "number",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "lastStatusNote": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "updatedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "objective",
+                        "status",
+                        "tokensUsed",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -9083,6 +9557,7 @@
                     "messageCount",
                     "lastMessageAt",
                     "metadata",
+                    "goal",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -9206,6 +9681,55 @@
                         "nullable": true
                       }
                     },
+                    "goal": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "objective": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "paused",
+                            "blocked",
+                            "usage_limited",
+                            "budget_limited",
+                            "complete"
+                          ]
+                        },
+                        "tokensUsed": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "tokenBudget": {
+                          "type": "number",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "lastStatusNote": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "updatedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "objective",
+                        "status",
+                        "tokensUsed",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -9224,6 +9748,7 @@
                     "messageCount",
                     "lastMessageAt",
                     "metadata",
+                    "goal",
                     "createdAt",
                     "updatedAt"
                   ]
@@ -9311,6 +9836,9 @@
                           "createdAt": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "aborted": {
+                            "type": "boolean"
                           },
                           "toolName": {
                             "type": "string"

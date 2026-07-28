@@ -2590,6 +2590,16 @@ export type GetApiV1ChatSessionResponses = {
             metadata: {
                 [key: string]: unknown;
             };
+            goal: {
+                id: string;
+                objective: string;
+                status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+                tokensUsed: number;
+                tokenBudget?: number;
+                lastStatusNote?: string;
+                createdAt: number;
+                updatedAt: number;
+            };
             createdAt: string;
             updatedAt: string;
         };
@@ -2597,6 +2607,52 @@ export type GetApiV1ChatSessionResponses = {
 };
 
 export type GetApiV1ChatSessionResponse = GetApiV1ChatSessionResponses[keyof GetApiV1ChatSessionResponses];
+
+export type PostApiV1ChatSideQuestionData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        question: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/side-question';
+};
+
+export type PostApiV1ChatSideQuestionResponses = {
+    /**
+     * Side question accepted
+     */
+    200: {
+        accepted: boolean;
+        runId: string;
+    };
+};
+
+export type PostApiV1ChatSideQuestionResponse = PostApiV1ChatSideQuestionResponses[keyof PostApiV1ChatSideQuestionResponses];
+
+export type PostApiV1ChatSteerData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        message: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/steer';
+};
+
+export type PostApiV1ChatSteerResponses = {
+    /**
+     * Guidance accepted for the active run
+     */
+    200: {
+        accepted: boolean;
+        runId: string;
+    };
+};
+
+export type PostApiV1ChatSteerResponse = PostApiV1ChatSteerResponses[keyof PostApiV1ChatSteerResponses];
 
 export type PostApiV1ChatLocalStartData = {
     body?: {
@@ -2659,6 +2715,16 @@ export type PostApiV1ChatLocalStartResponses = {
             lastMessageAt: string;
             metadata: {
                 [key: string]: unknown;
+            };
+            goal: {
+                id: string;
+                objective: string;
+                status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+                tokensUsed: number;
+                tokenBudget?: number;
+                lastStatusNote?: string;
+                createdAt: number;
+                updatedAt: number;
             };
             createdAt: string;
             updatedAt: string;
@@ -2737,6 +2803,16 @@ export type PostApiV1ChatLocalResponses = {
             lastMessageAt: string;
             metadata: {
                 [key: string]: unknown;
+            };
+            goal: {
+                id: string;
+                objective: string;
+                status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+                tokensUsed: number;
+                tokenBudget?: number;
+                lastStatusNote?: string;
+                createdAt: number;
+                updatedAt: number;
             };
             createdAt: string;
             updatedAt: string;
@@ -2822,6 +2898,7 @@ export type GetApiV1ChatHistoryResponses = {
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            aborted?: boolean;
             toolName?: string;
             toolCallId?: string;
         }>;
@@ -2866,6 +2943,16 @@ export type PostApiInternalSessionsResponses = {
         lastMessageAt: string;
         metadata: {
             [key: string]: unknown;
+        };
+        goal: {
+            id: string;
+            objective: string;
+            status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+            tokensUsed: number;
+            tokenBudget?: number;
+            lastStatusNote?: string;
+            createdAt: number;
+            updatedAt: number;
         };
         createdAt: string;
         updatedAt: string;
@@ -2919,6 +3006,16 @@ export type PatchApiInternalSessionsByIdResponses = {
         metadata: {
             [key: string]: unknown;
         };
+        goal: {
+            id: string;
+            objective: string;
+            status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+            tokensUsed: number;
+            tokenBudget?: number;
+            lastStatusNote?: string;
+            createdAt: number;
+            updatedAt: number;
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -2956,6 +3053,16 @@ export type GetApiV1SessionsResponses = {
             lastMessageAt: string;
             metadata: {
                 [key: string]: unknown;
+            };
+            goal: {
+                id: string;
+                objective: string;
+                status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+                tokensUsed: number;
+                tokenBudget?: number;
+                lastStatusNote?: string;
+                createdAt: number;
+                updatedAt: number;
             };
             createdAt: string;
             updatedAt: string;
@@ -3025,6 +3132,16 @@ export type GetApiV1SessionsByIdResponses = {
         metadata: {
             [key: string]: unknown;
         };
+        goal: {
+            id: string;
+            objective: string;
+            status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+            tokensUsed: number;
+            tokenBudget?: number;
+            lastStatusNote?: string;
+            createdAt: number;
+            updatedAt: number;
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -3069,6 +3186,16 @@ export type PostApiV1SessionsByIdResetResponses = {
         metadata: {
             [key: string]: unknown;
         };
+        goal: {
+            id: string;
+            objective: string;
+            status: 'active' | 'paused' | 'blocked' | 'usage_limited' | 'budget_limited' | 'complete';
+            tokensUsed: number;
+            tokenBudget?: number;
+            lastStatusNote?: string;
+            createdAt: number;
+            updatedAt: number;
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -3109,6 +3236,7 @@ export type GetApiV1SessionsByIdMessagesResponses = {
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            aborted?: boolean;
             toolName?: string;
             toolCallId?: string;
         }>;

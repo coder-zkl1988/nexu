@@ -42,6 +42,37 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 - **`AuthLayout`** — Requires authenticated session, wraps all workspace routes.
 - **`WorkspaceLayout`** — Sidebar + main content area.
 
+## Long-running sessions
+
+The session detail composer remains usable while the session is busy, but it
+does not submit a second normal turn because concurrent main-session turns can
+corrupt OpenClaw's active transcript. Busy messages are classified before send:
+
+- High-confidence progress and status questions use `/btw`; the answer renders
+  in a separate panel, does not enter the main conversation context, and
+  dismisses automatically eight seconds after completion.
+- Exact stop requests abort the active run. While the busy composer is empty,
+  its single action button stops the run; typing replaces it with the send
+  action so stop and send are never shown together.
+- The busy composer keeps its toolbar layout stable. Attachments and Skills
+  remain visible but disabled because BTW/Steer accept text only; the current
+  bot and model remain visible as read-only context.
+- High-confidence adjustment messages use OpenClaw's `sessions.steer` RPC.
+  OpenClaw stops the active run, waits for it to release the session, and then
+  starts a replacement run with the updated guidance. This avoids concurrent
+  session writers while preserving the existing conversation context.
+  Ambiguous busy input defaults to the isolated BTW lane. `/btw`, `/side`,
+  `/steer`, and `/tell` remain explicit intent selectors in Nexu, but Nexu
+  strips the selector before submitting Steer guidance.
+- Controller busy state tracks both the interrupted request and its replacement
+  until their terminal events arrive. BTW side-run ids remain isolated. The
+  frontend timeout fallback only clears local waiting state after the controller
+  reports that no main request is active.
+- When Steer interrupts a run, Controller history projection removes OpenClaw's
+  duplicate gateway abort snapshot and marks the preserved provider output as
+  aborted. The frontend keeps that incomplete output inside the activity group
+  instead of presenting it as a completed assistant reply.
+
 ## Channels
 
 Channel management lives at `/workspace/channels` ([`apps/web/src/pages/channels.tsx`](../apps/web/src/pages/channels.tsx)). Slack and Discord remain single-instance per workspace; Feishu and WeChat support multi-instance connections.

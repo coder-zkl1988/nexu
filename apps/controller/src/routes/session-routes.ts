@@ -177,6 +177,7 @@ export function registerSessionRoutes(
                     content: z.unknown(),
                     timestamp: z.number().nullable(),
                     createdAt: z.string().nullable(),
+                    aborted: z.boolean().optional(),
                     toolName: z.string().optional(),
                     toolCallId: z.string().optional(),
                   }),

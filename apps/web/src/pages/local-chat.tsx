@@ -300,11 +300,7 @@ export function LocalChatPage() {
       <main className="h-full w-full overflow-hidden relative flex flex-col">
         <div className="flex-1 overflow-y-auto overflow-x-hidden h-full">
           <div className="flex flex-col items-center justify-center min-h-full px-4 py-6 md:py-10">
-            {/* Lifted 150px: the expert/team popover opens downward from the
-                composer, and a vertically centered hero left it too little room,
-                nudging the page into a slight scroll. A transform (not padding)
-                keeps the block's layout height — and the scroll height — unchanged. */}
-            <div className="flex w-full flex-col items-center -translate-y-[150px]">
+            <div className="flex w-full flex-col items-center">
               <div className="mb-5 md:mb-6 relative w-[144px] h-[144px] md:w-[176px] md:h-[176px]">
                 <img
                   src="/images/tabby-mascot.png"

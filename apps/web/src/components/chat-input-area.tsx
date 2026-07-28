@@ -62,6 +62,8 @@ export interface ChatInputAreaProps {
   ) => void;
   onTyping?: (text: string) => void;
   onCancel?: () => void;
+  onRunMessage?: (text: string) => void;
+  runMessageSending?: boolean;
   sending: boolean;
   waitingReply: boolean;
   disabled: boolean;
@@ -268,14 +270,16 @@ function BotSelector({
 
   const rowClass = (isSelected: boolean) =>
     cn(
-      "flex items-center gap-2 w-full px-3 py-2 text-left text-[13px] transition-colors hover:bg-surface-2",
+      "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-surface-2",
       isSelected && "font-medium text-accent",
     );
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative min-w-0">
       <button
         type="button"
+        title={triggerLabel}
+        aria-expanded={open}
         onClick={() => {
           const next = !open;
           // Reopen on the tab the current selection lives in.
@@ -283,19 +287,19 @@ function BotSelector({
           setOpen(next);
         }}
         className={cn(
-          "flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm",
+          "flex h-8 max-w-[140px] items-center gap-1 rounded-lg px-2 text-sm text-[var(--color-tabby-muted)] transition-colors hover:bg-[var(--color-tabby-canvas)] sm:max-w-[220px]",
           open && "bg-[var(--color-tabby-canvas)]",
         )}
       >
-        {triggerLabel.slice(0, 8)}
+        <span className="min-w-0 truncate">{triggerLabel}</span>
         <ChevronDown
           size={13}
-          className={cn("transition-transform", open && "rotate-180")}
+          className={cn("shrink-0 transition-transform", open && "rotate-180")}
         />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 flex max-h-[320px] w-[220px] flex-col rounded-xl border border-border bg-surface-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
+        <div className="absolute right-0 top-full z-50 mt-1.5 flex max-h-[176px] w-[min(240px,calc(100vw-2rem))] flex-col rounded-xl border border-border bg-surface-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
           <div className="flex shrink-0 border-b border-border">
             {(
               [
@@ -314,7 +318,7 @@ function BotSelector({
                 type="button"
                 onClick={() => setTab(key)}
                 className={cn(
-                  "flex-1 px-3 py-1.5 text-[12px] transition-colors",
+                  "flex-1 px-3 py-1 text-[12px] transition-colors",
                   tab === key
                     ? "border-b-2 border-accent font-medium text-text-primary"
                     : "text-text-muted hover:text-text-secondary",
@@ -326,10 +330,10 @@ function BotSelector({
           </div>
 
           {/* Scrolls inside the popover — never grows the page. */}
-          <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          <div className="min-h-0 flex-1 overflow-y-auto py-0.5">
             {tab === "experts" ? (
               expertBots.length === 0 ? (
-                <div className="px-3 py-2 text-[12px] text-text-muted">
+                <div className="px-3 py-1.5 text-[12px] text-text-muted">
                   {t("localChat.noBots")}
                 </div>
               ) : (
@@ -375,7 +379,7 @@ function BotSelector({
                 ))
               )
             ) : teams.length === 0 ? (
-              <div className="px-3 py-2 text-[12px] text-text-muted">
+              <div className="px-3 py-1.5 text-[12px] text-text-muted">
                 {t("localChat.noTeams", { defaultValue: "暂无团队" })}
               </div>
             ) : (
@@ -417,7 +421,7 @@ function BotSelector({
                       : "/workspace/experts/custom",
                   );
                 }}
-                className="flex items-center gap-2 w-full px-3 py-2 text-left text-[12px] text-text-secondary hover:bg-surface-2 rounded-b-xl transition-colors"
+                className="flex w-full items-center gap-2 rounded-b-xl px-3 py-1.5 text-left text-[12px] text-text-secondary transition-colors hover:bg-surface-2"
               >
                 <Plus size={13} className="shrink-0" />
                 {tab === "teams"
@@ -445,6 +449,8 @@ export function ChatInputArea({
   onSend,
   onTyping,
   onCancel,
+  onRunMessage,
+  runMessageSending = false,
   sending,
   waitingReply,
   disabled,
@@ -614,8 +620,28 @@ export function ChatInputArea({
     !sending &&
     !waitingReply &&
     (input.trim().length > 0 || pendingAttachments.length > 0);
+  const runMessageActive = waitingReply && onRunMessage !== undefined;
+  const canSendRunMessage =
+    !!selectedBot &&
+    runMessageActive &&
+    !runMessageSending &&
+    input.trim().length > 0;
+  const showRunMessageSend = canSendRunMessage || runMessageSending;
+
+  useEffect(() => {
+    if (!runMessageActive) return;
+    setSkillDropdownOpen(false);
+    setModelDropdownOpen(false);
+  }, [runMessageActive]);
 
   function handleSend() {
+    if (runMessageActive) {
+      if (!canSendRunMessage) return;
+      const text = input.trim();
+      setInput("");
+      onRunMessage?.(text);
+      return;
+    }
     if (!canSend) return;
     const text = input.trim();
     setInput("");
@@ -653,33 +679,72 @@ export function ChatInputArea({
         value={input}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
+        onPaste={runMessageActive ? undefined : handlePaste}
         onSend={handleSend}
         onCancel={onCancel}
-        placeholder={placeholder}
+        placeholder={
+          runMessageActive
+            ? t("sessions.chat.runMessagePlaceholder")
+            : placeholder
+        }
         disabled={disabled}
         sending={sending}
-        waitingReply={waitingReply}
+        actionLoading={runMessageSending}
+        waitingReply={runMessageActive ? !showRunMessageSend : waitingReply}
+        canSend={runMessageActive ? canSendRunMessage : canSend}
+        subtlePlaceholder={runMessageActive}
         leftActions={
           <>
-            <ChatInputAttachButton onClick={() => fileRef.current?.click()} />
-            <div className="relative" ref={skillDropdownRef}>
+            <ChatInputAttachButton
+              onClick={() => fileRef.current?.click()}
+              disabled={runMessageActive}
+              label={
+                runMessageActive
+                  ? t("sessions.chat.runToolsUnavailable")
+                  : t("localChat.attachFile")
+              }
+            />
+            <div className="relative flex items-center" ref={skillDropdownRef}>
               <button
                 type="button"
                 onClick={() => setSkillDropdownOpen(!skillDropdownOpen)}
+                disabled={runMessageActive}
+                data-chat-skill="true"
+                title={
+                  runMessageActive
+                    ? t("sessions.chat.runToolsUnavailable")
+                    : undefined
+                }
                 className={cn(
-                  "flex items-center gap-1.5 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-sm",
+                  "flex items-center gap-1.5 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-sm disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
                   selectedSkillSlug
                     ? "text-[var(--color-tabby-foreground)] font-medium"
                     : "text-[var(--color-tabby-muted)]",
                 )}
               >
                 <Sparkles className="w-4 h-4" />
-                {selectedSkillSlug
-                  ? (installedSkills.find((s) => s.slug === selectedSkillSlug)
-                      ?.name ?? selectedSkillSlug)
-                  : "Skills"}
+                <span className="max-w-32 truncate">
+                  {selectedSkillSlug
+                    ? (installedSkills.find(
+                        (skill) => skill.slug === selectedSkillSlug,
+                      )?.name ?? selectedSkillSlug)
+                    : "Skills"}
+                </span>
               </button>
+              {selectedSkillSlug && !runMessageActive && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSkillSlug(null);
+                    setSkillDropdownOpen(false);
+                  }}
+                  className="flex size-7 items-center justify-center rounded-md text-[var(--color-tabby-muted)] transition-colors hover:bg-[var(--color-tabby-canvas)] hover:text-[var(--color-tabby-foreground)]"
+                  title={t("localChat.clearSkill")}
+                  aria-label={t("localChat.clearSkill")}
+                >
+                  <X size={13} />
+                </button>
+              )}
               {skillDropdownOpen && (
                 <div className="absolute bottom-full left-0 mb-1 w-56 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
                   <div className="px-3 py-2 text-[11px] text-[var(--color-tabby-muted)] font-medium border-b border-[var(--color-tabby-border)]">
@@ -734,22 +799,46 @@ export function ChatInputArea({
         rightActions={
           <>
             {showBotSelector ? (
-              <BotSelector
-                bots={bots}
-                selected={selectedBot}
-                onSelect={onSelectBot}
-                showAdd={showAddBot}
-                defaultBotId={defaultBotId}
-                onSetDefault={onSetDefaultBot}
-              />
+              runMessageActive ? (
+                selectedBot ? (
+                  <span
+                    data-chat-agent="true"
+                    className="max-w-[180px] truncate text-[12px] text-text-muted"
+                    title={selectedBot.name}
+                  >
+                    {selectedBot.name}
+                  </span>
+                ) : null
+              ) : (
+                <BotSelector
+                  bots={bots}
+                  selected={selectedBot}
+                  onSelect={onSelectBot}
+                  showAdd={showAddBot}
+                  defaultBotId={defaultBotId}
+                  onSetDefault={onSetDefaultBot}
+                />
+              )
             ) : selectedBot ? (
-              <span className="text-[12px] text-text-muted">
+              <span
+                data-chat-agent="true"
+                className="max-w-[180px] truncate text-[12px] text-text-muted"
+                title={selectedBot.name}
+              >
                 {selectedBot.name}
               </span>
             ) : null}
             {showModelSelector &&
-              (modelReadOnly ? (
-                <span className="text-[12px] text-text-muted">
+              (runMessageActive || modelReadOnly ? (
+                <span
+                  data-chat-model="true"
+                  className="max-w-[160px] truncate text-[12px] text-text-muted"
+                  title={
+                    models.find((m) => m.id === selectedBot?.modelId)?.name ??
+                    selectedBot?.modelId ??
+                    "Default"
+                  }
+                >
                   {models.find((m) => m.id === selectedBot?.modelId)?.name ??
                     selectedBot?.modelId ??
                     "Default"}

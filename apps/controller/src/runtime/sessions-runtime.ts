@@ -36,6 +36,8 @@ export type ChatMessage = {
   content: unknown;
   timestamp: number | null;
   createdAt: string | null;
+  /** Incomplete assistant output preserved when its run was interrupted. */
+  aborted?: boolean;
   /** Present on toolResult messages — name of the tool that produced the result. */
   toolName?: string;
   /** Present on toolResult messages — correlates with the assistant toolCall block id. */
@@ -539,12 +541,12 @@ export class SessionsRuntime {
             file.name.replace(/\.jsonl$/, "");
 
           // Skip archived sessions (OpenClaw sessions.patch { archived }).
-          const archivedEntry = this.findSessionIndexEntry(
+          const indexEntry = this.findSessionIndexEntry(
             sessionsIndex,
             filePath,
             sessionKey,
           )?.[1];
-          if (archivedEntry?.archivedAt) {
+          if (indexEntry?.archivedAt) {
             continue;
           }
 
@@ -1129,7 +1131,11 @@ export class SessionsRuntime {
     let pendingHeartbeatPollId: string | null = null;
     // Last surfaced assistant message (id + media-marker-stripped text), used
     // to drop the delivery pipeline's sanitized echo of the same reply.
-    let lastAssistant: { id: string; strippedText: string } | null = null;
+    let lastAssistant: {
+      id: string;
+      strippedText: string;
+      abortSnapshot: boolean;
+    } | null = null;
     for (const line of raw.split("\n")) {
       if (!line.trim()) continue;
       try {
@@ -1148,6 +1154,10 @@ export class SessionsRuntime {
             MediaPaths?: string[];
             MediaType?: string;
             MediaTypes?: string[];
+            provider?: string;
+            model?: string;
+            stopReason?: string;
+            openclawAbort?: { aborted?: boolean };
           };
         };
         if (entry.type !== "message" || !entry.message) continue;
@@ -1204,6 +1214,28 @@ export class SessionsRuntime {
           const strippedText = rawMessageText(entry.message.content)
             .replace(ASSISTANT_MEDIA_MARKER_PATTERN, "")
             .trim();
+          const abortSnapshot =
+            entry.message.provider === "openclaw" &&
+            entry.message.model === "gateway-injected" &&
+            entry.message.openclawAbort?.aborted === true;
+          const aborted =
+            abortSnapshot || entry.message.stopReason === "aborted";
+
+          if (
+            lastAssistant?.abortSnapshot === true &&
+            !abortSnapshot &&
+            entry.message.stopReason === "aborted" &&
+            mediaPaths.length === 0 &&
+            strippedText !== "" &&
+            lastAssistant.strippedText.endsWith(strippedText) &&
+            messages.at(-1)?.id === lastAssistant.id
+          ) {
+            // sessions.steer first writes a gateway-injected aggregate of all
+            // streamed assistant text, then the aborted provider request
+            // persists its final partial segment. Keep the precise provider
+            // record and remove the aggregate so history contains one copy.
+            messages.pop();
+          }
           if (
             lastAssistant !== null &&
             entry.parentId === lastAssistant.id &&
@@ -1219,7 +1251,28 @@ export class SessionsRuntime {
             // media attachment).
             continue;
           }
-          lastAssistant = { id: entry.id ?? "", strippedText };
+          lastAssistant = {
+            id: entry.id ?? "",
+            strippedText,
+            abortSnapshot,
+          };
+
+          const normalizedMessage = this.normalizeChatMessage(
+            {
+              id: entry.id ?? "",
+              role,
+              content: entry.message.content,
+              timestamp: entry.message.timestamp ?? null,
+              createdAt: entry.timestamp ?? null,
+              ...(aborted ? { aborted: true } : {}),
+            },
+            channelType,
+            { paths: mediaPaths, types: mediaTypes },
+          );
+          if (normalizedMessage) {
+            messages.push(normalizedMessage);
+          }
+          continue;
         }
         const normalizedMessage = this.normalizeChatMessage(
           {
@@ -1957,6 +2010,12 @@ export class SessionsRuntime {
   ): [string, SessionsIndexEntry] | undefined {
     return Object.entries(index).find(([, item]) => {
       if (item.sessionId === sessionKey) {
+        return true;
+      }
+      if (
+        typeof item.sessionId === "string" &&
+        `${path.basename(item.sessionId)}.jsonl` === path.basename(filePath)
+      ) {
         return true;
       }
       if (typeof item.sessionFile === "string") {

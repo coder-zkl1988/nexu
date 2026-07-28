@@ -970,6 +970,20 @@ const en = {
   "sessions.chat.openPanel": "Open",
   "sessions.chat.thinking": "Thinking...",
   "sessions.chat.newSession": "New conversation",
+  "sessions.chat.runMessagePlaceholder":
+    "Continue typing to guide the task or ask about progress",
+  "sessions.chat.sendRunMessage": "Send",
+  "sessions.chat.stopCurrentTask": "Stop current task",
+  "sessions.chat.runMessageEmpty": "Enter a message to send",
+  "sessions.chat.runToolsUnavailable":
+    "Attachments and skills are available after the current task finishes",
+  "sessions.chat.steerFailed": "Could not update the current task",
+  "sessions.chat.runStopped": "Current task stopped",
+  "sessions.chat.sideQuestionPending":
+    "The previous side question is still being answered",
+  "sessions.chat.sideQuestionFailed": "Could not answer the side question",
+  "sessions.chat.sideAnswer": "Quick answer",
+  "sessions.chat.sideAnswerDismiss": "Dismiss quick answer",
   "sessions.pending.title": "Starting conversation",
   "sessions.pending.waiting": "Waiting for {{name}} to reply...",
   "sessions.pending.streaming": "{{name}} is replying...",
@@ -1493,6 +1507,7 @@ const en = {
     "Ask Tabby… (Enter to send, Shift+Enter for newline)",
   "localChat.attachFile": "Attach image or file",
   "localChat.removeAttachment": "Remove",
+  "localChat.clearSkill": "Clear selected skill",
   "localChat.startChat": "Chat with {{name}}",
   "localChat.pickBot": "Pick a bot to get started",
   "localChat.emptyHint": "Select a bot, then type a message below",

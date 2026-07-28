@@ -63,9 +63,12 @@ function hasVisibleExtractedContent(extracted: ExtractedMessage): boolean {
 export function isExecutionEntry<TMessage extends { id: string; role: string }>(
   entry: TranscriptEntry<TMessage>,
 ): boolean {
+  const message = entry.msg as TMessage & { aborted?: boolean };
   return (
     entry.msg.role === "assistant" &&
-    (entry.extracted.hasToolCall || entry.extracted.reasoning.length > 0)
+    (message.aborted === true ||
+      entry.extracted.hasToolCall ||
+      entry.extracted.reasoning.length > 0)
   );
 }
 
