@@ -39,6 +39,7 @@ apps/desktop/build-config.json
 .claude/worktrees/
 .task/
 .opencode/
+.engramory-memory/
 docs/superpowers/
 .superpowers/
 package-lock.json
