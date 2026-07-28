@@ -5,7 +5,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import type { ControllerEnv } from "../app/env.js";
-import { supportsPeekabooPlatform } from "../lib/computer-use-platform.js";
 import { logger } from "../lib/logger.js";
 import type { OpenClawProcessManager } from "../runtime/openclaw-process.js";
 import { getOpenClawCommandSpec } from "../runtime/slimclaw-runtime-resolution.js";
@@ -95,23 +94,16 @@ async function ensurePrivateDirectory(directoryPath: string): Promise<void> {
   }
 }
 
-const peekabooPermissionResponseSchema = z.object({
-  success: z.boolean(),
-  data: z.object({
-    source: z.string().optional(),
-    permissions: z.array(
-      z.object({
-        name: z.string(),
-        isGranted: z.boolean(),
-        isRequired: z.boolean(),
-      }),
-    ),
-  }),
-});
-
-const peekabooDaemonStatusSchema = z.object({
-  success: z.boolean(),
-  data: z.object({ running: z.boolean() }),
+// `cua-driver permissions status --json`. The booleans reflect the daemon's own
+// TCC identity (com.trycua.driver), which is why the daemon must already be
+// running: asked from this process the answer would describe the controller,
+// not the driver. `daemon_running: false` comes back with `status: "unknown"`
+// and no booleans, so both shapes have to parse.
+const cuaPermissionStatusSchema = z.object({
+  accessibility: z.boolean().optional(),
+  screen_recording: z.boolean().optional(),
+  daemon_running: z.boolean().optional(),
+  status: z.string().optional(),
 });
 
 const browserPairingResponseSchema = z.object({
@@ -126,10 +118,7 @@ export type ComputerUsePermissionState =
   | "unknown"
   | "disabled";
 
-export type ComputerUseUnavailableReason =
-  | "missing-sidecar"
-  | "unsupported-os"
-  | "runtime-path-too-long";
+export type ComputerUseUnavailableReason = "missing-sidecar" | "unsupported-os";
 
 export type LocalAutomationStatus = {
   previewEnabled: boolean;
@@ -138,7 +127,7 @@ export type LocalAutomationStatus = {
   computerUseAvailable: boolean;
   computerUseUnavailableReason: ComputerUseUnavailableReason | null;
   computerUseBinaryPath: string | null;
-  computerUseBackend: "peekaboo" | "cua-driver" | null;
+  computerUseBackend: "cua-driver" | null;
   computerUsePermissionState: ComputerUsePermissionState;
   computerUsePermissions: Array<{
     name: string;
@@ -148,8 +137,6 @@ export type LocalAutomationStatus = {
 };
 
 export class LocalAutomationUnavailableError extends Error {}
-
-export { supportsPeekabooPlatform };
 
 export class LocalAutomationService {
   private operationQueue: Promise<void> = Promise.resolve();
@@ -436,37 +423,33 @@ export class LocalAutomationService {
     }
   }
 
-  async requestScreenRecordingPermission(): Promise<void> {
+  /**
+   * `cua-driver permissions grant` requests Accessibility, Screen Recording and
+   * (on Tahoe) direct-capture consent in one pass, attributing the dialogs to
+   * CuaDriver.app via LaunchServices. There is no per-permission entry point,
+   * and none of the three is separately useful: the driver reports itself as
+   * unavailable until all are granted.
+   */
+  async requestComputerUsePermissions(): Promise<void> {
     return this.enqueueOperation(async () => {
-      const computerUseBin = await this.preparePeekabooPermissionRequest();
-      const bridgeSocket = this.requirePeekabooBridgeSocket();
-      await this.runCommand(
-        computerUseBin,
-        [
-          "permissions",
-          "request-screen-recording",
-          "--bridge-socket",
-          bridgeSocket,
-          "--json",
-        ],
-        {
-          env: this.getPeekabooEnvironment(bridgeSocket),
-          timeout: 20_000,
-        },
-      );
+      this.assertLocalAutomationPreviewEnabled();
+      const config = await this.configStore.getLocalAutomationConfig();
+      if (!config.computerUse.enabled) {
+        throw new LocalAutomationUnavailableError("Computer Use is disabled");
+      }
+      this.assertComputerUseAvailable();
+      if (!this.env.computerUseBin) {
+        throw new LocalAutomationUnavailableError(
+          "Computer Use sidecar is not installed",
+        );
+      }
+      // The grant flow answers through a running daemon, so start it first.
+      await this.setComputerUseBackendRunning(true);
+      await this.runCommand(this.env.computerUseBin, ["permissions", "grant"], {
+        env: this.getCuaEnvironment(),
+        timeout: 120_000,
+      });
     });
-  }
-
-  async requestAccessibilityPermission(): Promise<void> {
-    return this.enqueueOperation(() =>
-      this.requestLocalPeekabooPermission("request-accessibility"),
-    );
-  }
-
-  async requestEventSynthesizingPermission(): Promise<void> {
-    return this.enqueueOperation(() =>
-      this.requestLocalPeekabooPermission("request-event-synthesizing"),
-    );
   }
 
   private resolveBrowserExtensionPath(): string | null {
@@ -522,12 +505,6 @@ export class LocalAutomationService {
     if (this.env.computerUsePlatformSupported === false) {
       return "unsupported-os";
     }
-    if (
-      this.env.computerUseBackend === "peekaboo" &&
-      this.env.computerUseBridgeSocket === null
-    ) {
-      return "runtime-path-too-long";
-    }
     return null;
   }
 
@@ -543,69 +520,49 @@ export class LocalAutomationService {
         "Computer Use sidecar is not installed",
       );
     }
-    if (unavailableReason === "runtime-path-too-long") {
-      throw new LocalAutomationUnavailableError(
-        "Computer Use cannot create a private bridge socket within the macOS path limit",
-      );
-    }
   }
 
   private async readComputerUsePermissions(): Promise<{
     state: Exclude<ComputerUsePermissionState, "disabled">;
     permissions: LocalAutomationStatus["computerUsePermissions"];
   }> {
-    if (!this.isComputerUseAvailable() || !this.env.computerUseBin) {
+    if (
+      !this.isComputerUseAvailable() ||
+      !this.env.computerUseBin ||
+      this.env.computerUseBackend !== "cua-driver"
+    ) {
       return { state: "unavailable", permissions: [] };
     }
-    if (this.env.computerUseBackend === "cua-driver") {
+    // Windows needs no TCC grants, so a reachable daemon is the whole check.
+    if (process.platform !== "darwin") {
       return {
         state: (await this.isCuaDaemonRunning()) ? "ready" : "unavailable",
         permissions: [],
       };
     }
-    if (this.env.computerUseBackend !== "peekaboo") {
-      return { state: "unknown", permissions: [] };
-    }
 
     try {
-      const bridgeSocket = this.requirePeekabooBridgeSocket();
-      const daemonResult = await this.runCommand(
-        this.env.computerUseBin,
-        ["daemon", "status", "--bridge-socket", bridgeSocket, "--json"],
-        { timeout: 5_000 },
-      );
-      const daemon = peekabooDaemonStatusSchema.parse(
-        JSON.parse(daemonResult.stdout),
-      );
-      if (!daemon.success || !daemon.data.running) {
-        return { state: "unavailable", permissions: [] };
-      }
-
       const result = await this.runCommand(
         this.env.computerUseBin,
-        ["permissions", "status", "--bridge-socket", bridgeSocket, "--json"],
-        { timeout: 5_000 },
+        ["permissions", "status", "--json"],
+        { env: this.getCuaEnvironment(), timeout: 5_000 },
       );
-      const parsed = peekabooPermissionResponseSchema.parse(
-        JSON.parse(result.stdout),
+      const parsed = cuaPermissionStatusSchema.parse(
+        JSON.parse(result.stdout) as unknown,
       );
-      const permissions = parsed.data.permissions.map((permission) => {
-        const isInputPermission =
-          permission.name.trim().toLowerCase() === "event synthesizing";
-        return {
-          name: permission.name,
-          granted: permission.isGranted,
-          required: permission.isRequired || isInputPermission,
-        };
-      });
-      const ready =
-        parsed.success &&
-        parsed.data.source === "bridge" &&
-        permissions.every(
-          (permission) => !permission.required || permission.granted,
-        );
+      if (parsed.daemon_running === false || parsed.status === "unknown") {
+        // The driver refuses to answer for anyone but itself, so an absent
+        // daemon means unknown grants — not missing ones.
+        return { state: "unavailable", permissions: [] };
+      }
+      const permissions = [
+        { name: "Accessibility", granted: parsed.accessibility === true },
+        { name: "Screen Recording", granted: parsed.screen_recording === true },
+      ].map((permission) => ({ ...permission, required: true }));
       return {
-        state: ready ? "ready" : "permission-required",
+        state: permissions.every((permission) => permission.granted)
+          ? "ready"
+          : "permission-required",
         permissions,
       };
     } catch {
@@ -614,91 +571,14 @@ export class LocalAutomationService {
   }
 
   private async setComputerUseBackendRunning(running: boolean): Promise<void> {
-    if (!this.env.computerUseBin || !existsSync(this.env.computerUseBin)) {
-      return;
-    }
-
-    if (this.env.computerUseBackend === "cua-driver") {
-      await this.setCuaDaemonRunning(running);
-      return;
-    }
-    if (this.env.computerUseBackend !== "peekaboo") {
-      return;
-    }
-
-    const bridgeSocket = this.env.computerUseBridgeSocket;
-    if (bridgeSocket === null) {
-      if (running) {
-        this.assertComputerUseAvailable();
-      }
-      return;
-    }
-    await ensurePrivateDirectory(path.dirname(bridgeSocket));
-    await this.runCommand(
-      this.env.computerUseBin,
-      [
-        "daemon",
-        running ? "start" : "stop",
-        "--bridge-socket",
-        bridgeSocket,
-        "--json",
-      ],
-      {
-        env: this.getPeekabooEnvironment(bridgeSocket),
-        timeout: 10_000,
-      },
-    );
-  }
-
-  private async preparePeekabooPermissionRequest(): Promise<string> {
-    this.assertLocalAutomationPreviewEnabled();
-    const config = await this.configStore.getLocalAutomationConfig();
-    if (!config.computerUse.enabled) {
-      throw new LocalAutomationUnavailableError("Computer Use is disabled");
-    }
     if (
-      this.env.computerUseBackend !== "peekaboo" ||
-      !this.env.computerUseBin
+      !this.env.computerUseBin ||
+      !existsSync(this.env.computerUseBin) ||
+      this.env.computerUseBackend !== "cua-driver"
     ) {
-      throw new LocalAutomationUnavailableError(
-        "System permission requests require Peekaboo",
-      );
+      return;
     }
-    this.assertComputerUseAvailable();
-    await this.setComputerUseBackendRunning(true);
-    return this.env.computerUseBin;
-  }
-
-  private async requestLocalPeekabooPermission(
-    subcommand: "request-accessibility" | "request-event-synthesizing",
-  ): Promise<void> {
-    const computerUseBin = await this.preparePeekabooPermissionRequest();
-    const bridgeSocket = this.requirePeekabooBridgeSocket();
-    await this.runCommand(
-      computerUseBin,
-      ["agent", "permission", subcommand, "--no-remote", "--json"],
-      {
-        env: this.getPeekabooEnvironment(bridgeSocket),
-        timeout: 20_000,
-      },
-    );
-  }
-
-  private requirePeekabooBridgeSocket(): string {
-    const bridgeSocket = this.env.computerUseBridgeSocket;
-    if (bridgeSocket === null) {
-      throw new LocalAutomationUnavailableError(
-        "Computer Use cannot create a private bridge socket within the macOS path limit",
-      );
-    }
-    return bridgeSocket;
-  }
-
-  private getPeekabooEnvironment(bridgeSocket: string): NodeJS.ProcessEnv {
-    return {
-      ...process.env,
-      PEEKABOO_DAEMON_SOCKET: bridgeSocket,
-    };
+    await this.setCuaDaemonRunning(running);
   }
 
   private getCuaEnvironment(): NodeJS.ProcessEnv {
@@ -767,9 +647,14 @@ export class LocalAutomationService {
       this.cuaDaemonProcess = null;
     }
     if (!this.env.computerUseCuaSocket.startsWith("\\\\.\\pipe\\")) {
-      await mkdir(path.dirname(this.env.computerUseCuaSocket), {
-        recursive: true,
-      });
+      // A world-writable control socket would let any local process drive the
+      // desktop through our daemon.
+      await ensurePrivateDirectory(path.dirname(this.env.computerUseCuaSocket));
+    }
+
+    if (this.env.computerUseAppBundle) {
+      await this.startCuaDaemonFromAppBundle(this.env.computerUseAppBundle);
+      return;
     }
 
     let child: ReturnType<ProcessStarter>;
@@ -830,6 +715,46 @@ export class LocalAutomationService {
       spawnError
         ? `CUA Driver failed to start: ${spawnError.message}`
         : "CUA Driver daemon did not become ready",
+    );
+  }
+
+  /**
+   * macOS only. Launching through LaunchServices makes CuaDriver.app its own
+   * responsible process, so TCC attributes Accessibility and Screen Recording
+   * to com.trycua.driver instead of to the controller. `open` detaches, so
+   * there is no child handle to hold and shutdown goes through `stop`.
+   */
+  private async startCuaDaemonFromAppBundle(appBundle: string): Promise<void> {
+    await this.runCommand(
+      "/usr/bin/open",
+      [
+        "-n",
+        "-g",
+        "-a",
+        appBundle,
+        "--args",
+        "serve",
+        "--socket",
+        this.env.computerUseCuaSocket,
+        "--permission-mode",
+        "standard",
+      ],
+      { env: this.getCuaEnvironment(), timeout: 15_000 },
+    ).catch((error: unknown) => {
+      throw new LocalAutomationUnavailableError(
+        `Unable to launch CuaDriver.app: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+
+    const deadline = Date.now() + this.timing.cuaDaemonStartTimeoutMs;
+    while (Date.now() < deadline) {
+      if (await this.isCuaDaemonRunning()) {
+        return;
+      }
+      await delay(this.timing.cuaDaemonPollIntervalMs);
+    }
+    throw new LocalAutomationUnavailableError(
+      "CUA Driver daemon did not become ready",
     );
   }
 

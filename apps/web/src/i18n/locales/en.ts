@@ -519,9 +519,7 @@ const en = {
     "Computer control requires macOS 15 or later",
   "automation.computer.runtimePathTooLong":
     "Computer control cannot start with the current data location",
-  "automation.computer.requestScreenRecording": "Allow Screen Recording",
-  "automation.computer.requestAccessibility": "Allow Accessibility",
-  "automation.computer.requestEventSynthesizing": "Allow background input",
+  "automation.computer.requestPermissions": "Grant system permissions",
   "automation.computer.permissionRequestFailed":
     "Unable to request the system permission",
   "automation.computer.unavailable":

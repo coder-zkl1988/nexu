@@ -219,9 +219,9 @@ describe("desktop runtime manifests", () => {
     );
 
     expect(controller?.env).toMatchObject({
-      COMPUTER_USE_BACKEND: "peekaboo",
+      COMPUTER_USE_BACKEND: "cua-driver",
       COMPUTER_USE_BIN: expect.stringContaining(
-        "/.tmp/sidecars/computer-use/peekaboo",
+        "/.tmp/sidecars/computer-use/CuaDriver.app/Contents/MacOS/cua-driver",
       ),
     });
   });

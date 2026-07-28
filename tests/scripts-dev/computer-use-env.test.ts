@@ -12,7 +12,7 @@ describe("tools/dev Computer Use environment", () => {
     vi.resetModules();
   });
 
-  it("injects Peekaboo by absolute path on macOS", async () => {
+  it("injects the CuaDriver bundle executable by absolute path on macOS", async () => {
     Object.defineProperty(process, "platform", {
       value: "darwin",
       configurable: true,
@@ -24,9 +24,9 @@ describe("tools/dev Computer Use environment", () => {
 
     const env = createControllerInjectedEnv();
 
-    expect(env.COMPUTER_USE_BACKEND).toBe("peekaboo");
+    expect(env.COMPUTER_USE_BACKEND).toBe("cua-driver");
     expect(env.COMPUTER_USE_BIN).toMatch(
-      /\/\.tmp\/sidecars\/computer-use\/peekaboo$/u,
+      /\/\.tmp\/sidecars\/computer-use\/CuaDriver\.app\/Contents\/MacOS\/cua-driver$/u,
     );
     expect(path.isAbsolute(env.OPENCLAW_BIN ?? "")).toBe(true);
     expect(env.OPENCLAW_BIN).toMatch(/\/openclaw\/bin\/openclaw$/u);

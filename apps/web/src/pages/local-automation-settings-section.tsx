@@ -26,9 +26,7 @@ import {
   patchApiV1RuntimeConfigDeviceControl,
   patchApiV1RuntimeConfigLocalAutomation,
   postApiV1RuntimeConfigLocalAutomationBrowserPairing,
-  postApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermission,
-  postApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermission,
-  postApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermission,
+  postApiV1RuntimeConfigLocalAutomationComputerUsePermissions,
 } from "../../lib/api/sdk.gen";
 
 const QUERY_KEY = ["runtime-config"] as const;
@@ -99,35 +97,15 @@ export function LocalAutomationSettingsSection() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const screenRecordingMutation = useMutation({
+  // cua-driver grants Accessibility, Screen Recording and (on Tahoe) direct
+  // capture in one pass, attributing the prompts to CuaDriver.app. There is no
+  // per-permission entry point, and none of them is useful alone.
+  const permissionsMutation = useMutation({
     mutationFn: async () => {
       const response =
-        await postApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermission(
-          { body: {} },
-        );
-      if (response.error) {
-        throw new Error(t("automation.computer.permissionRequestFailed"));
-      }
-    },
-    onSuccess: async () => {
-      await openExternalUrl(
-        "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-      );
-      await queryClient.invalidateQueries({ queryKey: QUERY_KEY });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
-  const inputPermissionMutation = useMutation({
-    mutationFn: async (permission: "accessibility" | "event-synthesizing") => {
-      const response =
-        permission === "accessibility"
-          ? await postApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermission(
-              { body: {} },
-            )
-          : await postApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermission(
-              { body: {} },
-            );
+        await postApiV1RuntimeConfigLocalAutomationComputerUsePermissions({
+          body: {},
+        });
       if (response.error) {
         throw new Error(t("automation.computer.permissionRequestFailed"));
       }
@@ -215,19 +193,6 @@ export function LocalAutomationSettingsSection() {
           : localAutomationStatus.computerUsePermissionState === "unknown"
             ? "automation.computer.statusUnknown"
             : "automation.computer.installed";
-  const missingRequiredPermissions =
-    localAutomationStatus.computerUsePermissions.filter(
-      (permission) => permission.required && !permission.granted,
-    );
-  const needsScreenRecording = missingRequiredPermissions.some((permission) =>
-    permission.name.toLowerCase().includes("screen recording"),
-  );
-  const needsAccessibility = missingRequiredPermissions.some((permission) =>
-    permission.name.toLowerCase().includes("accessibility"),
-  );
-  const needsEventSynthesizing = missingRequiredPermissions.some((permission) =>
-    permission.name.toLowerCase().includes("event synthesizing"),
-  );
 
   return (
     <Card>
@@ -340,54 +305,22 @@ export function LocalAutomationSettingsSection() {
                 )}
                 {t(computerUseStatusKey)}
               </div>
-              {previewEnabled &&
-              computerUseNeedsPermission &&
-              localAutomationStatus.computerUseBackend === "peekaboo" ? (
+              {previewEnabled && computerUseNeedsPermission ? (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {needsScreenRecording ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={screenRecordingMutation.isPending}
-                      onClick={() => screenRecordingMutation.mutate()}
-                    >
-                      {screenRecordingMutation.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ShieldAlert className="h-3.5 w-3.5" />
-                      )}
-                      {t("automation.computer.requestScreenRecording")}
-                    </Button>
-                  ) : null}
-                  {needsAccessibility ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={inputPermissionMutation.isPending}
-                      onClick={() =>
-                        inputPermissionMutation.mutate("accessibility")
-                      }
-                    >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={permissionsMutation.isPending}
+                    onClick={() => permissionsMutation.mutate()}
+                  >
+                    {permissionsMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
                       <ShieldAlert className="h-3.5 w-3.5" />
-                      {t("automation.computer.requestAccessibility")}
-                    </Button>
-                  ) : null}
-                  {needsEventSynthesizing ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={inputPermissionMutation.isPending}
-                      onClick={() =>
-                        inputPermissionMutation.mutate("event-synthesizing")
-                      }
-                    >
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                      {t("automation.computer.requestEventSynthesizing")}
-                    </Button>
-                  ) : null}
+                    )}
+                    {t("automation.computer.requestPermissions")}
+                  </Button>
                 </div>
               ) : null}
             </div>

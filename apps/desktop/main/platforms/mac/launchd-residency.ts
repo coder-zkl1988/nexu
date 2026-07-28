@@ -22,7 +22,7 @@ type LaunchdPathSet = {
   openclawCwd: string;
   openclawBinPath: string;
   openclawExtensionsDir: string;
-  computerUseBackend: "peekaboo" | "cua-driver" | null;
+  computerUseBackend: "cua-driver" | null;
   computerUseBinPath: string | null;
 };
 

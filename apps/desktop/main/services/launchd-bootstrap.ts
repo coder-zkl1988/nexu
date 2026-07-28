@@ -90,7 +90,7 @@ export interface LaunchdBootstrapEnv {
   /** OpenClaw extensions directory */
   openclawExtensionsDir: string;
   /** Platform-specific Computer Use backend */
-  computerUseBackend?: "peekaboo" | "cua-driver" | null;
+  computerUseBackend?: "cua-driver" | null;
   /** Absolute path to the materialized Computer Use sidecar */
   computerUseBinPath?: string | null;
   /** Explicit opt-in for local automation in production builds */
@@ -2298,7 +2298,7 @@ export async function resolveLaunchdPaths(
   openclawCwd: string;
   openclawBinPath: string;
   openclawExtensionsDir: string;
-  computerUseBackend: "peekaboo" | "cua-driver" | null;
+  computerUseBackend: "cua-driver" | null;
   computerUseBinPath: string | null;
 }> {
   if (isPackaged) {

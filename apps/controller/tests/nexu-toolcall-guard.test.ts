@@ -65,7 +65,7 @@ describe("nexu-toolcall-guard local automation policy", () => {
     ).resolves.toBeUndefined();
     await expect(
       beforeToolCall(
-        { toolName: "peekaboo__click", params: {} },
+        { toolName: "cua-driver__click", params: {} },
         {
           sessionKey: "agent:bot-1:123e4567-e89b-12d3-a456-426614174000",
           runId: "run-2",
@@ -107,11 +107,16 @@ describe("nexu-toolcall-guard local automation policy", () => {
   it("blocks backend tools outside the reviewed local automation surface", async () => {
     const beforeToolCall = await loadBeforeToolCallHook();
 
+    // The whole peekaboo surface fails closed now that cua-driver is the only
+    // compiled backend; cua-driver itself is limited to the reviewed filter.
     for (const toolName of [
       "peekaboo__agent",
       "peekaboo__browser",
       "peekaboo__paste",
+      "peekaboo__click",
+      "peekaboo__list",
       "cua-driver__run_shell",
+      "cua-driver__page",
     ]) {
       await expect(
         beforeToolCall(
@@ -124,8 +129,8 @@ describe("nexu-toolcall-guard local automation policy", () => {
     await expect(
       beforeToolCall(
         {
-          toolName: "peekaboo__list",
-          params: { item_type: "running_applications" },
+          toolName: "cua-driver__list_apps",
+          params: {},
         },
         { sessionKey: "agent:bot-1:main" },
       ),
@@ -809,7 +814,7 @@ describe("nexu-toolcall-guard computer-use completion evidence", () => {
     await expect(
       beforeToolCall?.(
         {
-          toolName: "peekaboo__click",
+          toolName: "cua-driver__click",
           params: { app: "Safari", x: 10, y: 20 },
         },
         context,

@@ -254,9 +254,7 @@ describe("controller route compatibility", () => {
     const app = createApp(container);
     const paths = [
       "/api/v1/runtime-config/local-automation/browser-pairing",
-      "/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission",
-      "/api/v1/runtime-config/local-automation/computer-use/accessibility-permission",
-      "/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission",
+      "/api/v1/runtime-config/local-automation/computer-use/permissions",
     ];
 
     for (const requestPath of paths) {

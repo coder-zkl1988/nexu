@@ -186,18 +186,20 @@ export function getToolsDevRuntimeConfig(): ToolsDevRuntimeConfig {
 export function createControllerInjectedEnv(): NodeJS.ProcessEnv {
   const config = getToolsDevRuntimeConfig();
   const computerUseBackend =
-    process.platform === "darwin"
-      ? "peekaboo"
-      : process.platform === "win32"
-        ? "cua-driver"
-        : null;
+    process.platform === "darwin" || process.platform === "win32"
+      ? "cua-driver"
+      : null;
   const computerUseBin = computerUseBackend
     ? join(
         repoRootPath,
         ".tmp",
         "sidecars",
         "computer-use",
-        computerUseBackend === "peekaboo" ? "peekaboo" : "cua-driver.exe",
+        // macOS resolves through the app bundle so the daemon keeps its own TCC
+        // identity; Windows has a bare executable.
+        ...(process.platform === "darwin"
+          ? ["CuaDriver.app", "Contents", "MacOS", "cua-driver"]
+          : ["cua-driver.exe"]),
       )
     : null;
 

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { repoRootPath } from "@nexu/dev-utils";
 
@@ -49,16 +49,23 @@ function resolveTarget(
   arch: string,
 ): {
   target: string;
-  backend: "peekaboo" | "cua-driver";
+  backend: "cua-driver";
   binaryName: string;
   requiredFiles: string[];
 } | null {
   if (platform === "darwin") {
     return {
       target: "mac",
-      backend: "peekaboo",
-      binaryName: "peekaboo",
-      requiredFiles: ["peekaboo", "libswiftCompatibilitySpan.dylib", "LICENSE"],
+      backend: "cua-driver",
+      // The bundle tree is covered by its code signature (checked at
+      // packaging time). These two files are what a bad copy would break:
+      // the identity TCC keys on, and the executable itself.
+      binaryName: join("CuaDriver.app", "Contents", "MacOS", "cua-driver"),
+      requiredFiles: [
+        "LICENSE",
+        "CuaDriver.app/Contents/Info.plist",
+        "CuaDriver.app/Contents/MacOS/cua-driver",
+      ],
     };
   }
   if (platform === "win32") {
@@ -77,7 +84,7 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 async function isPreparedSidecarValid(input: {
   repoRoot: string;
   target: string;
-  backend: "peekaboo" | "cua-driver";
+  backend: "cua-driver";
   binaryName: string;
   requiredFiles: string[];
 }): Promise<boolean> {
@@ -120,7 +127,10 @@ async function isPreparedSidecarValid(input: {
     files.length !== vendor.files.length ||
     new Set(files).size !== files.length ||
     files.some(
-      (fileName) => fileName.length === 0 || fileName !== basename(fileName),
+      (fileName) =>
+        fileName.length === 0 ||
+        fileName.includes("..") ||
+        fileName.startsWith("/"),
     ) ||
     input.requiredFiles.some((fileName) => !files.includes(fileName))
   ) {
@@ -138,7 +148,7 @@ async function isPreparedSidecarValid(input: {
     }
   }
 
-  if (input.backend === "peekaboo" && process.platform !== "win32") {
+  if (process.platform !== "win32") {
     try {
       const binaryMetadata = await stat(join(sidecarRoot, input.binaryName));
       if (!binaryMetadata.isFile() || (binaryMetadata.mode & 0o111) === 0) {

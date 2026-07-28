@@ -400,23 +400,6 @@ export const CUA_TOOL_FILTER = [
   "end_session",
   "escalate_session",
 ];
-export const PEEKABOO_TOOL_FILTER = [
-  "see",
-  "inspect_ui",
-  "click",
-  "type",
-  "set_value",
-  "perform_action",
-  "hotkey",
-  "scroll",
-  "drag",
-  "app",
-  "window",
-  "menu",
-  "dock",
-  "dialog",
-  "list",
-];
 
 function isLocalAutomationPreviewEnabled(env: ControllerEnv): boolean {
   return env.localAutomationPreviewEnabled === true;
@@ -698,11 +681,6 @@ export function compileOpenClawConfig(
   const utilityModelId = config.runtime.utilityModelId
     ? resolveModelId(config, env, config.runtime.utilityModelId, oauthState)
     : null;
-  const computerUseBridgeSocket =
-    env.computerUseBridgeSocket === null
-      ? ""
-      : (env.computerUseBridgeSocket ??
-        path.join(env.nexuHomeDir, "runtime", "peekaboo", "daemon.sock"));
   const computerUseEnabled =
     isLocalAutomationPreviewEnabled(env) &&
     config.localAutomation?.computerUse.enabled === true &&
@@ -710,9 +688,7 @@ export function compileOpenClawConfig(
     env.computerUsePlatformSupported !== false &&
     env.computerUseBin !== null &&
     path.isAbsolute(env.computerUseBin) &&
-    existsSync(env.computerUseBin) &&
-    (env.computerUseBackend !== "peekaboo" ||
-      computerUseBridgeSocket.length > 0);
+    existsSync(env.computerUseBin);
   const computerUseCuaSocket =
     env.computerUseCuaSocket ??
     path.join(env.nexuHomeDir, "runtime", "cua-driver", "daemon.sock");
@@ -752,43 +728,28 @@ export function compileOpenClawConfig(
       ? {
           mcp: {
             servers: {
-              [env.computerUseBackend ?? "computer-use"]: {
+              "cua-driver": {
                 enabled: true,
                 transport: "stdio",
+                // The MCP process is a thin client of the daemon; the daemon
+                // owns the platform grants, so this may run from the plain
+                // executable path.
                 command: env.computerUseBin,
-                args:
-                  env.computerUseBackend === "peekaboo"
-                    ? [
-                        "mcp",
-                        "serve",
-                        "--transport",
-                        "stdio",
-                        "--bridge-socket",
-                        computerUseBridgeSocket,
-                      ]
-                    : ["mcp", "--embedded", "--socket", computerUseCuaSocket],
-                env:
-                  env.computerUseBackend === "peekaboo"
-                    ? {
-                        PEEKABOO_DAEMON_SOCKET: computerUseBridgeSocket,
-                      }
-                    : {
-                        CUA_DRIVER_EMBEDDED: "1",
-                        CUA_DRIVER_HOST_BUNDLE_ID: "io.tabby.desktop",
-                        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
-                        CUA_DRIVER_TELEMETRY_HOME: path.join(
-                          env.nexuHomeDir,
-                          "runtime",
-                          "cua-driver",
-                        ),
-                      },
+                args: ["mcp", "--embedded", "--socket", computerUseCuaSocket],
+                env: {
+                  CUA_DRIVER_EMBEDDED: "1",
+                  CUA_DRIVER_HOST_BUNDLE_ID: "io.tabby.desktop",
+                  CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
+                  CUA_DRIVER_TELEMETRY_HOME: path.join(
+                    env.nexuHomeDir,
+                    "runtime",
+                    "cua-driver",
+                  ),
+                },
                 connectionTimeoutMs: 10_000,
                 requestTimeoutMs: 60_000,
                 toolFilter: {
-                  include:
-                    env.computerUseBackend === "peekaboo"
-                      ? PEEKABOO_TOOL_FILTER
-                      : CUA_TOOL_FILTER,
+                  include: CUA_TOOL_FILTER,
                 },
               },
             },

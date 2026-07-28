@@ -11,11 +11,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
+import { supportsComputerUseBackend } from "../src/lib/computer-use-platform.js";
 import type { OpenClawProcessManager } from "../src/runtime/openclaw-process.js";
 import {
   LocalAutomationService,
   LocalAutomationUnavailableError,
-  supportsPeekabooPlatform,
 } from "../src/services/local-automation-service.js";
 import type { OpenClawSyncService } from "../src/services/openclaw-sync-service.js";
 import type { NexuConfigStore } from "../src/store/nexu-config-store.js";
@@ -32,7 +32,7 @@ afterEach(async () => {
 
 async function createHarness(
   initial: LocalAutomationConfig,
-  backend: "peekaboo" | "cua-driver" = "peekaboo",
+  backend: "cua-driver" = "cua-driver",
   options: {
     timing?: {
       cuaDaemonStartTimeoutMs: number;
@@ -40,8 +40,10 @@ async function createHarness(
     };
     platformSupported?: boolean;
     previewEnabled?: boolean;
-    eventSynthesizingGranted?: boolean;
-    bridgeSocket?: string | null;
+    accessibilityGranted?: boolean;
+    screenRecordingGranted?: boolean;
+    /** Set to exercise the macOS LaunchServices launch path. */
+    appBundle?: string | null;
   } = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "nexu-local-automation-"));
@@ -72,42 +74,38 @@ async function createHarness(
   } as unknown as NexuConfigStore;
   const syncAll = vi.fn().mockResolvedValue({ configChanged: true });
   const restart = vi.fn().mockResolvedValue(undefined);
+  // The daemon is stateful: `status` only succeeds once something started it,
+  // which is what drives the service's start/stop reconciliation.
+  let daemonRunning = false;
   const runCommand = vi.fn(
-    async (_command: string, args: string[], _options: object) => {
-      if (args[0] === "daemon" && args[1] === "status") {
+    async (command: string, args: string[], _options: object) => {
+      if (args[0] === "permissions" && args[1] === "status") {
         return {
           stdout: JSON.stringify({
-            success: true,
-            data: { running: true },
+            daemon_running: daemonRunning,
+            ...(daemonRunning
+              ? {
+                  accessibility: options.accessibilityGranted ?? true,
+                  screen_recording: options.screenRecordingGranted ?? true,
+                }
+              : { status: "unknown" }),
           }),
         };
       }
-      if (args[0] === "permissions") {
-        return {
-          stdout: JSON.stringify({
-            success: true,
-            data: {
-              source: "bridge",
-              permissions: [
-                {
-                  name: "Screen Recording",
-                  isGranted: true,
-                  isRequired: true,
-                },
-                {
-                  name: "Accessibility",
-                  isGranted: true,
-                  isRequired: true,
-                },
-                {
-                  name: "Event Synthesizing",
-                  isGranted: options.eventSynthesizingGranted ?? true,
-                  isRequired: false,
-                },
-              ],
-            },
-          }),
-        };
+      if (args[0] === "permissions" && args[1] === "grant") {
+        return { stdout: "" };
+      }
+      if (args[0] === "status") {
+        if (!daemonRunning) throw new Error("not running");
+        return { stdout: JSON.stringify({ running: true }) };
+      }
+      if (args[0] === "stop") {
+        daemonRunning = false;
+        return { stdout: JSON.stringify({ success: true }) };
+      }
+      if (command === "/usr/bin/open") {
+        daemonRunning = true;
+        return { stdout: "" };
       }
       return { stdout: JSON.stringify({ success: true }) };
     },
@@ -121,17 +119,17 @@ async function createHarness(
     on: vi.fn(),
   };
   stdin.on.mockReturnValue(stdin);
-  const startProcess = vi.fn(() => ({ kill, once, stdin, unref }));
+  const startProcess = vi.fn(() => {
+    daemonRunning = true;
+    return { kill, once, stdin, unref };
+  });
   const env = {
     nexuHomeDir: root,
     localAutomationPreviewEnabled: options.previewEnabled ?? true,
     computerUseBackend: backend,
     computerUsePlatformSupported: options.platformSupported ?? true,
     computerUseBin: binaryPath,
-    computerUseBridgeSocket:
-      options.bridgeSocket === undefined
-        ? path.join(root, "runtime", "daemon.sock")
-        : options.bridgeSocket,
+    computerUseAppBundle: options.appBundle ?? null,
     computerUseCuaSocket: path.join(root, "runtime", "cua-driver.sock"),
     openclawBuiltinExtensionsDir: path.join(root, "extensions"),
     openclawBin: path.join(root, "openclaw.mjs"),
@@ -162,6 +160,7 @@ async function createHarness(
     syncAll,
     restart,
     env,
+    isDaemonRunning: () => daemonRunning,
   };
 }
 
@@ -172,7 +171,7 @@ describe("LocalAutomationService", () => {
         browser: { enabled: false },
         computerUse: { enabled: false },
       },
-      "peekaboo",
+      "cua-driver",
       { previewEnabled: false },
     );
 
@@ -186,7 +185,7 @@ describe("LocalAutomationService", () => {
       disabledHarness.service.createBrowserPairing(),
     ).rejects.toThrow("preview is disabled");
     await expect(
-      disabledHarness.service.requestAccessibilityPermission(),
+      disabledHarness.service.requestComputerUsePermissions(),
     ).rejects.toThrow("preview is disabled");
     expect(disabledHarness.syncAll).not.toHaveBeenCalled();
     expect((await disabledHarness.service.getStatus()).previewEnabled).toBe(
@@ -198,7 +197,7 @@ describe("LocalAutomationService", () => {
         browser: { enabled: true },
         computerUse: { enabled: true },
       },
-      "peekaboo",
+      "cua-driver",
       { previewEnabled: false },
     );
     await staleHarness.service.prepare();
@@ -285,7 +284,7 @@ describe("LocalAutomationService", () => {
     expect(error.message).not.toContain(secret);
   });
 
-  it("starts Peekaboo before enabling MCP and restarts OpenClaw", async () => {
+  it("starts the daemon before enabling MCP and restarts OpenClaw", async () => {
     const harness = await createHarness({
       browser: { enabled: false },
       computerUse: { enabled: false },
@@ -299,17 +298,19 @@ describe("LocalAutomationService", () => {
     });
 
     expect(next.computerUse.enabled).toBe(true);
-    expect(harness.runCommand).toHaveBeenCalledWith(
+    expect(harness.startProcess).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["daemon", "start"]),
+      expect.arrayContaining(["serve", "--socket"]),
       expect.any(Object),
     );
+    // A world-readable control socket would let any local process drive the
+    // desktop through our daemon.
     expect((await stat(socketDirectory)).mode & 0o777).toBe(0o700);
     expect(harness.syncAll).toHaveBeenCalledOnce();
     expect(harness.restart).toHaveBeenCalledWith("local-automation-changed");
   });
 
-  it("rejects a symlinked Peekaboo socket directory", async () => {
+  it("rejects a symlinked daemon socket directory", async () => {
     const harness = await createHarness({
       browser: { enabled: false },
       computerUse: { enabled: false },
@@ -324,12 +325,14 @@ describe("LocalAutomationService", () => {
     expect(harness.getConfig().computerUse.enabled).toBe(false);
   });
 
-  it("stops a partially started Peekaboo daemon when enable fails", async () => {
+  it("stops a partially started daemon when enable fails", async () => {
     const harness = await createHarness({
       browser: { enabled: false },
       computerUse: { enabled: false },
     });
-    harness.runCommand.mockRejectedValueOnce(new Error("startup timed out"));
+    harness.startProcess.mockImplementationOnce(() => {
+      throw new Error("startup timed out");
+    });
 
     await expect(
       harness.service.updateConfig({ computerUse: { enabled: true } }),
@@ -338,30 +341,10 @@ describe("LocalAutomationService", () => {
     expect(harness.getConfig().computerUse.enabled).toBe(false);
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["daemon", "stop"]),
+      expect.arrayContaining(["stop", "--socket"]),
       expect.any(Object),
     );
     expect(harness.syncAll).not.toHaveBeenCalled();
-  });
-
-  it("reports an unavailable long runtime path without starting Peekaboo", async () => {
-    const harness = await createHarness(
-      {
-        browser: { enabled: false },
-        computerUse: { enabled: false },
-      },
-      "peekaboo",
-      { bridgeSocket: null },
-    );
-
-    const status = await harness.service.getStatus();
-    expect(status.computerUseAvailable).toBe(false);
-    expect(status.computerUseUnavailableReason).toBe("runtime-path-too-long");
-    await expect(
-      harness.service.updateConfig({ computerUse: { enabled: true } }),
-    ).rejects.toThrow("private bridge socket");
-    await expect(harness.service.prepare()).resolves.toBeUndefined();
-    expect(harness.runCommand).not.toHaveBeenCalled();
   });
 
   it("restores persisted config and stops the daemon when sync fails", async () => {
@@ -380,18 +363,20 @@ describe("LocalAutomationService", () => {
     expect(harness.getConfig().computerUse.enabled).toBe(false);
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["daemon", "stop"]),
+      expect.arrayContaining(["stop", "--socket"]),
       expect.any(Object),
     );
     expect(harness.syncAll).toHaveBeenCalledTimes(2);
   });
 
-  it("reports ready only when the dedicated Peekaboo bridge is running", async () => {
+  it("reports ready only when the driver daemon answers for its own identity", async () => {
     const harness = await createHarness({
       browser: { enabled: true },
       computerUse: { enabled: true },
     });
 
+    // Permission state is only readable through a live daemon.
+    await harness.service.prepare();
     const status = await harness.service.getStatus();
 
     expect(status.browserExtensionAvailable).toBe(true);
@@ -399,82 +384,76 @@ describe("LocalAutomationService", () => {
     expect(status.computerUseUnavailableReason).toBeNull();
     expect(status.computerUsePermissionState).toBe("ready");
     expect(status.computerUsePermissions).toEqual([
-      { name: "Screen Recording", granted: true, required: true },
       { name: "Accessibility", granted: true, required: true },
-      { name: "Event Synthesizing", granted: true, required: true },
+      { name: "Screen Recording", granted: true, required: true },
     ]);
   });
 
-  it("requires Event Synthesizing before reporting input as ready", async () => {
+  it("reports permission-required until every macOS grant is present", async () => {
     const harness = await createHarness(
       {
         browser: { enabled: false },
         computerUse: { enabled: true },
       },
-      "peekaboo",
-      { eventSynthesizingGranted: false },
+      "cua-driver",
+      { accessibilityGranted: false },
     );
 
+    // Permission state is only readable through a live daemon.
+    await harness.service.prepare();
     const status = await harness.service.getStatus();
 
     expect(status.computerUsePermissionState).toBe("permission-required");
-    expect(status.computerUsePermissions).toContainEqual({
-      name: "Event Synthesizing",
-      granted: false,
-      required: true,
-    });
+    expect(status.computerUsePermissions).toEqual([
+      { name: "Accessibility", granted: false, required: true },
+      { name: "Screen Recording", granted: true, required: true },
+    ]);
   });
 
-  it("requests Screen Recording permission through the dedicated Peekaboo bridge", async () => {
+  it("requests every platform grant in one pass", async () => {
     const harness = await createHarness({
       browser: { enabled: false },
       computerUse: { enabled: true },
     });
 
-    await harness.service.requestScreenRecordingPermission();
+    await harness.service.requestComputerUsePermissions();
 
+    // cua-driver has no per-permission entry point: `permissions grant` asks
+    // for Accessibility, Screen Recording and direct capture together.
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      [
-        "permissions",
-        "request-screen-recording",
-        "--bridge-socket",
-        expect.stringContaining("daemon.sock"),
-        "--json",
-      ],
-      expect.objectContaining({
-        env: expect.objectContaining({
-          PEEKABOO_DAEMON_SOCKET: expect.stringContaining("daemon.sock"),
-        }),
-      }),
+      ["permissions", "grant"],
+      expect.any(Object),
     );
   });
 
-  it("requests Accessibility and background input from the signed Peekaboo process", async () => {
-    const harness = await createHarness({
-      browser: { enabled: false },
-      computerUse: { enabled: true },
-    });
+  it("launches the daemon through the app bundle so macOS attributes TCC to the driver", async () => {
+    const harness = await createHarness(
+      {
+        browser: { enabled: false },
+        computerUse: { enabled: false },
+      },
+      "cua-driver",
+      { appBundle: "/Applications/CuaDriver.app" },
+    );
 
-    await harness.service.requestAccessibilityPermission();
-    await harness.service.requestEventSynthesizingPermission();
+    await harness.service.updateConfig({ computerUse: { enabled: true } });
 
+    // Running Contents/MacOS/cua-driver directly would make the controller the
+    // responsible process, and the driver would report no grants.
     expect(harness.runCommand).toHaveBeenCalledWith(
-      expect.any(String),
-      ["agent", "permission", "request-accessibility", "--no-remote", "--json"],
+      "/usr/bin/open",
+      expect.arrayContaining([
+        "-n",
+        "-g",
+        "-a",
+        "/Applications/CuaDriver.app",
+        "--args",
+        "serve",
+      ]),
       expect.any(Object),
     );
-    expect(harness.runCommand).toHaveBeenCalledWith(
-      expect.any(String),
-      [
-        "agent",
-        "permission",
-        "request-event-synthesizing",
-        "--no-remote",
-        "--json",
-      ],
-      expect.any(Object),
-    );
+    expect(harness.startProcess).not.toHaveBeenCalled();
   });
 
   it("reconciles the persisted switch during controller bootstrap", async () => {
@@ -485,9 +464,9 @@ describe("LocalAutomationService", () => {
 
     await harness.service.prepare();
 
-    expect(harness.runCommand).toHaveBeenCalledWith(
+    expect(harness.startProcess).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["daemon", "start"]),
+      expect.arrayContaining(["serve", "--socket"]),
       expect.any(Object),
     );
   });
@@ -497,14 +476,16 @@ describe("LocalAutomationService", () => {
       browser: { enabled: false },
       computerUse: { enabled: true },
     });
-    harness.runCommand.mockRejectedValueOnce(new Error("startup failed"));
+    harness.startProcess.mockImplementationOnce(() => {
+      throw new Error("startup failed");
+    });
 
     await harness.service.prepare();
 
     expect(harness.getConfig().computerUse.enabled).toBe(false);
     expect(harness.runCommand).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(["daemon", "stop"]),
+      expect.arrayContaining(["stop", "--socket"]),
       expect.any(Object),
     );
     expect(harness.syncAll).not.toHaveBeenCalled();
@@ -592,22 +573,27 @@ describe("LocalAutomationService", () => {
     );
   });
 
-  it("replaces an unowned CUA daemon with a parent-bound process", async () => {
-    const harness = await createHarness(
-      {
-        browser: { enabled: false },
-        computerUse: { enabled: false },
+  it("replaces an unowned daemon with a parent-bound process", async () => {
+    const harness = await createHarness({
+      browser: { enabled: false },
+      computerUse: { enabled: false },
+    });
+    // Simulate a daemon left behind by an earlier run: reachable, but not one
+    // this controller started, so it must be stopped before we bind our own.
+    harness.runCommand.mockImplementation(
+      async (_c: string, args: string[]) => {
+        if (args[0] === "status") return { stdout: "{}" };
+        return { stdout: JSON.stringify({ success: true }) };
       },
-      "cua-driver",
     );
 
     await harness.service.updateConfig({ computerUse: { enabled: true } });
 
-    const stopCallOrder = harness.runCommand.mock.invocationCallOrder.find(
-      (_, index) => harness.runCommand.mock.calls[index]?.[1]?.[0] === "stop",
+    const stopIndex = harness.runCommand.mock.calls.findIndex(
+      (call) => call[1]?.[0] === "stop",
     );
-    expect(stopCallOrder).toBeDefined();
-    expect(stopCallOrder).toBeLessThan(
+    expect(stopIndex).toBeGreaterThanOrEqual(0);
+    expect(harness.runCommand.mock.invocationCallOrder[stopIndex]).toBeLessThan(
       harness.startProcess.mock.invocationCallOrder[0] ??
         Number.POSITIVE_INFINITY,
     );
@@ -648,11 +634,19 @@ describe("LocalAutomationService", () => {
 
     await Promise.all([disable, enable]);
 
-    const daemonCommands = harness.runCommand.mock.calls
-      .map((call) => call[1] as string[])
-      .filter((args) => args[0] === "daemon");
     expect(harness.getConfig().computerUse.enabled).toBe(true);
-    expect(daemonCommands.at(-1)?.[1]).toBe("start");
+    // The enable landed last, so the daemon must be up rather than stopped.
+    const lastStop = harness.runCommand.mock.calls
+      .map((call, index) => ({ args: call[1] as string[], index }))
+      .filter((call) => call.args[0] === "stop")
+      .at(-1);
+    expect(harness.startProcess).toHaveBeenCalled();
+    const lastStart = harness.startProcess.mock.invocationCallOrder.at(-1) ?? 0;
+    const lastStopOrder = lastStop
+      ? (harness.runCommand.mock.invocationCallOrder[lastStop.index] ?? 0)
+      : 0;
+    expect(lastStart).toBeGreaterThan(lastStopOrder);
+    expect(harness.isDaemonRunning()).toBe(true);
   });
 
   it("serializes permission requests with disable so the daemon stays stopped", async () => {
@@ -669,23 +663,39 @@ describe("LocalAutomationService", () => {
       markDaemonStart = resolve;
     });
     const lifecycleEvents: string[] = [];
+    let daemonUp = false;
     harness.runCommand.mockImplementation(
       async (_command: string, args: string[]) => {
-        if (args[0] === "daemon" && args[1] === "start") {
-          lifecycleEvents.push("start-begin");
-          markDaemonStart?.();
-          await daemonStartGate;
-          lifecycleEvents.push("start-complete");
-        } else if (args[0] === "daemon" && args[1] === "stop") {
+        if (args[0] === "status") {
+          if (!daemonUp) throw new Error("not running");
+          return { stdout: JSON.stringify({ running: true }) };
+        }
+        if (args[0] === "stop") {
+          daemonUp = false;
           lifecycleEvents.push("stop");
-        } else if (args[0] === "permissions") {
+        } else if (args[0] === "permissions" && args[1] === "grant") {
           lifecycleEvents.push("permission");
         }
         return { stdout: JSON.stringify({ success: true }) };
       },
     );
+    harness.startProcess.mockImplementation(() => {
+      lifecycleEvents.push("start-begin");
+      markDaemonStart?.();
+      void daemonStartGate.then(() => {
+        daemonUp = true;
+        lifecycleEvents.push("start-complete");
+      });
+      daemonUp = true;
+      return {
+        kill: vi.fn(() => true),
+        once: vi.fn(),
+        stdin: { end: vi.fn(), on: vi.fn() },
+        unref: vi.fn(),
+      };
+    });
 
-    const permission = harness.service.requestScreenRecordingPermission();
+    const permission = harness.service.requestComputerUsePermissions();
     await daemonStartObserved;
     const disable = harness.service.updateConfig({
       computerUse: { enabled: false },
@@ -827,13 +837,13 @@ describe("LocalAutomationService", () => {
     expect(harness.runCommand).toHaveBeenCalledTimes(3);
   });
 
-  it("does not start or expose unsupported persisted Peekaboo config", async () => {
+  it("does not start or expose Computer Use on an unsupported OS", async () => {
     const harness = await createHarness(
       {
         browser: { enabled: false },
         computerUse: { enabled: true },
       },
-      "peekaboo",
+      "cua-driver",
       { platformSupported: false },
     );
 
@@ -850,9 +860,20 @@ describe("LocalAutomationService", () => {
     );
   });
 
-  it("requires macOS 15 or later for Peekaboo", () => {
-    expect(supportsPeekabooPlatform("darwin", "23.6.0")).toBe(false);
-    expect(supportsPeekabooPlatform("darwin", "24.0.0")).toBe(true);
-    expect(supportsPeekabooPlatform("win32", "10.0.0")).toBe(false);
+  it("requires macOS 13 or later, matching CuaDriver.app's LSMinimumSystemVersion", () => {
+    // Darwin 22 == macOS 13. This floor is lower than the macOS 15 the
+    // Peekaboo backend needed before the backends were unified.
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "21.6.0")).toBe(
+      false,
+    );
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "22.0.0")).toBe(
+      true,
+    );
+    expect(supportsComputerUseBackend("cua-driver", "win32", "10.0.0")).toBe(
+      true,
+    );
+    expect(supportsComputerUseBackend("cua-driver", "linux", "6.0.0")).toBe(
+      false,
+    );
   });
 });

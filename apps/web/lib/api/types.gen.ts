@@ -5821,7 +5821,7 @@ export type GetApiV1RuntimeConfigResponses = {
             computerUseAvailable: boolean;
             computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | 'runtime-path-too-long' | null;
             computerUseBinaryPath: string | null;
-            computerUseBackend: 'peekaboo' | 'cua-driver' | null;
+            computerUseBackend: 'cua-driver' | null;
             computerUsePermissionState: 'ready' | 'permission-required' | 'unavailable' | 'unknown' | 'disabled';
             computerUsePermissions: Array<{
                 name: string;
@@ -5921,65 +5921,25 @@ export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses = {
 
 export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponse = PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses[keyof PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses];
 
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionData = {
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsData = {
     body?: {
         [key: string]: unknown;
     };
     path?: never;
     query?: never;
-    url: '/api/v1/runtime-config/local-automation/computer-use/accessibility-permission';
+    url: '/api/v1/runtime-config/local-automation/computer-use/permissions';
 };
 
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponses = {
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses = {
     /**
-     * Requested macOS Accessibility permission
+     * Requested the platform grants Computer Use needs
      */
     200: {
         requested: true;
     };
 };
 
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponse = PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponses];
-
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionData = {
-    body?: {
-        [key: string]: unknown;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission';
-};
-
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponses = {
-    /**
-     * Requested macOS Event Synthesizing permission
-     */
-    200: {
-        requested: true;
-    };
-};
-
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponse = PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponses];
-
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionData = {
-    body?: {
-        [key: string]: unknown;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission';
-};
-
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponses = {
-    /**
-     * Requested macOS Screen Recording permission
-     */
-    200: {
-        requested: true;
-    };
-};
-
-export type PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponse = PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponses];
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponse = PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses];
 
 export type PatchApiV1RuntimeConfigDeviceControlData = {
     body?: {

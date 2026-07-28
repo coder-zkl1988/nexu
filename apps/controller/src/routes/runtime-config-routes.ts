@@ -36,11 +36,11 @@ const localAutomationStatusSchema = z.object({
     .nullable()
     .openapi({ type: ["string", "null"] }),
   computerUseBackend: z
-    .enum(["peekaboo", "cua-driver"])
+    .enum(["cua-driver"])
     .nullable()
     .openapi({
       type: ["string", "null"],
-      enum: ["peekaboo", "cua-driver", null],
+      enum: ["cua-driver", null],
     }),
   computerUsePermissionState: z.enum([
     "ready",
@@ -223,7 +223,7 @@ export function registerRuntimeConfigRoutes(
   app.openapi(
     createRoute({
       method: "post",
-      path: "/api/v1/runtime-config/local-automation/computer-use/accessibility-permission",
+      path: "/api/v1/runtime-config/local-automation/computer-use/permissions",
       tags: ["Runtime Config"],
       request: {
         body: {
@@ -237,7 +237,7 @@ export function registerRuntimeConfigRoutes(
               schema: z.object({ requested: z.literal(true) }),
             },
           },
-          description: "Requested macOS Accessibility permission",
+          description: "Requested the platform grants Computer Use needs",
         },
       },
     }),
@@ -245,79 +245,7 @@ export function registerRuntimeConfigRoutes(
       assertJsonContentType(c.req.header("content-type"));
       c.req.valid("json");
       try {
-        await container.localAutomationService.requestAccessibilityPermission();
-        return c.json({ requested: true as const }, 200);
-      } catch (error: unknown) {
-        if (error instanceof LocalAutomationUnavailableError) {
-          throw new HTTPException(409, { message: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.openapi(
-    createRoute({
-      method: "post",
-      path: "/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission",
-      tags: ["Runtime Config"],
-      request: {
-        body: {
-          content: { "application/json": { schema: z.object({}) } },
-        },
-      },
-      responses: {
-        200: {
-          content: {
-            "application/json": {
-              schema: z.object({ requested: z.literal(true) }),
-            },
-          },
-          description: "Requested macOS Event Synthesizing permission",
-        },
-      },
-    }),
-    async (c) => {
-      assertJsonContentType(c.req.header("content-type"));
-      c.req.valid("json");
-      try {
-        await container.localAutomationService.requestEventSynthesizingPermission();
-        return c.json({ requested: true as const }, 200);
-      } catch (error: unknown) {
-        if (error instanceof LocalAutomationUnavailableError) {
-          throw new HTTPException(409, { message: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.openapi(
-    createRoute({
-      method: "post",
-      path: "/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission",
-      tags: ["Runtime Config"],
-      request: {
-        body: {
-          content: { "application/json": { schema: z.object({}) } },
-        },
-      },
-      responses: {
-        200: {
-          content: {
-            "application/json": {
-              schema: z.object({ requested: z.literal(true) }),
-            },
-          },
-          description: "Requested macOS Screen Recording permission",
-        },
-      },
-    }),
-    async (c) => {
-      assertJsonContentType(c.req.header("content-type"));
-      c.req.valid("json");
-      try {
-        await container.localAutomationService.requestScreenRecordingPermission();
+        await container.localAutomationService.requestComputerUsePermissions();
         return c.json({ requested: true as const }, 200);
       } catch (error: unknown) {
         if (error instanceof LocalAutomationUnavailableError) {

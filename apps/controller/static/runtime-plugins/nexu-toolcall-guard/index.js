@@ -85,23 +85,6 @@ const NON_MUTATING_COMPUTER_TOOLS = new Set([
   "cua-driver__end_session",
   "cua-driver__escalate_session",
 ]);
-const APPROVED_PEEKABOO_TOOLS = new Set([
-  "peekaboo__see",
-  "peekaboo__inspect_ui",
-  "peekaboo__click",
-  "peekaboo__type",
-  "peekaboo__set_value",
-  "peekaboo__perform_action",
-  "peekaboo__hotkey",
-  "peekaboo__scroll",
-  "peekaboo__drag",
-  "peekaboo__app",
-  "peekaboo__window",
-  "peekaboo__menu",
-  "peekaboo__dock",
-  "peekaboo__dialog",
-  "peekaboo__list",
-]);
 const APPROVED_CUA_TOOLS = new Set([
   "cua-driver__check_permissions",
   "cua-driver__get_accessibility_tree",
@@ -686,8 +669,13 @@ function isComputerMutation(toolName, params) {
 }
 
 function isApprovedLocalAutomationTool(toolName) {
+  // Nexu ships cua-driver on every platform. Peekaboo was the macOS backend
+  // before the backends were unified; nothing compiles it into the MCP
+  // registry any more, so any peekaboo__* call is an unreviewed surface and
+  // fails closed. The completion guard still knows how to classify Peekaboo
+  // results — that is fail-safe classification, not an authorisation path.
   if (toolName?.startsWith("peekaboo__")) {
-    return APPROVED_PEEKABOO_TOOLS.has(toolName);
+    return false;
   }
   if (toolName?.startsWith("cua-driver__")) {
     return APPROVED_CUA_TOOLS.has(toolName);

@@ -274,7 +274,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
     expect(normalizePath(paths.controllerCwd)).toContain(
       ".nexu/runtime/controller-sidecar",
     );
-    expect(paths.computerUseBackend).toBe("peekaboo");
+    expect(paths.computerUseBackend).toBe("cua-driver");
     expect(paths.computerUseBinPath).toBeNull();
   });
 
@@ -289,7 +289,7 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
       "1.0.0",
     );
 
-    expect(paths.computerUseBackend).toBe("peekaboo");
+    expect(paths.computerUseBackend).toBe("cua-driver");
     expect(paths.computerUseBinPath).toBeNull();
   });
 

@@ -2,53 +2,84 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createComputerUseInstanceId,
-  resolvePeekabooBridgeSocket,
+  resolveCuaAppBundle,
+  resolveCuaDriverSocket,
+  supportsComputerUseBackend,
 } from "../src/lib/computer-use-platform.js";
 
-describe("resolvePeekabooBridgeSocket", () => {
-  it("keeps a short macOS socket under NEXU_HOME", () => {
+describe("resolveCuaDriverSocket", () => {
+  it("keeps the POSIX control socket under NEXU_HOME", () => {
     const nexuHomeDir = "/Users/test/.nexu";
 
-    expect(
-      resolvePeekabooBridgeSocket({
-        nexuHomeDir,
-        platform: "darwin",
-        userHomeDir: "/Users/test",
-      }),
-    ).toBe(path.join(nexuHomeDir, "runtime", "peekaboo", "daemon.sock"));
+    expect(resolveCuaDriverSocket({ nexuHomeDir, platform: "darwin" })).toBe(
+      path.join(nexuHomeDir, "runtime", "cua-driver", "daemon.sock"),
+    );
   });
 
-  it("uses a stable private home path when NEXU_HOME is too long", () => {
-    const nexuHomeDir = path.join(
-      "/Users/test",
-      "nested-worktree-directory".repeat(8),
-    );
-    const socketPath = resolvePeekabooBridgeSocket({
-      nexuHomeDir,
-      platform: "darwin",
-      userHomeDir: "/Users/test",
+  it("gives each NEXU_HOME its own Windows pipe", () => {
+    const first = resolveCuaDriverSocket({
+      nexuHomeDir: "C:/Users/a/.nexu",
+      platform: "win32",
+    });
+    const second = resolveCuaDriverSocket({
+      nexuHomeDir: "C:/Users/b/.nexu",
+      platform: "win32",
     });
 
-    expect(socketPath).toBe(
-      path.join(
-        "/Users/test",
-        ".nexu-run",
-        `peekaboo-${createComputerUseInstanceId(nexuHomeDir)}`,
-        "daemon.sock",
+    expect(first).toContain("\\\\.\\pipe\\nexu-cua-driver-");
+    // Two homes must never share a daemon.
+    expect(first).not.toBe(second);
+    expect(first).toContain(createComputerUseInstanceId("C:/Users/a/.nexu"));
+  });
+});
+
+describe("resolveCuaAppBundle", () => {
+  it("finds the bundle that owns the executable on macOS", () => {
+    expect(
+      resolveCuaAppBundle(
+        "/Users/test/.nexu/runtime/computer-use/cua-driver-abc/CuaDriver.app/Contents/MacOS/cua-driver",
+        "darwin",
       ),
+    ).toBe(
+      "/Users/test/.nexu/runtime/computer-use/cua-driver-abc/CuaDriver.app",
     );
-    expect(Buffer.byteLength(socketPath)).toBeLessThanOrEqual(103);
   });
 
-  it("reports the socket unavailable when no private path fits the macOS limit", () => {
-    const nexuHomeDir = path.join("/Users/test", "n".repeat(120));
+  it("returns null off darwin and for a bare executable", () => {
+    expect(resolveCuaAppBundle("C:/nexu/cua-driver.exe", "win32")).toBeNull();
+    expect(resolveCuaAppBundle("/opt/bin/cua-driver", "darwin")).toBeNull();
+    expect(resolveCuaAppBundle(null, "darwin")).toBeNull();
+  });
+});
 
-    expect(
-      resolvePeekabooBridgeSocket({
-        nexuHomeDir,
-        platform: "darwin",
-        userHomeDir: path.join("/Users", "h".repeat(120)),
-      }),
-    ).toBeNull();
+describe("supportsComputerUseBackend", () => {
+  it("requires macOS 13, matching CuaDriver.app's LSMinimumSystemVersion", () => {
+    // Darwin 22 == macOS 13.
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "21.6.0")).toBe(
+      false,
+    );
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "22.0.0")).toBe(
+      true,
+    );
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "27.0.0")).toBe(
+      true,
+    );
+  });
+
+  it("supports Windows and rejects everything else", () => {
+    expect(supportsComputerUseBackend("cua-driver", "win32", "10.0.0")).toBe(
+      true,
+    );
+    expect(supportsComputerUseBackend("cua-driver", "linux", "6.0.0")).toBe(
+      false,
+    );
+    expect(supportsComputerUseBackend(null, "darwin", "24.0.0")).toBe(false);
+  });
+
+  it("rejects an unparseable kernel release rather than assuming support", () => {
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "")).toBe(false);
+    expect(supportsComputerUseBackend("cua-driver", "darwin", "beta")).toBe(
+      false,
+    );
   });
 });

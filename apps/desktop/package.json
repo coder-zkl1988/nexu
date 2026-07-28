@@ -155,10 +155,7 @@
       "artifactName": "tabby-${version}-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "signIgnore": [
-        "runtime/computer-use/peekaboo$",
-        "runtime/computer-use/libswiftCompatibilitySpan\\.dylib$"
-      ],
+      "signIgnore": ["runtime/computer-use/CuaDriver\\.app"],
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "extendInfo": {

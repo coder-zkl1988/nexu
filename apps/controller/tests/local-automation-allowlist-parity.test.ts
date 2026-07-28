@@ -1,10 +1,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import {
-  CUA_TOOL_FILTER,
-  PEEKABOO_TOOL_FILTER,
-} from "../src/lib/openclaw-config-compiler.js";
+import { CUA_TOOL_FILTER } from "../src/lib/openclaw-config-compiler.js";
 
 // The Computer Use surface is declared in two places that cannot import each
 // other: the compiled MCP `toolFilter.include` list (openclaw-config-compiler)
@@ -114,16 +111,6 @@ const PEEKABOO_3_9_8_SERVER_TOOLS = [
 ];
 
 describe("local automation allowlist parity", () => {
-  it("lets every compiled Peekaboo filter entry through the plugin gate", async () => {
-    const beforeToolCall = await loadBeforeToolCall();
-    for (const tool of PEEKABOO_TOOL_FILTER) {
-      expect(
-        await isBlocked(beforeToolCall, `peekaboo__${tool}`),
-        `peekaboo__${tool} is exposed by the MCP tool filter but blocked by nexu-toolcall-guard`,
-      ).toBe(false);
-    }
-  });
-
   it("lets every compiled CUA filter entry through the plugin gate", async () => {
     const beforeToolCall = await loadBeforeToolCall();
     for (const tool of CUA_TOOL_FILTER) {
@@ -134,31 +121,26 @@ describe("local automation allowlist parity", () => {
     }
   });
 
-  it("blocks every Peekaboo 3.9.8 server tool outside the compiled filter", async () => {
+  it("blocks the entire Peekaboo surface now that cua-driver is the only backend", async () => {
     const beforeToolCall = await loadBeforeToolCall();
-    const filtered = new Set<string>(PEEKABOO_TOOL_FILTER);
-    const unreviewed = PEEKABOO_3_9_8_SERVER_TOOLS.filter(
-      (tool) => !filtered.has(tool),
-    );
-
-    // Guards the guard: if the filter ever grows to cover the whole server the
-    // negative assertion below would vacuously pass.
-    expect(unreviewed).toContain("agent");
-    expect(unreviewed).toContain("browser");
-    expect(unreviewed).toContain("clipboard");
-
-    for (const tool of unreviewed) {
+    for (const tool of PEEKABOO_3_9_8_SERVER_TOOLS) {
       expect(
         await isBlocked(beforeToolCall, `peekaboo__${tool}`),
-        `peekaboo__${tool} is not in the reviewed MCP tool filter but nexu-toolcall-guard allows it`,
+        `peekaboo__${tool} is no longer a reviewed surface but nexu-toolcall-guard allows it`,
       ).toBe(true);
     }
   });
 
-  it("keeps the compiled filters free of duplicates", () => {
-    expect(new Set(PEEKABOO_TOOL_FILTER).size).toBe(
-      PEEKABOO_TOOL_FILTER.length,
-    );
+  it("blocks an unknown cua-driver tool outside the compiled filter", async () => {
+    const beforeToolCall = await loadBeforeToolCall();
+    // Guards the guard: a filter that grew to cover everything would make the
+    // negative assertions above vacuous.
+    expect(CUA_TOOL_FILTER).not.toContain("run_shell");
+    expect(await isBlocked(beforeToolCall, "cua-driver__run_shell")).toBe(true);
+    expect(await isBlocked(beforeToolCall, "cua-driver__page")).toBe(true);
+  });
+
+  it("keeps the compiled filter free of duplicates", () => {
     expect(new Set(CUA_TOOL_FILTER).size).toBe(CUA_TOOL_FILTER.length);
   });
 });

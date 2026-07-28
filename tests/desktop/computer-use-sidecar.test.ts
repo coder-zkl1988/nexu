@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   chmod,
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -22,14 +23,14 @@ async function createRoot(): Promise<string> {
 
 async function writeSidecarFixture(
   sourceRoot: string,
-  backend: "peekaboo" | "cua-driver",
+  backend: "cua-driver",
   files: Record<string, string>,
 ): Promise<void> {
-  await Promise.all(
-    Object.entries(files).map(([fileName, contents]) =>
-      writeFile(path.join(sourceRoot, fileName), contents),
-    ),
-  );
+  for (const [fileName, contents] of Object.entries(files)) {
+    const filePath = path.join(sourceRoot, fileName);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, contents);
+  }
   const fileSha256 = Object.fromEntries(
     Object.entries(files).map(([fileName, contents]) => [
       fileName,
@@ -40,7 +41,7 @@ async function writeSidecarFixture(
     path.join(sourceRoot, "vendor.json"),
     JSON.stringify({
       backend,
-      version: backend === "peekaboo" ? "3.9.8" : "0.12.6",
+      version: "0.12.6",
       files: Object.keys(files),
       fileSha256,
     }),
@@ -66,18 +67,24 @@ describe("prepareComputerUseSidecar", () => {
     });
 
     expect(result).toEqual({
-      backend: "peekaboo",
-      binPath: path.join(sourceRoot, "peekaboo"),
+      backend: "cua-driver",
+      binPath: path.join(
+        sourceRoot,
+        "CuaDriver.app",
+        "Contents",
+        "MacOS",
+        "cua-driver",
+      ),
     });
   });
 
-  it("materializes a complete Peekaboo distribution outside the app bundle", async () => {
+  it("materializes the CuaDriver bundle outside the app bundle", async () => {
     const sourceRoot = await createRoot();
     const runtimeRoot = await createRoot();
-    await writeSidecarFixture(sourceRoot, "peekaboo", {
-      peekaboo: "peekaboo-binary",
-      "libswiftCompatibilitySpan.dylib": "swift-runtime",
+    await writeSidecarFixture(sourceRoot, "cua-driver", {
       LICENSE: "MIT",
+      "CuaDriver.app/Contents/Info.plist": "<plist>com.trycua.driver</plist>",
+      "CuaDriver.app/Contents/MacOS/cua-driver": "cua-driver-binary",
     });
 
     const result = prepareComputerUseSidecar({
@@ -87,21 +94,16 @@ describe("prepareComputerUseSidecar", () => {
       platform: "darwin",
     });
 
-    expect(result.backend).toBe("peekaboo");
+    expect(result.backend).toBe("cua-driver");
     expect(result.binPath).toContain(
-      path.join(runtimeRoot, "computer-use", "peekaboo-"),
+      path.join(runtimeRoot, "computer-use", "cua-driver-"),
     );
+    // launchd must never reference anything inside the replaceable .app.
     expect(result.binPath?.startsWith(sourceRoot)).toBe(false);
-    const targetRoot = path.dirname(result.binPath ?? "");
-    expect(await readFile(path.join(targetRoot, "peekaboo"), "utf8")).toBe(
-      "peekaboo-binary",
+    const targetRoot = path.resolve(result.binPath ?? "", "../../../..");
+    expect(await readFile(result.binPath ?? "", "utf8")).toBe(
+      "cua-driver-binary",
     );
-    expect(
-      await readFile(
-        path.join(targetRoot, "libswiftCompatibilitySpan.dylib"),
-        "utf8",
-      ),
-    ).toBe("swift-runtime");
     expect(await readFile(path.join(targetRoot, "LICENSE"), "utf8")).toBe(
       "MIT",
     );
@@ -111,10 +113,10 @@ describe("prepareComputerUseSidecar", () => {
   it("repairs an incomplete versioned distribution", async () => {
     const sourceRoot = await createRoot();
     const runtimeRoot = await createRoot();
-    await writeSidecarFixture(sourceRoot, "peekaboo", {
-      peekaboo: "peekaboo-binary",
-      "libswiftCompatibilitySpan.dylib": "swift-runtime",
+    await writeSidecarFixture(sourceRoot, "cua-driver", {
       LICENSE: "MIT",
+      "CuaDriver.app/Contents/Info.plist": "<plist>com.trycua.driver</plist>",
+      "CuaDriver.app/Contents/MacOS/cua-driver": "cua-driver-binary",
     });
     const first = prepareComputerUseSidecar({
       sourceRoot,
@@ -122,8 +124,8 @@ describe("prepareComputerUseSidecar", () => {
       isPackaged: true,
       platform: "darwin",
     });
-    const targetRoot = path.dirname(first.binPath ?? "");
-    await rm(path.join(targetRoot, "libswiftCompatibilitySpan.dylib"));
+    const targetRoot = path.resolve(first.binPath ?? "", "../../../..");
+    await rm(path.join(targetRoot, "LICENSE"));
 
     const repaired = prepareComputerUseSidecar({
       sourceRoot,
@@ -133,21 +135,18 @@ describe("prepareComputerUseSidecar", () => {
     });
 
     expect(repaired.binPath).toBe(first.binPath);
-    expect(
-      await readFile(
-        path.join(targetRoot, "libswiftCompatibilitySpan.dylib"),
-        "utf8",
-      ),
-    ).toBe("swift-runtime");
+    expect(await readFile(path.join(targetRoot, "LICENSE"), "utf8")).toBe(
+      "MIT",
+    );
   });
 
   it("repairs a corrupted versioned distribution", async () => {
     const sourceRoot = await createRoot();
     const runtimeRoot = await createRoot();
-    await writeSidecarFixture(sourceRoot, "peekaboo", {
-      peekaboo: "peekaboo-binary",
-      "libswiftCompatibilitySpan.dylib": "swift-runtime",
+    await writeSidecarFixture(sourceRoot, "cua-driver", {
       LICENSE: "MIT",
+      "CuaDriver.app/Contents/Info.plist": "<plist>com.trycua.driver</plist>",
+      "CuaDriver.app/Contents/MacOS/cua-driver": "cua-driver-binary",
     });
     const first = prepareComputerUseSidecar({
       sourceRoot,
@@ -166,19 +165,19 @@ describe("prepareComputerUseSidecar", () => {
 
     expect(repaired.binPath).toBe(first.binPath);
     expect(await readFile(repaired.binPath ?? "", "utf8")).toBe(
-      "peekaboo-binary",
+      "cua-driver-binary",
     );
   });
 
   it.skipIf(process.platform === "win32")(
-    "repairs a cached Peekaboo binary with no executable bit",
+    "repairs a cached bundle executable with no executable bit",
     async () => {
       const sourceRoot = await createRoot();
       const runtimeRoot = await createRoot();
-      await writeSidecarFixture(sourceRoot, "peekaboo", {
-        peekaboo: "peekaboo-binary",
-        "libswiftCompatibilitySpan.dylib": "swift-runtime",
+      await writeSidecarFixture(sourceRoot, "cua-driver", {
         LICENSE: "MIT",
+        "CuaDriver.app/Contents/Info.plist": "<plist>com.trycua.driver</plist>",
+        "CuaDriver.app/Contents/MacOS/cua-driver": "cua-driver-binary",
       });
       const first = prepareComputerUseSidecar({
         sourceRoot,
@@ -203,12 +202,15 @@ describe("prepareComputerUseSidecar", () => {
   it("fails closed when the packaged source distribution is corrupted", async () => {
     const sourceRoot = await createRoot();
     const runtimeRoot = await createRoot();
-    await writeSidecarFixture(sourceRoot, "peekaboo", {
-      peekaboo: "peekaboo-binary",
-      "libswiftCompatibilitySpan.dylib": "swift-runtime",
+    await writeSidecarFixture(sourceRoot, "cua-driver", {
       LICENSE: "MIT",
+      "CuaDriver.app/Contents/Info.plist": "<plist>com.trycua.driver</plist>",
+      "CuaDriver.app/Contents/MacOS/cua-driver": "cua-driver-binary",
     });
-    await writeFile(path.join(sourceRoot, "peekaboo"), "corrupt");
+    await writeFile(
+      path.join(sourceRoot, "CuaDriver.app", "Contents", "MacOS", "cua-driver"),
+      "corrupt",
+    );
 
     const result = prepareComputerUseSidecar({
       sourceRoot,
@@ -217,7 +219,7 @@ describe("prepareComputerUseSidecar", () => {
       platform: "darwin",
     });
 
-    expect(result).toEqual({ backend: "peekaboo", binPath: null });
+    expect(result).toEqual({ backend: "cua-driver", binPath: null });
   });
 
   it("selects CUA on Windows and no backend on unsupported platforms", async () => {

@@ -52,7 +52,7 @@ export interface PlistEnv {
   /** OpenClaw extensions directory */
   openclawExtensionsDir: string;
   /** Platform-specific Computer Use backend */
-  computerUseBackend?: "peekaboo" | "cua-driver" | null;
+  computerUseBackend?: "cua-driver" | null;
   /** Absolute path to the materialized Computer Use sidecar */
   computerUseBinPath?: string | null;
   /** Explicit opt-in for local automation in production builds */

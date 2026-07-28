@@ -4,8 +4,8 @@ import path from "node:path";
 import dotenv from "dotenv";
 import { z } from "zod";
 import {
-  createComputerUseInstanceId,
-  resolvePeekabooBridgeSocket,
+  resolveCuaAppBundle,
+  resolveCuaDriverSocket,
   supportsComputerUseBackend,
 } from "../lib/computer-use-platform.js";
 import { expandHomeDir } from "../lib/path-utils.js";
@@ -109,7 +109,7 @@ const envSchema = z.object({
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
   OPENCLAW_BIN: z.string().default("openclaw"),
   NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: booleanWithDefault(false),
-  COMPUTER_USE_BACKEND: z.enum(["peekaboo", "cua-driver"]).optional(),
+  COMPUTER_USE_BACKEND: z.enum(["cua-driver"]).optional(),
   COMPUTER_USE_BIN: z.string().optional(),
   OPENCLAW_LAUNCHD_LABEL: z.string().optional(),
   LITELLM_BASE_URL: z.string().optional(),
@@ -139,7 +139,6 @@ const openclawGatewayPort =
 
 const nexuHomeDir = expandHomeDir(parsed.NEXU_HOME);
 const computerUseBackend = parsed.COMPUTER_USE_BACKEND ?? null;
-const computerUseInstanceId = createComputerUseInstanceId(nexuHomeDir);
 const openclawStateDir = expandHomeDir(
   parsed.OPENCLAW_STATE_DIR ??
     path.join(nexuHomeDir, "runtime", "openclaw", "state"),
@@ -242,15 +241,14 @@ export const env = {
   computerUseBin: parsed.COMPUTER_USE_BIN
     ? expandHomeDir(parsed.COMPUTER_USE_BIN)
     : null,
-  computerUseBridgeSocket: resolvePeekabooBridgeSocket({
+  computerUseAppBundle: resolveCuaAppBundle(
+    parsed.COMPUTER_USE_BIN ? expandHomeDir(parsed.COMPUTER_USE_BIN) : null,
+    process.platform,
+  ),
+  computerUseCuaSocket: resolveCuaDriverSocket({
     nexuHomeDir,
     platform: process.platform,
-    userHomeDir: os.homedir(),
   }),
-  computerUseCuaSocket:
-    process.platform === "win32"
-      ? `\\\\.\\pipe\\nexu-cua-driver-${computerUseInstanceId}`
-      : path.join(nexuHomeDir, "runtime", "cua-driver", "daemon.sock"),
   openclawLogDir: expandHomeDir(
     parsed.OPENCLAW_LOG_DIR ?? path.join(nexuHomeDir, "logs", "openclaw"),
   ),

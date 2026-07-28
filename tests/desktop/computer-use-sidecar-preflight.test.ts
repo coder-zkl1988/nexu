@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ensureComputerUseDevSidecarPrepared } from "../../tools/dev/src/shared/computer-use-sidecar";
 
@@ -17,7 +17,7 @@ async function createRepoRoot(): Promise<string> {
   await writeFile(
     join(root, "apps", "desktop", "scripts", "vendor", "computer-use.json"),
     JSON.stringify({
-      mac: { backend: "peekaboo", sha256: ARCHIVE_SHA },
+      mac: { backend: "cua-driver", sha256: ARCHIVE_SHA },
     }),
   );
   return root;
@@ -29,22 +29,24 @@ async function writeValidMacSidecar(
 ): Promise<void> {
   const sidecarRoot = join(root, ".tmp", "sidecars", "computer-use");
   const files = {
-    peekaboo: "binary",
-    "libswiftCompatibilitySpan.dylib": "library",
     LICENSE: "license",
+    "CuaDriver.app/Contents/Info.plist": "<plist>com.trycua.driver</plist>",
+    "CuaDriver.app/Contents/MacOS/cua-driver": "binary",
   };
   await mkdir(sidecarRoot, { recursive: true });
   for (const [fileName, contents] of Object.entries(files)) {
-    await writeFile(join(sidecarRoot, fileName), contents);
+    const filePath = join(sidecarRoot, fileName);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, contents);
   }
   await chmod(
-    join(sidecarRoot, "peekaboo"),
+    join(sidecarRoot, "CuaDriver.app/Contents/MacOS/cua-driver"),
     options.executable === false ? 0o644 : 0o755,
   );
   await writeFile(
     join(sidecarRoot, "vendor.json"),
     JSON.stringify({
-      backend: "peekaboo",
+      backend: "cua-driver",
       target: "mac",
       sha256: ARCHIVE_SHA,
       files: Object.keys(files),
@@ -98,18 +100,10 @@ describe("Computer Use dev sidecar preflight", () => {
     expect(prepare).toHaveBeenCalledOnce();
   });
 
-  it("re-prepares a bundle missing a required compatibility file", async () => {
+  it("re-prepares a bundle missing a required file", async () => {
     const root = await createRepoRoot();
     await writeValidMacSidecar(root);
-    await rm(
-      join(
-        root,
-        ".tmp",
-        "sidecars",
-        "computer-use",
-        "libswiftCompatibilitySpan.dylib",
-      ),
-    );
+    await rm(join(root, ".tmp", "sidecars", "computer-use", "LICENSE"));
     const prepare = vi.fn(async () => writeValidMacSidecar(root));
 
     await expect(
@@ -124,7 +118,7 @@ describe("Computer Use dev sidecar preflight", () => {
   });
 
   it.skipIf(process.platform === "win32")(
-    "re-prepares a non-executable Peekaboo binary",
+    "re-prepares a non-executable bundle executable",
     async () => {
       const root = await createRepoRoot();
       await writeValidMacSidecar(root, { executable: false });

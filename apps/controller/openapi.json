@@ -17544,7 +17544,6 @@
                             "null"
                           ],
                           "enum": [
-                            "peekaboo",
                             "cua-driver",
                             null
                           ]
@@ -17859,7 +17858,7 @@
         }
       }
     },
-    "/api/v1/runtime-config/local-automation/computer-use/accessibility-permission": {
+    "/api/v1/runtime-config/local-automation/computer-use/permissions": {
       "post": {
         "tags": [
           "Runtime Config"
@@ -17876,87 +17875,7 @@
         },
         "responses": {
           "200": {
-            "description": "Requested macOS Accessibility permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requested": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    }
-                  },
-                  "required": [
-                    "requested"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission": {
-      "post": {
-        "tags": [
-          "Runtime Config"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Requested macOS Event Synthesizing permission",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requested": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    }
-                  },
-                  "required": [
-                    "requested"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission": {
-      "post": {
-        "tags": [
-          "Runtime Config"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Requested macOS Screen Recording permission",
+            "description": "Requested the platform grants Computer Use needs",
             "content": {
               "application/json": {
                 "schema": {

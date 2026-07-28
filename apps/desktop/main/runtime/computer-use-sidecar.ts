@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-export type ComputerUseBackend = "peekaboo" | "cua-driver";
+export type ComputerUseBackend = "cua-driver";
 
 export type ComputerUseSidecar = {
   backend: ComputerUseBackend | null;
@@ -21,6 +21,12 @@ export type ComputerUseSidecar = {
 type PlatformDescriptor = {
   backend: ComputerUseBackend;
   binaryName: string;
+  /**
+   * Set on platforms that distribute an app bundle. Bundles are directories, so
+   * per-file digests do not describe them; their integrity comes from the code
+   * signature, which covers every file through CodeResources.
+   */
+  appBundle?: string;
   requiredFiles: string[];
 };
 
@@ -34,9 +40,20 @@ function resolvePlatformDescriptor(
 ): PlatformDescriptor | null {
   if (platform === "darwin") {
     return {
-      backend: "peekaboo",
-      binaryName: "peekaboo",
-      requiredFiles: ["peekaboo", "libswiftCompatibilitySpan.dylib", "LICENSE"],
+      backend: "cua-driver",
+      // The driver ships as an app bundle so it can own a TCC identity; the
+      // executable inside it is what the controller invokes for CLI/MCP work.
+      appBundle: "CuaDriver.app",
+      binaryName: path.join("CuaDriver.app", "Contents", "MacOS", "cua-driver"),
+      // Digesting the whole bundle tree is neither cheap nor necessary: the
+      // signature (verified at packaging time) covers every file. These two
+      // are what a bad copy would break — the bundle identity TCC keys on,
+      // and the executable itself.
+      requiredFiles: [
+        "LICENSE",
+        path.join("CuaDriver.app", "Contents", "Info.plist"),
+        path.join("CuaDriver.app", "Contents", "MacOS", "cua-driver"),
+      ],
     };
   }
   if (platform === "win32") {
@@ -172,7 +189,7 @@ export function prepareComputerUseSidecar(input: {
       descriptor.requiredFiles,
       vendor.fileSha256,
     ) &&
-    (descriptor.backend !== "peekaboo" || isExecutableFile(targetBinary));
+    (!descriptor.appBundle || isExecutableFile(targetBinary));
   if (hasCompleteTarget) {
     return { backend: descriptor.backend, binPath: targetBinary };
   }
@@ -195,7 +212,7 @@ export function prepareComputerUseSidecar(input: {
     ) {
       throw new Error("Computer Use staged sidecar checksum mismatch");
     }
-    if (descriptor.backend === "peekaboo") {
+    if (descriptor.appBundle) {
       chmodSync(stagingBinary, 0o755);
     }
     if (existsSync(targetRoot)) {
@@ -219,7 +236,7 @@ export function prepareComputerUseSidecar(input: {
         descriptor.requiredFiles,
         vendor.fileSha256,
       ) &&
-      (descriptor.backend !== "peekaboo" || isExecutableFile(targetBinary))
+      (!descriptor.appBundle || isExecutableFile(targetBinary))
         ? targetBinary
         : null,
   };

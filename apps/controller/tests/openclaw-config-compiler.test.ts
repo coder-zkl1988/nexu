@@ -275,7 +275,7 @@ describe("compileOpenClawConfig", () => {
     expect(result.mcp).toBeUndefined();
   });
 
-  it("registers the signed Peekaboo binary as the macOS MCP backend", () => {
+  it("registers the notarized CuaDriver bundle as the macOS MCP backend", () => {
     const result = compileOpenClawConfig(
       createConfig({
         localAutomation: {
@@ -284,11 +284,11 @@ describe("compileOpenClawConfig", () => {
         },
       }),
       createEnv({
-        computerUseBackend: "peekaboo",
+        computerUseBackend: "cua-driver",
         computerUseBin: process.execPath,
       }),
     );
-    const server = result.mcp?.servers.peekaboo as
+    const server = result.mcp?.servers["cua-driver"] as
       | Record<string, unknown>
       | undefined;
 
@@ -296,39 +296,27 @@ describe("compileOpenClawConfig", () => {
       command: process.execPath,
       transport: "stdio",
     });
+    // The MCP process is a thin client of the daemon that owns the grants.
     expect(server?.args).toEqual([
       "mcp",
-      "serve",
-      "--transport",
-      "stdio",
-      "--bridge-socket",
-      "/tmp/nexu-test/runtime/peekaboo/daemon.sock",
+      "--embedded",
+      "--socket",
+      "/tmp/nexu-test/runtime/cua-driver/daemon.sock",
     ]);
     expect(server?.toolFilter).toMatchObject({
-      include: expect.arrayContaining(["see", "click", "drag", "dialog"]),
+      include: expect.arrayContaining([
+        "click",
+        "type_text",
+        "set_value",
+        "get_window_state",
+      ]),
+    });
+    // Peekaboo's nested agent loop and remote-debugging browser are not part
+    // of the reviewed surface on any platform.
+    expect(server?.toolFilter).not.toMatchObject({
+      include: expect.arrayContaining(["agent"]),
     });
     expect(result.tools?.exec?.security).toBe("deny");
-  });
-
-  it("does not expose Peekaboo when no private bridge socket can fit", () => {
-    const result = compileOpenClawConfig(
-      createConfig({
-        localAutomation: {
-          browser: { enabled: false },
-          computerUse: { enabled: true },
-        },
-      }),
-      createEnv({
-        computerUseBackend: "peekaboo",
-        computerUseBin: process.execPath,
-        computerUseBridgeSocket: null,
-      }),
-    );
-
-    expect(result.mcp).toBeUndefined();
-    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(
-      "peekaboo__see",
-    );
   });
 
   it("registers cua-driver on Windows and omits a missing sidecar", () => {

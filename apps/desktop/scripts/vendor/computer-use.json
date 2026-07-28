@@ -1,11 +1,16 @@
 {
   "mac": {
-    "backend": "peekaboo",
-    "version": "3.9.8",
-    "release": "https://github.com/openclaw/Peekaboo/releases/tag/v3.9.8",
+    "backend": "cua-driver",
+    "version": "0.12.6",
+    "release": "https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.12.6",
     "license": "MIT",
-    "file": "peekaboo-macos-universal.tar.gz",
-    "sha256": "0336348cb690ccd10834dfb571daf79381dbc06f9a1fc58b8642cbeb388993ed"
+    "licenseUrl": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.12.6/LICENSE.md",
+    "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "file": "cua-driver-rs-0.12.6-darwin-universal.tar.gz",
+    "sha256": "c86d6a9ccb074e6e3bc17292adc31b9c76933c646cb2b52a7d8813429a5a6e6f",
+    "appBundle": "CuaDriver.app",
+    "bundleId": "com.trycua.driver",
+    "teamId": "YCK386LBJ7"
   },
   "win-arm64": {
     "backend": "cua-driver",
