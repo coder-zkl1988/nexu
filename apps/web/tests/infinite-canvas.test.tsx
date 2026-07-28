@@ -435,6 +435,23 @@ describe("CanvasSurface", () => {
     expect(markup).toContain("contain:layout style");
   });
 
+  it("uses the arrow cursor by default and reserves grab for explicit canvas panning", () => {
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).toContain("cursor-default");
+    expect(markup).not.toContain("data-[space-pan]:cursor-grab");
+  });
+
+  it("does not let hidden node actions capture pointer hover", () => {
+    addNode({ type: "text", title: "Unselected" });
+    addNode({ type: "text", title: "Selected" });
+    const markup = renderToStaticMarkup(<CanvasSurface />);
+
+    expect(markup).toContain(
+      "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+    );
+  });
+
   it("renders the expired placeholder for an a2ui node without payload", () => {
     addNode({
       type: "a2ui",

@@ -30,6 +30,7 @@ import {
   getDesktopShellPreferences,
   updateDesktopShellPreferences,
 } from "./services/desktop-shell-preferences";
+import { embeddedBrowserManager } from "./services/embedded-browser-manager";
 import {
   type QuitHandlerOptions,
   runTeardownAndExit,
@@ -1214,6 +1215,13 @@ export function registerIpcHandlers(
           };
 
           return result;
+        }
+
+        case "desktop:browser-control": {
+          return embeddedBrowserManager.control(
+            _event.sender,
+            payload as HostInvokePayloadMap["desktop:browser-control"],
+          );
         }
 
         case "update:check": {

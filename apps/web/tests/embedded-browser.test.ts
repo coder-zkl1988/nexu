@@ -1,0 +1,247 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildArrowPath,
+  clampAnnotationFontSize,
+  getAnnotationInputFontSize,
+  getAnnotationTextInputPosition,
+} from "../src/lib/browser/browser-annotation-editor";
+import {
+  closeBrowserPanelForSessionNavigation,
+  getBrowserPanelState,
+  openBrowserPanel,
+  resetBrowserPanelForTests,
+} from "../src/lib/browser/browser-panel-store";
+import {
+  createPreviewAutoOpenTracker,
+  observePreviewArtifact,
+} from "../src/lib/browser/browser-preview-auto-open";
+import {
+  isPreviewArtifactActive,
+  normalizeBrowserUrl,
+  pushBrowserHistory,
+  selectLatestPreviewArtifact,
+  sortPreviewArtifacts,
+} from "../src/lib/browser/embedded-browser";
+
+describe("embedded browser helpers", () => {
+  it("normalizes public and local addresses while rejecting unsafe protocols", () => {
+    expect(normalizeBrowserUrl("example.com/demo")).toBe(
+      "https://example.com/demo",
+    );
+    expect(normalizeBrowserUrl("localhost:4173")).toBe(
+      "http://localhost:4173/",
+    );
+    expect(normalizeBrowserUrl("javascript:alert(1)")).toBeNull();
+    expect(normalizeBrowserUrl("not a url")).toBeNull();
+  });
+
+  it("drops forward history after navigating from an older entry", () => {
+    const history = {
+      entries: ["https://one.test/", "https://two.test/"],
+      index: 0,
+    };
+
+    expect(pushBrowserHistory(history, "https://three.test/")).toEqual({
+      entries: ["https://one.test/", "https://three.test/"],
+      index: 1,
+    });
+  });
+
+  it("selects the newest live artifact with a safe preview URL", () => {
+    expect(
+      selectLatestPreviewArtifact([
+        {
+          id: "building",
+          title: "Building",
+          status: "building",
+          previewUrl: "https://building.test",
+          createdAt: "2026-07-27T10:00:00.000Z",
+        },
+        {
+          id: "older",
+          title: "Older",
+          status: "live",
+          previewUrl: "https://older.test",
+          createdAt: "2026-07-27T09:00:00.000Z",
+        },
+        {
+          id: "latest",
+          title: "Latest",
+          status: "live",
+          previewUrl: "https://latest.test",
+          createdAt: "2026-07-27T11:00:00.000Z",
+        },
+      ])?.id,
+    ).toBe("latest");
+  });
+
+  it("sorts generated page versions newest first without mutating input", () => {
+    const artifacts = [
+      {
+        id: "older",
+        title: "Older",
+        status: "live",
+        previewUrl: "https://preview.test/v1",
+        createdAt: "2026-07-27T09:00:00.000Z",
+      },
+      {
+        id: "newer",
+        title: "Newer",
+        status: "live",
+        previewUrl: "https://preview.test/v2",
+        createdAt: "2026-07-27T10:00:00.000Z",
+      },
+    ];
+
+    expect(
+      sortPreviewArtifacts(artifacts).map((artifact) => artifact.id),
+    ).toEqual(["newer", "older"]);
+    expect(artifacts.map((artifact) => artifact.id)).toEqual([
+      "older",
+      "newer",
+    ]);
+  });
+
+  it("marks a generated page version active across cache-busting queries", () => {
+    expect(
+      isPreviewArtifactActive(
+        {
+          id: "current",
+          title: "Current",
+          status: "live",
+          previewUrl: "http://127.0.0.1:4173/index.html",
+          createdAt: "2026-07-27T10:00:00.000Z",
+        },
+        "http://127.0.0.1:4173/index.html?version=2#preview",
+      ),
+    ).toBe(true);
+  });
+
+  it("auto-opens an artifact generated after the session watcher starts", () => {
+    const observation = observePreviewArtifact({
+      tracker: createPreviewAutoOpenTracker(),
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "fresh-preview",
+        createdAt: "2026-07-27T10:00:02.000Z",
+      },
+      now: Date.parse("2026-07-27T10:00:05.000Z"),
+    });
+
+    expect(observation.shouldOpen).toBe(true);
+    expect(observation.tracker.lastArtifactId).toBe("fresh-preview");
+  });
+
+  it("does not auto-open a stale initial preview or reopen the same preview", () => {
+    const stale = observePreviewArtifact({
+      tracker: createPreviewAutoOpenTracker(),
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "existing-preview",
+        createdAt: "2026-07-27T09:00:00.000Z",
+      },
+      now: Date.parse("2026-07-27T10:00:00.000Z"),
+    });
+    const repeated = observePreviewArtifact({
+      tracker: stale.tracker,
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "existing-preview",
+        createdAt: "2026-07-27T09:00:00.000Z",
+      },
+      now: Date.parse("2026-07-27T10:00:02.000Z"),
+    });
+
+    expect(stale.shouldOpen).toBe(false);
+    expect(repeated.shouldOpen).toBe(false);
+  });
+
+  it("auto-opens a newer preview after baselining an existing one", () => {
+    const baseline = observePreviewArtifact({
+      tracker: createPreviewAutoOpenTracker(),
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "existing-preview",
+        createdAt: "2026-07-27T09:00:00.000Z",
+      },
+      now: Date.parse("2026-07-27T10:00:00.000Z"),
+    });
+    const generated = observePreviewArtifact({
+      tracker: baseline.tracker,
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "generated-preview",
+        createdAt: "2026-07-27T10:01:00.000Z",
+      },
+      now: Date.parse("2026-07-27T10:01:02.000Z"),
+    });
+
+    expect(generated.shouldOpen).toBe(true);
+  });
+
+  it("closes an open browser when navigation switches sessions", () => {
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a");
+
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-a",
+      ),
+    ).toBe(false);
+    expect(getBrowserPanelState().isOpen).toBe(true);
+
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(true);
+    expect(getBrowserPanelState()).toEqual({
+      isOpen: false,
+      sessionKey: null,
+    });
+  });
+
+  it("builds a visible arrow head at the annotation endpoint", () => {
+    const path = buildArrowPath({ x: 10, y: 20 }, { x: 110, y: 20 });
+
+    expect(path).toContain("M 10 20 L 110 20");
+    expect(path.match(/L 110 20/gu)).toHaveLength(2);
+  });
+
+  it("clamps annotation text size to the supported range", () => {
+    expect(clampAnnotationFontSize(8)).toBe(14);
+    expect(clampAnnotationFontSize(36)).toBe(36);
+    expect(clampAnnotationFontSize(120)).toBe(72);
+  });
+
+  it("matches the text input size to the rendered screenshot scale", () => {
+    expect(getAnnotationInputFontSize(24, 0.5)).toBe(12);
+    expect(getAnnotationInputFontSize(24, 1.25)).toBe(30);
+    expect(getAnnotationInputFontSize(24, 0)).toBe(24);
+  });
+
+  it("anchors the annotation input to the SVG text baseline", () => {
+    expect(
+      getAnnotationTextInputPosition(
+        { x: 500, y: 400 },
+        { width: 1000, height: 800 },
+      ),
+    ).toEqual({
+      left: "50%",
+      top: "50%",
+      transform: "translate(0, -100%)",
+    });
+    expect(
+      getAnnotationTextInputPosition(
+        { x: 990, y: 790 },
+        { width: 1000, height: 800 },
+      ),
+    ).toEqual({
+      left: "99%",
+      top: "98.75%",
+      transform: "translate(0, -100%)",
+    });
+  });
+});

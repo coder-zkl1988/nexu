@@ -4155,6 +4155,34 @@ export type PostApiInternalArtifactsResponses = {
 
 export type PostApiInternalArtifactsResponse = PostApiInternalArtifactsResponses[keyof PostApiInternalArtifactsResponses];
 
+export type GetLocalWebPreviewAssetData = {
+    body?: never;
+    path: {
+        botId: string;
+        encodedRoot: string;
+    };
+    query?: never;
+    url: '/api/v1/artifacts/local-preview/{botId}/{encodedRoot}/*';
+};
+
+export type GetLocalWebPreviewAssetErrors = {
+    /**
+     * Local preview asset not found
+     */
+    404: string;
+};
+
+export type GetLocalWebPreviewAssetError = GetLocalWebPreviewAssetErrors[keyof GetLocalWebPreviewAssetErrors];
+
+export type GetLocalWebPreviewAssetResponses = {
+    /**
+     * Local preview asset
+     */
+    200: Blob | File;
+};
+
+export type GetLocalWebPreviewAssetResponse = GetLocalWebPreviewAssetResponses[keyof GetLocalWebPreviewAssetResponses];
+
 export type PatchApiInternalArtifactsByIdData = {
     body?: {
         title?: string;

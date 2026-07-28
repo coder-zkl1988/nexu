@@ -1824,11 +1824,33 @@ describe("SessionsRuntime", () => {
           MediaType: "image/png",
         },
       },
+      {
+        type: "message",
+        id: "msg-inline-and-path",
+        timestamp: "2026-06-11T06:33:00.000Z",
+        message: {
+          role: "user",
+          timestamp: Date.parse("2026-06-11T06:33:00.000Z"),
+          content: [
+            {
+              type: "text",
+              text: "按照图片里的提示修改\n[media attached: media://inbound/photo.png]",
+            },
+            {
+              type: "image",
+              data: "inline-base64-image",
+              mimeType: "image/jpeg",
+            },
+          ],
+          MediaPaths: [inboundPath],
+          MediaTypes: ["image/png"],
+        },
+      },
     ]);
 
     const result = await runtime.getChatHistory("media-history.jsonl");
 
-    expect(result.messages).toHaveLength(2);
+    expect(result.messages).toHaveLength(3);
     expect(result.messages[0]?.content).toStrictEqual([
       { type: "text", text: "告诉我图片中的信息" },
       {
@@ -1839,6 +1861,17 @@ describe("SessionsRuntime", () => {
     ]);
     // Media-only message: placeholder text hidden, image block remains.
     expect(result.messages[1]?.content).toStrictEqual([
+      {
+        type: "image",
+        url: `/api/v1/media/state-file?path=${encodeURIComponent(inboundPath)}`,
+        mimeType: "image/png",
+      },
+    ]);
+    // OpenClaw persists the same inbound image as both an inline base64 block
+    // and MediaPaths. History keeps only the durable served representation,
+    // and hides the internal media delivery marker from the caption.
+    expect(result.messages[2]?.content).toStrictEqual([
+      { type: "text", text: "按照图片里的提示修改" },
       {
         type: "image",
         url: `/api/v1/media/state-file?path=${encodeURIComponent(inboundPath)}`,

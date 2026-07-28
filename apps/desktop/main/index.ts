@@ -1873,8 +1873,8 @@ function createMainWindow(): BrowserWindow {
     window.setSkipTaskbar(!shellPreferences.showInDock);
   }
 
-  // Disable sandbox for webviews so preload scripts have access to Node.js APIs
-  // (needed for contextBridge/ipcRenderer in ESM-built preloads)
+  // Disable sandbox for the trusted app surface so its preload can expose the
+  // host bridge. Arbitrary browser pages live in sandboxed WebContentsViews.
   window.webContents.on(
     "will-attach-webview",
     (_event, webPreferences, _params) => {

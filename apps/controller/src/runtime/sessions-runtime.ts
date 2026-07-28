@@ -179,6 +179,10 @@ const SurfacedToolResultNames = new Set([
  */
 const MEDIA_ONLY_PLACEHOLDER_TEXT = "[User sent media without caption]";
 
+/** OpenClaw appends this internal delivery marker to media captions. */
+const USER_MEDIA_ATTACHMENT_MARKER_PATTERN =
+  /^\[media attached:\s*[^\]]+\]\s*$/gimu;
+
 /**
  * Prefix of user-role messages OpenClaw synthesizes to route content from
  * another session or internal tool (e.g. background image_generate
@@ -1476,6 +1480,10 @@ export class SessionsRuntime {
     }
 
     const mediaPathSet = seen;
+    const remainingInlineMediaReplacements = {
+      image: mediaBlocks.filter((block) => block.type === "image").length,
+      file: mediaBlocks.filter((block) => block.type === "file").length,
+    };
     const isHiddenMediaText = (text: string): boolean => {
       const trimmed = text.trim();
       if (trimmed.length === 0) return true;
@@ -1504,6 +1512,17 @@ export class SessionsRuntime {
           const cleaned = stripLeadingMediaPathLine(block.text);
           if (isHiddenMediaText(cleaned)) continue;
           textBlocks.push({ ...block, text: cleaned });
+          continue;
+        }
+        if (
+          (block?.type === "image" || block?.type === "file") &&
+          remainingInlineMediaReplacements[block.type] > 0
+        ) {
+          // OpenClaw stores inbound attachments twice: inline base64 content
+          // for the model and MediaPaths for transcript persistence. Prefer
+          // the served MediaPaths block so history renders one lightweight
+          // attachment instead of both representations.
+          remainingInlineMediaReplacements[block.type] -= 1;
           continue;
         }
         if (block != null) textBlocks.push(block);
@@ -1701,7 +1720,10 @@ export class SessionsRuntime {
     }
 
     const extractedReplyContext = this.extractReplyContextPrefix(
-      normalizedText,
+      normalizedText
+        .replace(USER_MEDIA_ATTACHMENT_MARKER_PATTERN, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim(),
       channelType,
     );
 

@@ -12700,6 +12700,57 @@
         }
       }
     },
+    "/api/v1/artifacts/local-preview/{botId}/{encodedRoot}/*": {
+      "get": {
+        "operationId": "getLocalWebPreviewAsset",
+        "tags": [
+          "Artifacts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
+            },
+            "required": true,
+            "name": "botId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]+$"
+            },
+            "required": true,
+            "name": "encodedRoot",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local preview asset",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Local preview asset not found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/internal/artifacts/{id}": {
       "patch": {
         "tags": [

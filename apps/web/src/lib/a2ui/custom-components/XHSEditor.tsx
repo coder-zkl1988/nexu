@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
 import type { CustomComponentProps } from "./registry";
 import { setRowStatus, updatePost } from "./xhs-batch-store";
-import { publishXhsPost } from "./xhs-publish";
+import { publishXhsPost, reportXhsPublishResults } from "./xhs-publish";
 
 interface XHSEditorProps extends CustomComponentProps {}
 
@@ -28,7 +28,7 @@ type PublishStatus =
   | { state: "success" }
   | { state: "error"; message: string };
 
-export function XHSEditor({ comp }: XHSEditorProps) {
+export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const data = comp as unknown as XHSCompData;
   const initialTitle = data.title ?? "";
   const initialContent = data.content ?? "";
@@ -119,13 +119,22 @@ export function XHSEditor({ comp }: XHSEditorProps) {
     setHashtags((prev) => prev.filter((t) => t !== tag));
   };
 
-  // Publish via the shared helper (push images + dispatch task). Fully
-  // self-contained — no onAction round-trip (the agent would re-execute and
-  // collide with the task we just dispatched). When bound to a batch, mirror
-  // the phase into the store so the table row's status syncs.
+  const reportResult = (status: "success" | "error", message?: string) => {
+    reportXhsPublishResults(onAction, {
+      source: "editor",
+      batchId,
+      results: [{ postId, title, deviceId, status, message }],
+    });
+  };
+
+  // Publish via the shared helper (push images + dispatch task). The action
+  // round-trip happens only AFTER the phone returns a terminal result, so the
+  // bot can report or ask a follow-up without executing the publish twice.
   const handlePublish = async () => {
     if (!deviceId) {
-      setPublish({ state: "error", message: "请先选择一台在线设备" });
+      const message = "请先选择一台在线设备";
+      setPublish({ state: "error", message });
+      reportResult("error", message);
       return;
     }
     const post = { title, content, images, hashtags };
@@ -142,11 +151,13 @@ export function XHSEditor({ comp }: XHSEditorProps) {
       });
       if (bound && batchId && postId) setRowStatus(batchId, postId, "success");
       setPublish({ state: "success" });
+      reportResult("success", "手机端已完成发布");
     } catch (err) {
       const message = err instanceof Error ? err.message : "发布失败";
       if (bound && batchId && postId)
         setRowStatus(batchId, postId, "error", message);
       setPublish({ state: "error", message });
+      reportResult("error", message);
     }
   };
 
@@ -553,8 +564,7 @@ export function XHSEditor({ comp }: XHSEditorProps) {
           }}
         >
           {publish.state === "publishing" && publish.step}
-          {publish.state === "success" &&
-            "✅ 已发送到手机，请在手机上确认最终发布"}
+          {publish.state === "success" && "✅ 手机端已完成发布"}
           {publish.state === "error" && `⚠️ ${publish.message}`}
         </div>
       )}

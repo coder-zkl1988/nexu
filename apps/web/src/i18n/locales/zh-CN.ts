@@ -875,6 +875,7 @@ const zhCN = {
   "sessions.hoursAgo": "{{count}}小时前",
   "sessions.daysAgo": "{{count}}天前",
   "sessions.chat.messages": "{{count}} 条消息",
+  "sessions.chat.browser": "浏览器",
   "sessions.chat.canvas": "画布",
   "sessions.chat.lastActive": "最后活跃于 {{time}}",
   "sessions.chat.empty": "暂无消息",
@@ -910,6 +911,24 @@ const zhCN = {
   "sessions.pending.waiting": "等待{{name}}回复...",
   "sessions.pending.streaming": "{{name}}正在回复...",
   "sessions.pending.error": "仍在等待会话...",
+
+  // ── Embedded Browser ──
+  "browser.title": "浏览器",
+  "browser.address": "地址",
+  "browser.addressPlaceholder": "输入网址",
+  "browser.invalidUrl": "请输入有效的网址",
+  "browser.back": "后退",
+  "browser.forward": "前进",
+  "browser.reload": "刷新",
+  "browser.openExternal": "在外部浏览器打开",
+  "browser.maximize": "展开浏览器",
+  "browser.restore": "还原宽度",
+  "browser.artifacts": "生成的网页",
+  "browser.selectArtifact": "选择网页",
+  "browser.artifactsError": "无法加载生成的网页",
+  "browser.pageTitle": "浏览器预览",
+  "browser.waiting": "等待网页生成",
+  "browser.waitingDescription": "当前对话生成的网页会自动在这里打开。",
 
   // ── Integrations Page ──
   "integrations.pageTitle": "集成",

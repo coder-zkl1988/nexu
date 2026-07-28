@@ -14,6 +14,12 @@ import {
   useA2UISidebar,
 } from "@/lib/a2ui/a2ui-sidebar-context";
 import { authClient } from "@/lib/auth-client";
+import {
+  closeBrowserPanel,
+  closeBrowserPanelForSessionNavigation,
+  useBrowserPanel,
+} from "@/lib/browser/browser-panel-store";
+import { EmbeddedBrowser } from "@/lib/browser/embedded-browser";
 import { exportBoardAsZip } from "@/lib/canvas/canvas-export";
 import { CanvasBoardTitle } from "@/lib/canvas/canvas-toolbar";
 import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
@@ -472,8 +478,10 @@ function WorkspaceLayoutContent() {
       : SIDEBAR_DEFAULT;
   });
   const isResizing = useRef(false);
-  const { isOpen: rightSidebarOpen, close: closeRightSidebar } =
+  const { isOpen: canvasSidebarOpen, close: closeCanvasSidebar } =
     useA2UISidebar();
+  const browserPanel = useBrowserPanel();
+  const rightSidebarOpen = canvasSidebarOpen || browserPanel.isOpen;
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
     return saved
@@ -615,15 +623,27 @@ function WorkspaceLayoutContent() {
   const balanceRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const previousSessionPathRef = useRef<string | null>(null);
 
-  // The A2UI side panel belongs to the session conversation — close it when
-  // navigating to any other tab so it never lingers over unrelated pages.
+  // The right workbench belongs to the session conversation — close both
+  // modes when leaving sessions, and close the browser when switching
+  // sessions so one conversation never displays another conversation's page.
   const isSessionRoute = location.pathname.startsWith("/workspace/sessions");
   useEffect(() => {
+    const previousSessionPath = previousSessionPathRef.current;
+    previousSessionPathRef.current = isSessionRoute ? location.pathname : null;
+
     if (!isSessionRoute && rightSidebarOpen) {
-      closeRightSidebar();
+      closeCanvasSidebar();
+      closeBrowserPanel();
+      return;
     }
-  }, [isSessionRoute, rightSidebarOpen, closeRightSidebar]);
+
+    closeBrowserPanelForSessionNavigation(
+      previousSessionPath,
+      location.pathname,
+    );
+  }, [isSessionRoute, location.pathname, rightSidebarOpen, closeCanvasSidebar]);
   const { data: session } = authClient.useSession();
   const { data: skillsData } = useCommunitySkills();
   const {
@@ -1899,10 +1919,10 @@ function WorkspaceLayoutContent() {
         </div>
       )}
 
-      {/* Right canvas workbench (all sidebar surfaces live here as nodes) */}
+      {/* Right workbench: browser and canvas share one resizable panel. */}
       {rightSidebarOpen && (
         <div
-          className="hidden md:flex shrink-0 flex-col bg-[var(--color-surface-1)]"
+          className="hidden cursor-default md:flex shrink-0 flex-col bg-[var(--color-surface-1)] [&_button]:cursor-default [&_select]:cursor-default"
           style={
             {
               width: rightSidebarWidth,
@@ -1914,71 +1934,91 @@ function WorkspaceLayoutContent() {
             } as React.CSSProperties
           }
         >
-          {/* Header band matches the chat header's top clearance + height so the
+          {browserPanel.isOpen && browserPanel.sessionKey ? (
+            <EmbeddedBrowser
+              key={browserPanel.sessionKey}
+              sessionKey={browserPanel.sessionKey}
+              maximized={rightSidebarMaximized}
+              onToggleMaximize={toggleRightSidebarMaximize}
+              onClose={closeBrowserPanel}
+            />
+          ) : (
+            <>
+              {/* Header band matches the chat header's top clearance + height so the
               two border-b dividers line up: pt compensates the chat column's
               md:p-3 top pad (12px) on top of its md:pt-7 (28px); min-h matches
               the chat header's badge row. */}
-          <div className="flex min-h-[34px] items-center justify-between border-b border-[var(--color-border-subtle)] px-4 pb-2 pt-2 md:pt-[40px]">
-            <div className="flex min-w-0 flex-1 items-center pr-2">
-              <CanvasBoardTitle />
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => void exportBoardAsZip()}
-                title="导出画布"
-                aria-label="导出画布"
-                data-canvas-header-export="true"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-              >
-                <FileDown size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={toggleRightSidebarMaximize}
-                title={rightSidebarMaximized ? "还原宽度" : "展开画布"}
-                aria-label={
-                  rightSidebarMaximized ? "restore canvas" : "maximize canvas"
-                }
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-              >
-                {rightSidebarMaximized ? (
-                  <Minimize2 size={14} />
-                ) : (
-                  <Maximize2 size={14} />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={closeRightSidebar}
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-              >
-                <svg
-                  aria-hidden="true"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                >
-                  <path
-                    d="M4 4L12 12M12 4L4 12"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-          {/* Always mount the surface, even with zero nodes: the toolbar is
+              <div className="flex min-h-[34px] items-center justify-between border-b border-[var(--color-border-subtle)] px-4 pb-2 pt-2 md:pt-[40px]">
+                <div className="flex min-w-0 flex-1 items-center pr-2">
+                  <CanvasBoardTitle />
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void exportBoardAsZip()}
+                    title="导出画布"
+                    aria-label="导出画布"
+                    data-canvas-header-export="true"
+                    style={
+                      { WebkitAppRegion: "no-drag" } as React.CSSProperties
+                    }
+                    className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+                  >
+                    <FileDown size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleRightSidebarMaximize}
+                    title={rightSidebarMaximized ? "还原宽度" : "展开画布"}
+                    aria-label={
+                      rightSidebarMaximized
+                        ? "restore canvas"
+                        : "maximize canvas"
+                    }
+                    style={
+                      { WebkitAppRegion: "no-drag" } as React.CSSProperties
+                    }
+                    className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+                  >
+                    {rightSidebarMaximized ? (
+                      <Minimize2 size={14} />
+                    ) : (
+                      <Maximize2 size={14} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeCanvasSidebar}
+                    style={
+                      { WebkitAppRegion: "no-drag" } as React.CSSProperties
+                    }
+                    className="p-1 rounded-md hover:bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                    >
+                      <path
+                        d="M4 4L12 12M12 4L4 12"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* Always mount the surface, even with zero nodes: the toolbar is
               the way users CREATE the first node, and mounting keeps the
               S8 mirror pushing so the chat agent's canvas_read stays live. */}
-          <div className="a2ui-sidebar-host flex-1 min-h-0">
-            <CanvasSurface />
-          </div>
+              <div className="a2ui-sidebar-host flex-1 min-h-0">
+                <CanvasSurface />
+              </div>
+            </>
+          )}
         </div>
       )}
 
