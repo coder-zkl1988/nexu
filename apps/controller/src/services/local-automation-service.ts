@@ -555,10 +555,23 @@ export class LocalAutomationService {
     await this.setCuaDaemonRunning(running);
   }
 
+  /**
+   * Environment for daemon and CLI invocations.
+   *
+   * Deliberately omits `CUA_DRIVER_EMBEDDED`. That flag belongs to the MCP
+   * proxy (`mcp --embedded`, set in the compiled MCP server config). Setting it
+   * on the daemon makes it run embedded, where it does not register as the
+   * standalone daemon `permissions status` looks for — the driver then answers
+   * `daemon_running: false` even while `status` reports it running, and the
+   * settings UI shows "unavailable" with every grant already in place.
+   *
+   * Windows still gets embedded behaviour, but through the explicit
+   * `serve --embedded --parent-liveness-stdio` arguments, which is what binds
+   * the daemon's lifetime to the controller.
+   */
   private getCuaEnvironment(): NodeJS.ProcessEnv {
     return {
       ...process.env,
-      CUA_DRIVER_EMBEDDED: "1",
       CUA_DRIVER_HOST_BUNDLE_ID: "io.tabby.desktop",
       CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
       CUA_DRIVER_TELEMETRY_HOME: path.join(
@@ -599,6 +612,14 @@ export class LocalAutomationService {
           timeout: 10_000,
         });
         stopSucceeded = true;
+      } catch (error: unknown) {
+        // `cua-driver stop` exits non-zero when nothing is running. The goal
+        // state is "stopped", which is already true, so treating that as a
+        // failure made disabling report an error and spammed cleanup warnings.
+        if (await this.isCuaDaemonRunning()) {
+          throw error;
+        }
+        stopSucceeded = true;
       } finally {
         this.releaseCuaDaemonProcess(managedProcess, !stopSucceeded);
       }
@@ -606,6 +627,13 @@ export class LocalAutomationService {
     }
 
     if (await this.isCuaDaemonRunning()) {
+      // The driver is a shared per-user service on its own default socket, so
+      // a reachable daemon is reusable whoever started it. Stopping and
+      // relaunching it raced the socket teardown and made enabling fail
+      // intermittently with no diagnostic.
+      if (this.env.computerUseAppBundle) {
+        return;
+      }
       if (this.cuaDaemonProcess !== null) {
         return;
       }
@@ -713,8 +741,26 @@ export class LocalAutomationService {
       }
       await delay(this.timing.cuaDaemonPollIntervalMs);
     }
-    throw new LocalAutomationUnavailableError(
+
+    // `open` detaches, so a daemon that dies on startup leaves nothing behind
+    // to explain itself. Ask the driver directly instead of failing with a
+    // bare timeout that cannot be diagnosed after the fact.
+    const diagnosis = await this.runCommand(
+      this.env.computerUseBin ?? "",
+      ["status"],
+      { env: this.getCuaEnvironment(), timeout: 5_000 },
+    ).then(
+      (result) => result.stdout.trim() || result.stderr?.trim() || "",
+      (error: unknown) => (error instanceof Error ? error.message : ""),
+    );
+    logger.warn(
+      { appBundle, diagnosis, timeoutMs: this.timing.cuaDaemonStartTimeoutMs },
       "CUA Driver daemon did not become ready",
+    );
+    throw new LocalAutomationUnavailableError(
+      diagnosis
+        ? `CUA Driver daemon did not become ready: ${diagnosis}`
+        : "CUA Driver daemon did not become ready",
     );
   }
 

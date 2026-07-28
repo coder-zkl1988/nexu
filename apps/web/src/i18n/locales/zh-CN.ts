@@ -449,16 +449,12 @@ const zhCN = {
   "automation.retrying": "正在重试…",
   "automation.updateFailed": "无法更新本机自动化设置",
   "automation.updated": "本机自动化设置已更新",
-  "automation.preview.warning":
-    "浏览器与电脑控制是预览能力。外部渠道始终禁止执行主机命令，但尚未实现结构化动作审批；仅在可信的当前桌面对话中使用。",
-  "automation.preview.disabled":
-    "稳定构建不会运行浏览器或电脑控制。历史开启项仅保留显示以便你关闭，不能在此重新开启。",
   "automation.browser.title": "真实浏览器控制",
   "automation.browser.showFolder": "打开扩展目录",
   "automation.browser.copyPairing": "复制配对串",
   "automation.browser.pairCopied": "配对串已复制，请粘贴到扩展弹窗",
   "automation.browser.pairFailed": "无法生成浏览器配对串",
-  "automation.computer.title": "Computer Use",
+  "automation.computer.title": "电脑控制",
   "automation.computer.ready": "电脑控制已就绪",
   "automation.computer.installed": "电脑控制可用",
   "automation.computer.permissionRequired": "需要系统权限",

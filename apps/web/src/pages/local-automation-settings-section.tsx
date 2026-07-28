@@ -212,19 +212,6 @@ export function LocalAutomationSettingsSection() {
           />
         </div>
 
-        <div className="flex gap-3 bg-surface-2 px-5 py-3 text-[12px] leading-5 text-text-secondary">
-          <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded bg-surface-3 px-1.5 text-[10px] font-medium text-text-muted">
-            <ShieldAlert className="h-3 w-3 text-warning" />
-            Preview
-          </span>
-          <span>
-            {t(
-              previewEnabled
-                ? "automation.preview.warning"
-                : "automation.preview.disabled",
-            )}
-          </span>
-        </div>
         <div className="flex items-start justify-between gap-4 px-5 py-4">
           <div className="flex min-w-0 gap-3">
             <Globe2 className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />

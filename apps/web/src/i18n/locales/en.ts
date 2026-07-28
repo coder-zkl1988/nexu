@@ -499,10 +499,6 @@ const en = {
   "automation.retrying": "Retrying...",
   "automation.updateFailed": "Unable to update local automation settings",
   "automation.updated": "Local automation settings updated",
-  "automation.preview.warning":
-    "Browser and computer control are Preview capabilities. Host commands are always blocked from external channels. Structured action approvals are not implemented yet; use them only in a trusted desktop chat.",
-  "automation.preview.disabled":
-    "This stable build does not run browser or computer control. Previously enabled settings remain visible only so you can switch them off; they cannot be enabled here.",
   "automation.browser.title": "Real browser control",
   "automation.browser.showFolder": "Show extension folder",
   "automation.browser.copyPairing": "Copy pairing string",

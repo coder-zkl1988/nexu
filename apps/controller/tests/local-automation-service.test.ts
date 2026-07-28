@@ -397,6 +397,81 @@ describe("LocalAutomationService", () => {
     );
   });
 
+  it("reuses a healthy daemon instead of restarting it on macOS", async () => {
+    const harness = await createHarness(
+      {
+        browser: { enabled: false },
+        computerUse: { enabled: false },
+      },
+      "cua-driver",
+      { appBundle: "/somewhere/CuaDriver.app" },
+    );
+    // A daemon someone else started, on the driver's shared per-user socket.
+    harness.runCommand.mockImplementation(
+      async (_c: string, args: string[]) => {
+        if (args[0] === "status")
+          return { stdout: JSON.stringify({ ok: true }) };
+        return { stdout: "" };
+      },
+    );
+
+    await harness.service.updateConfig({ computerUse: { enabled: true } });
+
+    // Stopping and relaunching raced the socket teardown and made enabling
+    // fail intermittently; a reachable daemon is reusable whoever owns it.
+    const stopCalls = harness.runCommand.mock.calls.filter(
+      (call) => (call[1] as string[])[0] === "stop",
+    );
+    const launchCalls = harness.runCommand.mock.calls.filter(
+      (call) => call[0] === "/usr/bin/open",
+    );
+    expect(stopCalls).toHaveLength(0);
+    expect(launchCalls).toHaveLength(0);
+  });
+
+  it("never sets CUA_DRIVER_EMBEDDED on daemon or CLI invocations", async () => {
+    const harness = await createHarness({
+      browser: { enabled: false },
+      computerUse: { enabled: false },
+    });
+
+    await harness.service.updateConfig({ computerUse: { enabled: true } });
+    await harness.service.getStatus();
+
+    // Embedded is an MCP-proxy mode. A daemon started with it does not register
+    // as the standalone daemon `permissions status` discovers, so every grant
+    // read comes back `daemon_running: false` and the UI reports "unavailable"
+    // even when Accessibility and Screen Recording are both granted.
+    for (const call of harness.runCommand.mock.calls) {
+      const options = call[2] as { env?: NodeJS.ProcessEnv } | undefined;
+      expect(options?.env?.CUA_DRIVER_EMBEDDED).toBeUndefined();
+    }
+    for (const call of harness.startProcess.mock.calls) {
+      const options = call[2] as { env?: NodeJS.ProcessEnv } | undefined;
+      expect(options?.env?.CUA_DRIVER_EMBEDDED).toBeUndefined();
+    }
+  });
+
+  it("treats stopping an already-stopped daemon as success", async () => {
+    const harness = await createHarness({
+      browser: { enabled: false },
+      computerUse: { enabled: true },
+    });
+    // `cua-driver stop` exits non-zero when nothing is running.
+    harness.runCommand.mockImplementation(
+      async (_c: string, args: string[]) => {
+        if (args[0] === "status") throw new Error("not running");
+        if (args[0] === "stop")
+          throw new Error("Cua Driver daemon is not running");
+        return { stdout: "" };
+      },
+    );
+
+    await expect(
+      harness.service.updateConfig({ computerUse: { enabled: false } }),
+    ).resolves.toMatchObject({ computerUse: { enabled: false } });
+  });
+
   it("starts the daemon before requesting grants", async () => {
     const harness = await createHarness(
       {
@@ -521,8 +596,9 @@ describe("LocalAutomationService", () => {
       ]),
       expect.objectContaining({
         detached: false,
+        // Embedded comes from the `--embedded` argument above, never the
+        // environment — see the CUA_DRIVER_EMBEDDED test.
         env: expect.objectContaining({
-          CUA_DRIVER_EMBEDDED: "1",
           CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
         }),
         stdio: ["pipe", "ignore", "ignore"],
@@ -810,7 +886,16 @@ describe("LocalAutomationService", () => {
       browser: { enabled: false },
       computerUse: { enabled: true },
     });
-    harness.runCommand.mockRejectedValue(new Error("stop failed"));
+    // A real shutdown failure is one where the daemon survives. `stop` also
+    // exits non-zero when nothing is running, and that case must NOT surface
+    // as an error, so `status` has to keep reporting the daemon as alive here.
+    harness.runCommand.mockImplementation(
+      async (_c: string, args: string[]) => {
+        if (args[0] === "status")
+          return { stdout: JSON.stringify({ ok: true }) };
+        throw new Error("stop failed");
+      },
+    );
 
     await expect(
       harness.service.updateConfig({ computerUse: { enabled: false } }),
@@ -820,7 +905,6 @@ describe("LocalAutomationService", () => {
     expect(harness.syncAll).toHaveBeenCalledOnce();
     expect(harness.restart).toHaveBeenCalledTimes(1);
     expect(harness.restart).toHaveBeenCalledWith("local-automation-changed");
-    expect(harness.runCommand).toHaveBeenCalledTimes(2);
 
     harness.runCommand.mockResolvedValue({
       stdout: JSON.stringify({ success: true }),
@@ -833,8 +917,14 @@ describe("LocalAutomationService", () => {
     });
 
     expect(harness.getConfig().computerUse.enabled).toBe(false);
+    // The retry must not restart OpenClaw again: access was already revoked.
     expect(harness.restart).toHaveBeenCalledTimes(1);
-    expect(harness.runCommand).toHaveBeenCalledTimes(3);
+    // Counting `stop` rather than every command keeps this from breaking each
+    // time the daemon probe changes.
+    const stopCalls = harness.runCommand.mock.calls.filter(
+      (call) => (call[1] as string[])[0] === "stop",
+    );
+    expect(stopCalls).toHaveLength(3);
   });
 
   it("does not start or expose Computer Use on an unsupported OS", async () => {
