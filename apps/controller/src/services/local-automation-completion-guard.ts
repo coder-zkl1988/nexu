@@ -243,7 +243,23 @@ function resultTargets(value: unknown): AutomationTarget[] {
   let remainingNodes = 500;
 
   const visit = (candidate: unknown): void => {
-    if (remainingNodes-- <= 0 || !candidate || typeof candidate !== "object") {
+    if (remainingNodes-- <= 0) return;
+    // Tool results reach us as text, not structured content, so a launch that
+    // reports "Launched X (pid 1234)" would otherwise contribute no pid alias
+    // and could never be matched by later work addressed by pid. Only the
+    // driver's exact wording is accepted — this establishes identity, never
+    // that an action succeeded.
+    if (typeof candidate === "string") {
+      for (const match of candidate.matchAll(/\(pid (\d{1,10})\)/g)) {
+        targets.push({
+          app: normalizeTarget(`pid:${match[1]}`),
+          window: null,
+          session: null,
+        });
+      }
+      return;
+    }
+    if (!candidate || typeof candidate !== "object") {
       return;
     }
     if (seen.has(candidate)) return;

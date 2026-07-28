@@ -272,7 +272,20 @@ function resultTargets(value) {
   let remainingNodes = 500;
 
   const visit = (candidate) => {
-    if (remainingNodes-- <= 0 || !candidate || typeof candidate !== "object") {
+    if (remainingNodes-- <= 0) return;
+    // See the identical rationale in
+    // apps/controller/src/services/local-automation-completion-guard.ts.
+    if (typeof candidate === "string") {
+      for (const match of candidate.matchAll(/\(pid (\d{1,10})\)/g)) {
+        targets.push({
+          app: normalizeTarget(`pid:${match[1]}`),
+          window: null,
+          session: null,
+        });
+      }
+      return;
+    }
+    if (!candidate || typeof candidate !== "object") {
       return;
     }
     if (seen.has(candidate)) return;

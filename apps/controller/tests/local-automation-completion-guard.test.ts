@@ -1126,6 +1126,56 @@ describe("LocalAutomationCompletionGuard", () => {
       expect(guard.finalFailureFor("sev-click")?.severity).toBe("advisory");
     });
 
+    it("links a launch to later work addressed by pid, from a text-only result", () => {
+      const guard = new LocalAutomationCompletionGuard();
+      for (const event of [
+        toolEvent({
+          runId: "sev-launch",
+          phase: "start",
+          name: "cua-driver__launch_app",
+          toolCallId: "l1",
+          args: { name: "Calculator" },
+        }),
+        toolEvent({
+          runId: "sev-launch",
+          phase: "result",
+          name: "cua-driver__launch_app",
+          toolCallId: "l1",
+          isError: false,
+          // Real cua-driver output. Tool results arrive as text, so the pid
+          // must be recovered from the wording or the launch can never be
+          // matched against work addressed by pid — which failed the whole run.
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "Launched \u8ba1\u7b97\u5668 (pid 15242) in background.",
+              },
+            ],
+          },
+        }),
+        toolEvent({
+          runId: "sev-launch",
+          phase: "start",
+          name: "cua-driver__get_window_state",
+          toolCallId: "o1",
+          args: { pid: 15242, window_id: 20905 },
+        }),
+        toolEvent({
+          runId: "sev-launch",
+          phase: "result",
+          name: "cua-driver__get_window_state",
+          toolCallId: "o1",
+          isError: false,
+          result: { pid: 15242 },
+        }),
+      ]) {
+        guard.observeAgentEvent(event);
+      }
+
+      expect(guard.finalFailureFor("sev-launch")).toBeNull();
+    });
+
     it("keeps an unread-back type a hard failure even though the provider cannot bind it to an element", () => {
       const guard = new LocalAutomationCompletionGuard();
       for (const event of [
