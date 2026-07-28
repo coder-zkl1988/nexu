@@ -711,9 +711,16 @@ export function compileOpenClawConfig(
           browser: {
             enabled: true,
             evaluateEnabled: false,
-            defaultProfile: "chrome",
+            // The profile must be named "openclaw". `defaultProfile` is only
+            // honoured on the CLI path; the agent tool falls back to
+            // `profiles["openclaw"] ? "openclaw" : "user"`, and "user" means
+            // CDP against the real Chrome profile — which fails with
+            // "Could not find DevToolsActivePort". Naming it "openclaw" makes
+            // the extension profile the default on both paths, so the agent
+            // does not have to be told to pass `profile` explicitly.
+            defaultProfile: "openclaw",
             profiles: {
-              chrome: {
+              openclaw: {
                 driver: "extension",
                 color: "#0F766E",
               },

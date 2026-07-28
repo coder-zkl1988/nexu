@@ -13,7 +13,7 @@ Nexu 桌面端增加两项本地自动化能力：
 
 ### 浏览器
 
-使用 `driver: "extension"` 和固定 profile `chrome`。不启动 Playwright/Chromium 测试实例，不附着整个浏览器；扩展仅共享用户在 OpenClaw tab group 中主动连接的标签页。首版显式设置 `browser.evaluateEnabled=false`，不向模型暴露页面上下文任意 JavaScript 执行。
+使用 `driver: "extension"` 和固定 profile `openclaw`。profile 名必须是 `openclaw`：`defaultProfile` 只在 CLI 路径生效，agent 工具会退到 `profiles["openclaw"] ? "openclaw" : "user"`，而 `user` 意味着对真实 Chrome profile 走 CDP，必然以 "Could not find DevToolsActivePort" 失败。不启动 Playwright/Chromium 测试实例，不附着整个浏览器；扩展仅共享用户在 OpenClaw tab group 中主动连接的标签页。首版显式设置 `browser.evaluateEnabled=false`，不向模型暴露页面上下文任意 JavaScript 执行。
 
 扩展路径不使用 Chrome remote-debugging port，因此不会出现阻断式“Allow remote debugging?”确认框；Chrome 会显示可关闭的调试横幅。网站仍可能观察到 DevTools/CDP 相关信号，这是 Chrome 安全模型的一部分，不能通过隐藏标志可靠消除。Nexu 不承诺绕过反自动化、验证码或站点风控。
 
@@ -88,7 +88,7 @@ Controller 的 `GET /api/v1/runtime-config` 返回配置、当前安装状态和
 ## 验收
 
 - 关闭两项能力时，不编译 Browser/Computer Use 工具；非沙箱 host `exec` 保持拒绝，不能成为隐式电脑控制后门。
-- 开启浏览器控制后，编译配置包含 `browser.defaultProfile = "chrome"`、extension profile、browser plugin 和 agent tool allowlist。
+- 开启浏览器控制后，编译配置包含 `browser.defaultProfile = "openclaw"`、名为 `openclaw` 的 extension profile、browser plugin 和 agent tool allowlist；agent 不传 `profile` 参数也能直接用。
 - Chrome 扩展只操作用户已连接的真实标签页，不创建测试浏览器实例。
 - 开启 Computer Use 后，仅在有效绝对路径存在时写入 `mcp.servers.cua-driver`；缺失时 UI 明确显示未安装。
 - 已启用的 Peekaboo 在 controller 重启时自动恢复 Nexu 专用 daemon，关闭开关、回滚或退出 controller 时停止该 daemon。

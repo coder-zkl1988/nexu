@@ -218,9 +218,12 @@ describe("compileOpenClawConfig", () => {
     expect(result.browser).toEqual({
       enabled: true,
       evaluateEnabled: false,
-      defaultProfile: "chrome",
+      // Must be "openclaw": the agent tool ignores defaultProfile and falls
+      // back to profiles["openclaw"], otherwise to "user" (CDP against the
+      // real Chrome profile, which cannot work).
+      defaultProfile: "openclaw",
       profiles: {
-        chrome: { driver: "extension", color: "#0F766E" },
+        openclaw: { driver: "extension", color: "#0F766E" },
       },
     });
     expect(result.plugins?.allow).toContain("browser");
