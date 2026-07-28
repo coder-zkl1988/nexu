@@ -5844,8 +5844,6 @@ export type GetApiV1RuntimeConfigResponses = {
         };
         localAutomationStatus: {
             previewEnabled: boolean;
-            browserExtensionAvailable: boolean;
-            browserExtensionPath: string | null;
             computerUseAvailable: boolean;
             computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | null;
             computerUseBinaryPath: string | null;
@@ -5927,27 +5925,6 @@ export type PatchApiV1RuntimeConfigLocalAutomationResponses = {
 };
 
 export type PatchApiV1RuntimeConfigLocalAutomationResponse = PatchApiV1RuntimeConfigLocalAutomationResponses[keyof PatchApiV1RuntimeConfigLocalAutomationResponses];
-
-export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingData = {
-    body?: {
-        [key: string]: unknown;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/v1/runtime-config/local-automation/browser-pairing';
-};
-
-export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses = {
-    /**
-     * Local Chrome extension pairing string
-     */
-    200: {
-        pairingString: string;
-        relayPort: number;
-    };
-};
-
-export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponse = PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses[keyof PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses];
 
 export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsData = {
     body?: {

@@ -12,13 +12,8 @@ import type { ControllerBindings } from "../types.js";
 
 const localAutomationStatusSchema = z.object({
   previewEnabled: z.boolean(),
-  browserExtensionAvailable: z.boolean(),
-  // Preserve null in the generated SDK while the Hono generator emits an OAS 3.1 document.
-  browserExtensionPath: z
-    .string()
-    .nullable()
-    .openapi({ type: ["string", "null"] }),
   computerUseAvailable: z.boolean(),
+  // Preserve null in the generated SDK while the Hono generator emits an OAS 3.1 document.
   computerUseUnavailableReason: z
     .enum(["missing-sidecar", "unsupported-os"])
     .nullable()
@@ -165,47 +160,6 @@ export function registerRuntimeConfigRoutes(
         const localAutomation =
           await container.localAutomationService.updateConfig(body);
         return c.json({ localAutomation }, 200);
-      } catch (error: unknown) {
-        if (error instanceof LocalAutomationUnavailableError) {
-          throw new HTTPException(409, { message: error.message });
-        }
-        throw error;
-      }
-    },
-  );
-
-  app.openapi(
-    createRoute({
-      method: "post",
-      path: "/api/v1/runtime-config/local-automation/browser-pairing",
-      tags: ["Runtime Config"],
-      request: {
-        body: {
-          content: { "application/json": { schema: z.object({}) } },
-        },
-      },
-      responses: {
-        200: {
-          content: {
-            "application/json": {
-              schema: z.object({
-                pairingString: z.string(),
-                relayPort: z.number().int().positive(),
-              }),
-            },
-          },
-          description: "Local Chrome extension pairing string",
-        },
-      },
-    }),
-    async (c) => {
-      assertJsonContentType(c.req.header("content-type"));
-      c.req.valid("json");
-      try {
-        return c.json(
-          await container.localAutomationService.createBrowserPairing(),
-          200,
-        );
       } catch (error: unknown) {
         if (error instanceof LocalAutomationUnavailableError) {
           throw new HTTPException(409, { message: error.message });

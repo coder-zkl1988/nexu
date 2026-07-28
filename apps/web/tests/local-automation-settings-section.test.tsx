@@ -64,8 +64,6 @@ describe("LocalAutomationSettingsSection", () => {
       },
       localAutomationStatus: {
         previewEnabled: false,
-        browserExtensionAvailable: true,
-        browserExtensionPath: "/tmp/chrome-extension",
         computerUseAvailable: true,
         computerUseUnavailableReason: null,
         computerUseBinaryPath: "/tmp/peekaboo",
@@ -110,8 +108,6 @@ describe("LocalAutomationSettingsSection", () => {
       },
       localAutomationStatus: {
         previewEnabled: false,
-        browserExtensionAvailable: true,
-        browserExtensionPath: "/tmp/chrome-extension",
         computerUseAvailable: true,
         computerUseUnavailableReason: null,
         computerUseBinaryPath: "/tmp/peekaboo",

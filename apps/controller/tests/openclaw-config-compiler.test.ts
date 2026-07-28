@@ -190,7 +190,6 @@ describe("compileOpenClawConfig", () => {
   it("keeps local automation absent when the persisted config predates it", () => {
     const result = compileOpenClawConfig(createConfig(), createEnv());
 
-    expect(result.browser).toBeUndefined();
     expect(result.mcp).toBeUndefined();
     expect(result.tools?.exec?.security).toBe("deny");
     expect(result.tools?.deny).toEqual(["exec", "process"]);
@@ -222,8 +221,9 @@ describe("compileOpenClawConfig", () => {
     // OpenClaw's own browser tool drove the user's real Chrome through a
     // paired extension. It is not compiled at all any more: the agent gets the
     // browser panel inside the app, which needs no extension, no pairing, and
-    // carries no session the user did not open in it.
-    expect(result.browser).toBeUndefined();
+    // carries no session the user did not open in it. The top-level `browser`
+    // block is gone from OpenClawConfig entirely, so the type — not this test —
+    // is what stops it coming back.
     expect(result.plugins?.allow).not.toContain("browser");
     expect(result.plugins?.entries?.browser).toBeUndefined();
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
@@ -262,7 +262,6 @@ describe("compileOpenClawConfig", () => {
       }),
     );
 
-    expect(result.browser).toBeUndefined();
     expect(result.mcp).toBeUndefined();
     expect(result.plugins?.allow).not.toContain("browser");
     expect(result.plugins?.entries?.browser).toBeUndefined();
@@ -288,7 +287,6 @@ describe("compileOpenClawConfig", () => {
       }),
     );
 
-    expect(result.browser).toBeUndefined();
     expect(result.mcp).toBeUndefined();
   });
 

@@ -253,7 +253,6 @@ describe("controller route compatibility", () => {
   it("rejects cross-site compatible automation POSTs without JSON", async () => {
     const app = createApp(container);
     const paths = [
-      "/api/v1/runtime-config/local-automation/browser-pairing",
       "/api/v1/runtime-config/local-automation/computer-use/permissions",
     ];
 
@@ -264,16 +263,13 @@ describe("controller route compatibility", () => {
   });
 
   it("rejects DNS rebinding hosts before local automation handlers", async () => {
-    const pairingSpy = vi
-      .spyOn(container.localAutomationService, "createBrowserPairing")
-      .mockResolvedValue({
-        pairingString: "openclaw-browser://secret",
-        relayPort: 18792,
-      });
+    const permissionsSpy = vi
+      .spyOn(container.localAutomationService, "requestComputerUsePermissions")
+      .mockResolvedValue();
     const app = createApp(container);
 
     const response = await app.request(
-      "http://evil.example/api/v1/runtime-config/local-automation/browser-pairing",
+      "http://evil.example/api/v1/runtime-config/local-automation/computer-use/permissions",
       {
         method: "POST",
         headers: {
@@ -288,7 +284,7 @@ describe("controller route compatibility", () => {
     expect(response.status).toBe(403);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
     expect(await response.text()).toBe("Forbidden");
-    expect(pairingSpy).not.toHaveBeenCalled();
+    expect(permissionsSpy).not.toHaveBeenCalled();
   });
 
   it("supports channel connect, integration connect, session lifecycle, and runtime config routes", async () => {

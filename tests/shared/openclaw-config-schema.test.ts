@@ -41,15 +41,9 @@ describe("openclawConfigSchema agent skills field", () => {
 });
 
 describe("openclawConfigSchema local automation", () => {
-  it("accepts the extension browser profile and a stdio MCP server", () => {
+  it("accepts a stdio MCP server", () => {
     const result = openclawConfigSchema.safeParse(
       createMinimalConfig({
-        browser: {
-          enabled: true,
-          evaluateEnabled: false,
-          defaultProfile: "chrome",
-          profiles: { chrome: { driver: "extension" } },
-        },
         mcp: {
           servers: {
             peekaboo: {
@@ -65,7 +59,28 @@ describe("openclawConfigSchema local automation", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.browser?.evaluateEnabled).toBe(false);
+      expect(result.data.mcp?.servers.peekaboo).toBeDefined();
+    }
+  });
+
+  it("drops a browser block left behind by an older install", () => {
+    // Nexu used to compile a `browser` profile that drove the user's real
+    // Chrome through a paired extension. The agent now gets the browser panel
+    // inside the app instead, so a config still carrying the old block parses
+    // fine and comes back without it — the next write clears it for good.
+    const result = openclawConfigSchema.safeParse(
+      createMinimalConfig({
+        browser: {
+          enabled: true,
+          defaultProfile: "chrome",
+          profiles: { chrome: { driver: "extension" } },
+        },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty("browser");
     }
   });
 });

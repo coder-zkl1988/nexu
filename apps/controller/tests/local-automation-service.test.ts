@@ -5,10 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
 import { supportsComputerUseBackend } from "../src/lib/computer-use-platform.js";
 import type { OpenClawProcessManager } from "../src/runtime/openclaw-process.js";
-import {
-  LocalAutomationService,
-  LocalAutomationUnavailableError,
-} from "../src/services/local-automation-service.js";
+import { LocalAutomationService } from "../src/services/local-automation-service.js";
 import type { OpenClawSyncService } from "../src/services/openclaw-sync-service.js";
 import type { NexuConfigStore } from "../src/store/nexu-config-store.js";
 import type { LocalAutomationConfig } from "../src/store/schemas.js";
@@ -174,9 +171,6 @@ describe("LocalAutomationService", () => {
       disabledHarness.service.updateConfig({ computerUse: { enabled: true } }),
     ).rejects.toThrow("preview is disabled");
     await expect(
-      disabledHarness.service.createBrowserPairing(),
-    ).rejects.toThrow("preview is disabled");
-    await expect(
       disabledHarness.service.requestComputerUsePermissions(),
     ).rejects.toThrow("preview is disabled");
     expect(disabledHarness.syncAll).not.toHaveBeenCalled();
@@ -216,64 +210,6 @@ describe("LocalAutomationService", () => {
       harness.service.updateConfig({ browser: { enabled: true } }),
     ).rejects.toThrow("preview is disabled");
     expect((await harness.service.getStatus()).previewEnabled).toBe(false);
-  });
-
-  it("reads OpenClaw browser pairing JSON from stderr", async () => {
-    const harness = await createHarness({
-      browser: { enabled: true },
-      computerUse: { enabled: false },
-    });
-    harness.runCommand.mockResolvedValueOnce({
-      stdout: "",
-      stderr: JSON.stringify({
-        pairingString: "ws://127.0.0.1:18792/extension#secret",
-        relayPort: 18792,
-        remote: false,
-      }),
-    });
-
-    await expect(harness.service.createBrowserPairing()).resolves.toEqual({
-      pairingString: "ws://127.0.0.1:18792/extension#secret",
-      relayPort: 18792,
-    });
-  });
-
-  it("rejects invalid browser pairing output without echoing it", async () => {
-    const harness = await createHarness({
-      browser: { enabled: true },
-      computerUse: { enabled: false },
-    });
-    harness.runCommand.mockResolvedValueOnce({
-      stdout: "",
-      stderr: "invalid-secret-bearing-output",
-    });
-
-    await expect(harness.service.createBrowserPairing()).rejects.toThrow(
-      "OpenClaw returned invalid browser pairing data",
-    );
-  });
-
-  it("redacts pairing output when the OpenClaw command fails", async () => {
-    const harness = await createHarness({
-      browser: { enabled: true },
-      computerUse: { enabled: false },
-    });
-    const secret = "ws://127.0.0.1:18792/extension#pairing-secret";
-    harness.runCommand.mockRejectedValueOnce(
-      new Error(`Command failed with stderr: ${secret}`),
-    );
-
-    const error: unknown = await harness.service.createBrowserPairing().then(
-      () => null,
-      (pairingError: unknown) => pairingError,
-    );
-
-    expect(error).toBeInstanceOf(LocalAutomationUnavailableError);
-    if (!(error instanceof Error)) {
-      throw new Error("Expected browser pairing to reject with an Error");
-    }
-    expect(error.message).toBe("OpenClaw browser pairing failed");
-    expect(error.message).not.toContain(secret);
   });
 
   it("starts the daemon before enabling MCP and restarts OpenClaw", async () => {
@@ -349,7 +285,6 @@ describe("LocalAutomationService", () => {
     await harness.service.prepare();
     const status = await harness.service.getStatus();
 
-    expect(status.browserExtensionAvailable).toBe(true);
     expect(status.computerUseAvailable).toBe(true);
     expect(status.computerUseUnavailableReason).toBeNull();
     expect(status.computerUsePermissionState).toBe("ready");
@@ -789,52 +724,6 @@ describe("LocalAutomationService", () => {
       "permission",
       "stop",
     ]);
-  });
-
-  it("does not disable browser control while pairing is still in flight", async () => {
-    const harness = await createHarness({
-      browser: { enabled: true },
-      computerUse: { enabled: false },
-    });
-    let releasePairing: (() => void) | null = null;
-    const pairingGate = new Promise<void>((resolve) => {
-      releasePairing = resolve;
-    });
-    let markPairingStarted: (() => void) | null = null;
-    const pairingStarted = new Promise<void>((resolve) => {
-      markPairingStarted = resolve;
-    });
-    harness.runCommand.mockImplementation(
-      async (_command: string, args: string[]) => {
-        if (args.includes("pair")) {
-          markPairingStarted?.();
-          await pairingGate;
-          return {
-            stdout: JSON.stringify({
-              pairingString: "ws://127.0.0.1:18792/extension#secret",
-              relayPort: 18792,
-            }),
-          };
-        }
-        return { stdout: JSON.stringify({ success: true }) };
-      },
-    );
-
-    const pairing = harness.service.createBrowserPairing();
-    await pairingStarted;
-    const disable = harness.service.updateConfig({
-      browser: { enabled: false },
-    });
-
-    await Promise.resolve();
-    expect(harness.getConfig().browser.enabled).toBe(true);
-    releasePairing?.();
-    await expect(pairing).resolves.toEqual({
-      pairingString: "ws://127.0.0.1:18792/extension#secret",
-      relayPort: 18792,
-    });
-    await disable;
-    expect(harness.getConfig().browser.enabled).toBe(false);
   });
 
   it("cleans up a CUA process that never becomes ready", async () => {

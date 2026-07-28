@@ -17559,15 +17559,6 @@
                         "previewEnabled": {
                           "type": "boolean"
                         },
-                        "browserExtensionAvailable": {
-                          "type": "boolean"
-                        },
-                        "browserExtensionPath": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
                         "computerUseAvailable": {
                           "type": "boolean"
                         },
@@ -17633,8 +17624,6 @@
                       },
                       "required": [
                         "previewEnabled",
-                        "browserExtensionAvailable",
-                        "browserExtensionPath",
                         "computerUseAvailable",
                         "computerUseUnavailableReason",
                         "computerUseBinaryPath",
@@ -17857,49 +17846,6 @@
                   },
                   "required": [
                     "localAutomation"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/runtime-config/local-automation/browser-pairing": {
-      "post": {
-        "tags": [
-          "Runtime Config"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Local Chrome extension pairing string",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "pairingString": {
-                      "type": "string"
-                    },
-                    "relayPort": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "exclusiveMinimum": true
-                    }
-                  },
-                  "required": [
-                    "pairingString",
-                    "relayPort"
                   ]
                 }
               }

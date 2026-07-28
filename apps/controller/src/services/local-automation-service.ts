@@ -6,7 +6,6 @@ import { z } from "zod";
 import type { ControllerEnv } from "../app/env.js";
 import { logger } from "../lib/logger.js";
 import type { OpenClawProcessManager } from "../runtime/openclaw-process.js";
-import { getOpenClawCommandSpec } from "../runtime/slimclaw-runtime-resolution.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 import type { LocalAutomationConfig } from "../store/schemas.js";
 import type { OpenClawSyncService } from "./openclaw-sync-service.js";
@@ -80,11 +79,6 @@ const cuaPermissionStatusSchema = z.object({
   status: z.string().optional(),
 });
 
-const browserPairingResponseSchema = z.object({
-  pairingString: z.string().min(1),
-  relayPort: z.number().int().positive(),
-});
-
 export type ComputerUsePermissionState =
   | "ready"
   | "permission-required"
@@ -96,8 +90,6 @@ export type ComputerUseUnavailableReason = "missing-sidecar" | "unsupported-os";
 
 export type LocalAutomationStatus = {
   previewEnabled: boolean;
-  browserExtensionAvailable: boolean;
-  browserExtensionPath: string | null;
   computerUseAvailable: boolean;
   computerUseUnavailableReason: ComputerUseUnavailableReason | null;
   computerUseBinaryPath: string | null;
@@ -221,7 +213,6 @@ export class LocalAutomationService {
   ): Promise<LocalAutomationStatus> {
     const localAutomation =
       config ?? (await this.configStore.getLocalAutomationConfig());
-    const browserExtensionPath = this.resolveBrowserExtensionPath();
     const permissionStatus =
       this.isLocalAutomationPreviewEnabled() &&
       localAutomation.computerUse.enabled
@@ -231,9 +222,6 @@ export class LocalAutomationService {
 
     return {
       previewEnabled: this.isLocalAutomationPreviewEnabled(),
-      browserExtensionAvailable:
-        browserExtensionPath !== null && existsSync(browserExtensionPath),
-      browserExtensionPath,
       computerUseAvailable: unavailableReason === null,
       computerUseUnavailableReason: unavailableReason,
       computerUseBinaryPath: this.env.computerUseBin,
@@ -346,57 +334,6 @@ export class LocalAutomationService {
     return next;
   }
 
-  async createBrowserPairing(): Promise<{
-    pairingString: string;
-    relayPort: number;
-  }> {
-    return this.enqueueOperation(() => this.createBrowserPairingOperation());
-  }
-
-  private async createBrowserPairingOperation(): Promise<{
-    pairingString: string;
-    relayPort: number;
-  }> {
-    this.assertLocalAutomationPreviewEnabled();
-    const config = await this.configStore.getLocalAutomationConfig();
-    if (!config.browser.enabled) {
-      throw new LocalAutomationUnavailableError("Browser control is disabled");
-    }
-
-    const spec = getOpenClawCommandSpec(this.env);
-    const result = await this.runCommand(
-      spec.command,
-      [...spec.argsPrefix, "browser", "extension", "pair", "--json"],
-      {
-        cwd: this.env.openclawStateDir,
-        env: {
-          ...process.env,
-          ...spec.extraEnv,
-          OPENCLAW_CONFIG_PATH: this.env.openclawConfigPath,
-          OPENCLAW_STATE_DIR: this.env.openclawStateDir,
-        },
-        timeout: 10_000,
-      },
-    ).catch(() => {
-      throw new LocalAutomationUnavailableError(
-        "OpenClaw browser pairing failed",
-      );
-    });
-    const pairingOutput = result.stdout.trim() || result.stderr?.trim();
-    if (!pairingOutput) {
-      throw new LocalAutomationUnavailableError(
-        "OpenClaw did not return browser pairing data",
-      );
-    }
-    try {
-      return browserPairingResponseSchema.parse(JSON.parse(pairingOutput));
-    } catch {
-      throw new LocalAutomationUnavailableError(
-        "OpenClaw returned invalid browser pairing data",
-      );
-    }
-  }
-
   /**
    * `cua-driver permissions grant` requests Accessibility, Screen Recording and
    * (on Tahoe) direct-capture consent in one pass, attributing the dialogs to
@@ -424,31 +361,6 @@ export class LocalAutomationService {
         timeout: 120_000,
       });
     });
-  }
-
-  private resolveBrowserExtensionPath(): string | null {
-    if (this.env.openclawBuiltinExtensionsDir === null) {
-      return null;
-    }
-    const candidates = [
-      path.join(
-        this.env.openclawBuiltinExtensionsDir,
-        "browser",
-        "chrome-extension",
-      ),
-      path.join(
-        path.dirname(this.env.openclawBuiltinExtensionsDir),
-        "dist",
-        "extensions",
-        "browser",
-        "chrome-extension",
-      ),
-    ];
-    return (
-      candidates.find((candidate) => existsSync(candidate)) ??
-      candidates[0] ??
-      null
-    );
   }
 
   private isComputerUseAvailable(): boolean {

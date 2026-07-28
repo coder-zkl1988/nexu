@@ -2,16 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { formatChannelConnectErrorMessage } from "@/lib/channel-connect-errors";
-import {
-  openExternalUrl,
-  openLocalFolderUrl,
-  pathToFileUrl,
-} from "@/lib/desktop-links";
+import { openExternalUrl } from "@/lib/desktop-links";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
-  Copy,
-  FolderOpen,
   Globe2,
   Loader2,
   Monitor,
@@ -25,7 +19,6 @@ import {
   getApiV1RuntimeConfig,
   patchApiV1RuntimeConfigDeviceControl,
   patchApiV1RuntimeConfigLocalAutomation,
-  postApiV1RuntimeConfigLocalAutomationBrowserPairing,
   postApiV1RuntimeConfigLocalAutomationComputerUsePermissions,
 } from "../../lib/api/sdk.gen";
 
@@ -82,19 +75,6 @@ export function LocalAutomationSettingsSection() {
     onError: (error: Error) => toast.error(error.message),
     onSettled: () =>
       void queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
-  });
-
-  const pairMutation = useMutation({
-    mutationFn: async () => {
-      const response =
-        await postApiV1RuntimeConfigLocalAutomationBrowserPairing({ body: {} });
-      if (response.error || !response.data) {
-        throw new Error(t("automation.browser.pairFailed"));
-      }
-      await navigator.clipboard.writeText(response.data.pairingString);
-    },
-    onSuccess: () => toast.success(t("automation.browser.pairCopied")),
-    onError: (error: Error) => toast.error(error.message),
   });
 
   // cua-driver grants Accessibility, Screen Recording and (on Tahoe) direct
@@ -164,12 +144,6 @@ export function LocalAutomationSettingsSection() {
   const previewEnabled = localAutomationStatus.previewEnabled;
   const browserConfig = localAutomation.browser ?? { enabled: false };
   const computerUseConfig = localAutomation.computerUse ?? { enabled: false };
-  const showExtensionFolder = async () => {
-    if (!localAutomationStatus.browserExtensionPath) return;
-    await openLocalFolderUrl(
-      pathToFileUrl(localAutomationStatus.browserExtensionPath),
-    );
-  };
   const computerUseReady =
     localAutomationStatus.computerUsePermissionState === "ready";
   const computerUseNeedsPermission =
@@ -212,46 +186,11 @@ export function LocalAutomationSettingsSection() {
           />
         </div>
 
-        <div className="flex items-start justify-between gap-4 px-5 py-4">
-          <div className="flex min-w-0 gap-3">
-            <Globe2 className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
-            <div className="min-w-0">
-              <div className="text-[13px] font-medium text-text-primary">
-                {t("automation.browser.title")}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={
-                    !previewEnabled ||
-                    !localAutomationStatus.browserExtensionAvailable
-                  }
-                  onClick={() => void showExtensionFolder()}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  {t("automation.browser.showFolder")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={
-                    !previewEnabled ||
-                    !browserConfig.enabled ||
-                    pairMutation.isPending
-                  }
-                  onClick={() => pairMutation.mutate()}
-                >
-                  {pairMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                  {t("automation.browser.copyPairing")}
-                </Button>
-              </div>
+        <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Globe2 className="h-4 w-4 shrink-0 text-text-secondary" />
+            <div className="text-[13px] font-medium text-text-primary">
+              {t("automation.browser.title")}
             </div>
           </div>
           <Switch
@@ -259,9 +198,7 @@ export function LocalAutomationSettingsSection() {
             checked={browserConfig.enabled}
             disabled={
               patchMutation.isPending ||
-              (!previewEnabled && !browserConfig.enabled) ||
-              (!localAutomationStatus.browserExtensionAvailable &&
-                !browserConfig.enabled)
+              (!previewEnabled && !browserConfig.enabled)
             }
             onCheckedChange={(enabled) => {
               if (!previewEnabled && enabled) return;

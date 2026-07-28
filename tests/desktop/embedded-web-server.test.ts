@@ -82,7 +82,7 @@ describe("EmbeddedWebServer", () => {
 
   it("rejects cross-origin API posts before they reach the controller", async () => {
     const res = await fetch(
-      `${baseUrl}/api/v1/runtime-config/local-automation/browser-pairing`,
+      `${baseUrl}/api/v1/runtime-config/local-automation/computer-use/permissions`,
       {
         method: "POST",
         headers: { Origin: "https://evil.example" },
