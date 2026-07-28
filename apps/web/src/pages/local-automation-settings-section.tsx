@@ -179,11 +179,8 @@ export function LocalAutomationSettingsSection() {
   );
   const computerUseStatusKey = !localAutomationStatus.computerUseAvailable
     ? localAutomationStatus.computerUseUnavailableReason === "unsupported-os"
-      ? "automation.computer.requiresMacOS15"
-      : localAutomationStatus.computerUseUnavailableReason ===
-          "runtime-path-too-long"
-        ? "automation.computer.runtimePathTooLong"
-        : "automation.computer.unavailable"
+      ? "automation.computer.requiresMacOS13"
+      : "automation.computer.unavailable"
     : computerUseNeedsPermission
       ? "automation.computer.permissionRequired"
       : computerUseReady
@@ -306,21 +303,51 @@ export function LocalAutomationSettingsSection() {
                 {t(computerUseStatusKey)}
               </div>
               {previewEnabled && computerUseNeedsPermission ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={permissionsMutation.isPending}
-                    onClick={() => permissionsMutation.mutate()}
-                  >
-                    {permissionsMutation.isPending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <ShieldAlert className="h-3.5 w-3.5" />
-                    )}
-                    {t("automation.computer.requestPermissions")}
-                  </Button>
+                <div className="mt-3">
+                  {/* The driver grants all of these in one pass, but the user
+                      still needs to see which one is missing. */}
+                  {localAutomationStatus.computerUsePermissions.length > 0 ? (
+                    <ul className="mb-2 space-y-1">
+                      {localAutomationStatus.computerUsePermissions.map(
+                        (permission) => (
+                          <li
+                            key={permission.name}
+                            className="flex items-center gap-1.5 text-[11px] text-text-tertiary"
+                          >
+                            {permission.granted ? (
+                              <CheckCircle2 className="h-3 w-3 text-success" />
+                            ) : (
+                              <ShieldAlert className="h-3 w-3 text-warning" />
+                            )}
+                            {t(
+                              permission.name === "Accessibility"
+                                ? "automation.computer.permissionAccessibility"
+                                : "automation.computer.permissionScreenRecording",
+                            )}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={permissionsMutation.isPending}
+                      onClick={() => permissionsMutation.mutate()}
+                    >
+                      {permissionsMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                      )}
+                      {t("automation.computer.requestPermissions")}
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-text-tertiary">
+                    {t("automation.computer.permissionHint")}
+                  </p>
                 </div>
               ) : null}
             </div>

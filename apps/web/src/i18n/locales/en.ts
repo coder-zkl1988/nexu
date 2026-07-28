@@ -515,10 +515,12 @@ const en = {
   "automation.computer.backendUnavailable": "Computer control is not running",
   "automation.computer.statusUnknown":
     "Unable to confirm the computer control status",
-  "automation.computer.requiresMacOS15":
-    "Computer control requires macOS 15 or later",
-  "automation.computer.runtimePathTooLong":
-    "Computer control cannot start with the current data location",
+  "automation.computer.requiresMacOS13":
+    "Computer control requires macOS 13 or later",
+  "automation.computer.permissionAccessibility": "Accessibility",
+  "automation.computer.permissionScreenRecording": "Screen Recording",
+  "automation.computer.permissionHint":
+    "macOS adds \u201cCua Driver\u201d to the permission list for you \u2014 just switch it on in the settings pane that opens. You do not need to add it by hand.",
   "automation.computer.requestPermissions": "Grant system permissions",
   "automation.computer.permissionRequestFailed":
     "Unable to request the system permission",

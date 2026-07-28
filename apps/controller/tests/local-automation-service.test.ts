@@ -397,6 +397,35 @@ describe("LocalAutomationService", () => {
     );
   });
 
+  it("starts the daemon before requesting grants", async () => {
+    const harness = await createHarness(
+      {
+        browser: { enabled: false },
+        computerUse: { enabled: true },
+      },
+      "cua-driver",
+      { appBundle: "/somewhere/outside/Applications/CuaDriver.app" },
+    );
+
+    await harness.service.requestComputerUsePermissions();
+
+    // `permissions grant` resolves the app through LaunchServices by *name*,
+    // which fails for a bundle outside /Applications — the driver then reports
+    // "Check that /Applications/CuaDriver.app is installed" and grants
+    // nothing. Starting the daemon by absolute path first makes grant take its
+    // "daemon already running" path instead, which is why nexu can ship the
+    // bundle under NEXU_HOME. Order matters; do not reverse these.
+    const order = harness.runCommand.mock.calls.map((call) => call[1]);
+    const launchIndex = order.findIndex(
+      (args: string[]) => args[0] === "-n" && args.includes("serve"),
+    );
+    const grantIndex = order.findIndex(
+      (args: string[]) => args[0] === "permissions" && args[1] === "grant",
+    );
+    expect(launchIndex).toBeGreaterThanOrEqual(0);
+    expect(grantIndex).toBeGreaterThan(launchIndex);
+  });
+
   it("launches the daemon through the app bundle so macOS attributes TCC to the driver", async () => {
     const harness = await createHarness(
       {

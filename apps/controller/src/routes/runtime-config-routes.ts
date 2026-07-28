@@ -20,16 +20,11 @@ const localAutomationStatusSchema = z.object({
     .openapi({ type: ["string", "null"] }),
   computerUseAvailable: z.boolean(),
   computerUseUnavailableReason: z
-    .enum(["missing-sidecar", "unsupported-os", "runtime-path-too-long"])
+    .enum(["missing-sidecar", "unsupported-os"])
     .nullable()
     .openapi({
       type: ["string", "null"],
-      enum: [
-        "missing-sidecar",
-        "unsupported-os",
-        "runtime-path-too-long",
-        null,
-      ],
+      enum: ["missing-sidecar", "unsupported-os", null],
     }),
   computerUseBinaryPath: z
     .string()

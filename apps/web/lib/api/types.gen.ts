@@ -5847,7 +5847,7 @@ export type GetApiV1RuntimeConfigResponses = {
             browserExtensionAvailable: boolean;
             browserExtensionPath: string | null;
             computerUseAvailable: boolean;
-            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | 'runtime-path-too-long' | null;
+            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | null;
             computerUseBinaryPath: string | null;
             computerUseBackend: 'cua-driver' | null;
             computerUsePermissionState: 'ready' | 'permission-required' | 'unavailable' | 'unknown' | 'disabled';

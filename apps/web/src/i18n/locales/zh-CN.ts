@@ -464,8 +464,11 @@ const zhCN = {
   "automation.computer.permissionRequired": "需要系统权限",
   "automation.computer.backendUnavailable": "电脑控制未运行",
   "automation.computer.statusUnknown": "无法确认电脑控制状态",
-  "automation.computer.requiresMacOS15": "电脑控制需要 macOS 15 或更高版本",
-  "automation.computer.runtimePathTooLong": "当前数据位置无法启动电脑控制",
+  "automation.computer.requiresMacOS13": "电脑控制需要 macOS 13 或更高版本",
+  "automation.computer.permissionAccessibility": "辅助功能",
+  "automation.computer.permissionScreenRecording": "屏幕录制",
+  "automation.computer.permissionHint":
+    "点击后系统会自动把「Cua Driver」加入权限列表，你只需在打开的设置里拨动开关，无需手动添加。",
   "automation.computer.requestPermissions": "授权系统权限",
   "automation.computer.permissionRequestFailed": "无法请求系统权限",
   "automation.computer.unavailable": "当前版本未包含电脑控制",

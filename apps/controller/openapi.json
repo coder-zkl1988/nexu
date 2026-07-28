@@ -17579,7 +17579,6 @@
                           "enum": [
                             "missing-sidecar",
                             "unsupported-os",
-                            "runtime-path-too-long",
                             null
                           ]
                         },
