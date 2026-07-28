@@ -3,6 +3,14 @@ import type {
   DesktopBrowserControl,
   DesktopBrowserControlResult,
 } from "../../shared/host";
+import {
+  BrowserRefTable,
+  captureSnapshot,
+  clickRef,
+  detachDebugger,
+  scrollBy,
+  typeIntoRef,
+} from "./embedded-browser-cdp";
 
 type ManagedTab = {
   owner: BrowserWindow;
@@ -10,7 +18,10 @@ type ManagedTab = {
   navigationId: number;
   pendingUrl: string | null;
   pendingLoad: Promise<void> | null;
+  refs: BrowserRefTable;
 };
+
+const DEFAULT_SNAPSHOT_NODES = 400;
 
 const TAB_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -155,6 +166,7 @@ export class EmbeddedBrowserManager {
       navigationId: 0,
       pendingUrl: null,
       pendingLoad: null,
+      refs: new BrowserRefTable(),
     };
     this.tabs.set(key, tab);
 
@@ -165,6 +177,11 @@ export class EmbeddedBrowserManager {
     });
     view.webContents.on("will-navigate", (event, url) => {
       if (!isSafeBrowserUrl(url)) event.preventDefault();
+    });
+    // Refs point at DOM nodes of the page that produced them. Surviving a
+    // navigation would let a click land on whatever now occupies that id.
+    view.webContents.on("did-start-navigation", (_event, _url, isInPlace) => {
+      if (!isInPlace) tab.refs.reset();
     });
     owner.once("closed", () => this.disposeOwner(owner));
     return tab;
@@ -195,6 +212,7 @@ export class EmbeddedBrowserManager {
   private disposeOwner(owner: BrowserWindow): void {
     for (const [key, tab] of this.tabs) {
       if (tab.owner !== owner) continue;
+      detachDebugger(tab.view.webContents);
       owner.contentView.removeChildView(tab.view);
       if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
       this.tabs.delete(key);
@@ -271,6 +289,27 @@ export class EmbeddedBrowserManager {
         { kind: "selection" }
       >["selection"];
       return { kind: "selection", selection };
+    }
+
+    if (input.action === "snapshot") {
+      const snapshot = await captureSnapshot(
+        tab.view.webContents,
+        tab.refs,
+        Math.min(Math.max(input.maxNodes ?? DEFAULT_SNAPSHOT_NODES, 1), 1000),
+      );
+      return { kind: "snapshot", ...snapshot };
+    }
+    if (input.action === "click-ref") {
+      await clickRef(tab.view.webContents, tab.refs, input.ref);
+      return { kind: "ok" };
+    }
+    if (input.action === "type-ref") {
+      await typeIntoRef(tab.view.webContents, tab.refs, input.ref, input.text);
+      return { kind: "ok" };
+    }
+    if (input.action === "scroll") {
+      await scrollBy(tab.view.webContents, input.deltaY);
+      return { kind: "ok" };
     }
 
     const image = await tab.view.webContents.capturePage();

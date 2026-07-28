@@ -107,7 +107,13 @@ export type DesktopBrowserControl =
       action: "command";
       tabId: string;
       command: "back" | "forward" | "reload" | "stop";
-    };
+    }
+  // Agent-facing actions. `click-ref` and `type-ref` address elements by a ref
+  // handed out by `snapshot`, so the agent never has to guess coordinates.
+  | { action: "snapshot"; tabId: string; maxNodes?: number }
+  | { action: "click-ref"; tabId: string; ref: string }
+  | { action: "type-ref"; tabId: string; ref: string; text: string }
+  | { action: "scroll"; tabId: string; deltaY: number };
 
 export type DesktopBrowserControlResult =
   | { kind: "ok" }
@@ -129,7 +135,21 @@ export type DesktopBrowserControlResult =
         ariaLabel: string;
       } | null;
     }
-  | { kind: "capture"; dataUrl: string };
+  | { kind: "capture"; dataUrl: string }
+  | {
+      kind: "snapshot";
+      url: string;
+      title: string;
+      truncated: boolean;
+      nodes: Array<{
+        ref: string;
+        role: string;
+        name: string;
+        value?: string;
+        disabled?: boolean;
+        depth: number;
+      }>;
+    };
 
 export type StartupProbeStatus = "ok" | "error";
 
