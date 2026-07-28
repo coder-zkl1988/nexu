@@ -88,6 +88,13 @@ export interface LocalStreamFinal {
   seq: number;
   message: unknown;
   stopReason: string;
+  /**
+   * Set when the run completed but some actions could not be verified by any
+   * provider (click/hotkey/scroll/drag and friends have no read-back). The run
+   * succeeded — this is a caveat on the result, not a failure.
+   */
+  noticeKind?: string;
+  noticeMessage?: string;
 }
 
 export interface LocalStreamError {

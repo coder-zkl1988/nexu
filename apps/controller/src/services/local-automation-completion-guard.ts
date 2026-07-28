@@ -3,6 +3,19 @@ const MAX_TRACKED_RUNS = 500;
 export const LOCAL_AUTOMATION_UNVERIFIED_MESSAGE =
   "电脑操作未确认完成：工具可能只投递了动作，后续状态没有证明请求结果。系统不会仅凭成功回执或一次普通截图报告完成。";
 
+// Click, hotkey, scroll, drag, menu, Dock, dialog, and window actions have no
+// read-back: the OS delivers the event and what happens next is the target
+// app's business. No provider can prove intent for them — cua-driver 0.12.6
+// says so in its own tool description ("A click is never driver-verifiable
+// (no read-back) ... confirm the effect via screenshot"), and Peekaboo 3.9.8
+// returns plain `[ok]` text. Failing the whole run on that means reporting a
+// successful task as failed, which is worse than saying the outcome is
+// unconfirmed. Evidence the provider *can* produce and did not — a typed or
+// assigned value that never read back, a launch never observed, a failed call
+// never retried — stays a hard failure.
+export const LOCAL_AUTOMATION_ADVISORY_MESSAGE =
+  "提示：本次电脑操作中的点击/按键/滚动/拖拽类动作无法被系统验证——这类动作只能投递事件，操作系统不提供「是否达成意图」的回执。上述结果未经证实，请自行确认。";
+
 const OBSERVATION_TOOLS = new Set([
   "peekaboo__see",
   "peekaboo__inspect_ui",
@@ -53,6 +66,35 @@ const NON_MUTATING_TOOLS = new Set([
 
 const IMPLICIT_APP_TARGETS = new Set(["active", "current", "frontmost"]);
 
+// Actions with no read-back: the OS delivers the event and what happens next
+// is the target app's business. No provider can prove intent for these —
+// cua-driver 0.12.6 states it in its own `click` description ("A click is
+// never driver-verifiable (no read-back)"), and Peekaboo 3.9.8 returns plain
+// `[ok]` text. Membership is by action class, NOT by whether a given call
+// carried an element reference: `type` belongs to a verifiable class even when
+// the provider offers no way to bind it to an element (Peekaboo's `type` has
+// no `--on`), and an unverified `type` is exactly the failure this guard
+// exists to catch.
+const UNVERIFIABLE_ACTION_TOOLS = new Set([
+  "peekaboo__click",
+  "peekaboo__hotkey",
+  "peekaboo__scroll",
+  "peekaboo__drag",
+  "peekaboo__menu",
+  "peekaboo__dock",
+  "peekaboo__dialog",
+  "peekaboo__window",
+  "peekaboo__perform_action",
+  "cua-driver__click",
+  "cua-driver__double_click",
+  "cua-driver__right_click",
+  "cua-driver__drag",
+  "cua-driver__scroll",
+  "cua-driver__press_key",
+  "cua-driver__hotkey",
+  "cua-driver__move_cursor",
+]);
+
 type AutomationTarget = {
   app: string | null;
   window: string | null;
@@ -81,6 +123,13 @@ type RunState = {
 };
 
 export type LocalAutomationCompletionFailure = {
+  /**
+   * `error` — the provider could have produced evidence and did not, so the
+   * completion claim is unfounded and the run fails.
+   * `advisory` — every unresolved action is one no provider can verify, so the
+   * reply stands with an explicit caveat instead of being replaced by a failure.
+   */
+  severity: "error" | "advisory";
   errorKind: "local_automation_unverified";
   errorMessage: string;
 };
@@ -709,10 +758,26 @@ export class LocalAutomationCompletionGuard {
       this.runs.delete(runId);
       return null;
     }
-    const failure: LocalAutomationCompletionFailure = {
-      errorKind: "local_automation_unverified",
-      errorMessage: LOCAL_AUTOMATION_UNVERIFIED_MESSAGE,
-    };
+    // An in-flight mutation at final time is strictly worse than an
+    // unverifiable one: the tool never returned, so the action may not even
+    // have been delivered. That stays a hard failure whatever its kind.
+    const hasObtainableEvidenceGap =
+      hasUnfinishedMutation ||
+      state.pending.some(
+        (pending) =>
+          pending.failed || !UNVERIFIABLE_ACTION_TOOLS.has(pending.toolName),
+      );
+    const failure: LocalAutomationCompletionFailure = hasObtainableEvidenceGap
+      ? {
+          severity: "error",
+          errorKind: "local_automation_unverified",
+          errorMessage: LOCAL_AUTOMATION_UNVERIFIED_MESSAGE,
+        }
+      : {
+          severity: "advisory",
+          errorKind: "local_automation_unverified",
+          errorMessage: LOCAL_AUTOMATION_ADVISORY_MESSAGE,
+        };
     this.runs.delete(runId);
     this.finalFailures.set(runId, failure);
     if (this.finalFailures.size > MAX_TRACKED_RUNS) {

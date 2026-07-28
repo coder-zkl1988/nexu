@@ -1085,4 +1085,147 @@ describe("LocalAutomationCompletionGuard", () => {
 
     expect(guard.finalFailureFor("run-10")).toBeNull();
   });
+
+  // Severity split. Actions with no read-back (click and friends) cannot be
+  // proven by any provider, so failing the run on them reports successful work
+  // as failed. Actions whose evidence the provider could have produced still
+  // fail hard. Fixtures below use the real 2026-07-28 provider output.
+  describe("severity", () => {
+    it("raises only an advisory for a click, which no provider can verify", () => {
+      const guard = new LocalAutomationCompletionGuard();
+      for (const event of [
+        toolEvent({
+          runId: "sev-click",
+          phase: "start",
+          name: "cua-driver__click",
+          toolCallId: "c1",
+          args: { pid: 61227, x: 600, y: 400 },
+        }),
+        toolEvent({
+          runId: "sev-click",
+          phase: "result",
+          name: "cua-driver__click",
+          toolCallId: "c1",
+          isError: false,
+          // Real cua-driver 0.12.6 macOS output.
+          result: {
+            content: [
+              { type: "text", text: "\u2705 Posted click to pid 61227" },
+            ],
+            structuredContent: {
+              effect: "unverifiable",
+              path: "cgevent",
+              verified: false,
+            },
+          },
+        }),
+      ]) {
+        guard.observeAgentEvent(event);
+      }
+
+      expect(guard.finalFailureFor("sev-click")?.severity).toBe("advisory");
+    });
+
+    it("keeps an unread-back type a hard failure even though the provider cannot bind it to an element", () => {
+      const guard = new LocalAutomationCompletionGuard();
+      for (const event of [
+        toolEvent({
+          runId: "sev-type",
+          phase: "start",
+          name: "peekaboo__type",
+          toolCallId: "t1",
+          args: { app: "\u98de\u4e66", text: "\u9526\u9ca4" },
+        }),
+        toolEvent({
+          runId: "sev-type",
+          phase: "result",
+          name: "peekaboo__type",
+          toolCallId: "t1",
+          isError: false,
+          result: { content: [{ type: "text", text: "[ok] Typed" }] },
+        }),
+      ]) {
+        guard.observeAgentEvent(event);
+      }
+
+      expect(guard.finalFailureFor("sev-type")?.severity).toBe("error");
+    });
+
+    it("keeps a failed click a hard failure despite its action class", () => {
+      const guard = new LocalAutomationCompletionGuard();
+      for (const event of [
+        toolEvent({
+          runId: "sev-failed",
+          phase: "start",
+          name: "peekaboo__click",
+          toolCallId: "f1",
+          args: { app: "Safari", on: "submit" },
+        }),
+        toolEvent({
+          runId: "sev-failed",
+          phase: "result",
+          name: "peekaboo__click",
+          toolCallId: "f1",
+          isError: true,
+        }),
+      ]) {
+        guard.observeAgentEvent(event);
+      }
+
+      expect(guard.finalFailureFor("sev-failed")?.severity).toBe("error");
+    });
+
+    it("keeps an in-flight click a hard failure because it may never have been delivered", () => {
+      const guard = new LocalAutomationCompletionGuard();
+      guard.observeAgentEvent(
+        toolEvent({
+          runId: "sev-inflight",
+          phase: "start",
+          name: "peekaboo__click",
+          toolCallId: "i1",
+          args: { app: "Safari", on: "submit" },
+        }),
+      );
+
+      expect(guard.finalFailureFor("sev-inflight")?.severity).toBe("error");
+    });
+
+    it("downgrades a mixed run to a hard failure when any action had obtainable evidence", () => {
+      const guard = new LocalAutomationCompletionGuard();
+      for (const event of [
+        toolEvent({
+          runId: "sev-mixed",
+          phase: "start",
+          name: "peekaboo__click",
+          toolCallId: "m1",
+          args: { app: "Safari", on: "submit" },
+        }),
+        toolEvent({
+          runId: "sev-mixed",
+          phase: "result",
+          name: "peekaboo__click",
+          toolCallId: "m1",
+          isError: false,
+        }),
+        toolEvent({
+          runId: "sev-mixed",
+          phase: "start",
+          name: "peekaboo__set_value",
+          toolCallId: "m2",
+          args: { app: "Safari", on: "field", value: "x" },
+        }),
+        toolEvent({
+          runId: "sev-mixed",
+          phase: "result",
+          name: "peekaboo__set_value",
+          toolCallId: "m2",
+          isError: false,
+        }),
+      ]) {
+        guard.observeAgentEvent(event);
+      }
+
+      expect(guard.finalFailureFor("sev-mixed")?.severity).toBe("error");
+    });
+  });
 });

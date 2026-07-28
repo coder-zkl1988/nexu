@@ -213,6 +213,62 @@ describe("nexu-toolcall-guard computer-use completion evidence", () => {
     });
   });
 
+  it("appends a caveat instead of replacing the reply when only a click is unverified", async () => {
+    const hooks = await loadHooks();
+    const afterToolCall = hooks.get("after_tool_call");
+    const beforeMessageWrite = hooks.get("before_message_write");
+    const context = {
+      runId: "run-click-advisory",
+      sessionKey: "agent:bot-advisory:main",
+    };
+
+    // Real cua-driver 0.12.6 macOS click output: explicitly unverifiable.
+    await afterToolCall?.(
+      {
+        toolName: "cua-driver__click",
+        params: { pid: 61227, x: 600, y: 400 },
+        result: {
+          content: [{ type: "text", text: "\u2705 Posted click to pid 61227" }],
+          structuredContent: {
+            effect: "unverifiable",
+            path: "cgevent",
+            verified: false,
+          },
+        },
+      },
+      context,
+    );
+
+    const result = await beforeMessageWrite?.(
+      {
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "\u5df2\u70b9\u51fb\u63d0\u4ea4\u6309\u94ae\u3002",
+            },
+          ],
+          stopReason: "stop",
+        },
+      },
+      { sessionKey: context.sessionKey },
+    );
+
+    const content = (
+      result as { message: { content: Array<{ text: string }> } }
+    ).message.content;
+    // The original answer survives; the caveat is added after it.
+    expect(content).toHaveLength(2);
+    expect(content[0]?.text).toBe(
+      "\u5df2\u70b9\u51fb\u63d0\u4ea4\u6309\u94ae\u3002",
+    );
+    expect(content[1]?.text).toContain(
+      "\u65e0\u6cd5\u88ab\u7cfb\u7edf\u9a8c\u8bc1",
+    );
+    expect(content[1]?.text).not.toContain("\u672a\u786e\u8ba4\u5b8c\u6210");
+  });
+
   it("preserves the final answer after fresh same-target state evidence", async () => {
     const hooks = await loadHooks();
     const afterToolCall = hooks.get("after_tool_call");

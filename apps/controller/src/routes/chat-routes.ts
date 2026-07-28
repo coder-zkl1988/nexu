@@ -708,13 +708,14 @@ export function registerChatRoutes(
             const finalFailure = eventRunId
               ? localAutomationCompletionGuard.finalFailureFor(eventRunId)
               : null;
-            if (finalFailure) {
+            if (finalFailure?.severity === "error") {
               send(
                 "error",
                 JSON.stringify({
                   runId: evt.runId,
                   seq: evt.seq,
-                  ...finalFailure,
+                  errorKind: finalFailure.errorKind,
+                  errorMessage: finalFailure.errorMessage,
                 }),
               );
               return;
@@ -726,6 +727,14 @@ export function registerChatRoutes(
                 seq: evt.seq,
                 message: evt.message,
                 stopReason: evt.stopReason,
+                // An advisory keeps the reply but marks it unconfirmed; the
+                // run did not fail, so it must not consume the error channel.
+                ...(finalFailure
+                  ? {
+                      noticeKind: finalFailure.errorKind,
+                      noticeMessage: finalFailure.errorMessage,
+                    }
+                  : {}),
               }),
             );
             // Don't close — there might be side_results after final

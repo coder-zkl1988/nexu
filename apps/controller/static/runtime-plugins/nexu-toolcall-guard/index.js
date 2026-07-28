@@ -128,8 +128,41 @@ const APPROVED_CUA_TOOLS = new Set([
   "cua-driver__escalate_session",
 ]);
 const IMPLICIT_APP_TARGETS = new Set(["active", "current", "frontmost"]);
+// Action classes with no read-back — see the identical list and rationale in
+// apps/controller/src/services/local-automation-completion-guard.ts. Keyed by
+// action class, not by whether a call carried an element reference: an
+// unverified `type` stays a hard failure even where the provider cannot bind
+// it to an element.
+const UNVERIFIABLE_ACTION_TOOLS = new Set([
+  "peekaboo__click",
+  "peekaboo__hotkey",
+  "peekaboo__scroll",
+  "peekaboo__drag",
+  "peekaboo__menu",
+  "peekaboo__dock",
+  "peekaboo__dialog",
+  "peekaboo__window",
+  "peekaboo__perform_action",
+  "cua-driver__click",
+  "cua-driver__double_click",
+  "cua-driver__right_click",
+  "cua-driver__drag",
+  "cua-driver__scroll",
+  "cua-driver__press_key",
+  "cua-driver__hotkey",
+  "cua-driver__move_cursor",
+]);
 const UNVERIFIED_COMPUTER_ACTION_MESSAGE =
   "电脑操作未确认完成：工具可能只投递了动作，后续状态没有证明请求结果。系统不会仅凭成功回执或一次普通截图报告完成。";
+
+// Click/hotkey/scroll/drag/menu/dock/dialog/window have no read-back, so no
+// provider can prove they achieved intent. Replacing a correct reply with a
+// failure for those reports successful work as failed. Append a caveat
+// instead; evidence the provider could have produced and did not still
+// replaces the message. Mirrors the severity split in
+// apps/controller/src/services/local-automation-completion-guard.ts.
+const UNVERIFIABLE_COMPUTER_ACTION_NOTICE =
+  "\n\n---\n提示：本次操作中的点击/按键/滚动/拖拽类动作无法被系统验证——这类动作只能投递事件，操作系统不提供「是否达成意图」的回执。上述结果未经证实，请自行确认。";
 
 // runId -> { toolName, count, paramsHash }
 const runFailures = new Map();
@@ -937,6 +970,32 @@ const plugin = {
         assistantMessageHasToolCall(message)
       ) {
         return;
+      }
+
+      // An in-flight mutation never returned, so the action may not even have
+      // been delivered — that outranks any per-action verifiability question.
+      const hasObtainableEvidenceGap =
+        state.inFlight.size > 0 ||
+        state.pending.some(
+          (pending) =>
+            pending.failed || !UNVERIFIABLE_ACTION_TOOLS.has(pending.toolName),
+        );
+
+      if (!hasObtainableEvidenceGap) {
+        try {
+          api.logger.warn(
+            `[nexu-toolcall-guard] appending unverifiable-action notice in run ${state.runId}; pending=${state.pending.length}`,
+          );
+        } catch {}
+        return {
+          message: {
+            ...message,
+            content: [
+              ...(Array.isArray(message.content) ? message.content : []),
+              { type: "text", text: UNVERIFIABLE_COMPUTER_ACTION_NOTICE },
+            ],
+          },
+        };
       }
 
       try {

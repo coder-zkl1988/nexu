@@ -306,14 +306,17 @@ describe("chat routes", () => {
       "event: connected",
     );
 
+    // Typing is a verifiable action class, so an unread-back value stays a
+    // hard failure. A click would only raise an advisory, which keeps the
+    // final event and would not exercise the shared-failure path.
     emitAgent({
       runId: "run-shared",
       stream: "tool",
       data: {
         phase: "start",
-        name: "peekaboo__click",
+        name: "peekaboo__type",
         toolCallId: "click-shared",
-        args: { app: "Safari", on: "submit" },
+        args: { app: "Safari", element_id: "search", text: "锦鲤" },
       },
     });
     emitAgent({
@@ -321,7 +324,7 @@ describe("chat routes", () => {
       stream: "tool",
       data: {
         phase: "result",
-        name: "peekaboo__click",
+        name: "peekaboo__type",
         toolCallId: "click-shared",
         isError: false,
       },
