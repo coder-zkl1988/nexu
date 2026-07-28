@@ -2,6 +2,7 @@
  * Embedded Web Server tests — routing, proxying, auth mock, SPA fallback.
  */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -66,15 +67,61 @@ describe("EmbeddedWebServer", () => {
     expect(res.status).toBe(502);
   });
 
-  it("handles CORS preflight", async () => {
+  it("rejects cross-origin CORS preflight without reflecting the origin", async () => {
     const res = await fetch(`${baseUrl}/api/test`, {
       method: "OPTIONS",
-      headers: { Origin: "http://localhost:5173" },
+      headers: {
+        Origin: "https://evil.example",
+        "Sec-Fetch-Site": "cross-site",
+      },
+    });
+    expect(res.status).toBe(403);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  it("rejects cross-origin API posts before they reach the controller", async () => {
+    const res = await fetch(
+      `${baseUrl}/api/v1/runtime-config/local-automation/browser-pairing`,
+      {
+        method: "POST",
+        headers: { Origin: "https://evil.example" },
+      },
+    );
+    expect(res.status).toBe(403);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("allows same-origin preflight without emitting CORS credentials", async () => {
+    const res = await fetch(`${baseUrl}/api/test`, {
+      method: "OPTIONS",
+      headers: { Origin: baseUrl },
     });
     expect(res.status).toBe(204);
-    expect(res.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:5173",
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+  });
+
+  it("rejects cross-origin websocket upgrades", async () => {
+    const statusCode = await new Promise<number | undefined>(
+      (resolve, reject) => {
+        const req = httpRequest(`${baseUrl}/api/v1/devices/test/mirror`, {
+          headers: {
+            Connection: "Upgrade",
+            Origin: "https://evil.example",
+            Upgrade: "websocket",
+          },
+        });
+        req.on("response", (response) => {
+          response.resume();
+          resolve(response.statusCode);
+        });
+        req.on("upgrade", () => reject(new Error("unexpected upgrade")));
+        req.on("error", reject);
+        req.end();
+      },
     );
+    expect(statusCode).toBe(403);
   });
 
   it("prevents path traversal", async () => {

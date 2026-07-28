@@ -15,6 +15,7 @@ import {
 } from "node:http";
 import * as path from "node:path";
 import { Readable, pipeline } from "node:stream";
+import { isTrustedLocalRequest as isTrustedLocalRequestMetadata } from "@nexu/shared";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -32,6 +33,30 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
   ".eot": "application/vnd.ms-fontobject",
 };
+
+// The renderer and the proxied API share one loopback origin here, so this
+// server pins itself to `same-origin`. The shared implementation is the same
+// one the controller port uses; only the origin policy differs.
+function isTrustedLocalRequest(req: IncomingMessage): boolean {
+  if (!req.headers.host) return false;
+  return isTrustedLocalRequestMetadata(
+    {
+      requestUrl: req.url,
+      host: req.headers.host,
+      origin: req.headers.origin,
+      secFetchSite: req.headers["sec-fetch-site"],
+    },
+    "same-origin",
+  );
+}
+
+function rejectUntrustedRequest(res: ServerResponse): void {
+  res.writeHead(403, {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Content-Length": Buffer.byteLength("Forbidden"),
+  });
+  res.end("Forbidden");
+}
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
@@ -146,23 +171,20 @@ export function startEmbeddedWebServer(
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+      const isApiRequest =
+        url.pathname.startsWith("/api") ||
+        url.pathname.startsWith("/v1") ||
+        url.pathname === "/openapi.json";
 
-      // Allow cross-origin requests from vite dev server in dev mode
-      const origin = req.headers.origin;
-      if (origin) {
-        res.setHeader("Access-Control-Allow-Origin", origin);
-        res.setHeader(
-          "Access-Control-Allow-Methods",
-          "GET, POST, PUT, DELETE, OPTIONS",
-        );
-        res.setHeader(
-          "Access-Control-Allow-Headers",
-          "Content-Type, Authorization",
-        );
-        res.setHeader("Access-Control-Allow-Credentials", "true");
+      // The embedded renderer and API share one loopback origin. Reject browser
+      // requests from every other origin instead of exposing the unauthenticated
+      // local controller through reflective CORS or DNS rebinding.
+      if (isApiRequest && !isTrustedLocalRequest(req)) {
+        rejectUntrustedRequest(res);
+        return;
       }
       if (req.method === "OPTIONS") {
-        res.writeHead(204);
+        res.writeHead(isApiRequest ? 204 : 405);
         res.end();
         return;
       }
@@ -192,11 +214,7 @@ export function startEmbeddedWebServer(
       }
 
       // API proxy -> Controller (including /openapi.json)
-      if (
-        url.pathname.startsWith("/api") ||
-        url.pathname.startsWith("/v1") ||
-        url.pathname === "/openapi.json"
-      ) {
+      if (isApiRequest) {
         return proxyToController(req, res, controllerUrl);
       }
 
@@ -251,6 +269,12 @@ export function startEmbeddedWebServer(
       const reqUrl = req.url ?? "/";
       if (!(reqUrl.startsWith("/api") || reqUrl.startsWith("/v1"))) {
         clientSocket.destroy();
+        return;
+      }
+      if (!isTrustedLocalRequest(req)) {
+        clientSocket.end(
+          "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+        );
         return;
       }
 

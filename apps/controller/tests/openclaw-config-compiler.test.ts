@@ -157,6 +157,61 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("denies host shell execution outside an explicit sandbox", () => {
+    const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
+    Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
+    try {
+      const result = compileOpenClawConfig(createConfig(), createEnv());
+      expect(result.tools?.exec?.security).toBe("deny");
+      expect(result.tools?.deny).toEqual(["exec", "process"]);
+    } finally {
+      if (previousSandboxEnabled === undefined) {
+        Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
+      } else {
+        process.env.SANDBOX_ENABLED = previousSandboxEnabled;
+      }
+    }
+  });
+
+  it("keeps command execution inside an explicitly enabled sandbox", () => {
+    const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
+    process.env.SANDBOX_ENABLED = "true";
+    try {
+      const result = compileOpenClawConfig(createConfig(), createEnv());
+      expect(result.tools?.exec).toMatchObject({
+        security: "full",
+        host: "sandbox",
+      });
+      expect(result.tools?.deny).toBeUndefined();
+    } finally {
+      if (previousSandboxEnabled === undefined) {
+        Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
+      } else {
+        process.env.SANDBOX_ENABLED = previousSandboxEnabled;
+      }
+    }
+  });
+
+  it("does not grant external command ownership or channel restarts", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.commands?.restart).toBe(false);
+    // A wildcard owner promotes every sender to owner in OpenClaw 2026.7.1,
+    // which hands `nodes`/`gateway`/`cron` to any channel.
+    expect(result.commands?.ownerAllowFrom).toBeUndefined();
+  });
+
+  it("pins the control UI to explicit loopback origins", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.gateway.controlUi?.allowedOrigins).toEqual([
+      "http://localhost:5173",
+      "http://127.0.0.1:18789",
+      "http://localhost:18789",
+    ]);
+    expect(
+      result.gateway.controlUi?.dangerouslyAllowHostHeaderOriginFallback,
+    ).toBe(false);
+  });
+
   it("marks the desktop defaultBotId agent as the default agent", () => {
     const now = new Date().toISOString();
     const botBase = {

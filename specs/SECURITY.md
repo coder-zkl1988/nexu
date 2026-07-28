@@ -29,6 +29,16 @@ The sections below are **implementation and architecture notes** for developers 
 - `authMiddleware` validates session for all `/v1/*` routes
 - Configured in the active controller auth stack
 
+## Desktop local control plane
+
+- The controller is a loopback-only control plane. Its global HTTP middleware rejects non-loopback `Host` values, non-loopback browser `Origin` values, and `Sec-Fetch-Site: cross-site` before CORS or route handlers run.
+- The controller's direct WebSocket upgrade path applies the same guard before device mirror/control sockets reach `DeviceMirrorProxy`.
+- The packaged embedded web server does not reflect request origins or enable credentialed CORS. It applies equivalent checks to proxied HTTP, preflight, and WebSocket requests.
+- OpenClaw Control UI accepts only the configured local web origin and explicit loopback gateway origins. Host-header origin fallback remains disabled.
+- These checks are required even when the process binds `127.0.0.1`: CORS alone does not stop DNS rebinding, and WebSocket upgrades do not use CORS.
+- Non-sandbox OpenClaw runs compile with `tools.exec.security="deny"` and deny the `exec`/`process` tools. Host shell execution is not an implicit automation backend; restoring it requires a separate capability, approval contract, and audit boundary.
+- `commands.ownerAllowFrom` must not contain a wildcard. OpenClaw 2026.7.1 reads a wildcard command owner as "every sender is an owner", which exposes the owner-only `nodes`, `gateway`, and `cron` tools to any channel.
+
 ### Internal API — Two-token model
 
 Internal endpoints (`/api/internal/*`) use a two-tier token system:
@@ -103,3 +113,4 @@ The gateway strips privileged env vars before spawning the OpenClaw child proces
 - [ ] Encrypted storage for any new secret material
 - [ ] Slack signature verification for any new webhook endpoint
 - [ ] No `ENCRYPTION_KEY` or tokens in committed code
+- [ ] New loopback HTTP or WebSocket surfaces reject hostile Host/Origin values and include DNS-rebinding regression coverage

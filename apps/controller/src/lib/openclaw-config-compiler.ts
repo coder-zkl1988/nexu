@@ -661,8 +661,15 @@ export function compileOpenClawConfig(
               root: resolveControlUiRoot(env.openclawBuiltinExtensionsDir),
             }
           : {}),
-        allowedOrigins: [env.webUrl],
-        dangerouslyAllowHostHeaderOriginFallback: true,
+        allowedOrigins: [
+          env.webUrl,
+          `http://127.0.0.1:${env.openclawGatewayPort}`,
+          `http://localhost:${env.openclawGatewayPort}`,
+        ],
+        // Host-header origin fallback lets any page that can reach the port
+        // pass the origin check, which defeats the allowlist under DNS
+        // rebinding. List the real loopback origins instead.
+        dangerouslyAllowHostHeaderOriginFallback: false,
       },
       http: {
         endpoints: {
@@ -719,8 +726,14 @@ export function compileOpenClawConfig(
       ),
     },
     tools: {
+      // Host shell execution is only available inside an explicitly enabled
+      // sandbox. Outside one it is denied outright rather than left as an
+      // implicit, unaudited way to drive the user's machine.
+      ...(process.env.SANDBOX_ENABLED === "true"
+        ? {}
+        : { deny: ["exec", "process"] }),
       exec: {
-        security: "full",
+        security: process.env.SANDBOX_ENABLED === "true" ? "full" : "deny",
         ask: "off",
         host: process.env.SANDBOX_ENABLED === "true" ? "sandbox" : "gateway",
       },
@@ -783,9 +796,12 @@ export function compileOpenClawConfig(
     commands: {
       native: "auto",
       nativeSkills: "auto",
-      restart: true,
+      restart: false,
       ownerDisplay: "raw",
-      ownerAllowFrom: ["*"],
+      // OpenClaw 2026.7.1 treats a wildcard command owner as "every sender is
+      // an owner", which exposes the owner-only `nodes`, `gateway`, and `cron`
+      // tools to any channel. Do not reintroduce it on the strength of the
+      // docs' claim that a wildcard alone is insufficient for ownership.
     },
     diagnostics: {
       enabled: true,

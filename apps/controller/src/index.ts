@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { bootstrapController } from "./app/bootstrap.js";
 import { createContainer } from "./app/container.js";
 import { createApp } from "./app/create-app.js";
+import { acceptTrustedLocalUpgrade } from "./lib/local-request-guard.js";
 import { logger } from "./lib/logger.js";
 import { flushV8CoverageIfEnabled } from "./lib/v8-coverage.js";
 
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
 
   // Wire WebSocket upgrade handler for device mirror proxy
   server.on("upgrade", (req, socket, head) => {
+    if (!acceptTrustedLocalUpgrade(req, socket)) return;
     container.deviceMirrorProxy.handleUpgrade(req, socket, head);
   });
 
