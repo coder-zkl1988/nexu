@@ -17472,11 +17472,134 @@
                           "type": "string"
                         }
                       }
+                    },
+                    "localAutomation": {
+                      "type": "object",
+                      "properties": {
+                        "browser": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        },
+                        "computerUse": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        }
+                      }
+                    },
+                    "localAutomationStatus": {
+                      "type": "object",
+                      "properties": {
+                        "previewEnabled": {
+                          "type": "boolean"
+                        },
+                        "browserExtensionAvailable": {
+                          "type": "boolean"
+                        },
+                        "browserExtensionPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "computerUseAvailable": {
+                          "type": "boolean"
+                        },
+                        "computerUseUnavailableReason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "missing-sidecar",
+                            "unsupported-os",
+                            "runtime-path-too-long",
+                            null
+                          ]
+                        },
+                        "computerUseBinaryPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "computerUseBackend": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "peekaboo",
+                            "cua-driver",
+                            null
+                          ]
+                        },
+                        "computerUsePermissionState": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "permission-required",
+                            "unavailable",
+                            "unknown",
+                            "disabled"
+                          ]
+                        },
+                        "computerUsePermissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "granted": {
+                                "type": "boolean"
+                              },
+                              "required": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "granted",
+                              "required"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "previewEnabled",
+                        "browserExtensionAvailable",
+                        "browserExtensionPath",
+                        "computerUseAvailable",
+                        "computerUseUnavailableReason",
+                        "computerUseBinaryPath",
+                        "computerUseBackend",
+                        "computerUsePermissionState",
+                        "computerUsePermissions"
+                      ]
                     }
                   },
                   "required": [
                     "runtime",
-                    "deviceControl"
+                    "deviceControl",
+                    "localAutomation",
+                    "localAutomationStatus"
                   ]
                 }
               }
@@ -17599,6 +17722,255 @@
                   },
                   "required": [
                     "runtime"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation": {
+      "patch": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "browser": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  },
+                  "computerUse": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated local automation settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "localAutomation": {
+                      "type": "object",
+                      "properties": {
+                        "browser": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        },
+                        "computerUse": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "localAutomation"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation/browser-pairing": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local Chrome extension pairing string",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pairingString": {
+                      "type": "string"
+                    },
+                    "relayPort": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    }
+                  },
+                  "required": [
+                    "pairingString",
+                    "relayPort"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation/computer-use/accessibility-permission": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requested macOS Accessibility permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requested": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "requested"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requested macOS Event Synthesizing permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requested": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "requested"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requested macOS Screen Recording permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requested": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "requested"
                   ]
                 }
               }

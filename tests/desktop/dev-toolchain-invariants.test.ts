@@ -116,6 +116,33 @@ describe("Launch path safety", () => {
       ).toBe(true);
     }
   });
+
+  it("dev-launchd.sh preflights the Computer Use sidecar before launch", () => {
+    expect(devLaunchdSh).toContain(
+      "exec tsx ./src/prepare-computer-use-sidecar.ts",
+    );
+  });
+
+  it("active macOS launchd path forwards the local automation Preview opt-in", () => {
+    const indexTs = readFile("apps/desktop/main/index.ts");
+    const launchdColdStartStart = indexTs.indexOf(
+      "async function runLaunchdColdStart()",
+    );
+    const launchdColdStartEnd = indexTs.indexOf(
+      "\nfunction focusMainWindow()",
+      launchdColdStartStart,
+    );
+    const launchdColdStart = indexTs.slice(
+      launchdColdStartStart,
+      launchdColdStartEnd,
+    );
+
+    expect(launchdColdStartStart).toBeGreaterThanOrEqual(0);
+    expect(launchdColdStartEnd).toBeGreaterThan(launchdColdStartStart);
+    expect(launchdColdStart).toMatch(
+      /bootstrapWithLaunchd\(\{[\s\S]*localAutomationPreviewEnabled:[\s\S]*runtimeConfig\.localAutomationPreviewEnabled/,
+    );
+  });
 });
 
 // =========================================================================

@@ -16,6 +16,7 @@ function createRuntimeConfig(input?: {
 
   return {
     runtimeMode: "internal",
+    localAutomationPreviewEnabled: false,
     buildInfo: {
       version: "0.0.0",
       source: "local-dev",

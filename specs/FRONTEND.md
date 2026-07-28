@@ -32,8 +32,8 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 | `/workspace/integrations` | Integrations | Composio toolkit connections (OAuth) |
 | `/workspace/oauth-callback/:integrationId` | OAuth Callback | Handles Composio OAuth redirect |
 | `/workspace/rewards` | Rewards | Reward task center for daily, open-source, and social claims |
-| `/workspace/settings` | Models / Settings | General profile and model provider settings |
-| `/workspace/models` | Models / Settings | General profile and model provider settings |
+| `/workspace/settings` | Models / Settings | General profile, model providers, and unified device/automation controls |
+| `/workspace/models` | Models / Settings | General profile, model providers, and unified device/automation controls |
 | `/workspace/skills` | Skills | Skill catalog |
 | `/workspace/skills/:slug` | Skill Detail | Individual skill info and actions |
 
@@ -71,6 +71,15 @@ Backward compatibility: when `channel.feishuPermissions` is `null` (historical r
 Persistence flow: UI → [`useUpdateFeishuPermissions`](../apps/web/src/hooks/use-update-feishu-permissions.ts) → `PATCH /api/v1/channels/{channelId}/feishu-permissions` → store → `openclawSyncService.syncAll()` → OpenClaw `feishu.accounts[<accountId>]` fields.
 
 ## Conventions
+
+### Device and automation settings
+
+The models/settings page includes one `LocalAutomationSettingsSection` card for Android device control, Browser control, and Computer Use. It reads the generated `GET /api/v1/runtime-config` contract once, updates Android through `PATCH /api/v1/runtime-config/device-control`, and updates Browser / Computer Use through `PATCH /api/v1/runtime-config/local-automation`. Toggle rows do not expose implementation details such as backend or transport descriptions; runtime status, required permission actions, and security warnings remain visible.
+
+- Browser control exposes the bundled OpenClaw MV3 extension folder and generates a host-local pairing string. It controls only tabs the user places in the OpenClaw tab group.
+- Computer Use reports the packaged platform backend and its permission state. macOS 15+ uses Peekaboo, shows each missing Screen Recording, Accessibility, or Event Synthesizing permission, triggers the request from the signed Peekaboo process, and opens the matching System Settings pane for manual completion; older macOS versions remain unsupported without blocking the rest of Nexu. Windows uses CUA. Unknown or stopped backends must render as warnings rather than healthy installed state.
+- Both capabilities default off. The UI must not imply that a sidecar being present means a system permission has been granted.
+- Only Browser and Computer Use are explicitly labeled Preview; Android device control remains outside that boundary in the same card. Stable production builds expose `previewEnabled=false`, reject new enable/pairing/permission operations, and still allow stale enabled values to be switched off. Preview copy must state that structured consequential-action approval is not implemented yet.
 
 - **State:** React Query for all server state. No manual `fetch` + `useState` patterns.
 - **Auth:** `apps/web/src/lib/auth-client.ts` for session management.

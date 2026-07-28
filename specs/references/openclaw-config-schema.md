@@ -300,7 +300,7 @@ Slack channel 有**顶层字段**和 **account 字段**两级。顶层控制全�
   "commands": {
     "native": "auto",
     "nativeSkills": "auto",
-    "restart": true,
+    "restart": false,
     "ownerDisplay": "raw"
   }
 }
@@ -312,6 +312,8 @@ Slack channel 有**顶层字段**和 **account 字段**两级。顶层控制全�
 | `nativeSkills` | `"auto"` \| `"off"` | 原生技能 |
 | `restart` | boolean | 是否允许通过命令重启 |
 | `ownerDisplay` | `"raw"` \| `"friendly"` | 用户名显示模式 |
+
+Nexu 不生成 wildcard `commands.ownerAllowFrom`。随包 OpenClaw 2026.7.1 会把 `ownerAllowFrom: ["*"]` 解析为任意渠道发送者都是 owner，因此该配置会越权开放 `nodes`、`gateway`、`cron` 等本机控制工具。真实 owner 必须使用带渠道前缀的明确身份，并由后续产品化的 owner 配置流程写入。
 
 ---
 

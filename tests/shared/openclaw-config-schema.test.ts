@@ -40,6 +40,36 @@ describe("openclawConfigSchema agent skills field", () => {
   });
 });
 
+describe("openclawConfigSchema local automation", () => {
+  it("accepts the extension browser profile and a stdio MCP server", () => {
+    const result = openclawConfigSchema.safeParse(
+      createMinimalConfig({
+        browser: {
+          enabled: true,
+          evaluateEnabled: false,
+          defaultProfile: "chrome",
+          profiles: { chrome: { driver: "extension" } },
+        },
+        mcp: {
+          servers: {
+            peekaboo: {
+              enabled: true,
+              command: "/runtime/computer-use/peekaboo",
+              args: ["mcp", "serve"],
+              transport: "stdio",
+            },
+          },
+        },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.browser?.evaluateEnabled).toBe(false);
+    }
+  });
+});
+
 function createMinimalConfig(overrides: Record<string, unknown> = {}) {
   return {
     gateway: {

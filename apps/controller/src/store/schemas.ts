@@ -554,6 +554,19 @@ export const deviceControlConfigSchema = z.object({
   localIp: z.string().optional(),
 });
 
+export const localAutomationConfigSchema = z.object({
+  browser: z
+    .object({
+      enabled: z.boolean().default(false),
+    })
+    .default({ enabled: false }),
+  computerUse: z
+    .object({
+      enabled: z.boolean().default(false),
+    })
+    .default({ enabled: false }),
+});
+
 const nexuConfigObjectSchema = z.object({
   $schema: z.string(),
   schemaVersion: z.number().int().positive(),
@@ -579,6 +592,10 @@ const nexuConfigObjectSchema = z.object({
     enabled: true,
     wsPort: 18790,
     rpcPort: 18801,
+  }),
+  localAutomation: localAutomationConfigSchema.default({
+    browser: { enabled: false },
+    computerUse: { enabled: false },
   }),
   secrets: z.record(z.string(), z.string()).default({}),
   schedules: z.array(scheduleResponseSchema).default([]),
@@ -675,6 +692,11 @@ export const nexuConfigSchema = z.preprocess((input) => {
       candidate.deviceControl !== null
         ? candidate.deviceControl
         : {},
+    localAutomation:
+      typeof candidate.localAutomation === "object" &&
+      candidate.localAutomation !== null
+        ? candidate.localAutomation
+        : {},
     secrets:
       typeof candidate.secrets === "object" && candidate.secrets !== null
         ? candidate.secrets
@@ -709,6 +731,7 @@ export type ControllerRuntimeConfig = z.infer<
   typeof controllerRuntimeConfigSchema
 >;
 export type DeviceControlConfig = z.infer<typeof deviceControlConfigSchema>;
+export type LocalAutomationConfig = z.infer<typeof localAutomationConfigSchema>;
 export type ControllerProvider = z.infer<typeof controllerProviderSchema>;
 export type ControllerArtifact = z.infer<typeof controllerArtifactSchema>;
 export type ArtifactsIndex = z.infer<typeof artifactsIndexSchema>;

@@ -80,6 +80,7 @@ async function main() {
   const scripts = [
     "prepare:controller-sidecar",
     "prepare:openclaw-sidecar",
+    "prepare:computer-use-sidecar",
     "prepare:web-sidecar",
   ];
 

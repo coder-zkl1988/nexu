@@ -22,6 +22,8 @@ type LaunchdPathSet = {
   openclawCwd: string;
   openclawBinPath: string;
   openclawExtensionsDir: string;
+  computerUseBackend: "peekaboo" | "cua-driver" | null;
+  computerUseBinPath: string | null;
 };
 
 export function createMacLaunchdResidencyContext(
@@ -88,6 +90,12 @@ export function createMacLaunchdBootstrapEnv(args: {
       process.env.NEXU_OPENCLAW_BIN ??
       resolve(paths.openclawCwd, "bin/openclaw"),
     openclawExtensionsDir: resolve(openclawPackageRoot, "extensions"),
+    computerUseBackend: paths.computerUseBackend,
+    computerUseBinPath: paths.computerUseBinPath,
+    localAutomationPreviewEnabled:
+      !app.isPackaged || runtimeConfig.localAutomationPreviewEnabled
+        ? "true"
+        : undefined,
     skillNodePath: capabilities.runtimeExecutables.resolveSkillNodePath({
       electronRoot,
       isPackaged: app.isPackaged,

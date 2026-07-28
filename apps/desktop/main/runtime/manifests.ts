@@ -12,9 +12,13 @@ import { getOpenclawSkillsDir } from "../../shared/desktop-paths";
 import { buildChildProcessProxyEnv } from "../../shared/proxy-config";
 import type { DesktopRuntimeConfig } from "../../shared/runtime-config";
 import { getWorkspaceRoot } from "../../shared/workspace-paths";
-import { resolveRuntimeManifestsRoots } from "../platforms/shared/runtime-roots";
+import {
+  expandHomePath,
+  resolveRuntimeManifestsRoots,
+} from "../platforms/shared/runtime-roots";
 import { createAsyncArchiveSidecarMaterializer } from "../platforms/shared/sidecar-materializer";
 import { resolveWindowsPackagedOpenclawSidecarRoot } from "../platforms/win/slimclaw-runtime-locator";
+import { prepareComputerUseSidecar } from "./computer-use-sidecar";
 import type { RuntimeUnitManifest } from "./types";
 
 function ensureDir(path: string): string {
@@ -373,6 +377,14 @@ export function createRuntimeUnitManifests(
     "bin",
     process.platform === "win32" ? "openclaw.cmd" : "openclaw",
   );
+  const computerUse = prepareComputerUseSidecar({
+    sourceRoot: path.resolve(runtimeSidecarBaseRoot, "computer-use"),
+    runtimeRoot: path.resolve(
+      expandHomePath(runtimeConfig.paths.nexuHome),
+      "runtime",
+    ),
+    isPackaged,
+  });
   const openclawNodePath = buildOpenclawNodePath(openclawSidecarRoot);
   const openclawPort = Number(
     new URL(runtimeConfig.urls.openclawBase).port || 18789,
@@ -456,6 +468,15 @@ export function createRuntimeUnitManifests(
       EXPERTHUB_STATIC_EXPERTS_DIR: experthubStaticExpertsDir,
       PLATFORM_TEMPLATES_DIR: platformTemplatesDir,
       OPENCLAW_BIN: effectiveOpenclawBinPath,
+      ...(!isPackaged || runtimeConfig.localAutomationPreviewEnabled
+        ? {
+            NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: "true",
+          }
+        : {}),
+      ...(computerUse.backend
+        ? { COMPUTER_USE_BACKEND: computerUse.backend }
+        : {}),
+      ...(computerUse.binPath ? { COMPUTER_USE_BIN: computerUse.binPath } : {}),
       // Always run OpenClaw through the Electron node runner (ELECTRON_RUN_AS_NODE).
       // OpenClaw >=2026.7.1 hard-requires Node >=24.15; the dev-desktop GUI PATH may
       // resolve an older system `node`, while the Electron runner is version-pinned.

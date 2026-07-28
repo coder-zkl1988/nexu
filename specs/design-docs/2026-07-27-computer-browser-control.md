@@ -1,0 +1,101 @@
+# 桌面端 Computer Use 与真实浏览器控制方案
+
+## 目标
+
+Nexu 桌面端增加两项本地自动化能力：
+
+- 浏览器控制复用 OpenClaw 2026.7.1 内置 `browser` plugin，通过 MV3 Chrome Extension 的 `chrome.debugger` 接管用户主动连接的真实 Chrome 标签页。
+- Computer Use 使用平台适配层：macOS 复用签名并 notarize 的 Peekaboo MCP，Windows 使用 TryCua `cua-driver mcp`。
+
+两项能力默认关闭。启用是用户对本机自动化权限的明确授权，不随历史配置迁移自动打开。
+
+## 边界与决策
+
+### 浏览器
+
+使用 `driver: "extension"` 和固定 profile `chrome`。不启动 Playwright/Chromium 测试实例，不附着整个浏览器；扩展仅共享用户在 OpenClaw tab group 中主动连接的标签页。首版显式设置 `browser.evaluateEnabled=false`，不向模型暴露页面上下文任意 JavaScript 执行。
+
+扩展路径不使用 Chrome remote-debugging port，因此不会出现阻断式“Allow remote debugging?”确认框；Chrome 会显示可关闭的调试横幅。网站仍可能观察到 DevTools/CDP 相关信号，这是 Chrome 安全模型的一部分，不能通过隐藏标志可靠消除。Nexu 不承诺绕过反自动化、验证码或站点风控。
+
+### Computer Use
+
+使用固定版本的独立 sidecar，由桌面打包阶段下载并校验 SHA-256。macOS 采用 Peekaboo 3.9.8，原因是其原生 Accessibility 覆盖、稳定签名身份、Apple notarization、后台定向输入及菜单/Dock/系统对话框能力均优于当前仍为 prerelease 的 CUA 0.12.6；Windows 使用 CUA 0.12.6。Peekaboo 发布包中的 `peekaboo`、`libswiftCompatibilitySpan.dylib` 与 MIT `LICENSE` 必须作为一个完整分发单元保留并校验，不能只复制主二进制。`vendor.json` 记录压缩包摘要及解压后逐文件摘要；运行时缓存命中也必须重新校验，缺失或损坏时原子替换。运行时通过绝对路径写入 OpenClaw MCP registry。
+
+Peekaboo 3.9.8 的最低系统要求是 macOS 15。Controller 通过 Darwin kernel major（24 及以上）做能力门控；macOS 13/14 可以继续运行 Nexu，但设置页会明确显示版本不支持且禁止开启 Computer Use。
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "cua-driver": {
+        "command": "/absolute/path/to/platform-backend",
+        "args": ["mcp", "--embedded", "--socket", "\\\\.\\pipe\\nexu-cua-driver-<instance>"],
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+打包应用不得使用 `npx`、包管理器或用户 PATH。打包资源会按 vendor metadata 指纹原子复制到 `NEXU_HOME/runtime/computer-use/`，launchd 与普通 desktop runtime 都只引用该外部路径，避免 sidecar 锁住可替换的 `.app`。Nexu Electron 不是 Swift 版 OpenClaw.app，因此不声称直接托管 `PeekabooBridgeHostCoordinator`。首版显式启动已签名 Peekaboo CLI 的专用 daemon；socket 默认使用 `NEXU_HOME/runtime/peekaboo/daemon.sock`，若 UTF-8 字节长度超过 macOS Unix socket 上限，则切换到用户 home 下按 `NEXU_HOME` 哈希隔离的 `~/.nexu-run/peekaboo-<instance>/daemon.sock`。该目录拒绝符号链接和非当前用户所有权，并在启动前强制为 `0700`；若这个私有路径仍超过上限则将 Computer Use 标记为 unavailable，仅在尝试启用时明确拒绝，不影响默认关闭状态下的 Controller 启动，也不回退到共享 `/tmp`。MCP 与 daemon 始终使用同一个解析结果；关闭功能时只停止这个 Nexu 专用 daemon。macOS TCC 对 Peekaboo 的稳定签名身份授权。后续若产品要求权限面板只显示 Tabby，再引入 Nexu 自有签名的 Swift helper 托管 Bridge。
+
+首次授权时，Controller 从 Peekaboo bridge 读取 Screen Recording、Accessibility 与 Event Synthesizing 状态。虽然 Peekaboo 将 Event Synthesizing 标为 optional，但当前 allowlist 暴露了后台 `type`、`hotkey` 等输入工具，因此 Nexu 将它提升为就绪前置条件。设置页逐项显示缺失权限；Screen Recording 通过 bridge 请求，Accessibility 与 Event Synthesizing 由实际签名的 Peekaboo 进程使用 `agent permission request-* --no-remote` 请求，然后打开对应系统设置页。授权状态仍以 bridge 的再次探测为准，不把“已打开设置页”当成成功。
+
+Windows 的 `cua-driver mcp` 只是 stdio proxy，不会代为启动 daemon。Controller 使用与 `NEXU_HOME` 绑定的独立 named pipe 启动 `cua-driver serve --embedded --parent-liveness-stdio --socket <pipe>`，保留 stdin 与子进程句柄，等待 `status` 成功后才持久化开关；Controller 退出时 pipe EOF 会终止 daemon，正常关闭还会发送幂等 `stop`。启动时若发现并非当前 Controller 管理的旧 daemon，会先停止再创建新实例，避免跨升级复用。MCP 以 `--embedded` 连接同一 pipe。Daemon 显式使用 CUA 的 `standard` 授权模式，不传 `--dangerously-bypass-approvals`；Nexu 还通过进程环境关闭 CUA 默认开启的产品 telemetry。Windows 本地开发不直接把 `.cmd` 交给无 shell 的 `execFile`，而是显式注入当前 Node executable，由既有 command spec 以 `node.exe + openclaw.mjs` 执行浏览器配对命令。
+
+### Orca 实现对比
+
+Orca 的 Computer Use 值得复用的是“动作结果必须显式区分 verified/unverified”的语义，而不是直接复用它的进程架构。Orca 在 macOS 14 及以上优先选择自带的 Swift 原生 provider，并把调用隔离到 IPC sidecar；`AXSetValue` 会读取实际值进行回验，合成键盘、快捷键和剪贴板输入则先校验窗口焦点，并明确标为 `unverified`。Linux 与 Windows 使用脚本 provider。Nexu 当前继续采用 macOS Peekaboo、Windows CUA 的平台组合，但在 OpenClaw plugin 与 Controller SSE 两层补同类完成证据约束。
+
+Orca 的浏览器控制不满足本项目“控制用户现有浏览器”的定义。它控制的是 Orca 内嵌 Electron `<webview>` 或主进程 offscreen `WebContents`，登录态位于 Electron partition；`agent-browser` bridge 通过 CDP 连接这些 Orca 自有页面，并主动剥离调用方传入的任意 `--cdp`/`--session` 目标。项目中没有发现 Chrome Extension、Native Messaging 或用户现有 Chrome 标签页配对路径。因此它可作为将来的内嵌/无头浏览器参考，但不能替换当前 OpenClaw extension-backed Chrome 方案；其 anti-detection patch 也不改变浏览器实例归属。
+
+## 配置模型
+
+`config.json` 增加：
+
+```json
+{
+  "localAutomation": {
+    "browser": { "enabled": false },
+    "computerUse": { "enabled": false }
+  }
+}
+```
+
+Controller 的 `GET /api/v1/runtime-config` 返回配置、当前安装状态和 `previewEnabled`；`PATCH /api/v1/runtime-config/local-automation` 更新开关并触发 OpenClaw 同步。开发环境默认允许 Preview；生产环境默认 fail-closed，仅在运行环境或打包时的 `build-config.json` 显式设置 `NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED=true` 时允许启用。Computer Use 在二进制不存在时保持不可启用并返回明确状态。
+
+## 安全策略
+
+- 默认关闭，用户必须在桌面设置中显式开启；未启用 Preview 的生产构建不会编译 Browser plugin、agent tool allowlist 或 Computer Use MCP，API 也拒绝开启、配对和权限请求。
+- 启用时必须先确认 daemon 就绪，再写入 MCP；禁用时先撤销 MCP 并重启 OpenClaw，再尽力停止 daemon。后端停止失败不能让已授权工具继续暴露。
+- Controller 将 bootstrap、配置更新、浏览器配对、系统权限请求和关闭动作串行化；禁用操作完成后不能有较早启动的权限请求重新拉起 daemon，也不能在配置已关闭后才返回新的配对密钥。
+- Browser 只控制由扩展主动共享的标签页。
+- CUA 与 Peekaboo MCP 使用工具 include allowlist，仅开放观察、应用/窗口枚举、点击、拖拽、输入、滚动和按键等基础工具。`nexu-toolcall-guard` 在调用入口维护同一份独立白名单并对未知 backend 工具 fail-closed，防止配置漂移意外开放 Peekaboo 的内置 `agent`、远程调试 `browser`、剪贴板或其他未审核能力；真实浏览器控制只能走用户主动配对的 OpenClaw extension profile。
+- 编译器不生成 `commands.ownerAllowFrom: ["*"]`，并关闭渠道 `/restart`。OpenClaw 2026.7.1 会把 wildcard command owner 解释为任意发送者都是 owner，进而暴露 `nodes`、`gateway` 与 `cron` 等 owner-only 工具，因此不能依赖文档中“wildcard 不足以成为 owner”的描述。
+- `nexu-toolcall-guard` 在 `before_tool_call` 按运行时会话来源阻断外部渠道和子会话对 Browser、`peekaboo__*`、`cua-driver__*`、`exec`、`process`、`nodes`、`gateway` 与 `cron` 的调用。本地桌面主会话可以调用已启用的 Browser/Computer Use 专用工具，但非沙箱运行始终编译为 `tools.exec.security="deny"`；不能通过 `open`、`osascript`、Orca CLI 或其他命令形态绕过设置开关。通用主机命令若恢复，必须拆成独立能力并接入结构化审批。
+- Computer Use 动作回执只证明事件已投递。守卫只接受三类完成证据：固定的 CUA 0.12.6 在可信结构化结果中返回顶层 `verified: true`，或增强 provider 的 verification 与本次 property/expected/element 参数一致；输入/赋值后从同一元素引用和 app/window/snapshot 读回实际 value；启动应用后观察到对应进程或窗口。任意文本中形似 `verified` 的 JSON 不作为证据。`set_value` 必须在 NFKC/case 归一后与完整 value 字段精确相等，`hello` 不能匹配 `hello world`，`default_value` 等近似字段名也不能伪装实际 value；清空字段只接受同元素的结构化空值或显式 `value=""`/`value=''`，非结构化文本还必须在行首或显式 ID 字段中精确绑定元素引用，`field`/`other-field`、`B1`/`B10` 之类的前缀碰撞不能作为证据；空字符串 `type` 不能证明动作，普通合成 `type` 可按输入片段验证。普通的同目标截图或状态读取不能证明 click、hotkey、scroll、drag、menu、dialog、Dock 或 window 动作达成意图，这些动作在 provider 提供动作专属后置条件前保持未验证。元素标签、标题或界面其他位置的同名文本不能充当 value；Peekaboo 使用真实 `on`/`snapshot` 参数，CUA 同时支持 `element_index`/`element_token`。失败动作只有完全相同的工具与参数重试成功后才可替换，其他成功动作不能掩盖它；同一应用的不同窗口分别跟踪。没有显式 app/window/snapshot 的 frontmost 动作保持未验证。Windows 的 `launch_app` 可以使用工具结果返回的 PID/窗口作为后续验证别名。CUA 的 `start_session`、`end_session`、`escalate_session` 属于 provider 生命周期，不作为用户界面变更。OpenClaw plugin 在写入终态消息前替换不实完成文本，Controller 对桌面 SSE 再独立把 `final` 降级为 `local_automation_unverified` 并冻结该 run 的失败判定，确保并发订阅者得到一致结论；`final`、`error`、`aborted` 只锁定对应 `runId`，Controller 与首次会话 UI 均丢弃该 run 晚到或重放的 delta/final，但会继续转发同一会话后续 run。会话发现轮询失败只影响页面提示，不占用 SSE 终态，因此随后合法 final 仍可完成跳转。该链路避免失败状态被重新覆盖为成功且不破坏长期 SSE 连接，并覆盖原始会话中“输入返回 `[ok]`、最终 `see` 超时、Bot 仍称完成”的故障。
+- 打包版 embedded web server 不反射 CORS Origin，并在 HTTP、OPTIONS 与 WebSocket upgrade 上拒绝非 loopback Host、外部 Origin 和 `Sec-Fetch-Site: cross-site`。Controller 直连端口执行同一类全局校验，防止恶意网页通过端口扫描或 DNS rebinding 读取配对密钥、调用写接口或建立设备控制 WebSocket。
+- 任何支付、发布、删除、发送消息、上传、账号或权限修改都属于高影响动作。当前 Nexu 聊天界面还没有承接 OpenClaw `requireApproval` 的结构化审批 UI，因此 Preview 明确显示该限制，且生产构建默认关闭；不能把模型提示描述成安全边界。稳定开放前仍须补齐审批事件与前端决策闭环。
+- 不记录页面内容、截图、输入文本、配对密钥或用户凭据。
+
+## 发布阶段
+
+1. Browser extension 完整闭环：配置、扩展路径、配对状态、真实标签页 smoke test。
+2. CUA sidecar：固定版本下载、校验、签名/TCC 验证、MCP probe。
+3. 强制审批与来源隔离：外部渠道 Browser/Computer Use 与非沙箱 host exec 已 fail-closed，桌面完成声明已有独立证据门；继续补不可伪造的 desktop capability、结构化审批 UI、语义级结果验证和工具风险分级。在审批闭环完成前仅通过显式环境变量开放 Preview，不进入稳定发布。
+4. 稳定性：崩溃恢复、超时、取消、审计事件和 Windows 验证。
+
+## 验收
+
+- 关闭两项能力时，不编译 Browser/Computer Use 工具；非沙箱 host `exec` 保持拒绝，不能成为隐式电脑控制后门。
+- 开启浏览器控制后，编译配置包含 `browser.defaultProfile = "chrome"`、extension profile、browser plugin 和 agent tool allowlist。
+- Chrome 扩展只操作用户已连接的真实标签页，不创建测试浏览器实例。
+- 开启 Computer Use 后，仅在有效绝对路径存在时写入 `mcp.servers.cua-driver`；缺失时 UI 明确显示未安装。
+- 已启用的 Peekaboo 在 controller 重启时自动恢复 Nexu 专用 daemon，关闭开关、回滚或退出 controller 时停止该 daemon。
+- macOS 15 以下即使持久化配置残留 `enabled=true`，也不会启动 Peekaboo 或编译 MCP，并且设置页仍允许关闭残留开关。
+- 新装 macOS 机器能在设置页分别完成 Screen Recording、Accessibility 与 Event Synthesizing 授权，刷新后由 bridge 状态显示为 ready。
+- 外部渠道和子会话对 Browser、Computer Use、`exec`、`process`、`nodes`、`gateway` 与 `cron` 的调用被工具守卫拒绝；本地桌面主会话只能使用已启用的专用 Browser/Computer Use 工具，非沙箱 host `exec` 仍被拒绝。
+- Computer Use 连续动作中任一动作没有 provider `verified` 或动作专属后置证据、输入/赋值缺少稳定元素引用、同元素实际 value 没有期望值、最终观察超时/失败，或失败动作只被不同成功动作掩盖时，桌面 SSE 返回 `local_automation_unverified`，持久化会话不得包含“已完成”声明；精确重试成功且取得上述强证据时仍允许正常完成。
+- embedded web server 和 Controller 直连端口对恶意 Host/Origin 的 HTTP、预检与 WebSocket 请求返回拒绝，响应中不包含反射的 credentialed CORS 头。
+- 权限请求或配对与关闭操作并发时保持线性一致；关闭完成后的最终配置和 daemon 状态均为关闭。
+- `pnpm generate-types`、`pnpm typecheck`、`pnpm lint`、相关 Vitest 和桌面 smoke test 通过。

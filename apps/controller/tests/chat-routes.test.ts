@@ -15,6 +15,8 @@ function createChatRoutesApp({
   sessionRunRegistry?: SessionRunRegistry;
 }) {
   const app = new OpenAPIHono<ControllerBindings>();
+  const eventHandlers = new Map<string, (payload: unknown) => void>();
+  const chatHandlers = new Set<(payload: unknown) => void>();
   registerChatRoutes(app, {
     env: {
       openclawStateDir: "/tmp/nexu-test-openclaw-state",
@@ -31,11 +33,26 @@ function createChatRoutesApp({
     },
     sessionRunRegistry,
     wsClient: {
-      onChatEvent: () => () => {},
+      on: (event: string, handler: (payload: unknown) => void) => {
+        eventHandlers.set(event, handler);
+      },
+      onChatEvent: (handler: (payload: unknown) => void) => {
+        chatHandlers.add(handler);
+        return () => {
+          chatHandlers.delete(handler);
+        };
+      },
       onChatSideResult: () => () => {},
     },
   } as unknown as ControllerContainer);
-  return { app, sessionRunRegistry };
+  return {
+    app,
+    sessionRunRegistry,
+    emitAgent: (payload: unknown) => eventHandlers.get("agent")?.(payload),
+    emitChat: (payload: unknown) => {
+      for (const handler of chatHandlers) handler(payload);
+    },
+  };
 }
 
 describe("chat routes", () => {
@@ -118,5 +135,217 @@ describe("chat routes", () => {
     });
     // The busy session must not be hit with a second concurrent turn.
     expect(sendToMainSession).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an unverified computer action as an SSE error", async () => {
+    const { app, emitAgent, emitChat } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+    });
+    const abortController = new AbortController();
+    const response = await app.request(
+      "/api/v1/chat/local/stream?botId=bot-1&sessionKey=agent%3Abot-1%3Amain&runId=run-guarded",
+      { signal: abortController.signal },
+    );
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    const decoder = new TextDecoder();
+    const connected = await reader?.read();
+    expect(decoder.decode(connected?.value)).toContain("event: connected");
+
+    emitAgent({
+      runId: "run-guarded",
+      stream: "tool",
+      data: {
+        phase: "start",
+        name: "peekaboo__type",
+        toolCallId: "type-guarded",
+        args: { app: "飞书", text: "锦鲤" },
+      },
+    });
+    emitAgent({
+      runId: "run-guarded",
+      stream: "tool",
+      data: {
+        phase: "result",
+        name: "peekaboo__type",
+        toolCallId: "type-guarded",
+        isError: false,
+      },
+    });
+    emitChat({
+      runId: "run-guarded",
+      sessionKey: "agent:bot-1:main",
+      seq: 7,
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "已完成。" }],
+      },
+    });
+
+    const guarded = await reader?.read();
+    const guardedText = decoder.decode(guarded?.value);
+    expect(guardedText).toContain("event: error");
+    expect(guardedText).toContain("local_automation_unverified");
+    expect(guardedText).not.toContain("event: final");
+
+    emitChat({
+      runId: "run-guarded",
+      sessionKey: "agent:bot-1:main",
+      seq: 8,
+      state: "delta",
+      deltaText: "迟到的成功文本",
+    });
+    emitChat({
+      runId: "run-guarded",
+      sessionKey: "agent:bot-1:main",
+      seq: 9,
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "已完成。" }],
+      },
+    });
+    const lateRead = reader?.read();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await reader?.cancel();
+    const late = await lateRead;
+    const lateText = decoder.decode(late?.value);
+    expect(lateText).not.toContain("迟到的成功文本");
+    expect(lateText).not.toContain("event: final");
+
+    abortController.abort();
+  });
+
+  it("keeps an unscoped session stream open for later runs", async () => {
+    const { app, emitChat } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+    });
+    const abortController = new AbortController();
+    const response = await app.request(
+      "/api/v1/chat/local/stream?botId=bot-1&sessionKey=agent%3Abot-1%3Amain",
+      { signal: abortController.signal },
+    );
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    const decoder = new TextDecoder();
+    const connected = await reader?.read();
+    expect(decoder.decode(connected?.value)).toContain("event: connected");
+
+    emitChat({
+      runId: "run-first",
+      sessionKey: "agent:bot-1:main",
+      seq: 1,
+      state: "final",
+      message: { role: "assistant", content: [] },
+    });
+    const firstFinal = decoder.decode((await reader?.read())?.value);
+    expect(firstFinal).toContain("event: final");
+    expect(firstFinal).toContain("run-first");
+
+    emitChat({
+      runId: "run-first",
+      sessionKey: "agent:bot-1:main",
+      seq: 2,
+      state: "delta",
+      deltaText: "late-first-run",
+    });
+    emitChat({
+      runId: "run-second",
+      sessionKey: "agent:bot-1:main",
+      seq: 1,
+      state: "delta",
+      deltaText: "second-run",
+    });
+    const secondDelta = decoder.decode((await reader?.read())?.value);
+    expect(secondDelta).toContain("event: delta");
+    expect(secondDelta).toContain("second-run");
+    expect(secondDelta).not.toContain("late-first-run");
+
+    emitChat({
+      runId: "run-second",
+      sessionKey: "agent:bot-1:main",
+      seq: 2,
+      state: "final",
+      message: { role: "assistant", content: [] },
+    });
+    const secondFinal = decoder.decode((await reader?.read())?.value);
+    expect(secondFinal).toContain("event: final");
+    expect(secondFinal).toContain("run-second");
+
+    await reader?.cancel();
+    abortController.abort();
+  });
+
+  it("sends the same guarded failure to every SSE subscriber", async () => {
+    const { app, emitAgent, emitChat } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+    });
+    const firstAbort = new AbortController();
+    const secondAbort = new AbortController();
+    const url =
+      "/api/v1/chat/local/stream?botId=bot-1&sessionKey=agent%3Abot-1%3Amain&runId=run-shared";
+    const firstResponse = await app.request(url, {
+      signal: firstAbort.signal,
+    });
+    const secondResponse = await app.request(url, {
+      signal: secondAbort.signal,
+    });
+    const firstReader = firstResponse.body?.getReader();
+    const secondReader = secondResponse.body?.getReader();
+    expect(firstReader).toBeDefined();
+    expect(secondReader).toBeDefined();
+    const decoder = new TextDecoder();
+    expect(decoder.decode((await firstReader?.read())?.value)).toContain(
+      "event: connected",
+    );
+    expect(decoder.decode((await secondReader?.read())?.value)).toContain(
+      "event: connected",
+    );
+
+    emitAgent({
+      runId: "run-shared",
+      stream: "tool",
+      data: {
+        phase: "start",
+        name: "peekaboo__click",
+        toolCallId: "click-shared",
+        args: { app: "Safari", on: "submit" },
+      },
+    });
+    emitAgent({
+      runId: "run-shared",
+      stream: "tool",
+      data: {
+        phase: "result",
+        name: "peekaboo__click",
+        toolCallId: "click-shared",
+        isError: false,
+      },
+    });
+    emitChat({
+      runId: "run-shared",
+      sessionKey: "agent:bot-1:main",
+      seq: 1,
+      state: "final",
+      message: { role: "assistant", content: [] },
+    });
+
+    for (const guardedText of [
+      decoder.decode((await firstReader?.read())?.value),
+      decoder.decode((await secondReader?.read())?.value),
+    ]) {
+      expect(guardedText).toContain("event: error");
+      expect(guardedText).toContain("local_automation_unverified");
+      expect(guardedText).not.toContain("event: final");
+    }
+
+    await firstReader?.cancel();
+    await secondReader?.cancel();
+    firstAbort.abort();
+    secondAbort.abort();
   });
 });

@@ -9,6 +9,7 @@ import {
   resolveSlimclawRuntimePaths,
 } from "@nexu/slimclaw";
 import { getWorkspaceRoot } from "../../../shared/workspace-paths";
+import { prepareComputerUseSidecar } from "../../runtime/computer-use-sidecar";
 import { ensurePackagedOpenclawSidecar } from "../../runtime/manifests";
 
 const execFileAsync = promisify(execFile);
@@ -245,6 +246,8 @@ export async function resolveLaunchdPaths(
   openclawCwd: string;
   openclawBinPath: string;
   openclawExtensionsDir: string;
+  computerUseBackend: "peekaboo" | "cua-driver" | null;
+  computerUseBinPath: string | null;
 }> {
   const startedAt = Date.now();
   if (isPackaged) {
@@ -292,6 +295,12 @@ export async function resolveLaunchdPaths(
       openclawSidecarRoot,
       { requirePrepared: false },
     );
+    const computerUse = prepareComputerUseSidecar({
+      sourceRoot: path.join(runtimeDir, "computer-use"),
+      runtimeRoot: path.join(nexuHome, "runtime"),
+      isPackaged: true,
+      log,
+    });
     logDuration(log, "packaged path resolution", startedAt);
 
     return {
@@ -302,6 +311,8 @@ export async function resolveLaunchdPaths(
       openclawCwd: openclawSidecarRoot,
       openclawBinPath: openclawArtifacts.binPath,
       openclawExtensionsDir: openclawArtifacts.builtinExtensionsDir,
+      computerUseBackend: computerUse.backend,
+      computerUseBinPath: computerUse.binPath,
     };
   }
 
@@ -309,6 +320,12 @@ export async function resolveLaunchdPaths(
   const slimclawRuntimePaths = resolveSlimclawRuntimePaths({
     workspaceRoot: repoRoot,
     requirePrepared: false,
+  });
+  const computerUse = prepareComputerUseSidecar({
+    sourceRoot: path.join(repoRoot, ".tmp", "sidecars", "computer-use"),
+    runtimeRoot: path.join(repoRoot, ".tmp", "desktop", "nexu-home", "runtime"),
+    isPackaged: false,
+    log,
   });
   logDuration(log, "dev path resolution", startedAt);
   return {
@@ -325,5 +342,7 @@ export async function resolveLaunchdPaths(
     openclawCwd: slimclawRuntimePaths.runtimeRoot,
     openclawBinPath: slimclawRuntimePaths.binPath,
     openclawExtensionsDir: slimclawRuntimePaths.builtinExtensionsDir,
+    computerUseBackend: computerUse.backend,
+    computerUseBinPath: computerUse.binPath,
   };
 }

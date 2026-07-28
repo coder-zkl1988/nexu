@@ -15,6 +15,7 @@ import {
 } from "@nexu/dev-utils";
 import { ensure } from "@nexu/shared";
 
+import { ensureComputerUseDevSidecarPrepared } from "../shared/computer-use-sidecar.js";
 import {
   createControllerInjectedEnv,
   getToolsDevRuntimeConfig,
@@ -245,6 +246,13 @@ export async function startControllerDevProcess(options: {
   sessionId: string;
 }): Promise<ControllerDevSnapshot> {
   await ensureOpenclawReadyForController();
+  const computerUseSidecar = await ensureComputerUseDevSidecarPrepared();
+  if (computerUseSidecar.status !== "unsupported") {
+    logger.info("[preflight] Computer Use sidecar ready", {
+      status: computerUseSidecar.status,
+      binaryPath: computerUseSidecar.binaryPath,
+    });
+  }
 
   const existingSnapshot = await getCurrentControllerDevSnapshot();
 

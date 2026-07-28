@@ -1,8 +1,9 @@
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { DesktopRuntimeRoots, PlatformCapabilitiesArgs } from "../types";
 
-function expandHomePath(input: string): string {
-  return input.replace(/^~/, process.env.HOME ?? "");
+export function expandHomePath(input: string): string {
+  return input.replace(/^~(?=$|[\\/])/, homedir());
 }
 
 export function resolveManagedRuntimeRoots({

@@ -72,6 +72,15 @@ async function main(): Promise<void> {
     }
 
     try {
+      await container.localAutomationService.stop();
+    } catch (error: unknown) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "controller shutdown local automation cleanup failed",
+      );
+    }
+
+    try {
       await container.openclawProcess.stop();
     } catch (error: unknown) {
       logger.warn(
@@ -95,6 +104,12 @@ async function main(): Promise<void> {
 
     try {
       container.deviceMirrorProxy.close();
+    } catch {
+      // Best-effort cleanup on bootstrap failure.
+    }
+
+    try {
+      await container.localAutomationService.stop();
     } catch {
       // Best-effort cleanup on bootstrap failure.
     }

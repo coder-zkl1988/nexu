@@ -52,6 +52,7 @@ import {
 } from "./ipc";
 import { getDesktopRuntimePlatformAdapter } from "./platforms";
 import { resolveLaunchdPaths } from "./platforms/mac/launchd-paths";
+import { expandHomePath } from "./platforms/shared/runtime-roots";
 import type { PrepareForUpdateInstallArgs } from "./platforms/types";
 import { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
 import {
@@ -1305,10 +1306,7 @@ async function runLaunchdColdStart(): Promise<void> {
   sendSetupProgress("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
-  const nexuHome = runtimeConfig.paths.nexuHome.replace(
-    /^~/,
-    process.env.HOME ?? "",
-  );
+  const nexuHome = expandHomePath(runtimeConfig.paths.nexuHome);
   const runtimeRoots = runtimePlatformAdapter.capabilities.resolveRuntimeRoots({
     app,
     electronRoot,
@@ -1386,6 +1384,8 @@ async function runLaunchdColdStart(): Promise<void> {
     platformTemplatesDir,
     openclawBinPath,
     openclawExtensionsDir,
+    localAutomationPreviewEnabled:
+      isDev || runtimeConfig.localAutomationPreviewEnabled ? "true" : undefined,
     skillNodePath,
     openclawTmpDir,
     proxyEnv,

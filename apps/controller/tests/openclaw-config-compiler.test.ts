@@ -30,6 +30,7 @@ function createEnv(overrides: Record<string, unknown> = {}): ControllerEnv {
     runtimeSyncIntervalMs: 2000,
     runtimeHealthIntervalMs: 5000,
     defaultModelId: "link/gemini-3-flash-preview",
+    localAutomationPreviewEnabled: true,
     ...overrides,
   } as unknown as ControllerEnv;
 }
@@ -173,11 +174,217 @@ describe("compileOpenClawConfig", () => {
     }
   });
 
+  it("pins the control UI to explicit loopback origins", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.gateway.controlUi?.allowedOrigins).toEqual([
+      "http://localhost:5173",
+      "http://127.0.0.1:18789",
+      "http://localhost:18789",
+    ]);
+    expect(
+      result.gateway.controlUi?.dangerouslyAllowHostHeaderOriginFallback,
+    ).toBe(false);
+  });
+
+  it("keeps local automation absent when the persisted config predates it", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+
+    expect(result.browser).toBeUndefined();
+    expect(result.mcp).toBeUndefined();
+    expect(result.tools?.exec?.security).toBe("deny");
+    expect(result.tools?.deny).toEqual(["exec", "process"]);
+    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
+  });
+
+  it("does not grant external command ownership or channel restarts", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+
+    expect(result.commands?.restart).toBe(false);
+    expect(result.commands?.ownerAllowFrom).toBeUndefined();
+  });
+
+  it("enables extension-backed control of explicitly paired Chrome tabs", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: true },
+          computerUse: { enabled: false },
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(result.browser).toEqual({
+      enabled: true,
+      evaluateEnabled: false,
+      defaultProfile: "chrome",
+      profiles: {
+        chrome: { driver: "extension", color: "#0F766E" },
+      },
+    });
+    expect(result.plugins?.allow).toContain("browser");
+    expect(result.plugins?.entries?.browser).toEqual({ enabled: true });
+    expect(result.agents.list[0]?.tools?.alsoAllow).toContain("browser");
+    expect(result.tools?.exec?.security).toBe("deny");
+    expect(result.tools?.deny).toEqual(["exec", "process"]);
+  });
+
+  it("fails closed when local automation preview is disabled", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: true },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        localAutomationPreviewEnabled: false,
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+
+    expect(result.browser).toBeUndefined();
+    expect(result.mcp).toBeUndefined();
+    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.plugins?.entries?.browser).toBeUndefined();
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(
+      "cua-driver__click",
+    );
+    expect(result.tools?.exec?.security).toBe("deny");
+  });
+
+  it("fails closed when the local automation preview flag is missing", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: true },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        localAutomationPreviewEnabled: undefined,
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+
+    expect(result.browser).toBeUndefined();
+    expect(result.mcp).toBeUndefined();
+  });
+
+  it("registers the signed Peekaboo binary as the macOS MCP backend", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        computerUseBackend: "peekaboo",
+        computerUseBin: process.execPath,
+      }),
+    );
+    const server = result.mcp?.servers.peekaboo as
+      | Record<string, unknown>
+      | undefined;
+
+    expect(server).toMatchObject({
+      command: process.execPath,
+      transport: "stdio",
+    });
+    expect(server?.args).toEqual([
+      "mcp",
+      "serve",
+      "--transport",
+      "stdio",
+      "--bridge-socket",
+      "/tmp/nexu-test/runtime/peekaboo/daemon.sock",
+    ]);
+    expect(server?.toolFilter).toMatchObject({
+      include: expect.arrayContaining(["see", "click", "drag", "dialog"]),
+    });
+    expect(result.tools?.exec?.security).toBe("deny");
+  });
+
+  it("does not expose Peekaboo when no private bridge socket can fit", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        computerUseBackend: "peekaboo",
+        computerUseBin: process.execPath,
+        computerUseBridgeSocket: null,
+      }),
+    );
+
+    expect(result.mcp).toBeUndefined();
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(
+      "peekaboo__see",
+    );
+  });
+
+  it("registers cua-driver on Windows and omits a missing sidecar", () => {
+    const enabledConfig = createConfig({
+      localAutomation: {
+        browser: { enabled: false },
+        computerUse: { enabled: true },
+      },
+    });
+    const available = compileOpenClawConfig(
+      enabledConfig,
+      createEnv({
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+    const unavailable = compileOpenClawConfig(
+      enabledConfig,
+      createEnv({
+        computerUseBackend: "cua-driver",
+        computerUseBin: "/definitely/missing/cua-driver.exe",
+      }),
+    );
+
+    expect(available.mcp?.servers["cua-driver"]).toMatchObject({
+      command: process.execPath,
+      args: [
+        "mcp",
+        "--embedded",
+        "--socket",
+        "/tmp/nexu-test/runtime/cua-driver/daemon.sock",
+      ],
+      env: {
+        CUA_DRIVER_EMBEDDED: "1",
+        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
+      },
+      toolFilter: {
+        include: expect.arrayContaining([
+          "get_desktop_state",
+          "get_window_state",
+          "type_text",
+          "press_key",
+        ]),
+      },
+    });
+    expect(unavailable.mcp).toBeUndefined();
+    expect(available.tools?.exec?.security).toBe("deny");
+    expect(available.tools?.deny).toEqual(["exec", "process"]);
+  });
+
   it("keeps command execution inside an explicitly enabled sandbox", () => {
     const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
     process.env.SANDBOX_ENABLED = "true";
     try {
       const result = compileOpenClawConfig(createConfig(), createEnv());
+
       expect(result.tools?.exec).toMatchObject({
         security: "full",
         host: "sandbox",
@@ -192,24 +399,22 @@ describe("compileOpenClawConfig", () => {
     }
   });
 
-  it("does not grant external command ownership or channel restarts", () => {
-    const result = compileOpenClawConfig(createConfig(), createEnv());
-    expect(result.commands?.restart).toBe(false);
-    // A wildcard owner promotes every sender to owner in OpenClaw 2026.7.1,
-    // which hands `nodes`/`gateway`/`cron` to any channel.
-    expect(result.commands?.ownerAllowFrom).toBeUndefined();
-  });
+  it("does not expose persisted Computer Use on an unsupported platform", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        computerUseBackend: "peekaboo",
+        computerUseBin: process.execPath,
+        computerUsePlatformSupported: false,
+      }),
+    );
 
-  it("pins the control UI to explicit loopback origins", () => {
-    const result = compileOpenClawConfig(createConfig(), createEnv());
-    expect(result.gateway.controlUi?.allowedOrigins).toEqual([
-      "http://localhost:5173",
-      "http://127.0.0.1:18789",
-      "http://localhost:18789",
-    ]);
-    expect(
-      result.gateway.controlUi?.dangerouslyAllowHostHeaderOriginFallback,
-    ).toBe(false);
+    expect(result.mcp).toBeUndefined();
   });
 
   it("marks the desktop defaultBotId agent as the default agent", () => {
@@ -341,6 +546,14 @@ describe("compileOpenClawConfig", () => {
 
     expect(result.gateway.auth.mode).toBe("token");
     expect(result.gateway.auth.token).toBe("token-123");
+    expect(result.gateway.controlUi?.allowedOrigins).toEqual([
+      "http://localhost:5173",
+      "http://127.0.0.1:18789",
+      "http://localhost:18789",
+    ]);
+    expect(
+      result.gateway.controlUi?.dangerouslyAllowHostHeaderOriginFallback,
+    ).toBe(false);
     // bot modelId "anthropic/claude-sonnet-4" matches the proxied anthropic
     // descriptor (byok_anthropic); namespace prefix is stripped from model id.
     expect(result.agents.defaults?.model).toEqual({

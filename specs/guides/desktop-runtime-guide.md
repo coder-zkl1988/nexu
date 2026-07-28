@@ -74,6 +74,7 @@ On startup, `bootstrapWithLaunchd()` checks `runtime-ports.json` for a previous 
 - `appVersion` — prevents attaching to services from an older build
 - `userDataPath` — prevents cross-environment attach
 - `buildSource` — prevents stable/beta/dev cross-attach
+- `localAutomationPreviewEnabled` — prevents a stable process from retaining an earlier Preview opt-in; missing legacy metadata forces a fresh start
 - `openclawStateDir` — prevents state directory mismatch
 - `NEXU_HOME` — prevents home directory mismatch
 
@@ -120,6 +121,10 @@ The controller is bundled into the desktop distributable as a sidecar. The scrip
 ```bash
 du -sh node_modules/.pnpm/<pkg>@*/node_modules/<pkg>/
 ```
+
+### Local HTTP and WebSocket boundary
+
+The packaged embedded web server and the controller are local control-plane endpoints, not public web APIs. Both must reject non-loopback Host values, non-loopback browser Origin values, and cross-site Fetch Metadata before forwarding API or WebSocket traffic. The embedded server must never reflect arbitrary origins with `Access-Control-Allow-Credentials: true`. Keep the controller guard on its direct port as well as the embedded proxy: binding to `127.0.0.1` and enabling CORS is not sufficient protection against DNS rebinding.
 If total size (including transitive deps) exceeds ~5 MB, consider alternatives: PATH-based invocation, optional dependencies, or lazy runtime download.
 
 ## System proxy behavior

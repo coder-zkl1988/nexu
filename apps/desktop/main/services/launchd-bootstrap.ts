@@ -23,6 +23,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 import { getWorkspaceRoot } from "../../shared/workspace-paths";
+import { prepareComputerUseSidecar } from "../runtime/computer-use-sidecar";
 import { ensurePackagedOpenclawSidecar } from "../runtime/manifests";
 import {
   type EmbeddedWebServer,
@@ -88,6 +89,12 @@ export interface LaunchdBootstrapEnv {
   openclawBinPath: string;
   /** OpenClaw extensions directory */
   openclawExtensionsDir: string;
+  /** Platform-specific Computer Use backend */
+  computerUseBackend?: "peekaboo" | "cua-driver" | null;
+  /** Absolute path to the materialized Computer Use sidecar */
+  computerUseBinPath?: string | null;
+  /** Explicit opt-in for local automation in production builds */
+  localAutomationPreviewEnabled?: string;
   /** Skill NODE_PATH for controller module resolution */
   skillNodePath: string;
   /** TMPDIR for openclaw temp files */
@@ -154,6 +161,18 @@ interface RuntimePortsMetadata {
   userDataPath?: string;
   /** Build source identifier (e.g. "stable", "beta", "dev") — used to prevent cross-attach. */
   buildSource?: string;
+  /** Effective local automation Preview capability for the running controller. */
+  localAutomationPreviewEnabled?: boolean;
+}
+
+function resolveEffectiveLocalAutomationPreview(
+  env: Pick<LaunchdBootstrapEnv, "isDev" | "localAutomationPreviewEnabled">,
+): boolean {
+  return (
+    env.isDev ||
+    env.localAutomationPreviewEnabled === "true" ||
+    env.localAutomationPreviewEnabled === "1"
+  );
 }
 
 /**
@@ -712,6 +731,8 @@ export async function bootstrapWithLaunchd(
   const log = env.log ?? console.log;
   const logDir = await ensureLogDir(env.nexuHome);
   const plistDir = env.plistDir ?? getDefaultPlistDir(env.isDev);
+  const localAutomationPreviewEnabled =
+    resolveEffectiveLocalAutomationPreview(env);
 
   // Create launchd manager
   const launchd = new LaunchdManager({
@@ -752,6 +773,9 @@ export async function bootstrapWithLaunchd(
     platformTemplatesDir: env.platformTemplatesDir,
     openclawBinPath: env.openclawBinPath,
     openclawExtensionsDir: env.openclawExtensionsDir,
+    computerUseBackend: env.computerUseBackend,
+    computerUseBinPath: env.computerUseBinPath,
+    localAutomationPreviewEnabled: env.localAutomationPreviewEnabled,
     skillNodePath: env.skillNodePath,
     openclawTmpDir: env.openclawTmpDir,
     proxyEnv: env.proxyEnv,
@@ -879,27 +903,30 @@ export async function bootstrapWithLaunchd(
     // and current env, they must match. A mismatch means two different
     // builds share the same version (e.g. stable vs beta), and we must
     // not cross-attach.
+    const previewCapabilityMismatch =
+      recovered.localAutomationPreviewEnabled !== localAutomationPreviewEnabled;
     const identityMismatch =
       !versionMismatch &&
-      (
-        [
+      (previewCapabilityMismatch ||
+        (
           [
-            "openclawStateDir",
-            recovered.openclawStateDir,
-            env.openclawStateDir,
-          ],
-          ["userDataPath", recovered.userDataPath, env.userDataPath],
-          ["buildSource", recovered.buildSource, env.buildSource],
-        ] as const
-      ).some(
-        ([, recoveredVal, envVal]) =>
-          recoveredVal != null && envVal != null && recoveredVal !== envVal,
-      );
+            [
+              "openclawStateDir",
+              recovered.openclawStateDir,
+              env.openclawStateDir,
+            ],
+            ["userDataPath", recovered.userDataPath, env.userDataPath],
+            ["buildSource", recovered.buildSource, env.buildSource],
+          ] as const
+        ).some(
+          ([, recoveredVal, envVal]) =>
+            recoveredVal != null && envVal != null && recoveredVal !== envVal,
+        ));
 
     if (versionMismatch || identityMismatch) {
       const reason = versionMismatch
         ? `App version changed (${recovered.appVersion} → ${env.appVersion})`
-        : "Build identity mismatch (openclawStateDir, userDataPath, or buildSource differ)";
+        : "Build identity mismatch (runtime roots, build source, or Preview capability differ)";
       console.log(
         `[bootstrap] teardown: ${reason} (controller=${controllerRunning ? "running" : "stopped"} openclaw=${openclawRunning ? "running" : "stopped"})`,
       );
@@ -1374,6 +1401,7 @@ export async function bootstrapWithLaunchd(
     openclawStateDir: env.openclawStateDir,
     userDataPath: env.userDataPath,
     buildSource: env.buildSource,
+    localAutomationPreviewEnabled,
   });
 
   return {
@@ -2270,6 +2298,8 @@ export async function resolveLaunchdPaths(
   openclawCwd: string;
   openclawBinPath: string;
   openclawExtensionsDir: string;
+  computerUseBackend: "peekaboo" | "cua-driver" | null;
+  computerUseBinPath: string | null;
 }> {
   if (isPackaged) {
     const runtimeDir = path.join(resourcesPath, "runtime");
@@ -2377,6 +2407,12 @@ export async function resolveLaunchdPaths(
       openclawSidecarRoot,
       { requirePrepared: false },
     );
+    const computerUse = prepareComputerUseSidecar({
+      sourceRoot: path.join(runtimeDir, "computer-use"),
+      runtimeRoot: path.join(nexuHome, "runtime"),
+      isPackaged: true,
+      log,
+    });
 
     return {
       nodePath,
@@ -2388,6 +2424,8 @@ export async function resolveLaunchdPaths(
       openclawCwd: openclawSidecarRoot,
       openclawBinPath: openclawArtifacts.binPath,
       openclawExtensionsDir: openclawArtifacts.builtinExtensionsDir,
+      computerUseBackend: computerUse.backend,
+      computerUseBinPath: computerUse.binPath,
     };
   }
 
@@ -2396,6 +2434,12 @@ export async function resolveLaunchdPaths(
   const slimclawRuntimePaths = resolveSlimclawRuntimePaths({
     workspaceRoot: repoRoot,
     requirePrepared: false,
+  });
+  const computerUse = prepareComputerUseSidecar({
+    sourceRoot: path.join(repoRoot, ".tmp", "sidecars", "computer-use"),
+    runtimeRoot: path.join(repoRoot, ".tmp", "desktop", "nexu-home", "runtime"),
+    isPackaged: false,
+    log: console.log,
   });
   return {
     nodePath: process.execPath,
@@ -2411,5 +2455,7 @@ export async function resolveLaunchdPaths(
     openclawCwd: slimclawRuntimePaths.runtimeRoot,
     openclawBinPath: slimclawRuntimePaths.binPath,
     openclawExtensionsDir: slimclawRuntimePaths.builtinExtensionsDir,
+    computerUseBackend: computerUse.backend,
+    computerUseBinPath: computerUse.binPath,
   };
 }

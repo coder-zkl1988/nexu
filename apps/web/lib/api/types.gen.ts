@@ -5806,6 +5806,29 @@ export type GetApiV1RuntimeConfigResponses = {
             rpcPort?: number;
             localIp?: string;
         };
+        localAutomation: {
+            browser?: {
+                enabled?: boolean;
+            };
+            computerUse?: {
+                enabled?: boolean;
+            };
+        };
+        localAutomationStatus: {
+            previewEnabled: boolean;
+            browserExtensionAvailable: boolean;
+            browserExtensionPath: string | null;
+            computerUseAvailable: boolean;
+            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | 'runtime-path-too-long' | null;
+            computerUseBinaryPath: string | null;
+            computerUseBackend: 'peekaboo' | 'cua-driver' | null;
+            computerUsePermissionState: 'ready' | 'permission-required' | 'unavailable' | 'unknown' | 'disabled';
+            computerUsePermissions: Array<{
+                name: string;
+                granted: boolean;
+                required: boolean;
+            }>;
+        };
     };
 };
 
@@ -5844,6 +5867,119 @@ export type PutApiV1RuntimeConfigResponses = {
 };
 
 export type PutApiV1RuntimeConfigResponse = PutApiV1RuntimeConfigResponses[keyof PutApiV1RuntimeConfigResponses];
+
+export type PatchApiV1RuntimeConfigLocalAutomationData = {
+    body?: {
+        browser?: {
+            enabled: boolean;
+        };
+        computerUse?: {
+            enabled: boolean;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation';
+};
+
+export type PatchApiV1RuntimeConfigLocalAutomationResponses = {
+    /**
+     * Updated local automation settings
+     */
+    200: {
+        localAutomation: {
+            browser?: {
+                enabled?: boolean;
+            };
+            computerUse?: {
+                enabled?: boolean;
+            };
+        };
+    };
+};
+
+export type PatchApiV1RuntimeConfigLocalAutomationResponse = PatchApiV1RuntimeConfigLocalAutomationResponses[keyof PatchApiV1RuntimeConfigLocalAutomationResponses];
+
+export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation/browser-pairing';
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses = {
+    /**
+     * Local Chrome extension pairing string
+     */
+    200: {
+        pairingString: string;
+        relayPort: number;
+    };
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponse = PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses[keyof PostApiV1RuntimeConfigLocalAutomationBrowserPairingResponses];
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation/computer-use/accessibility-permission';
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponses = {
+    /**
+     * Requested macOS Accessibility permission
+     */
+    200: {
+        requested: true;
+    };
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponse = PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUseAccessibilityPermissionResponses];
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission';
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponses = {
+    /**
+     * Requested macOS Event Synthesizing permission
+     */
+    200: {
+        requested: true;
+    };
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponse = PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUseEventSynthesizingPermissionResponses];
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission';
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponses = {
+    /**
+     * Requested macOS Screen Recording permission
+     */
+    200: {
+        requested: true;
+    };
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponse = PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUseScreenRecordingPermissionResponses];
 
 export type PatchApiV1RuntimeConfigDeviceControlData = {
     body?: {

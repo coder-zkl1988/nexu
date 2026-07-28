@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import dotenv from "dotenv";
 import { z } from "zod";
+import {
+  createComputerUseInstanceId,
+  resolvePeekabooBridgeSocket,
+  supportsComputerUseBackend,
+} from "../lib/computer-use-platform.js";
 import { expandHomeDir } from "../lib/path-utils.js";
 
 dotenv.config();
@@ -103,6 +108,9 @@ const envSchema = z.object({
   OPENCLAW_GATEWAY_PORT: z.coerce.number().int().positive().default(18789),
   OPENCLAW_GATEWAY_TOKEN: z.string().optional(),
   OPENCLAW_BIN: z.string().default("openclaw"),
+  NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: booleanWithDefault(false),
+  COMPUTER_USE_BACKEND: z.enum(["peekaboo", "cua-driver"]).optional(),
+  COMPUTER_USE_BIN: z.string().optional(),
   OPENCLAW_LAUNCHD_LABEL: z.string().optional(),
   LITELLM_BASE_URL: z.string().optional(),
   LITELLM_API_KEY: z.string().optional(),
@@ -130,6 +138,8 @@ const openclawGatewayPort =
   parseUrlPort(openclawBaseUrl) ?? parsed.OPENCLAW_GATEWAY_PORT;
 
 const nexuHomeDir = expandHomeDir(parsed.NEXU_HOME);
+const computerUseBackend = parsed.COMPUTER_USE_BACKEND ?? null;
+const computerUseInstanceId = createComputerUseInstanceId(nexuHomeDir);
 const openclawStateDir = expandHomeDir(
   parsed.OPENCLAW_STATE_DIR ??
     path.join(nexuHomeDir, "runtime", "openclaw", "state"),
@@ -220,6 +230,27 @@ export const env = {
   openclawOwnershipMode,
   openclawBaseUrl,
   openclawBin: parsed.OPENCLAW_BIN,
+  localAutomationPreviewEnabled:
+    parsed.NODE_ENV !== "production" ||
+    parsed.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED,
+  computerUseBackend,
+  computerUsePlatformSupported: supportsComputerUseBackend(
+    computerUseBackend,
+    process.platform,
+    os.release(),
+  ),
+  computerUseBin: parsed.COMPUTER_USE_BIN
+    ? expandHomeDir(parsed.COMPUTER_USE_BIN)
+    : null,
+  computerUseBridgeSocket: resolvePeekabooBridgeSocket({
+    nexuHomeDir,
+    platform: process.platform,
+    userHomeDir: os.homedir(),
+  }),
+  computerUseCuaSocket:
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\nexu-cua-driver-${computerUseInstanceId}`
+      : path.join(nexuHomeDir, "runtime", "cua-driver", "daemon.sock"),
   openclawLogDir: expandHomeDir(
     parsed.OPENCLAW_LOG_DIR ?? path.join(nexuHomeDir, "logs", "openclaw"),
   ),

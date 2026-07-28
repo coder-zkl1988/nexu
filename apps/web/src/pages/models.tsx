@@ -99,7 +99,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
-import { DeviceControlSettingsSection } from "./devices/settings-section";
+import { LocalAutomationSettingsSection } from "./local-automation-settings-section";
 import { markSetupComplete } from "./welcome";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -1165,7 +1165,7 @@ function _GeneralSettings() {
         </div>
       ) : null}
 
-      <DeviceControlSettingsSection />
+      <LocalAutomationSettingsSection />
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface-1">
         <div className="border-b border-border px-5 py-4">

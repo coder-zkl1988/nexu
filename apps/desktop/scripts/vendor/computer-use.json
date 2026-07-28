@@ -1,0 +1,30 @@
+{
+  "mac": {
+    "backend": "peekaboo",
+    "version": "3.9.8",
+    "release": "https://github.com/openclaw/Peekaboo/releases/tag/v3.9.8",
+    "license": "MIT",
+    "file": "peekaboo-macos-universal.tar.gz",
+    "sha256": "0336348cb690ccd10834dfb571daf79381dbc06f9a1fc58b8642cbeb388993ed"
+  },
+  "win-arm64": {
+    "backend": "cua-driver",
+    "version": "0.12.6",
+    "release": "https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.12.6",
+    "license": "MIT",
+    "licenseUrl": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.12.6/LICENSE.md",
+    "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "file": "cua-driver-rs-0.12.6-windows-arm64-binary.zip",
+    "sha256": "f8df8f5394a85dea8bd3764030d89ef73c040398f14e4a19d2ce7fd0e7fb7db3"
+  },
+  "win-x64": {
+    "backend": "cua-driver",
+    "version": "0.12.6",
+    "release": "https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.12.6",
+    "license": "MIT",
+    "licenseUrl": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.12.6/LICENSE.md",
+    "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "file": "cua-driver-rs-0.12.6-windows-x86_64-binary.zip",
+    "sha256": "d18a0ca02314c6dc7dfdfbb20aac8f52c7b1547308f182546a9252a991d4d0dd"
+  }
+}

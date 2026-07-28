@@ -23,6 +23,7 @@ import { ChannelFallbackService } from "../src/services/channel-fallback-service
 import { ChannelService } from "../src/services/channel-service.js";
 import { DesktopLocalService } from "../src/services/desktop-local-service.js";
 import { IntegrationService } from "../src/services/integration-service.js";
+import { LocalAutomationService } from "../src/services/local-automation-service.js";
 import { LocalUserService } from "../src/services/local-user-service.js";
 import { ModelProviderService } from "../src/services/model-provider-service.js";
 import { OpenClawAuthService } from "../src/services/openclaw-auth-service.js";
@@ -195,6 +196,12 @@ async function createTestContainer(
     runtimeModelStateService,
     modelProviderService,
     integrationService: new IntegrationService(configStore),
+    localAutomationService: new LocalAutomationService(
+      env,
+      configStore,
+      openclawSyncService,
+      openclawProcess,
+    ),
     localUserService: new LocalUserService(configStore),
     desktopLocalService: new DesktopLocalService(
       configStore,
@@ -241,6 +248,49 @@ describe("controller route compatibility", () => {
     expect(meResponse.status).toBe(200);
     const me = (await meResponse.json()) as { email: string };
     expect(me.email).toBe("desktop@nexu.local");
+  });
+
+  it("rejects cross-site compatible automation POSTs without JSON", async () => {
+    const app = createApp(container);
+    const paths = [
+      "/api/v1/runtime-config/local-automation/browser-pairing",
+      "/api/v1/runtime-config/local-automation/computer-use/screen-recording-permission",
+      "/api/v1/runtime-config/local-automation/computer-use/accessibility-permission",
+      "/api/v1/runtime-config/local-automation/computer-use/event-synthesizing-permission",
+    ];
+
+    for (const requestPath of paths) {
+      const response = await app.request(requestPath, { method: "POST" });
+      expect(response.status).toBe(415);
+    }
+  });
+
+  it("rejects DNS rebinding hosts before local automation handlers", async () => {
+    const pairingSpy = vi
+      .spyOn(container.localAutomationService, "createBrowserPairing")
+      .mockResolvedValue({
+        pairingString: "openclaw-browser://secret",
+        relayPort: 18792,
+      });
+    const app = createApp(container);
+
+    const response = await app.request(
+      "http://evil.example/api/v1/runtime-config/local-automation/browser-pairing",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "evil.example",
+          origin: "http://evil.example",
+        },
+        body: "{}",
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect(await response.text()).toBe("Forbidden");
+    expect(pairingSpy).not.toHaveBeenCalled();
   });
 
   it("supports channel connect, integration connect, session lifecycle, and runtime config routes", async () => {

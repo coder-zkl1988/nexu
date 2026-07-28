@@ -492,6 +492,40 @@ const en = {
   "settings.general.languageHint": "Choose your interface language",
   "settings.section.desktop": "Application behavior",
   "settings.section.data": "Data & Privacy",
+  "automation.title": "Devices & automation",
+  "automation.loading": "Reading local capabilities...",
+  "automation.loadFailed": "Unable to read local automation settings",
+  "automation.retry": "Try again",
+  "automation.retrying": "Retrying...",
+  "automation.updateFailed": "Unable to update local automation settings",
+  "automation.updated": "Local automation settings updated",
+  "automation.preview.warning":
+    "Browser and computer control are Preview capabilities. Host commands are always blocked from external channels. Structured action approvals are not implemented yet; use them only in a trusted desktop chat.",
+  "automation.preview.disabled":
+    "This stable build does not run browser or computer control. Previously enabled settings remain visible only so you can switch them off; they cannot be enabled here.",
+  "automation.browser.title": "Real browser control",
+  "automation.browser.showFolder": "Show extension folder",
+  "automation.browser.copyPairing": "Copy pairing string",
+  "automation.browser.pairCopied": "Pairing string copied",
+  "automation.browser.pairFailed": "Unable to create a browser pairing string",
+  "automation.computer.title": "Computer Use",
+  "automation.computer.ready": "Computer control is ready",
+  "automation.computer.installed": "Computer control is available",
+  "automation.computer.permissionRequired": "System permission is required",
+  "automation.computer.backendUnavailable": "Computer control is not running",
+  "automation.computer.statusUnknown":
+    "Unable to confirm the computer control status",
+  "automation.computer.requiresMacOS15":
+    "Computer control requires macOS 15 or later",
+  "automation.computer.runtimePathTooLong":
+    "Computer control cannot start with the current data location",
+  "automation.computer.requestScreenRecording": "Allow Screen Recording",
+  "automation.computer.requestAccessibility": "Allow Accessibility",
+  "automation.computer.requestEventSynthesizing": "Allow background input",
+  "automation.computer.permissionRequestFailed":
+    "Unable to request the system permission",
+  "automation.computer.unavailable":
+    "Computer control is not included in this build",
   "settings.desktop.launchAtLogin": "Launch at startup",
   "settings.desktop.launchAtLoginHint":
     "Automatically open Tabby when your computer starts.",

@@ -96,6 +96,7 @@ export async function bootstrapController(
   const prepareStartedAt = Date.now();
   await Promise.all([
     container.openclawProcess.prepare(),
+    container.localAutomationService.prepare(),
     container.openclawSyncService.ensureRuntimeModelPlugin(),
     container.configStore
       .prepareDesktopCloudModelsForBootstrap()

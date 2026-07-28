@@ -25,6 +25,7 @@ type ToolsDevRuntimeConfig = {
   openclawConfigPath: string;
   openclawLogDir: string;
   openclawEntryPath: string;
+  openclawBinPath: string;
   openclawBuiltinExtensionsDir: string;
   openclawLogLevel: string;
   openclawGatewayToken: string;
@@ -172,6 +173,7 @@ export function getToolsDevRuntimeConfig(): ToolsDevRuntimeConfig {
     openclawConfigPath,
     openclawLogDir,
     openclawEntryPath,
+    openclawBinPath: slimclawRuntimePaths.binPath,
     openclawBuiltinExtensionsDir,
     openclawLogLevel: mergedEnv.NEXU_DEV_OPENCLAW_LOG_LEVEL ?? "info",
     openclawGatewayToken:
@@ -183,6 +185,21 @@ export function getToolsDevRuntimeConfig(): ToolsDevRuntimeConfig {
 
 export function createControllerInjectedEnv(): NodeJS.ProcessEnv {
   const config = getToolsDevRuntimeConfig();
+  const computerUseBackend =
+    process.platform === "darwin"
+      ? "peekaboo"
+      : process.platform === "win32"
+        ? "cua-driver"
+        : null;
+  const computerUseBin = computerUseBackend
+    ? join(
+        repoRootPath,
+        ".tmp",
+        "sidecars",
+        "computer-use",
+        computerUseBackend === "peekaboo" ? "peekaboo" : "cua-driver.exe",
+      )
+    : null;
 
   return {
     PORT: String(config.controllerPort),
@@ -194,9 +211,15 @@ export function createControllerInjectedEnv(): NodeJS.ProcessEnv {
     OPENCLAW_STATE_DIR: config.openclawStateDir,
     OPENCLAW_CONFIG_PATH: config.openclawConfigPath,
     OPENCLAW_LOG_DIR: config.openclawLogDir,
+    OPENCLAW_BIN: config.openclawBinPath,
     OPENCLAW_EXTENSIONS_DIR: config.openclawBuiltinExtensionsDir,
     OPENCLAW_GATEWAY_PORT: String(config.openclawPort),
     OPENCLAW_GATEWAY_TOKEN: config.openclawGatewayToken,
+    ...(process.platform === "win32"
+      ? { OPENCLAW_ELECTRON_EXECUTABLE: process.execPath }
+      : {}),
+    ...(computerUseBackend ? { COMPUTER_USE_BACKEND: computerUseBackend } : {}),
+    ...(computerUseBin ? { COMPUTER_USE_BIN: computerUseBin } : {}),
     PLATFORM_TEMPLATES_DIR: join(
       repoRootPath,
       "apps",

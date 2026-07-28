@@ -610,6 +610,21 @@ const updateConfigSchema = z
   })
   .passthrough();
 
+const browserConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    evaluateEnabled: z.boolean().optional(),
+    defaultProfile: z.string().optional(),
+    profiles: z.record(z.string(), z.record(z.unknown())).optional(),
+  })
+  .passthrough();
+
+const mcpConfigSchema = z
+  .object({
+    servers: z.record(z.string(), z.record(z.unknown())),
+  })
+  .passthrough();
+
 export const openclawConfigSchema = z.object({
   gateway: gatewayConfigSchema,
   models: modelsConfigSchema.optional(),
@@ -626,6 +641,8 @@ export const openclawConfigSchema = z.object({
   plugins: pluginsConfigSchema.optional(),
   hooks: hooksConfigSchema.optional(),
   update: updateConfigSchema.optional(),
+  browser: browserConfigSchema.optional(),
+  mcp: mcpConfigSchema.optional(),
 });
 
 export type OpenClawConfig = z.infer<typeof openclawConfigSchema>;

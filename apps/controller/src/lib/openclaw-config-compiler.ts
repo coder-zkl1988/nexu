@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { OpenClawConfig } from "@nexu/shared";
 import { openclawConfigSchema } from "@nexu/shared";
@@ -369,6 +370,58 @@ const WORKBOARD_WORKER_TOOLS = [
   "workboard_block",
 ];
 
+const BROWSER_TOOLS = ["browser"];
+// Exported so tests can assert this stays in sync with the independent
+// allowlist inside static/runtime-plugins/nexu-toolcall-guard. The two lists
+// are enforced at different layers (MCP tool filter vs. before_tool_call gate)
+// and drift between them is either a silent capability gap or a dead entry.
+export const CUA_TOOL_FILTER = [
+  "check_permissions",
+  "get_accessibility_tree",
+  "get_cursor_position",
+  "get_desktop_state",
+  "get_screen_size",
+  "get_session_state",
+  "get_window_state",
+  "list_apps",
+  "list_windows",
+  "click",
+  "double_click",
+  "right_click",
+  "drag",
+  "move_cursor",
+  "scroll",
+  "type_text",
+  "press_key",
+  "hotkey",
+  "set_value",
+  "launch_app",
+  "start_session",
+  "end_session",
+  "escalate_session",
+];
+export const PEEKABOO_TOOL_FILTER = [
+  "see",
+  "inspect_ui",
+  "click",
+  "type",
+  "set_value",
+  "perform_action",
+  "hotkey",
+  "scroll",
+  "drag",
+  "app",
+  "window",
+  "menu",
+  "dock",
+  "dialog",
+  "list",
+];
+
+function isLocalAutomationPreviewEnabled(env: ControllerEnv): boolean {
+  return env.localAutomationPreviewEnabled === true;
+}
+
 function compileAgentList(
   config: NexuConfig,
   env: ControllerEnv,
@@ -376,6 +429,9 @@ function compileAgentList(
   installedSkillSlugs?: readonly string[],
   workspaceSkillsByAgent?: ReadonlyMap<string, readonly string[]>,
 ): OpenClawConfig["agents"]["list"] {
+  const browserEnabled =
+    isLocalAutomationPreviewEnabled(env) &&
+    config.localAutomation?.browser.enabled === true;
   const sharedSlugs = [...(installedSkillSlugs ?? [])].sort((left, right) =>
     left.localeCompare(right),
   );
@@ -411,7 +467,11 @@ function compileAgentList(
           : undefined,
         ...(merged.length > 0 ? { skills: merged } : {}),
         tools: {
-          alsoAllow: [...SUBAGENT_DELEGATION_TOOLS, ...WORKBOARD_WORKER_TOOLS],
+          alsoAllow: [
+            ...SUBAGENT_DELEGATION_TOOLS,
+            ...WORKBOARD_WORKER_TOOLS,
+            ...(browserEnabled ? BROWSER_TOOLS : []),
+          ],
         },
         subagents: { allowAgents: ["*"] },
       };
@@ -465,6 +525,10 @@ function compilePlugins(
   ];
 
   const deviceControlEnabled = config.deviceControl.enabled;
+  const localAutomationPreviewEnabled = isLocalAutomationPreviewEnabled(env);
+  const browserEnabled =
+    localAutomationPreviewEnabled &&
+    config.localAutomation?.browser.enabled === true;
 
   // Sort and dedup defensively so `plugins.allow` is fully deterministic.
   // Without this, channel reorderings or brief status flaps change the
@@ -476,6 +540,7 @@ function compilePlugins(
       ...prewarmedChannelPluginIds,
       ...platformPluginIds,
       ...(deviceControlEnabled ? ["tabby-control"] : []),
+      ...(browserEnabled ? ["browser"] : []),
       // Workboard backs the team task board (decompose / dependencies /
       // dispatch). Bundled but disabled by default; enabling it adds a
       // plugin to plugins.allow which triggers a one-time gateway restart.
@@ -600,6 +665,13 @@ function compilePlugins(
             },
           }
         : {}),
+      ...(browserEnabled
+        ? {
+            browser: {
+              enabled: true,
+            },
+          }
+        : {}),
     },
   };
 }
@@ -626,6 +698,24 @@ export function compileOpenClawConfig(
   const utilityModelId = config.runtime.utilityModelId
     ? resolveModelId(config, env, config.runtime.utilityModelId, oauthState)
     : null;
+  const computerUseBridgeSocket =
+    env.computerUseBridgeSocket === null
+      ? ""
+      : (env.computerUseBridgeSocket ??
+        path.join(env.nexuHomeDir, "runtime", "peekaboo", "daemon.sock"));
+  const computerUseEnabled =
+    isLocalAutomationPreviewEnabled(env) &&
+    config.localAutomation?.computerUse.enabled === true &&
+    env.computerUseBackend !== null &&
+    env.computerUsePlatformSupported !== false &&
+    env.computerUseBin !== null &&
+    path.isAbsolute(env.computerUseBin) &&
+    existsSync(env.computerUseBin) &&
+    (env.computerUseBackend !== "peekaboo" ||
+      computerUseBridgeSocket.length > 0);
+  const computerUseCuaSocket =
+    env.computerUseCuaSocket ??
+    path.join(env.nexuHomeDir, "runtime", "cua-driver", "daemon.sock");
 
   const openClawConfig: OpenClawConfig = {
     ...(disableMdnsDiscovery
@@ -642,6 +732,69 @@ export function compileOpenClawConfig(
     // that times out on restricted networks (e.g. China) and stalls startup.
     // The OpenClaw version is managed by slimclaw + the desktop auto-updater.
     update: { checkOnStart: false },
+    ...(isLocalAutomationPreviewEnabled(env) &&
+    config.localAutomation?.browser.enabled === true
+      ? {
+          browser: {
+            enabled: true,
+            evaluateEnabled: false,
+            defaultProfile: "chrome",
+            profiles: {
+              chrome: {
+                driver: "extension",
+                color: "#0F766E",
+              },
+            },
+          },
+        }
+      : {}),
+    ...(computerUseEnabled
+      ? {
+          mcp: {
+            servers: {
+              [env.computerUseBackend ?? "computer-use"]: {
+                enabled: true,
+                transport: "stdio",
+                command: env.computerUseBin,
+                args:
+                  env.computerUseBackend === "peekaboo"
+                    ? [
+                        "mcp",
+                        "serve",
+                        "--transport",
+                        "stdio",
+                        "--bridge-socket",
+                        computerUseBridgeSocket,
+                      ]
+                    : ["mcp", "--embedded", "--socket", computerUseCuaSocket],
+                env:
+                  env.computerUseBackend === "peekaboo"
+                    ? {
+                        PEEKABOO_DAEMON_SOCKET: computerUseBridgeSocket,
+                      }
+                    : {
+                        CUA_DRIVER_EMBEDDED: "1",
+                        CUA_DRIVER_HOST_BUNDLE_ID: "io.tabby.desktop",
+                        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
+                        CUA_DRIVER_TELEMETRY_HOME: path.join(
+                          env.nexuHomeDir,
+                          "runtime",
+                          "cua-driver",
+                        ),
+                      },
+                connectionTimeoutMs: 10_000,
+                requestTimeoutMs: 60_000,
+                toolFilter: {
+                  include:
+                    env.computerUseBackend === "peekaboo"
+                      ? PEEKABOO_TOOL_FILTER
+                      : CUA_TOOL_FILTER,
+                },
+              },
+            },
+          },
+        }
+      : {}),
     gateway: {
       port: env.openclawGatewayPort,
       mode: "local",
