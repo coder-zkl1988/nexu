@@ -102,7 +102,7 @@ import {
 import { flushV8CoverageIfEnabled } from "./services/v8-coverage";
 import { readPendingWindowsUserDataMigration } from "./services/windows-user-data-migration";
 import { SleepGuard, type SleepGuardLogEntry } from "./sleep-guard";
-import { ComponentUpdater } from "./updater/component-updater";
+import { ComponentUpdater, R2_BASE_URL } from "./updater/component-updater";
 import { StartupHealthCheck } from "./updater/rollback";
 import { UpdateManager } from "./updater/update-manager";
 import {
@@ -528,10 +528,11 @@ function isRunningUnderRosetta(): boolean {
  * channel + feed URL into build-config.json, not live env vars.
  */
 async function resolveLatestArm64DownloadUrl(): Promise<string> {
-  const R2_BASE = "https://desktop-releases.nexu.io";
   const channel = runtimeConfig.updates.channel ?? "stable";
+  const r2Origin = new URL(R2_BASE_URL).origin;
+  const fallbackDmgUrl = `${r2Origin}/releases/tabby-latest-mac-arm64.dmg`;
 
-  let baseUrl = `${R2_BASE}/${channel}/arm64`;
+  let baseUrl = `${R2_BASE_URL}/${channel}/arm64`;
   const feedOverride = runtimeConfig.urls.updateFeed;
   if (feedOverride) {
     try {
@@ -549,13 +550,23 @@ async function resolveLatestArm64DownloadUrl(): Promise<string> {
   try {
     const res = await fetch(ymlUrl, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      // electron-builder latest-mac.yml lists both .zip (for delta updates)
-      // and .dmg under `files:`. We want the dmg.
-      const match = (await res.text()).match(/url:\s*(\S+\.dmg)/);
-      if (match?.[1]) return `${baseUrl}/${match[1]}`;
+      const manifest = await res.text();
+      const dmgMatch = manifest.match(/url:\s*(\S+\.dmg)/);
+      if (dmgMatch?.[1]) {
+        return new URL(dmgMatch[1], `${baseUrl}/`).toString();
+      }
+
+      // Tabby's update feed intentionally publishes only the ZIP used by
+      // electron-updater. Its matching manual-install DMG is versioned under
+      // /releases/ on the same R2 origin.
+      const zipMatch = manifest.match(/url:\s*(\S+\.zip)/);
+      if (zipMatch?.[1] && new URL(baseUrl).origin === r2Origin) {
+        const dmgName = zipMatch[1].replace(/\.zip$/, ".dmg");
+        return new URL(dmgName, `${r2Origin}/releases/`).toString();
+      }
     }
   } catch {}
-  return ymlUrl;
+  return fallbackDmgUrl;
 }
 
 /**
