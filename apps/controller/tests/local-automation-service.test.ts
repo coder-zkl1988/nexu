@@ -275,45 +275,55 @@ describe("LocalAutomationService", () => {
     expect(harness.syncAll).toHaveBeenCalledTimes(2);
   });
 
-  it("reports ready only when the driver daemon answers for its own identity", async () => {
-    const harness = await createHarness({
-      browser: { enabled: true },
-      computerUse: { enabled: true },
-    });
-
-    // Permission state is only readable through a live daemon.
-    await harness.service.prepare();
-    const status = await harness.service.getStatus();
-
-    expect(status.computerUseAvailable).toBe(true);
-    expect(status.computerUseUnavailableReason).toBeNull();
-    expect(status.computerUsePermissionState).toBe("ready");
-    expect(status.computerUsePermissions).toEqual([
-      { name: "Accessibility", granted: true, required: true },
-      { name: "Screen Recording", granted: true, required: true },
-    ]);
-  });
-
-  it("reports permission-required until every macOS grant is present", async () => {
-    const harness = await createHarness(
-      {
-        browser: { enabled: false },
+  // The two permission-state tests exercise the macOS TCC read-back path;
+  // `readComputerUsePermissions` deliberately short-circuits on other
+  // platforms (Windows needs no TCC grants), so the states they assert can
+  // only exist on darwin. Same precedent as the launchd integration tests.
+  it.runIf(process.platform === "darwin")(
+    "reports ready only when the driver daemon answers for its own identity",
+    async () => {
+      const harness = await createHarness({
+        browser: { enabled: true },
         computerUse: { enabled: true },
-      },
-      "cua-driver",
-      { accessibilityGranted: false },
-    );
+      });
 
-    // Permission state is only readable through a live daemon.
-    await harness.service.prepare();
-    const status = await harness.service.getStatus();
+      // Permission state is only readable through a live daemon.
+      await harness.service.prepare();
+      const status = await harness.service.getStatus();
 
-    expect(status.computerUsePermissionState).toBe("permission-required");
-    expect(status.computerUsePermissions).toEqual([
-      { name: "Accessibility", granted: false, required: true },
-      { name: "Screen Recording", granted: true, required: true },
-    ]);
-  });
+      expect(status.computerUseAvailable).toBe(true);
+      expect(status.computerUseUnavailableReason).toBeNull();
+      expect(status.computerUsePermissionState).toBe("ready");
+      expect(status.computerUsePermissions).toEqual([
+        { name: "Accessibility", granted: true, required: true },
+        { name: "Screen Recording", granted: true, required: true },
+      ]);
+    },
+  );
+
+  it.runIf(process.platform === "darwin")(
+    "reports permission-required until every macOS grant is present",
+    async () => {
+      const harness = await createHarness(
+        {
+          browser: { enabled: false },
+          computerUse: { enabled: true },
+        },
+        "cua-driver",
+        { accessibilityGranted: false },
+      );
+
+      // Permission state is only readable through a live daemon.
+      await harness.service.prepare();
+      const status = await harness.service.getStatus();
+
+      expect(status.computerUsePermissionState).toBe("permission-required");
+      expect(status.computerUsePermissions).toEqual([
+        { name: "Accessibility", granted: false, required: true },
+        { name: "Screen Recording", granted: true, required: true },
+      ]);
+    },
+  );
 
   it("requests every platform grant in one pass", async () => {
     const harness = await createHarness({
