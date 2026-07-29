@@ -21408,6 +21408,25 @@
         }
       }
     },
+    "/api/v1/browser/agent/stream": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/browser/agent/act": {
       "post": {
         "tags": [

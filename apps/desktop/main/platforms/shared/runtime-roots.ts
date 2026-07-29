@@ -1,9 +1,13 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { DesktopRuntimeRoots, PlatformCapabilitiesArgs } from "../types";
 
 export function expandHomePath(input: string): string {
-  return input.replace(/^~(?=$|[\\/])/, homedir());
+  if (input === "~") return homedir();
+  // join, not string splicing: "~/.nexu" spliced onto a Windows home yields
+  // the mixed-separator "C:\Users\me/.nexu".
+  if (/^~[\\/]/.test(input)) return join(homedir(), input.slice(2));
+  return input;
 }
 
 export function resolveManagedRuntimeRoots({

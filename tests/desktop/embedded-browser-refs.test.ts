@@ -41,16 +41,20 @@ describe("BrowserRefTable", () => {
     expect(refs.resolve(ref)).toBeNull();
   });
 
-  it("restarts numbering after reset without aliasing the old page", () => {
+  it("never reissues a ref id across a reset", () => {
     const refs = new BrowserRefTable();
-    refs.add(11);
+    const before = refs.add(11);
     refs.add(22);
 
     refs.reset();
     const fresh = refs.add(99);
 
-    expect(fresh).toBe("e1");
-    expect(refs.resolve("e2")).toBeNull();
+    // Restarting the numbering would hand the new page the old page's ids: a
+    // conversation still holding "e1" from before the navigation would click
+    // whatever the new page put at "e1" — an element its agent never saw.
+    // Continuing the sequence turns that stale ref into a clean unknown.
+    expect(fresh).toBe("e3");
+    expect(refs.resolve(before)).toBeNull();
     expect(refs.resolve(fresh)).toBe(99);
   });
 

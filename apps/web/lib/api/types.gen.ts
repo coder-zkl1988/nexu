@@ -7145,6 +7145,22 @@ export type PostApiV1CanvasMirrorResponses = {
 
 export type PostApiV1CanvasMirrorResponse = PostApiV1CanvasMirrorResponses[keyof PostApiV1CanvasMirrorResponses];
 
+export type GetApiV1BrowserAgentStreamData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/stream';
+};
+
+export type GetApiV1BrowserAgentStreamResponses = {
+    /**
+     * SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)
+     */
+    200: string;
+};
+
+export type GetApiV1BrowserAgentStreamResponse = GetApiV1BrowserAgentStreamResponses[keyof GetApiV1BrowserAgentStreamResponses];
+
 export type PostApiV1BrowserAgentActData = {
     body?: {
         sessionKey: string;

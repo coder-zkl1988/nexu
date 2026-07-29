@@ -25,11 +25,13 @@ describe("tools/dev Computer Use environment", () => {
     const env = createControllerInjectedEnv();
 
     expect(env.COMPUTER_USE_BACKEND).toBe("cua-driver");
+    // Separator-agnostic: node:path keeps the host's separators no matter
+    // what process.platform is stubbed to.
     expect(env.COMPUTER_USE_BIN).toMatch(
-      /\/\.tmp\/sidecars\/computer-use\/CuaDriver\.app\/Contents\/MacOS\/cua-driver$/u,
+      /[\\/]\.tmp[\\/]sidecars[\\/]computer-use[\\/]CuaDriver\.app[\\/]Contents[\\/]MacOS[\\/]cua-driver$/u,
     );
     expect(path.isAbsolute(env.OPENCLAW_BIN ?? "")).toBe(true);
-    expect(env.OPENCLAW_BIN).toMatch(/\/openclaw\/bin\/openclaw$/u);
+    expect(env.OPENCLAW_BIN).toMatch(/[\\/]openclaw[\\/]bin[\\/]openclaw$/u);
     expect(env.OPENCLAW_BIN).not.toMatch(/\.mjs$/u);
     expect(env.OPENCLAW_ELECTRON_EXECUTABLE).toBeUndefined();
   });
@@ -48,10 +50,12 @@ describe("tools/dev Computer Use environment", () => {
 
     expect(env.COMPUTER_USE_BACKEND).toBe("cua-driver");
     expect(env.COMPUTER_USE_BIN).toMatch(
-      /\/\.tmp\/sidecars\/computer-use\/cua-driver\.exe$/u,
+      /[\\/]\.tmp[\\/]sidecars[\\/]computer-use[\\/]cua-driver\.exe$/u,
     );
     expect(path.isAbsolute(env.OPENCLAW_BIN ?? "")).toBe(true);
-    expect(env.OPENCLAW_BIN).toMatch(/\/openclaw\/bin\/openclaw\.cmd$/u);
+    expect(env.OPENCLAW_BIN).toMatch(
+      /[\\/]openclaw[\\/]bin[\\/]openclaw\.cmd$/u,
+    );
     expect(env.OPENCLAW_BIN).not.toMatch(/\.mjs$/u);
     expect(env.OPENCLAW_ELECTRON_EXECUTABLE).toBe(process.execPath);
   });

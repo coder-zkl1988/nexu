@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -11,6 +12,27 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+/**
+ * Copies a distribution into staging, preserving what the copy must not lose.
+ *
+ * On macOS the payload is a signed, notarized app bundle whose identity TCC
+ * keys on. `cpSync` drops extended attributes and Finder metadata, which can
+ * invalidate the signature — the packaging script uses `ditto` for exactly
+ * that reason, and the runtime materialization has to match it or the first
+ * packaged launch quietly re-breaks what packaging preserved. The per-file
+ * hash check cannot catch this: signature metadata lives outside file bytes.
+ */
+function copyDistribution(sourceRoot: string, stagingRoot: string): void {
+  if (process.platform === "darwin") {
+    execFileSync("/usr/bin/ditto", [sourceRoot, stagingRoot]);
+    return;
+  }
+  cpSync(sourceRoot, stagingRoot, {
+    recursive: true,
+    preserveTimestamps: true,
+  });
+}
+
 export type ComputerUseBackend = "cua-driver";
 
 export type ComputerUseSidecar = {
@@ -20,6 +42,13 @@ export type ComputerUseSidecar = {
 
 type PlatformDescriptor = {
   backend: ComputerUseBackend;
+  /**
+   * Canonical "/"-separated names, matching vendor.json's digest keys exactly.
+   * They double as digest-map keys and as relative paths; only the filesystem
+   * access converts them to host separators. Building them with `path.join`
+   * broke the digest lookup on Windows — the keys became backslashed while
+   * vendor.json stayed "/", every lookup missed, and materialization failed.
+   */
   binaryName: string;
   /**
    * Set on platforms that distribute an app bundle. Bundles are directories, so
@@ -29,6 +58,11 @@ type PlatformDescriptor = {
   appBundle?: string;
   requiredFiles: string[];
 };
+
+/** Host path for a canonical "/"-separated file name. */
+function fileOnDisk(root: string, canonicalName: string): string {
+  return path.join(root, ...canonicalName.split("/"));
+}
 
 type VendorDescriptor = {
   fingerprint: string;
@@ -44,15 +78,15 @@ function resolvePlatformDescriptor(
       // The driver ships as an app bundle so it can own a TCC identity; the
       // executable inside it is what the controller invokes for CLI/MCP work.
       appBundle: "CuaDriver.app",
-      binaryName: path.join("CuaDriver.app", "Contents", "MacOS", "cua-driver"),
+      binaryName: "CuaDriver.app/Contents/MacOS/cua-driver",
       // Digesting the whole bundle tree is neither cheap nor necessary: the
       // signature (verified at packaging time) covers every file. These two
       // are what a bad copy would break — the bundle identity TCC keys on,
       // and the executable itself.
       requiredFiles: [
         "LICENSE",
-        path.join("CuaDriver.app", "Contents", "Info.plist"),
-        path.join("CuaDriver.app", "Contents", "MacOS", "cua-driver"),
+        "CuaDriver.app/Contents/Info.plist",
+        "CuaDriver.app/Contents/MacOS/cua-driver",
       ],
     };
   }
@@ -108,7 +142,7 @@ function hasValidDistribution(
 ): boolean {
   try {
     return requiredFiles.every((fileName) => {
-      const filePath = path.join(root, fileName);
+      const filePath = fileOnDisk(root, fileName);
       if (!existsSync(filePath)) {
         return false;
       }
@@ -148,7 +182,7 @@ export function prepareComputerUseSidecar(input: {
   if (!input.isPackaged) {
     return {
       backend: descriptor.backend,
-      binPath: path.join(input.sourceRoot, descriptor.binaryName),
+      binPath: fileOnDisk(input.sourceRoot, descriptor.binaryName),
     };
   }
 
@@ -182,7 +216,7 @@ export function prepareComputerUseSidecar(input: {
     "computer-use",
     `${descriptor.backend}-${vendor.fingerprint}`,
   );
-  const targetBinary = path.join(targetRoot, descriptor.binaryName);
+  const targetBinary = fileOnDisk(targetRoot, descriptor.binaryName);
   const hasCompleteTarget =
     hasValidDistribution(
       targetRoot,
@@ -198,11 +232,8 @@ export function prepareComputerUseSidecar(input: {
   try {
     mkdirSync(path.dirname(targetRoot), { recursive: true });
     rmSync(stagingRoot, { recursive: true, force: true });
-    cpSync(input.sourceRoot, stagingRoot, {
-      recursive: true,
-      preserveTimestamps: true,
-    });
-    const stagingBinary = path.join(stagingRoot, descriptor.binaryName);
+    copyDistribution(input.sourceRoot, stagingRoot);
+    const stagingBinary = fileOnDisk(stagingRoot, descriptor.binaryName);
     if (
       !hasValidDistribution(
         stagingRoot,

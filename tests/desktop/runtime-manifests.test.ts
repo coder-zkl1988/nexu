@@ -220,8 +220,18 @@ describe("desktop runtime manifests", () => {
 
     expect(controller?.env).toMatchObject({
       COMPUTER_USE_BACKEND: "cua-driver",
+      // Built with path.join so the expectation carries the host's separators:
+      // stubbing process.platform does not change node:path's behaviour.
       COMPUTER_USE_BIN: expect.stringContaining(
-        "/.tmp/sidecars/computer-use/CuaDriver.app/Contents/MacOS/cua-driver",
+        path.join(
+          ".tmp",
+          "sidecars",
+          "computer-use",
+          "CuaDriver.app",
+          "Contents",
+          "MacOS",
+          "cua-driver",
+        ),
       ),
     });
   });

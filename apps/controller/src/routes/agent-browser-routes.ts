@@ -43,38 +43,62 @@ export function registerAgentBrowserRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
-  // The renderer's command stream. Not an OpenAPI route: the generated SDK has
-  // no SSE client, and the web app opens it with EventSource directly.
-  app.get("/api/v1/browser/agent/stream", (c) => {
-    return streamSSE(c, async (stream) => {
-      let aborted = false;
-      stream.onAbort(() => {
-        aborted = true;
-      });
-
-      const unsubscribe = container.agentBrowserBridge.subscribe((message) => {
-        if (aborted) return;
-        const frame =
-          message.kind === "command"
-            ? { data: JSON.stringify(message.envelope), event: "command" }
-            : {
-                data: JSON.stringify({ sessionKey: message.sessionKey }),
-                event: "run-ended",
-              };
-        void stream.writeSSE(frame).catch(() => {
-          // Client is gone; the abort handler and unsubscribe clean up.
+  // The desktop relay's command stream. Registered through the OpenAPI layer
+  // like every other route so the spec documents it; consumers still read it
+  // as an event stream (the generated SDK has no SSE client, which is why the
+  // response schema is the raw stream text).
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/browser/agent/stream",
+      tags: ["Browser"],
+      responses: {
+        200: {
+          content: {
+            "text/event-stream": { schema: z.string() },
+          },
+          description:
+            "SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)",
+        },
+      },
+    }),
+    (c) => {
+      return streamSSE(c, async (stream) => {
+        let aborted = false;
+        stream.onAbort(() => {
+          aborted = true;
         });
-      });
 
-      await stream.writeSSE({ data: "connected", event: "connected" });
-      while (!aborted) {
-        await stream.writeSSE({ data: "ping", event: "ping" });
-        await stream.sleep(15_000);
-      }
+        const unsubscribe = container.agentBrowserBridge.subscribe(
+          (message) => {
+            if (aborted) return;
+            const frame =
+              message.kind === "command"
+                ? { data: JSON.stringify(message.envelope), event: "command" }
+                : {
+                    data: JSON.stringify({ sessionKey: message.sessionKey }),
+                    event: "run-ended",
+                  };
+            void stream.writeSSE(frame).catch(() => {
+              // Client is gone; the abort handler and unsubscribe clean up.
+            });
+          },
+        );
 
-      unsubscribe();
-    });
-  });
+        await stream.writeSSE({ data: "connected", event: "connected" });
+        while (!aborted) {
+          await stream.writeSSE({ data: "ping", event: "ping" });
+          await stream.sleep(15_000);
+        }
+
+        unsubscribe();
+        // streamSSE's Response cannot satisfy the typed-json response the
+        // OpenAPI handler infers; the cast is the price of having the stream
+        // documented in the spec at all (the two older SSE routes opted out of
+        // app.openapi entirely instead).
+      }) as never;
+    },
+  );
 
   app.openapi(
     createRoute({

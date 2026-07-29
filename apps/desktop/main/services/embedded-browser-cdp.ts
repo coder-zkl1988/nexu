@@ -88,7 +88,12 @@ export class BrowserRefTable {
   reset(): void {
     this.byRef.clear();
     this.byNode.clear();
-    this.counter = 0;
+    // The counter deliberately survives: restarting it would let a ref issued
+    // before a navigation resolve to whatever element got the same number on
+    // the new page. That matters most when two conversations share the tab —
+    // one navigates between the other's snapshot and click, and the stale ref
+    // would act on an element the agent never saw. Never reusing ids turns
+    // that into a clean "unknown element ref" instead.
   }
 
   add(backendNodeId: number): string {
