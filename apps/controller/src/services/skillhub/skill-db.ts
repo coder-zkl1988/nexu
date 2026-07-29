@@ -26,6 +26,7 @@ const skillRecordSchema = z.object({
     ),
   status: z.enum(["installed", "uninstalled"]),
   version: z.string().nullable().default(null),
+  ownerHandle: z.string().nullable().default(null),
   installedAt: z.string().nullable().default(null),
   uninstalledAt: z.string().nullable().default(null),
   agentId: z.string().nullable().default(null),
@@ -37,6 +38,14 @@ const skillLedgerSchema = z.object({
 
 export type SkillRecord = z.infer<typeof skillRecordSchema>;
 type SkillLedger = z.infer<typeof skillLedgerSchema>;
+
+type SkillInstallRecordInput = {
+  slug: string;
+  source: SkillSource;
+  version?: string;
+  agentId?: string | null;
+  ownerHandle?: string | null;
+};
 
 const emptyLedger = (): SkillLedger => ({ skills: [] });
 
@@ -126,28 +135,40 @@ export class SkillDb {
     source: SkillSource,
     version?: string,
     agentId?: string | null,
+    ownerHandle?: string | null,
   ): void {
+    this.recordInstalls([{ slug, source, version, agentId, ownerHandle }]);
+  }
+
+  recordInstalls(installs: readonly SkillInstallRecordInput[]): void {
+    if (installs.length === 0) return;
+
     const now = new Date().toISOString();
     const current = this.current();
-    const existing = current.skills.find(
-      (skill) =>
-        skill.slug === slug &&
-        skill.source === source &&
-        (source !== "workspace" || skill.agentId === (agentId ?? null)),
-    );
-    const nextRecord: SkillRecord = {
-      slug,
-      source,
-      status: "installed",
-      version: version ?? existing?.version ?? null,
-      installedAt: now,
-      uninstalledAt: null,
-      agentId: agentId ?? existing?.agentId ?? null,
-    };
+    let skills = [...current.skills];
 
-    this.db.data = {
-      skills: this.upsertRecord(current.skills, nextRecord),
-    };
+    for (const install of installs) {
+      const existing = skills.find(
+        (skill) =>
+          skill.slug === install.slug &&
+          skill.source === install.source &&
+          (install.source !== "workspace" ||
+            skill.agentId === (install.agentId ?? null)),
+      );
+      const nextRecord: SkillRecord = {
+        slug: install.slug,
+        source: install.source,
+        status: "installed",
+        version: install.version ?? existing?.version ?? null,
+        ownerHandle: install.ownerHandle ?? existing?.ownerHandle ?? null,
+        installedAt: now,
+        uninstalledAt: null,
+        agentId: install.agentId ?? existing?.agentId ?? null,
+      };
+      skills = this.upsertRecord(skills, nextRecord);
+    }
+
+    this.db.data = { skills };
     this.persist();
   }
 
@@ -169,6 +190,7 @@ export class SkillDb {
       source,
       status: "uninstalled",
       version: existing?.version ?? null,
+      ownerHandle: existing?.ownerHandle ?? null,
       installedAt: existing?.installedAt ?? null,
       uninstalledAt: now,
       agentId: agentId ?? existing?.agentId ?? null,
@@ -211,6 +233,7 @@ export class SkillDb {
         source,
         status: "installed",
         version: existing?.version ?? null,
+        ownerHandle: existing?.ownerHandle ?? null,
         installedAt: now,
         uninstalledAt: null,
         agentId: existing?.agentId ?? null,
@@ -220,6 +243,38 @@ export class SkillDb {
 
     this.db.data = { skills };
     this.persist();
+  }
+
+  backfillInstalledManagedMetadata(
+    slug: string,
+    metadata: { ownerHandle?: string; version?: string },
+  ): boolean {
+    const current = this.current();
+    let changed = false;
+    const skills = current.skills.map((record) => {
+      if (
+        record.slug !== slug ||
+        record.source !== "managed" ||
+        record.status !== "installed"
+      ) {
+        return record;
+      }
+
+      const ownerHandle = record.ownerHandle ?? metadata.ownerHandle ?? null;
+      const version = record.version ?? metadata.version ?? null;
+      if (ownerHandle === record.ownerHandle && version === record.version) {
+        return record;
+      }
+
+      changed = true;
+      return { ...record, ownerHandle, version };
+    });
+
+    if (changed) {
+      this.db.data = { skills };
+      this.persist();
+    }
+    return changed;
   }
 
   markUninstalledBySlugs(
@@ -326,6 +381,7 @@ export class SkillDb {
           source: "managed" as const,
           status: "uninstalled" as const,
           version: null,
+          ownerHandle: null,
           installedAt: null,
           uninstalledAt: new Date().toISOString(),
           agentId: null,

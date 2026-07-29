@@ -3,6 +3,10 @@ import {
   applySkillsViewStatePatch,
   createSkillDetailPath,
   createSkillDetailState,
+  getCatalogSkillIdentityConflict,
+  getCatalogSkillInstallation,
+  getInstalledSkillRenderKey,
+  getSkillIdentity,
   getSkillsBackNavigation,
   getUnavailableSkillDetailSlugs,
   parseSkillsViewState,
@@ -15,31 +19,51 @@ describe("skills-view-state", () => {
       yoursSubTab: "all",
       activeTag: null,
       searchQuery: "",
+      sort: "downloads",
     });
   });
 
   it("ignores invalid tab and source params", () => {
     expect(
       parseSkillsViewState(
-        new URLSearchParams("tab=invalid&source=nope&tag=latest&q=tavily"),
+        new URLSearchParams(
+          "tab=invalid&source=nope&tag=latest&q=tavily&sort=invalid",
+        ),
       ),
     ).toEqual({
       topTab: "yours",
       yoursSubTab: "all",
       activeTag: "latest",
       searchQuery: "tavily",
+      sort: "downloads",
     });
   });
 
   it("applies partial patches while preserving the rest of the view state", () => {
     const next = applySkillsViewStatePatch(
-      new URLSearchParams("tab=explore&tag=latest&q=tavily"),
+      new URLSearchParams("tab=explore&tag=latest&q=tavily&sort=stars"),
       {
         activeTag: "automation",
       },
     );
 
-    expect(next.toString()).toBe("tab=explore&tag=automation&q=tavily");
+    expect(next.toString()).toBe(
+      "tab=explore&tag=automation&q=tavily&sort=stars",
+    );
+  });
+
+  it("round-trips non-default catalog sorting", () => {
+    const state = parseSkillsViewState(
+      new URLSearchParams("tab=explore&sort=updated"),
+    );
+
+    expect(state.sort).toBe("updated");
+    expect(
+      applySkillsViewStatePatch(
+        new URLSearchParams("tab=explore&sort=updated"),
+        { sort: "stars" },
+      ).toString(),
+    ).toBe("tab=explore&sort=stars");
   });
 
   it("preserves the current query string on detail links", () => {
@@ -62,6 +86,75 @@ describe("skills-view-state", () => {
     );
 
     expect(Array.from(unavailableSlugs)).toEqual(["queued-custom"]);
+  });
+
+  it("keeps duplicate slugs distinct by publisher identity", () => {
+    expect(
+      getSkillIdentity({ slug: "weather", ownerHandle: "@Publisher-A" }),
+    ).toBe("@publisher-a/weather");
+
+    const unavailableIdentities = getUnavailableSkillDetailSlugs(
+      [{ slug: "weather", ownerHandle: "publisher-a" }],
+      [
+        { slug: "weather", ownerHandle: "publisher-a" },
+        { slug: "weather", ownerHandle: "publisher-b" },
+      ],
+    );
+    expect(Array.from(unavailableIdentities)).toEqual(["@publisher-b/weather"]);
+  });
+
+  it("keeps installed copies distinct by source and agent", () => {
+    expect(
+      getInstalledSkillRenderKey({
+        slug: "officecli",
+        source: "managed",
+      }),
+    ).toBe("officecli::managed::shared");
+    expect(
+      getInstalledSkillRenderKey({
+        slug: "officecli",
+        source: "user",
+      }),
+    ).toBe("officecli::user::shared");
+    expect(
+      getInstalledSkillRenderKey({
+        slug: "officecli",
+        source: "workspace",
+        agentId: "agent-1",
+      }),
+    ).toBe("officecli::workspace::agent-1");
+  });
+
+  it("does not bind a catalog publisher to a different installed owner", () => {
+    const installation = getCatalogSkillInstallation(
+      { slug: "weather", ownerHandle: "catalog-publisher" },
+      [
+        {
+          slug: "weather",
+          ownerHandle: "catalog-publisher",
+          agentId: "agent-1",
+        },
+        {
+          slug: "weather",
+          ownerHandle: "installed-publisher",
+          agentId: null,
+        },
+      ],
+    );
+
+    expect(installation).toBeUndefined();
+    expect(
+      getCatalogSkillIdentityConflict(
+        { slug: "weather", ownerHandle: "catalog-publisher" },
+        [
+          {
+            slug: "weather",
+            ownerHandle: "installed-publisher",
+            agentId: null,
+          },
+        ],
+      )?.ownerHandle,
+    ).toBe("installed-publisher");
   });
 
   it("uses history back only when the detail page was opened from the skills list", () => {

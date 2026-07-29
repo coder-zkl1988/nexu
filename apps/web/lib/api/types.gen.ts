@@ -4269,6 +4269,8 @@ export type GetApiV1SkillhubCatalogResponses = {
      */
     200: {
         skills: Array<{
+            identity?: string;
+            ownerHandle?: string;
             slug: string;
             name: string;
             description: string;
@@ -4281,6 +4283,8 @@ export type GetApiV1SkillhubCatalogResponses = {
         installedSlugs: Array<string>;
         installedSkills: Array<{
             slug: string;
+            ownerHandle: string;
+            version: string;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             name: string;
             description: string;
@@ -4295,6 +4299,7 @@ export type GetApiV1SkillhubCatalogResponses = {
         };
         queue: Array<{
             slug: string;
+            ownerHandle: string;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
             position: number;
@@ -4308,16 +4313,154 @@ export type GetApiV1SkillhubCatalogResponses = {
 
 export type GetApiV1SkillhubCatalogResponse = GetApiV1SkillhubCatalogResponses[keyof GetApiV1SkillhubCatalogResponses];
 
+export type GetApiV1SkillhubStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/skillhub/status';
+};
+
+export type GetApiV1SkillhubStatusResponses = {
+    /**
+     * Installed skills and install queue status
+     */
+    200: {
+        installedSlugs: Array<string>;
+        installedSkills: Array<{
+            slug: string;
+            ownerHandle: string;
+            version: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            name: string;
+            description: string;
+            installedAt: string;
+            agentId: string;
+            agentName: string;
+        }>;
+        queue: Array<{
+            slug: string;
+            ownerHandle: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
+            position: number;
+            error: string;
+            errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
+            retries: number;
+            enqueuedAt: string;
+        }>;
+    };
+};
+
+export type GetApiV1SkillhubStatusResponse = GetApiV1SkillhubStatusResponses[keyof GetApiV1SkillhubStatusResponses];
+
+export type GetApiV1SkillhubCatalogPageData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+        category?: string;
+        cursor?: string;
+        limit?: number;
+        sort?: 'downloads' | 'updated' | 'stars';
+    };
+    url: '/api/v1/skillhub/catalog-page';
+};
+
+export type GetApiV1SkillhubCatalogPageErrors = {
+    /**
+     * Catalog revision changed during pagination
+     */
+    409: {
+        error: string;
+        code: 'catalog_revision_changed';
+    };
+};
+
+export type GetApiV1SkillhubCatalogPageError = GetApiV1SkillhubCatalogPageErrors[keyof GetApiV1SkillhubCatalogPageErrors];
+
+export type GetApiV1SkillhubCatalogPageResponses = {
+    /**
+     * Paginated SkillHub catalog
+     */
+    200: {
+        skills: Array<{
+            identity?: string;
+            ownerHandle?: string;
+            slug: string;
+            name: string;
+            description: string;
+            downloads: number;
+            stars: number;
+            tags: Array<string>;
+            version: string;
+            updatedAt: string;
+        }>;
+        installedSlugs: Array<string>;
+        installedSkills: Array<{
+            slug: string;
+            ownerHandle: string;
+            version: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            name: string;
+            description: string;
+            installedAt: string;
+            agentId: string;
+            agentName: string;
+        }>;
+        meta: {
+            version: string;
+            updatedAt: string;
+            skillCount: number;
+        };
+        queue: Array<{
+            slug: string;
+            ownerHandle: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
+            position: number;
+            error: string;
+            errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
+            retries: number;
+            enqueuedAt: string;
+        }>;
+        nextCursor: string;
+        total: number;
+        facets: Array<{
+            tag: string;
+            count: number;
+        }>;
+    };
+};
+
+export type GetApiV1SkillhubCatalogPageResponse = GetApiV1SkillhubCatalogPageResponses[keyof GetApiV1SkillhubCatalogPageResponses];
+
 export type PostApiV1SkillhubInstallData = {
     body?: {
         slug: string;
-        source?: 'managed' | 'custom' | 'workspace' | 'user';
-        agentId?: string;
+        ownerHandle?: string;
+        version?: string;
+        update?: boolean;
     };
     path?: never;
     query?: never;
     url: '/api/v1/skillhub/install';
 };
+
+export type PostApiV1SkillhubInstallErrors = {
+    /**
+     * Install conflict or update not allowed
+     */
+    409: {
+        ok: boolean;
+        queued?: boolean;
+        slug?: string;
+        status?: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
+        position?: number;
+        error?: string;
+    };
+};
+
+export type PostApiV1SkillhubInstallError = PostApiV1SkillhubInstallErrors[keyof PostApiV1SkillhubInstallErrors];
 
 export type PostApiV1SkillhubInstallResponses = {
     /**
@@ -4407,6 +4550,7 @@ export type GetApiV1SkillhubSkillsBySlugData = {
     query?: {
         source?: 'managed' | 'custom' | 'workspace' | 'user';
         agentId?: string;
+        ownerHandle?: string;
     };
     url: '/api/v1/skillhub/skills/{slug}';
 };
@@ -4427,6 +4571,7 @@ export type GetApiV1SkillhubSkillsBySlugResponses = {
      * Skill detail
      */
     200: {
+        ownerHandle?: string;
         slug: string;
         name: string;
         description: string;
@@ -4434,6 +4579,8 @@ export type GetApiV1SkillhubSkillsBySlugResponses = {
         stars: number;
         tags: Array<string>;
         version: string;
+        installedVersion: string;
+        updateEligible: boolean;
         updatedAt: string;
         installed: boolean;
         installedSource: 'managed' | 'custom' | 'workspace' | 'user';
@@ -4516,6 +4663,11 @@ export type GetApiV1ExperthubCatalogResponses = {
             avatarDataUrl?: string;
             description?: string;
             configuredSkills?: Array<string>;
+            configuredSkillRefs?: Array<{
+                slug: string;
+                ownerHandle?: string;
+                version?: string;
+            }>;
         }>;
         meta: {
             version: string;
@@ -4583,6 +4735,11 @@ export type PostApiV1ExperthubUninstallResponse = PostApiV1ExperthubUninstallRes
 export type PutApiV1ExperthubExpertsBySlugSkillsData = {
     body?: {
         skills: Array<string>;
+        skillRefs?: Array<{
+            slug: string;
+            ownerHandle?: string;
+            version?: string;
+        }>;
     };
     path: {
         slug: string;
@@ -4609,6 +4766,11 @@ export type PutApiV1ExperthubExpertsBySlugSkillsResponses = {
     200: {
         ok: true;
         configuredSkills: Array<string>;
+        configuredSkillRefs: Array<{
+            slug: string;
+            ownerHandle?: string;
+            version?: string;
+        }>;
     };
 };
 
@@ -4689,6 +4851,11 @@ export type PostApiV1ExperthubCustomData = {
         modelId: string;
         description?: string;
         skills?: Array<string>;
+        skillRefs?: Array<{
+            slug: string;
+            ownerHandle?: string;
+            version?: string;
+        }>;
         existingSlug?: string;
         workspaceFiles?: {
             'AGENTS.md'?: string;

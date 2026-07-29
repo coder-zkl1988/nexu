@@ -1,10 +1,18 @@
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { isSkillUpdateAvailable } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
+import {
+  SkillInstallConflictError,
+  SkillUpdateNotAllowedError,
+} from "../services/skillhub-service.js";
+import { CatalogRevisionChangedError } from "../services/skillhub/catalog-manager.js";
 import type { ControllerBindings } from "../types.js";
 
 const DEFAULT_DOWNLOAD_COUNT = 1000;
 
 const minimalSkillSchema = z.object({
+  identity: z.string().optional(),
+  ownerHandle: z.string().optional(),
   slug: z.string(),
   name: z.string(),
   description: z.string(),
@@ -17,6 +25,8 @@ const minimalSkillSchema = z.object({
 
 const installedSkillSchema = z.object({
   slug: z.string(),
+  ownerHandle: z.string().nullable(),
+  version: z.string().nullable(),
   source: z.enum(["managed", "custom", "workspace", "user"]),
   name: z.string(),
   description: z.string(),
@@ -33,6 +43,7 @@ const catalogMetaSchema = z.object({
 
 const queueItemSchema = z.object({
   slug: z.string(),
+  ownerHandle: z.string().nullable(),
   source: z.enum(["managed", "custom", "workspace", "user"]),
   status: z.enum([
     "queued",
@@ -64,6 +75,30 @@ const skillhubCatalogResponseSchema = z.object({
   queue: z.array(queueItemSchema),
 });
 
+const skillhubStatusResponseSchema = skillhubCatalogResponseSchema.omit({
+  skills: true,
+  meta: true,
+});
+
+const skillhubCatalogPageQuerySchema = z.object({
+  q: z.string().max(100).optional(),
+  category: z.string().max(80).optional(),
+  cursor: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(48),
+  sort: z.enum(["downloads", "updated", "stars"]).default("downloads"),
+});
+
+const skillhubCatalogPageResponseSchema = skillhubCatalogResponseSchema.extend({
+  nextCursor: z.string().nullable(),
+  total: z.number(),
+  facets: z.array(z.object({ tag: z.string(), count: z.number() })),
+});
+
+const skillhubCatalogPageErrorSchema = z.object({
+  error: z.string(),
+  code: z.literal("catalog_revision_changed"),
+});
+
 const skillhubMutationResultSchema = z.object({
   ok: z.boolean(),
   error: z.string().optional(),
@@ -87,6 +122,16 @@ const skillhubUninstallRequestSchema = z
     }
   });
 
+const skillhubInstallRequestSchema = z.object({
+  slug: skillhubSlugSchema,
+  ownerHandle: z
+    .string()
+    .regex(/^@?[a-z0-9][a-z0-9._-]{0,127}$/)
+    .optional(),
+  version: z.string().min(1).max(100).optional(),
+  update: z.boolean().optional(),
+});
+
 const skillhubInstallResultSchema = z.object({
   ok: z.boolean(),
   queued: z.boolean().optional(),
@@ -103,6 +148,7 @@ const skillhubRefreshResultSchema = z.object({
   error: z.string().optional(),
 });
 const skillhubDetailResponseSchema = z.object({
+  ownerHandle: z.string().optional(),
   slug: z.string(),
   name: z.string(),
   description: z.string(),
@@ -110,6 +156,8 @@ const skillhubDetailResponseSchema = z.object({
   stars: z.number(),
   tags: z.array(z.string()),
   version: z.string(),
+  installedVersion: z.string().nullable(),
+  updateEligible: z.boolean(),
   updatedAt: z.string(),
   installed: z.boolean(),
   installedSource: skillhubSourceSchema.nullable(),
@@ -154,7 +202,10 @@ export function registerSkillhubRoutes(
       },
     }),
     async (c) => {
-      const catalog = container.skillhubService.catalog.getCatalog();
+      const catalog = await container.skillhubService.catalog.getCatalogPage({
+        limit: 100,
+        sort: "downloads",
+      });
       const queue = [...container.skillhubService.queue.getQueue()];
       const bots = await container.configStore.listBots();
       const botNameMap = new Map(bots.map((b) => [b.id, b.name]));
@@ -166,6 +217,112 @@ export function registerSkillhubRoutes(
           : null,
       }));
 
+      return c.json(
+        {
+          skills: catalog.skills,
+          installedSlugs: catalog.installedSlugs,
+          installedSkills,
+          meta: catalog.meta,
+          queue,
+        },
+        200,
+      );
+    },
+  );
+
+  // GET /api/v1/skillhub/status
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/skillhub/status",
+      tags: ["SkillHub"],
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: skillhubStatusResponseSchema },
+          },
+          description: "Installed skills and install queue status",
+        },
+      },
+    }),
+    async (c) => {
+      const catalog = container.skillhubService.catalog.getInstalledState();
+      const queue = [...container.skillhubService.queue.getQueue()];
+      const bots = await container.configStore.listBots();
+      const botNameMap = new Map(bots.map((bot) => [bot.id, bot.name]));
+      const installedSkills = catalog.installedSkills.map((skill) => ({
+        ...skill,
+        agentName: skill.agentId
+          ? (botNameMap.get(skill.agentId) ?? null)
+          : null,
+      }));
+      return c.json(
+        {
+          installedSlugs: catalog.installedSlugs,
+          installedSkills,
+          queue,
+        },
+        200,
+      );
+    },
+  );
+
+  // GET /api/v1/skillhub/catalog-page
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/skillhub/catalog-page",
+      tags: ["SkillHub"],
+      request: { query: skillhubCatalogPageQuerySchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: skillhubCatalogPageResponseSchema },
+          },
+          description: "Paginated SkillHub catalog",
+        },
+        409: {
+          content: {
+            "application/json": { schema: skillhubCatalogPageErrorSchema },
+          },
+          description: "Catalog revision changed during pagination",
+        },
+      },
+    }),
+    async (c) => {
+      const query = c.req.valid("query");
+      let catalog: Awaited<
+        ReturnType<typeof container.skillhubService.catalog.getCatalogPage>
+      >;
+      try {
+        catalog = await container.skillhubService.catalog.getCatalogPage({
+          query: query.q,
+          category: query.category,
+          cursor: query.cursor,
+          limit: query.limit,
+          sort: query.sort,
+        });
+      } catch (error) {
+        if (error instanceof CatalogRevisionChangedError) {
+          return c.json(
+            {
+              error: error.message,
+              code: "catalog_revision_changed" as const,
+            },
+            409,
+          );
+        }
+        throw error;
+      }
+      const queue = [...container.skillhubService.queue.getQueue()];
+      const bots = await container.configStore.listBots();
+      const botNameMap = new Map(bots.map((bot) => [bot.id, bot.name]));
+      const installedSkills = catalog.installedSkills.map((skill) => ({
+        ...skill,
+        agentName: skill.agentId
+          ? (botNameMap.get(skill.agentId) ?? null)
+          : null,
+      }));
       return c.json({ ...catalog, installedSkills, queue }, 200);
     },
   );
@@ -180,7 +337,7 @@ export function registerSkillhubRoutes(
         body: {
           content: {
             "application/json": {
-              schema: skillhubUninstallRequestSchema,
+              schema: skillhubInstallRequestSchema,
             },
           },
         },
@@ -192,21 +349,37 @@ export function registerSkillhubRoutes(
           },
           description: "Install",
         },
+        409: {
+          content: {
+            "application/json": { schema: skillhubInstallResultSchema },
+          },
+          description: "Install conflict or update not allowed",
+        },
       },
     }),
     async (c) => {
-      const { slug } = c.req.valid("json");
-      const queueItem = container.skillhubService.enqueueInstall(slug);
-      return c.json(
-        {
-          ok: true,
-          queued: true,
-          slug: queueItem.slug,
-          status: queueItem.status,
-          position: queueItem.position,
-        },
-        200,
-      );
+      const request = c.req.valid("json");
+      try {
+        const queueItem = container.skillhubService.enqueueInstall(request);
+        return c.json(
+          {
+            ok: true,
+            queued: true,
+            slug: queueItem.slug,
+            status: queueItem.status,
+            position: queueItem.position,
+          },
+          200,
+        );
+      } catch (error) {
+        if (
+          error instanceof SkillInstallConflictError ||
+          error instanceof SkillUpdateNotAllowedError
+        ) {
+          return c.json({ ok: false, error: error.message }, 409);
+        }
+        throw error;
+      }
     },
   );
 
@@ -220,13 +393,7 @@ export function registerSkillhubRoutes(
         body: {
           content: {
             "application/json": {
-              schema: z.object({
-                slug: skillhubSlugSchema,
-                source: z
-                  .enum(["managed", "custom", "workspace", "user"])
-                  .optional(),
-                agentId: z.string().nullable().optional(),
-              }),
+              schema: skillhubUninstallRequestSchema,
             },
           },
         },
@@ -319,6 +486,10 @@ export function registerSkillhubRoutes(
           .object({
             source: skillhubSourceSchema.optional(),
             agentId: z.string().optional(),
+            ownerHandle: z
+              .string()
+              .regex(/^@?[a-z0-9][a-z0-9._-]{0,127}$/)
+              .optional(),
           })
           .superRefine((value, ctx) => {
             if (value.source === "workspace" && !value.agentId) {
@@ -348,10 +519,21 @@ export function registerSkillhubRoutes(
     async (c) => {
       const { slug } = c.req.valid("param");
       const query = c.req.valid("query");
-      const catalog = container.skillhubService.catalog.getCatalog();
-      const catalogSkill = catalog.skills.find((s) => s.slug === slug);
+      const catalog = container.skillhubService.catalog.getInstalledState();
+      const catalogSkill =
+        await container.skillhubService.catalog.getCatalogSkill(
+          slug,
+          query.ownerHandle,
+        );
+      const normalizedOwnerHandle = query.ownerHandle
+        ?.replace(/^@+/, "")
+        .toLowerCase();
       const matchingInstalledSkills = catalog.installedSkills.filter(
-        (s) => s.slug === slug,
+        (skill) =>
+          skill.slug === slug &&
+          (!normalizedOwnerHandle ||
+            skill.ownerHandle?.replace(/^@+/, "").toLowerCase() ===
+              normalizedOwnerHandle),
       );
       const installedSkill = query.source
         ? matchingInstalledSkills.find(
@@ -384,13 +566,33 @@ export function registerSkillhubRoutes(
       return c.json(
         {
           slug,
+          ...(catalogSkill?.ownerHandle || installedSkill?.ownerHandle
+            ? {
+                ownerHandle:
+                  catalogSkill?.ownerHandle ??
+                  installedSkill?.ownerHandle ??
+                  undefined,
+              }
+            : {}),
           name: catalogSkill?.name ?? installedSkill?.name ?? slug,
           description:
             catalogSkill?.description ?? installedSkill?.description ?? "",
           downloads,
           stars: catalogSkill?.stars ?? 0,
           tags: catalogSkill?.tags ?? [],
-          version: catalogSkill?.version ?? "1.0.0",
+          version: catalogSkill?.version ?? installedSkill?.version ?? "1.0.0",
+          installedVersion: installedSkill?.version ?? null,
+          updateEligible: Boolean(
+            installedSkill?.source === "managed" &&
+              installedSkill.ownerHandle &&
+              catalogSkill?.ownerHandle &&
+              installedSkill.ownerHandle.replace(/^@+/, "").toLowerCase() ===
+                catalogSkill.ownerHandle.replace(/^@+/, "").toLowerCase() &&
+              isSkillUpdateAvailable(
+                catalogSkill.version,
+                installedSkill.version ?? undefined,
+              ),
+          ),
           updatedAt: catalogSkill?.updatedAt ?? new Date().toISOString(),
           installed,
           installedSource: installedSkill?.source ?? null,

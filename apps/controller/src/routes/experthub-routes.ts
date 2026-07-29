@@ -8,9 +8,11 @@ import {
   experthubCatalogResponseSchema,
   installExpertRequestSchema,
   installExpertResponseSchema,
+  skillReferenceSchema,
   uninstallExpertRequestSchema,
   uninstallExpertResponseSchema,
 } from "@nexu/shared";
+import type { SkillReference } from "@nexu/shared";
 import type { ExperthubCatalogManager } from "../services/experthub/catalog-manager.js";
 import {
   ExpertNotFoundError,
@@ -41,13 +43,19 @@ export type ExperthubRoutesDeps = {
     modelId: string;
     description?: string;
     skills: string[];
+    skillRefs?: SkillReference[];
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) => Promise<{ ok: true; botId: string; slug: string }>;
   updateExpertSkills: (args: {
     slug: string;
     skills: string[];
-  }) => Promise<{ ok: true; configuredSkills: string[] }>;
+    skillRefs?: SkillReference[];
+  }) => Promise<{
+    ok: true;
+    configuredSkills: string[];
+    configuredSkillRefs: SkillReference[];
+  }>;
   /** Delete a bot by ID (removes from config + syncs to OpenClaw). */
   botService: {
     deleteBot: (botId: string) => Promise<boolean>;
@@ -70,10 +78,12 @@ const templateFilenameSchema = z.enum(ALLOWED_TEMPLATE_FILES);
 
 const updateExpertSkillsRequestSchema = z.object({
   skills: z.array(z.string()),
+  skillRefs: z.array(skillReferenceSchema).optional(),
 });
 const updateExpertSkillsResponseSchema = z.object({
   ok: z.literal(true),
   configuredSkills: z.array(z.string()),
+  configuredSkillRefs: z.array(skillReferenceSchema),
 });
 
 const refreshResponseSchema = z.object({
@@ -256,9 +266,13 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
     }),
     async (c) => {
       const { slug } = c.req.valid("param");
-      const { skills } = c.req.valid("json");
+      const { skills, skillRefs } = c.req.valid("json");
       try {
-        const result = await deps.updateExpertSkills({ slug, skills });
+        const result = await deps.updateExpertSkills({
+          slug,
+          skills,
+          ...(skillRefs ? { skillRefs } : {}),
+        });
         return c.json(result, 200);
       } catch (error) {
         if (error instanceof ExpertNotFoundError) {
@@ -394,6 +408,7 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
         modelId: body.modelId,
         description: body.description,
         skills: body.skills,
+        ...(body.skillRefs ? { skillRefs: body.skillRefs } : {}),
         existingSlug: body.existingSlug,
         workspaceFiles: body.workspaceFiles as Record<string, string>,
       });

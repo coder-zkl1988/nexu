@@ -2,12 +2,14 @@ import type { MinimalSkill, SkillSource } from "@/types/desktop";
 
 export type TopTab = "explore" | "yours";
 export type YoursSubTab = "all" | "builtin" | "custom";
+export type SkillCatalogSort = "downloads" | "stars" | "updated";
 
 export type SkillsViewState = {
   topTab: TopTab;
   yoursSubTab: YoursSubTab;
   activeTag: string | null;
   searchQuery: string;
+  sort: SkillCatalogSort;
 };
 
 type SkillsHistoryState = {
@@ -29,6 +31,7 @@ const DEFAULT_VIEW_STATE: SkillsViewState = {
   yoursSubTab: "all",
   activeTag: null,
   searchQuery: "",
+  sort: "downloads",
 };
 
 function isTopTab(value: string | null): value is TopTab {
@@ -37,6 +40,10 @@ function isTopTab(value: string | null): value is TopTab {
 
 function isYoursSubTab(value: string | null): value is YoursSubTab {
   return value === "all" || value === "builtin" || value === "custom";
+}
+
+function isSkillCatalogSort(value: string | null): value is SkillCatalogSort {
+  return value === "downloads" || value === "stars" || value === "updated";
 }
 
 function normalizeSearch(search: string): string {
@@ -78,12 +85,17 @@ export function parseSkillsViewState(
     : DEFAULT_VIEW_STATE.yoursSubTab;
   const activeTag = searchParams.get("tag")?.trim() || null;
   const searchQuery = searchParams.get("q") ?? DEFAULT_VIEW_STATE.searchQuery;
+  const sortParam = searchParams.get("sort");
+  const sort = isSkillCatalogSort(sortParam)
+    ? sortParam
+    : DEFAULT_VIEW_STATE.sort;
 
   return {
     topTab,
     yoursSubTab,
     activeTag,
     searchQuery,
+    sort,
   };
 }
 
@@ -104,6 +116,9 @@ export function createSkillsSearchParams(
   if (state.searchQuery) {
     searchParams.set("q", state.searchQuery);
   }
+  if (state.sort !== DEFAULT_VIEW_STATE.sort) {
+    searchParams.set("sort", state.sort);
+  }
 
   return searchParams;
 }
@@ -123,7 +138,65 @@ export function applySkillsViewStatePatch(
 export type SkillSelection = {
   source?: SkillSource | null;
   agentId?: string | null;
+  ownerHandle?: string | null;
+  version?: string | null;
 };
+
+export function getCatalogSkillInstallation<
+  T extends {
+    slug: string;
+    ownerHandle?: string | null;
+    agentId?: string | null;
+  },
+>(catalogSkill: Pick<MinimalSkill, "slug" | "ownerHandle">, installed: T[]) {
+  const catalogIdentity = getSkillIdentity(catalogSkill);
+  const sharedSameSlug = installed.filter(
+    (skill) => !skill.agentId && skill.slug === catalogSkill.slug,
+  );
+  if (catalogSkill.ownerHandle) {
+    return sharedSameSlug.find(
+      (skill) => getSkillIdentity(skill) === catalogIdentity,
+    );
+  }
+  return sharedSameSlug[0];
+}
+
+export function getCatalogSkillIdentityConflict<
+  T extends {
+    slug: string;
+    ownerHandle?: string | null;
+    agentId?: string | null;
+  },
+>(catalogSkill: Pick<MinimalSkill, "slug" | "ownerHandle">, installed: T[]) {
+  if (!catalogSkill.ownerHandle) return undefined;
+  const catalogIdentity = getSkillIdentity(catalogSkill);
+  return installed.find(
+    (skill) =>
+      !skill.agentId &&
+      skill.slug === catalogSkill.slug &&
+      getSkillIdentity(skill) !== catalogIdentity,
+  );
+}
+
+export function getSkillIdentity(skill: {
+  slug: string;
+  ownerHandle?: string | null;
+}): string {
+  const ownerHandle = skill.ownerHandle
+    ?.replace(/^@+/, "")
+    .trim()
+    .toLowerCase();
+  return ownerHandle ? `@${ownerHandle}/${skill.slug}` : skill.slug;
+}
+
+export function getInstalledSkillRenderKey(skill: {
+  slug: string;
+  ownerHandle?: string | null;
+  source: SkillSource;
+  agentId?: string | null;
+}): string {
+  return `${getSkillIdentity(skill)}::${skill.source}::${skill.agentId ?? "shared"}`;
+}
 
 export function createSkillDetailPath(
   slug: string,
@@ -136,6 +209,12 @@ export function createSkillDetailPath(
   }
   if (selection?.agentId) {
     searchParams.set("agentId", selection.agentId);
+  }
+  if (selection?.ownerHandle) {
+    searchParams.set("skillOwner", selection.ownerHandle);
+  }
+  if (selection?.version) {
+    searchParams.set("skillVersion", selection.version);
   }
 
   const query = searchParams.toString();
@@ -153,14 +232,19 @@ export function createSkillDetailState(
 }
 
 export function getUnavailableSkillDetailSlugs(
-  allSkills: Pick<MinimalSkill, "slug">[],
-  activeQueueItems: { slug: string }[],
+  allSkills: Pick<MinimalSkill, "slug" | "ownerHandle">[],
+  activeQueueItems: { slug: string; ownerHandle?: string | null }[],
 ): Set<string> {
+  const catalogIdentities = new Set(allSkills.map(getSkillIdentity));
   const catalogSlugs = new Set(allSkills.map((skill) => skill.slug));
   return new Set(
     activeQueueItems
-      .filter((queueItem) => !catalogSlugs.has(queueItem.slug))
-      .map((queueItem) => queueItem.slug),
+      .filter((queueItem) =>
+        queueItem.ownerHandle
+          ? !catalogIdentities.has(getSkillIdentity(queueItem))
+          : !catalogSlugs.has(queueItem.slug),
+      )
+      .map(getSkillIdentity),
   );
 }
 

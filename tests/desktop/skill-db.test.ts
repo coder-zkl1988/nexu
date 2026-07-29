@@ -66,6 +66,100 @@ describe("SkillDb", () => {
     expect(all[0].installedAt).toBeTruthy();
   });
 
+  it("recordInstalls persists shared and workspace identity together", async () => {
+    db = await SkillDb.create(dbPath);
+
+    db.recordInstalls([
+      {
+        slug: "weather",
+        source: "managed",
+        version: "2.4.0",
+        ownerHandle: "publisher",
+      },
+      {
+        slug: "weather",
+        source: "workspace",
+        version: "2.4.0",
+        ownerHandle: "publisher",
+        agentId: "bot-1",
+      },
+    ]);
+
+    expect(db.getInstalledRecordsBySlug("weather")).toEqual([
+      expect.objectContaining({
+        source: "managed",
+        version: "2.4.0",
+        ownerHandle: "publisher",
+        agentId: null,
+      }),
+      expect.objectContaining({
+        source: "workspace",
+        version: "2.4.0",
+        ownerHandle: "publisher",
+        agentId: "bot-1",
+      }),
+    ]);
+  });
+
+  it("persists the publisher and version for owner-scoped installs", async () => {
+    db = await SkillDb.create(dbPath);
+    db.recordInstall("weather", "managed", "2.4.0", undefined, "publisher");
+    db.close();
+
+    db = await SkillDb.create(dbPath);
+    expect(db.getAllInstalled()[0]).toMatchObject({
+      slug: "weather",
+      version: "2.4.0",
+      ownerHandle: "publisher",
+    });
+  });
+
+  it("backfills only missing managed metadata without changing installedAt", async () => {
+    db = await SkillDb.create(dbPath);
+    db.recordInstall("weather", "managed");
+    const installedAt = db.getAllInstalled()[0]?.installedAt;
+
+    expect(
+      db.backfillInstalledManagedMetadata("weather", {
+        ownerHandle: "steipete",
+        version: "1.0.0",
+      }),
+    ).toBe(true);
+    expect(db.getAllInstalled()[0]).toMatchObject({
+      ownerHandle: "steipete",
+      version: "1.0.0",
+      installedAt,
+    });
+
+    expect(
+      db.backfillInstalledManagedMetadata("weather", {
+        ownerHandle: "different-owner",
+        version: "2.0.0",
+      }),
+    ).toBe(false);
+    expect(db.getAllInstalled()[0]).toMatchObject({
+      ownerHandle: "steipete",
+      version: "1.0.0",
+      installedAt,
+    });
+  });
+
+  it("does not backfill custom install metadata", async () => {
+    db = await SkillDb.create(dbPath);
+    db.recordInstall("weather", "custom");
+
+    expect(
+      db.backfillInstalledManagedMetadata("weather", {
+        ownerHandle: "steipete",
+        version: "1.0.0",
+      }),
+    ).toBe(false);
+    expect(db.getAllInstalled()[0]).toMatchObject({
+      ownerHandle: null,
+      version: null,
+    });
+  });
+
   it("recordInstall upserts — re-installing sets status back to installed", async () => {
     db = await SkillDb.create(dbPath);
     db.recordInstall("github", "managed");
@@ -261,6 +355,7 @@ describe("SkillDb", () => {
         source: "managed",
         status: "installed",
         version: "1.2.3",
+        ownerHandle: null,
         installedAt: "2026-03-20T10:00:00.000Z",
         uninstalledAt: null,
         agentId: null,

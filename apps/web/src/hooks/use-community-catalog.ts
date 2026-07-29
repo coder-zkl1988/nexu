@@ -1,10 +1,25 @@
-import type { SkillSource, SkillhubCatalogData } from "@/types/desktop";
+import type { SkillCatalogSort } from "@/lib/skills-view-state";
+import type {
+  SkillSource,
+  SkillhubCatalogData,
+  SkillhubCatalogPageData,
+  SkillhubStatusData,
+} from "@/types/desktop";
 import "@/lib/api";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
   getApiV1SkillhubCatalog,
+  getApiV1SkillhubCatalogPage,
+  getApiV1SkillhubStatus,
   postApiV1SkillhubCancel,
   postApiV1SkillhubImport,
   postApiV1SkillhubInstall,
@@ -18,23 +33,53 @@ export type SkillUninstallInput = {
   agentId?: string | null;
 };
 
+export type SkillInstallInput = {
+  slug: string;
+  ownerHandle?: string;
+  version?: string;
+  update?: boolean;
+};
+
 const CATALOG_QUERY_KEY = ["skillhub", "catalog"] as const;
+const CATALOG_PAGES_QUERY_KEY = ["skillhub", "catalog-page"] as const;
+const STATUS_QUERY_KEY = ["skillhub", "status"] as const;
 const DETAIL_QUERY_KEY = ["skillhub", "detail"] as const;
 
-/**
- * Queue statuses that should keep the catalog polling. Includes `failed` so
- * the UI eventually drops stale failure cards once the backend cleanup window
- * (cleanupDelayMs) evicts them — without this, a failed card can stay on
- * screen indefinitely until the user triggers another action.
- */
 const POLLING_QUEUE_STATUSES = new Set([
   "queued",
   "downloading",
   "installing-deps",
-  "failed",
 ]);
 
-function hasPollingQueueItems(data: SkillhubCatalogData | undefined): boolean {
+export class CatalogRevisionChangedError extends Error {
+  constructor() {
+    super("Catalog revision changed; restart pagination");
+    this.name = "CatalogRevisionChangedError";
+  }
+}
+
+export function isCatalogRevisionChangedResponse(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "catalog_revision_changed"
+  );
+}
+
+export async function resetCatalogPaginationOnRevisionChange(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  error: unknown,
+): Promise<boolean> {
+  if (!(error instanceof CatalogRevisionChangedError)) return false;
+  await queryClient.resetQueries({ queryKey, exact: true });
+  return true;
+}
+
+export function hasPollingQueueItems(
+  data: Pick<SkillhubCatalogData, "queue"> | undefined,
+): boolean {
   if (!data?.queue?.length) return false;
   return data.queue.some((item) => POLLING_QUEUE_STATUSES.has(item.status));
 }
@@ -59,14 +104,86 @@ export function useCommunitySkills(opts?: { refetchInterval?: number }) {
   return query;
 }
 
+export function useCommunitySkillPages(options: {
+  query?: string;
+  category?: string | null;
+  sort?: SkillCatalogSort;
+  enabled?: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const queryKey = useMemo(
+    () => [
+      ...CATALOG_PAGES_QUERY_KEY,
+      options.query ?? "",
+      options.category ?? "",
+      options.sort ?? "downloads",
+    ],
+    [options.category, options.query, options.sort],
+  );
+  const query = useInfiniteQuery({
+    queryKey,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }): Promise<SkillhubCatalogPageData> => {
+      const { data, error } = await getApiV1SkillhubCatalogPage({
+        query: {
+          limit: 50,
+          sort: options.sort ?? "downloads",
+          ...(options.query ? { q: options.query } : {}),
+          ...(options.category ? { category: options.category } : {}),
+          ...(pageParam ? { cursor: pageParam } : {}),
+        },
+      });
+      if (error) {
+        if (isCatalogRevisionChangedResponse(error)) {
+          throw new CatalogRevisionChangedError();
+        }
+        throw new Error("Catalog page fetch failed");
+      }
+      return data as unknown as SkillhubCatalogPageData;
+    },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    staleTime: 5 * 60 * 1000,
+    retry: (failureCount, error) =>
+      !(error instanceof CatalogRevisionChangedError) && failureCount < 3,
+    enabled: options.enabled ?? true,
+  });
+
+  useEffect(() => {
+    void resetCatalogPaginationOnRevisionChange(
+      queryClient,
+      queryKey,
+      query.error,
+    );
+  }, [query.error, queryClient, queryKey]);
+
+  return query;
+}
+
+export function useCommunitySkillStatus() {
+  return useQuery({
+    queryKey: STATUS_QUERY_KEY,
+    queryFn: async (): Promise<SkillhubStatusData> => {
+      const { data, error } = await getApiV1SkillhubStatus();
+      if (error) throw new Error("Skill status fetch failed");
+      return data as unknown as SkillhubStatusData;
+    },
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data as SkillhubStatusData | undefined;
+      return hasPollingQueueItems(data) ? 3_000 : false;
+    },
+  });
+}
+
 export function useInstallSkill() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
   return useMutation({
-    mutationFn: async (slug: string) => {
+    mutationFn: async (input: string | SkillInstallInput) => {
+      const request = typeof input === "string" ? { slug: input } : input;
       const { data, error } = await postApiV1SkillhubInstall({
-        body: { slug },
+        body: request,
       });
       if (error) throw new Error("Install request failed");
       const result = data as {
@@ -82,6 +199,8 @@ export function useInstallSkill() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: CATALOG_PAGES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: DETAIL_QUERY_KEY }),
       ]);
       if (result.queued) {
@@ -104,6 +223,8 @@ export function useCancelInstall() {
       const result = data as { ok: boolean; cancelled: boolean };
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: CATALOG_PAGES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: DETAIL_QUERY_KEY }),
       ]);
       return result;
@@ -130,6 +251,8 @@ export function useUninstallSkill() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: CATALOG_PAGES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: DETAIL_QUERY_KEY }),
       ]);
       return result;
@@ -152,6 +275,8 @@ export function useImportSkill() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: CATALOG_PAGES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: DETAIL_QUERY_KEY }),
       ]);
       return result;
@@ -170,6 +295,8 @@ export function useRefreshCatalog() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: CATALOG_PAGES_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
     },
   });
 }

@@ -1,13 +1,18 @@
 import {
+  useCommunitySkillStatus,
   useInstallSkill,
   useUninstallSkill,
 } from "@/hooks/use-community-catalog";
 import { useLocale } from "@/hooks/use-locale";
 import "@/lib/api";
 import { getTagLabel } from "@/lib/skill-translations";
-import { getSkillsBackNavigation } from "@/lib/skills-view-state";
+import {
+  getSkillIdentity,
+  getSkillsBackNavigation,
+} from "@/lib/skills-view-state";
 import { cn } from "@/lib/utils";
 import type { SkillSource } from "@/types/desktop";
+import { isSkillUpdateAvailable } from "@nexu/shared";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -15,15 +20,19 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  RefreshCw,
   Star,
   Trash2,
 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { getApiV1SkillhubSkillsBySlug } from "../../lib/api/sdk.gen";
 
 type SkillDetail = {
+  ownerHandle?: string;
   slug: string;
   name: string;
   description: string;
@@ -31,6 +40,8 @@ type SkillDetail = {
   stars: number;
   tags: string[];
   version: string;
+  installedVersion: string | null;
+  updateEligible: boolean;
   updatedAt: string;
   homepage: string;
   installed: boolean;
@@ -306,7 +317,8 @@ export function CommunitySkillDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { t, locale } = useLocale();
+  const { locale } = useLocale();
+  const { t } = useTranslation();
   const selectedSource = toUninstallSource(
     searchParams.get("skillSource") ??
       (typeof location.state === "object" &&
@@ -322,6 +334,8 @@ export function CommunitySkillDetailPage() {
     "selectedAgentId" in location.state
       ? String(location.state.selectedAgentId)
       : null);
+  const selectedOwnerHandle = searchParams.get("skillOwner") ?? undefined;
+  const selectedVersion = searchParams.get("skillVersion") ?? undefined;
 
   const handleBack = () => {
     const backNavigation = getSkillsBackNavigation(
@@ -339,17 +353,25 @@ export function CommunitySkillDetailPage() {
   const installMutation = useInstallSkill();
   const uninstallMutation = useUninstallSkill();
   const [pendingAction, setPendingAction] = useState<
-    "install" | "uninstall" | null
+    "install" | "update" | "uninstall" | null
   >(null);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["skillhub", "detail", slug, selectedSource, selectedAgentId],
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: [
+      "skillhub",
+      "detail",
+      slug,
+      selectedSource,
+      selectedAgentId,
+      selectedOwnerHandle,
+    ],
     queryFn: async (): Promise<SkillDetail> => {
       const { data, error } = await getApiV1SkillhubSkillsBySlug({
         path: { slug: slug as string },
         query: {
           ...(selectedSource ? { source: selectedSource } : {}),
           ...(selectedAgentId ? { agentId: selectedAgentId } : {}),
+          ...(selectedOwnerHandle ? { ownerHandle: selectedOwnerHandle } : {}),
         },
       });
       if (error) throw new Error("Failed to load skill");
@@ -357,14 +379,60 @@ export function CommunitySkillDetailPage() {
     },
     enabled: !!slug,
   });
+  const statusQuery = useCommunitySkillStatus();
+  const matchingQueueItem = useMemo(() => {
+    if (!slug) return undefined;
+    const ownerHandle = data?.ownerHandle ?? selectedOwnerHandle;
+    const identity = getSkillIdentity({ slug, ownerHandle });
+    return statusQuery.data?.queue.find(
+      (item) =>
+        getSkillIdentity(item) === identity ||
+        (!item.ownerHandle && item.slug === slug),
+    );
+  }, [data?.ownerHandle, selectedOwnerHandle, slug, statusQuery.data?.queue]);
+  const queueIsActive =
+    matchingQueueItem?.status === "queued" ||
+    matchingQueueItem?.status === "downloading" ||
+    matchingQueueItem?.status === "installing-deps";
+  const completedQueueEnqueuedAt =
+    matchingQueueItem?.status === "done" ? matchingQueueItem.enqueuedAt : null;
 
-  const isBusy = pendingAction !== null;
+  useEffect(() => {
+    if (completedQueueEnqueuedAt) {
+      void refetch();
+    }
+  }, [completedQueueEnqueuedAt, refetch]);
 
-  async function handleInstall() {
+  const isBusy = pendingAction !== null || queueIsActive;
+  const installedVersion = data?.installedVersion ?? undefined;
+  const updateAvailable = Boolean(
+    data?.installed &&
+      data.updateEligible &&
+      isSkillUpdateAvailable(data.version, installedVersion),
+  );
+  const updateIsActive = pendingAction === "update" || queueIsActive;
+  const installIsActive = pendingAction === "install" || queueIsActive;
+
+  async function handleInstall(update = false) {
     if (!slug) return;
-    setPendingAction("install");
+    setPendingAction(update ? "update" : "install");
     try {
-      await installMutation.mutateAsync(slug);
+      const ownerHandle = data?.ownerHandle ?? selectedOwnerHandle;
+      const version = data?.version ?? selectedVersion;
+      await installMutation.mutateAsync({
+        slug,
+        ...(ownerHandle ? { ownerHandle } : {}),
+        ...(version ? { version } : {}),
+        ...(update ? { update: true } : {}),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(
+        t(
+          update ? "skills.updateRequestFailed" : "skills.installRequestFailed",
+          { error: message },
+        ),
+      );
     } finally {
       setPendingAction(null);
     }
@@ -381,6 +449,9 @@ export function CommunitySkillDetailPage() {
           : {}),
         ...(data?.agentId ? { agentId: data.agentId } : {}),
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(t("skills.uninstallRequestFailed", { error: message }));
     } finally {
       setPendingAction(null);
     }
@@ -441,6 +512,14 @@ export function CommunitySkillDetailPage() {
                 </span>
               )}
             </p>
+            {updateAvailable && installedVersion && (
+              <p className="mb-2 text-[11px] font-medium text-accent">
+                {t("skillDetail.updateAvailable", {
+                  current: installedVersion,
+                  latest: data.version,
+                })}
+              </p>
+            )}
             <p className="text-[13px] text-text-secondary leading-relaxed">
               {data.description}
             </p>
@@ -448,26 +527,50 @@ export function CommunitySkillDetailPage() {
 
           {/* Install/Uninstall button */}
           {data.installed ? (
-            <button
-              type="button"
-              disabled={isBusy || !data.uninstallable}
-              onClick={() => void handleUninstall()}
-              className={cn(
-                "shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-medium transition-colors",
-                isBusy || !data.uninstallable
-                  ? "bg-surface-3 text-text-muted cursor-not-allowed"
-                  : "bg-red-500/10 text-red-500 hover:bg-red-500/20",
+            <div className="flex shrink-0 items-center gap-2">
+              {updateAvailable && (
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => void handleInstall(true)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium transition-colors",
+                    isBusy
+                      ? "bg-surface-3 text-text-muted cursor-not-allowed"
+                      : "bg-accent text-white hover:bg-accent/90",
+                  )}
+                >
+                  {updateIsActive ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={14} />
+                  )}
+                  {updateIsActive
+                    ? t("skillDetail.updating")
+                    : t("skillDetail.update")}
+                </button>
               )}
-            >
-              {pendingAction === "uninstall" ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Trash2 size={14} />
-              )}
-              {pendingAction === "uninstall"
-                ? t("skillDetail.removing")
-                : t("skillDetail.uninstall")}
-            </button>
+              <button
+                type="button"
+                disabled={isBusy || !data.uninstallable}
+                onClick={() => void handleUninstall()}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium transition-colors",
+                  isBusy || !data.uninstallable
+                    ? "bg-surface-3 text-text-muted cursor-not-allowed"
+                    : "bg-red-500/10 text-red-500 hover:bg-red-500/20",
+                )}
+              >
+                {pendingAction === "uninstall" ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                {pendingAction === "uninstall"
+                  ? t("skillDetail.removing")
+                  : t("skillDetail.uninstall")}
+              </button>
+            </div>
           ) : (
             <button
               type="button"
@@ -480,12 +583,12 @@ export function CommunitySkillDetailPage() {
                   : "bg-accent text-white hover:bg-accent/90",
               )}
             >
-              {pendingAction === "install" ? (
+              {installIsActive ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <Download size={14} />
               )}
-              {pendingAction === "install"
+              {installIsActive
                 ? t("skillDetail.installing")
                 : t("skillDetail.install")}
             </button>

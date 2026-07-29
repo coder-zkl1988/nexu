@@ -5,6 +5,7 @@ import {
   ExpertNotFoundError,
   type InstallExpertDeps,
   installExpert,
+  updateExpertSkills,
 } from "../../apps/controller/src/services/experthub/install-flow.js";
 
 const manifest: ExpertManifest = {
@@ -216,5 +217,303 @@ describe("installExpert", () => {
       path.join("/state/agents", "bot_1", "docs", "guide.md"),
       "content",
     );
+  });
+});
+
+describe("expert skill references", () => {
+  it("installs a preconfigured expert skill from the selected publisher", async () => {
+    const ledger = {
+      version: 1 as const,
+      updatedAt: null,
+      entries: {
+        "code-reviewer": {
+          slug: "code-reviewer",
+          version: "1.0.0",
+          botId: "",
+          installedAt: "",
+          configuredSkills: ["weather"],
+          configuredSkillRefs: [
+            {
+              slug: "weather",
+              ownerHandle: "category-winner",
+              version: "2.3.4",
+            },
+          ],
+        },
+      },
+    };
+    const deps = buildDeps({
+      catalog: { readLedger: vi.fn().mockResolvedValue(ledger) },
+    });
+
+    await installExpert({ slug: "code-reviewer", deps });
+
+    expect(deps.skillhub.install).toHaveBeenCalledWith({
+      slug: "weather",
+      ownerHandle: "category-winner",
+      version: "2.3.4",
+      agentId: "bot_1",
+      source: "workspace",
+    });
+  });
+
+  it("uses an exact configured reference for a required skill", async () => {
+    const ledger = {
+      version: 1 as const,
+      updatedAt: null,
+      entries: {
+        "code-reviewer": {
+          slug: "code-reviewer",
+          version: "1.0.0",
+          botId: "",
+          installedAt: "",
+          configuredSkills: ["git-diff"],
+          configuredSkillRefs: [
+            {
+              slug: "git-diff",
+              ownerHandle: "trusted",
+              version: "3.0.0",
+            },
+          ],
+        },
+      },
+    };
+    const deps = buildDeps({
+      catalog: { readLedger: vi.fn().mockResolvedValue(ledger) },
+    });
+
+    await installExpert({ slug: "code-reviewer", deps });
+
+    expect(deps.skillhub.install).toHaveBeenCalledTimes(1);
+    expect(deps.skillhub.install).toHaveBeenCalledWith({
+      slug: "git-diff",
+      ownerHandle: "trusted",
+      version: "3.0.0",
+      agentId: "bot_1",
+      source: "workspace",
+    });
+  });
+
+  it("persists and installs exact references when expert skills are updated", async () => {
+    const ledger = {
+      version: 1 as const,
+      updatedAt: null,
+      entries: {
+        "code-reviewer": {
+          slug: "code-reviewer",
+          version: "1.0.0",
+          botId: "bot_1",
+          installedAt: "2026-07-29T00:00:00.000Z",
+          configuredSkills: [],
+          configuredSkillRefs: [],
+        },
+      },
+    };
+    const install = vi.fn().mockResolvedValue({ ok: true });
+    const writeLedger = vi.fn().mockResolvedValue(undefined);
+    const syncAll = vi.fn().mockResolvedValue(undefined);
+
+    const result = await updateExpertSkills({
+      slug: "code-reviewer",
+      skills: ["weather"],
+      skillRefs: [
+        {
+          slug: "weather",
+          ownerHandle: "category-winner",
+          version: "2.3.4",
+        },
+      ],
+      deps: {
+        catalog: {
+          resolveExpert: vi
+            .fn()
+            .mockResolvedValue({ manifest, source: "bundled" }),
+          readLedger: vi.fn().mockResolvedValue(ledger),
+          writeLedger,
+        },
+        skillhub: {
+          install,
+          uninstall: vi.fn().mockResolvedValue({ ok: true }),
+        },
+        sync: { syncAll },
+      },
+    });
+
+    expect(install).toHaveBeenCalledWith({
+      slug: "weather",
+      ownerHandle: "category-winner",
+      version: "2.3.4",
+      agentId: "bot_1",
+      source: "workspace",
+    });
+    expect(result).toEqual({
+      ok: true,
+      configuredSkills: ["weather"],
+      configuredSkillRefs: [
+        {
+          slug: "weather",
+          ownerHandle: "category-winner",
+          version: "2.3.4",
+        },
+      ],
+    });
+    expect(writeLedger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: expect.objectContaining({
+          "code-reviewer": expect.objectContaining({
+            configuredSkills: ["weather"],
+            configuredSkillRefs: [
+              {
+                slug: "weather",
+                ownerHandle: "category-winner",
+                version: "2.3.4",
+              },
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("rejects inconsistent legacy slugs and exact references", async () => {
+    await expect(
+      updateExpertSkills({
+        slug: "code-reviewer",
+        skills: ["weather"],
+        skillRefs: [{ slug: "calendar", ownerHandle: "publisher" }],
+        deps: {
+          catalog: {
+            resolveExpert: vi.fn(),
+            readLedger: vi.fn(),
+            writeLedger: vi.fn(),
+          },
+          skillhub: {
+            install: vi.fn(),
+            uninstall: vi.fn(),
+          },
+          sync: { syncAll: vi.fn() },
+        },
+      }),
+    ).rejects.toThrow("Skill references do not match submitted skill slugs");
+  });
+
+  it("keeps the previous publisher when a same-slug replacement fails", async () => {
+    const previousReference = {
+      slug: "weather",
+      ownerHandle: "publisher-a",
+      version: "1.0.0",
+    };
+    const ledger = {
+      version: 1 as const,
+      updatedAt: null,
+      entries: {
+        "code-reviewer": {
+          slug: "code-reviewer",
+          version: "1.0.0",
+          botId: "bot_1",
+          installedAt: "2026-07-29T00:00:00.000Z",
+          configuredSkills: ["weather"],
+          configuredSkillRefs: [previousReference],
+        },
+      },
+    };
+    const install = vi.fn().mockResolvedValue({
+      ok: false,
+      error: "publisher conflict",
+    });
+    const uninstall = vi.fn().mockResolvedValue({ ok: true });
+    const writeLedger = vi.fn().mockResolvedValue(undefined);
+
+    const result = await updateExpertSkills({
+      slug: "code-reviewer",
+      skills: ["weather"],
+      skillRefs: [
+        {
+          slug: "weather",
+          ownerHandle: "publisher-b",
+          version: "2.0.0",
+        },
+      ],
+      deps: {
+        catalog: {
+          resolveExpert: vi
+            .fn()
+            .mockResolvedValue({ manifest, source: "bundled" }),
+          readLedger: vi.fn().mockResolvedValue(ledger),
+          writeLedger,
+        },
+        skillhub: { install, uninstall },
+        sync: { syncAll: vi.fn().mockResolvedValue(undefined) },
+      },
+    });
+
+    expect(uninstall).not.toHaveBeenCalled();
+    expect(result.configuredSkillRefs).toEqual([previousReference]);
+    expect(writeLedger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entries: expect.objectContaining({
+          "code-reviewer": expect.objectContaining({
+            configuredSkillRefs: [previousReference],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("reinstalls a selected skill when only its version changes", async () => {
+    const ledger = {
+      version: 1 as const,
+      updatedAt: null,
+      entries: {
+        "code-reviewer": {
+          slug: "code-reviewer",
+          version: "1.0.0",
+          botId: "bot_1",
+          installedAt: "2026-07-29T00:00:00.000Z",
+          configuredSkills: ["weather"],
+          configuredSkillRefs: [
+            {
+              slug: "weather",
+              ownerHandle: "publisher",
+              version: "1.0.0",
+            },
+          ],
+        },
+      },
+    };
+    const install = vi.fn().mockResolvedValue({ ok: true });
+    const uninstall = vi.fn().mockResolvedValue({ ok: true });
+
+    await updateExpertSkills({
+      slug: "code-reviewer",
+      skills: ["weather"],
+      skillRefs: [
+        {
+          slug: "weather",
+          ownerHandle: "publisher",
+          version: "2.0.0",
+        },
+      ],
+      deps: {
+        catalog: {
+          resolveExpert: vi
+            .fn()
+            .mockResolvedValue({ manifest, source: "bundled" }),
+          readLedger: vi.fn().mockResolvedValue(ledger),
+          writeLedger: vi.fn().mockResolvedValue(undefined),
+        },
+        skillhub: { install, uninstall },
+        sync: { syncAll: vi.fn().mockResolvedValue(undefined) },
+      },
+    });
+
+    expect(install).toHaveBeenCalledWith({
+      slug: "weather",
+      ownerHandle: "publisher",
+      version: "2.0.0",
+      agentId: "bot_1",
+      source: "workspace",
+    });
+    expect(uninstall).not.toHaveBeenCalled();
   });
 });

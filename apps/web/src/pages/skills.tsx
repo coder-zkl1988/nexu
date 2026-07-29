@@ -1,7 +1,8 @@
 import ImportSkillModal from "@/components/skills/import-skill-modal";
 import {
   useCancelInstall,
-  useCommunitySkills,
+  useCommunitySkillPages,
+  useCommunitySkillStatus,
   useInstallSkill,
   useRefreshCatalog,
   useUninstallSkill,
@@ -9,12 +10,17 @@ import {
 import { useLocale } from "@/hooks/use-locale";
 import { getTagLabel } from "@/lib/skill-translations";
 import {
+  type SkillCatalogSort,
   type SkillSelection,
   type TopTab,
   type YoursSubTab,
   applySkillsViewStatePatch,
   createSkillDetailPath,
   createSkillDetailState,
+  getCatalogSkillIdentityConflict,
+  getCatalogSkillInstallation,
+  getInstalledSkillRenderKey,
+  getSkillIdentity,
   getUnavailableSkillDetailSlugs,
   parseSkillsViewState,
 } from "@/lib/skills-view-state";
@@ -24,18 +30,26 @@ import type {
   InstalledSkill,
   MinimalSkill,
   QueueErrorCode,
+  QueueItem,
   SkillSource,
 } from "@/types/desktop";
+import { isSkillUpdateAvailable } from "@nexu/shared";
+import type { TFunction } from "i18next";
 import {
   AlertTriangle,
+  ArrowDownUp,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Compass,
+  Download,
   Loader2,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   Settings2,
+  Star,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,12 +66,44 @@ function toUninstallSource(
   return source && source !== "curated" ? source : undefined;
 }
 
+function toSkillSelection(skill: InstalledSkill): SkillSelection {
+  return {
+    source: toUninstallSource(skill.source),
+    agentId: skill.agentId,
+    ownerHandle: skill.ownerHandle,
+    version: skill.version,
+  };
+}
+
 function getSkillType(tags: readonly string[]): string | null {
   const primaryTag = tags[0]?.trim();
   if (!primaryTag) {
     return null;
   }
   return primaryTag.toLowerCase();
+}
+
+function formatMetric(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(Math.max(0, value));
+}
+
+function formatCatalogAge(
+  updatedAt: string,
+  t: TFunction,
+  now = Date.now(),
+): string {
+  const updatedAtMs = Date.parse(updatedAt);
+  if (!Number.isFinite(updatedAtMs)) return updatedAt;
+
+  const elapsedHours = Math.floor(Math.max(0, now - updatedAtMs) / 3_600_000);
+  if (elapsedHours < 1) return t("skills.justNow");
+  if (elapsedHours < 24) {
+    return t("skills.hoursAgo", { count: elapsedHours });
+  }
+  return t("skills.daysAgo", { count: Math.floor(elapsedHours / 24) });
 }
 
 function useDebounce<T>(value: T, delayMs: number): T {
@@ -78,10 +124,12 @@ function SkillCard({
   queueErrorCode,
   queueErrorMessage,
   categoryLabel,
+  locale,
   skillSource,
   detailTo,
   isDetailAvailable,
   installation,
+  hasIdentityConflict,
 }: {
   skill: MinimalSkill;
   isInstalled: boolean;
@@ -95,17 +143,19 @@ function SkillCard({
   queueErrorCode?: QueueErrorCode | null;
   queueErrorMessage?: string | null;
   categoryLabel?: string;
+  locale: string;
   skillSource: "builtin" | "explore" | "custom";
   detailTo: string;
   isDetailAvailable: boolean;
   installation?: SkillSelection;
+  hasIdentityConflict?: boolean;
 }) {
   const { t } = useTranslation();
   const installMutation = useInstallSkill();
   const uninstallMutation = useUninstallSkill();
   const cancelMutation = useCancelInstall();
   const [pendingAction, setPendingAction] = useState<
-    "install" | "uninstall" | "cancel" | null
+    "install" | "update" | "uninstall" | "cancel" | null
   >(null);
 
   const isQueueActive =
@@ -113,10 +163,22 @@ function SkillCard({
     queueStatus === "downloading" ||
     queueStatus === "installing-deps";
   const isFailed = queueStatus === "failed";
+  const updateAvailable =
+    isInstalled &&
+    installation?.source === "managed" &&
+    Boolean(skill.ownerHandle) &&
+    Boolean(installation.ownerHandle) &&
+    getSkillIdentity(skill) ===
+      getSkillIdentity({
+        slug: skill.slug,
+        ownerHandle: installation.ownerHandle,
+      }) &&
+    isSkillUpdateAvailable(skill.version, installation?.version);
   // Retry is suppressed for terminal errors that the user must resolve
   // outside the app (skill removed, or npm not installed).
   const canRetry =
     isFailed &&
+    (!isInstalled || updateAvailable) &&
     queueErrorCode !== "skill_not_found" &&
     queueErrorCode !== "npm_missing";
   const failedMessage = isFailed
@@ -132,11 +194,16 @@ function SkillCard({
     : null;
   const isMutating = pendingAction !== null;
 
-  async function handleInstall() {
-    setPendingAction("install");
+  async function handleInstall(update = false) {
+    setPendingAction(update ? "update" : "install");
     const skillType = getSkillType(skill.tags);
     try {
-      await installMutation.mutateAsync(skill.slug);
+      await installMutation.mutateAsync({
+        slug: skill.slug,
+        ...(skill.ownerHandle ? { ownerHandle: skill.ownerHandle } : {}),
+        ...(skill.version ? { version: skill.version } : {}),
+        ...(update ? { update: true } : {}),
+      });
       track("workspace_skill_install", {
         skill_name: skill.name,
         skill_type: skillType,
@@ -149,7 +216,14 @@ function SkillCard({
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      toast.error(t("skills.installRequestFailed", { error: message }));
+      toast.error(
+        t(
+          update ? "skills.updateRequestFailed" : "skills.installRequestFailed",
+          {
+            error: message,
+          },
+        ),
+      );
       track("workspace_skill_install", {
         skill_name: skill.name,
         skill_type: skillType,
@@ -219,16 +293,59 @@ function SkillCard({
           <div className="text-[13px] font-semibold text-text-heading truncate">
             {skill.name}
           </div>
-          {categoryLabel && (
-            <span className="text-[11px] text-text-muted">{categoryLabel}</span>
-          )}
+          <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-text-muted">
+            {skill.ownerHandle && (
+              <span className="truncate">@{skill.ownerHandle}</span>
+            )}
+            {skill.ownerHandle && skill.version && (
+              <span className="h-2.5 w-px shrink-0 bg-border" />
+            )}
+            {skill.version && (
+              <span className="shrink-0">v{skill.version}</span>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Description */}
-      <p className="text-[12px] text-text-tertiary leading-[1.5] line-clamp-2 mb-3">
+      <p className="min-h-9 text-[12px] text-text-tertiary leading-[1.5] line-clamp-2 mb-3">
         {skill.description}
       </p>
+
+      <div className="mb-3 flex min-h-4 items-center justify-between gap-3 text-[11px] text-text-muted">
+        <span
+          className={cn("truncate", updateAvailable && "text-accent")}
+          title={
+            updateAvailable
+              ? t("skills.updateAvailable", {
+                  current: installation?.version,
+                  latest: skill.version,
+                })
+              : undefined
+          }
+        >
+          {updateAvailable
+            ? t("skills.updateAvailable", {
+                current: installation?.version,
+                latest: skill.version,
+              })
+            : categoryLabel}
+        </span>
+        <div className="flex shrink-0 items-center gap-3 tabular-nums">
+          {skill.downloads > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Download size={11} aria-hidden="true" />
+              {formatMetric(skill.downloads, locale)}
+            </span>
+          )}
+          {skill.stars > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Star size={11} aria-hidden="true" />
+              {formatMetric(skill.stars, locale)}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Failure notice — visible only when the queue reports a terminal failure. */}
       {isFailed && failedMessage && (
@@ -262,10 +379,14 @@ function SkillCard({
         }}
       >
         <span />
-        {isQueueActive || (isMutating && pendingAction === "install") ? (
+        {isQueueActive ||
+        (isMutating &&
+          (pendingAction === "install" || pendingAction === "update")) ? (
           <span className="inline-flex items-center gap-1.5 rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-border text-text-muted cursor-default">
             <Loader2 size={12} className="animate-spin" />
-            {t("skills.installingAction")}
+            {updateAvailable
+              ? t("skills.updatingAction")
+              : t("skills.installingAction")}
           </span>
         ) : isFailed ? (
           <div className="flex items-center gap-2">
@@ -289,7 +410,7 @@ function SkillCard({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleInstall();
+                  handleInstall(updateAvailable);
                 }}
                 disabled={isMutating}
                 className="inline-flex items-center gap-1.5 rounded-[8px] px-[14px] py-[5px] text-[12px] font-medium border border-[var(--color-danger)]/40 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/5 transition-colors"
@@ -299,21 +420,42 @@ function SkillCard({
               </button>
             )}
           </div>
+        ) : hasIdentityConflict ? (
+          <span className="rounded-[8px] border border-border px-[14px] py-[5px] text-[12px] font-medium text-text-muted">
+            {t("skills.publisherConflict")}
+          </span>
         ) : isInstalled ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleUninstall();
-            }}
-            disabled={isMutating}
-            className="text-[12px] font-medium text-text-muted hover:text-[var(--color-danger)] transition-colors"
-          >
-            {pendingAction === "uninstall"
-              ? t("skills.uninstallingAction")
-              : t("skills.uninstallAction")}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUninstall();
+              }}
+              disabled={isMutating}
+              className="text-[12px] font-medium text-text-muted hover:text-[var(--color-danger)] transition-colors"
+            >
+              {pendingAction === "uninstall"
+                ? t("skills.uninstallingAction")
+                : t("skills.uninstallAction")}
+            </button>
+            {updateAvailable && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleInstall(true);
+                }}
+                disabled={isMutating}
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-accent/40 px-[14px] py-[5px] text-[12px] font-medium text-accent transition-colors hover:bg-accent/5"
+              >
+                <RefreshCw size={12} />
+                {t("skills.updateAction")}
+              </button>
+            )}
+          </div>
         ) : (
           <button
             type="button"
@@ -373,14 +515,13 @@ export function SkillsPage() {
     [],
   );
   const { locale } = useLocale();
-  const { data, isLoading, isError } = useCommunitySkills();
   const refreshMutation = useRefreshCatalog();
   const [importModalOpen, setImportModalOpen] = useState(false);
   const viewState = useMemo(
     () => parseSkillsViewState(searchParams),
     [searchParams],
   );
-  const { topTab, yoursSubTab, activeTag, searchQuery } = viewState;
+  const { topTab, yoursSubTab, activeTag, searchQuery, sort } = viewState;
 
   const [inputValue, setInputValue] = useState(searchQuery);
   const debouncedInput = useDebounce(inputValue, 150);
@@ -396,6 +537,48 @@ export function SkillsPage() {
   }, [debouncedInput, searchQuery, setSearchParams]);
 
   const debouncedQuery = useDebounce(searchQuery, 150);
+  const catalogQuery = useCommunitySkillPages({
+    query: topTab === "explore" ? debouncedQuery.trim() : undefined,
+    category: topTab === "explore" ? activeTag : null,
+    sort,
+    enabled: topTab === "explore",
+  });
+  const statusQuery = useCommunitySkillStatus();
+  const isLoading =
+    statusQuery.isLoading || (topTab === "explore" && catalogQuery.isLoading);
+  const isError =
+    statusQuery.isError || (topTab === "explore" && catalogQuery.isError);
+  const hasNextPage = topTab === "explore" && catalogQuery.hasNextPage;
+  const isFetchingNextPage =
+    topTab === "explore" && catalogQuery.isFetchingNextPage;
+  const fetchNextPage = catalogQuery.fetchNextPage;
+  const catalogPages = catalogQuery.data?.pages;
+  const firstPage = catalogPages?.[0];
+  const status = statusQuery.data;
+  const data =
+    firstPage || status
+      ? {
+          ...(firstPage ?? {
+            skills: [],
+            meta: null,
+            nextCursor: null,
+            total: 0,
+            facets: [],
+            installedSlugs: [],
+            installedSkills: [],
+            queue: [],
+          }),
+          skills:
+            topTab === "explore"
+              ? (catalogPages?.flatMap((page) => page.skills) ?? [])
+              : [],
+          installedSlugs:
+            status?.installedSlugs ?? firstPage?.installedSlugs ?? [],
+          installedSkills:
+            status?.installedSkills ?? firstPage?.installedSkills ?? [],
+          queue: status?.queue ?? firstPage?.queue ?? [],
+        }
+      : undefined;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -443,6 +626,7 @@ export function SkillsPage() {
         yoursSubTab: YoursSubTab;
         activeTag: string | null;
         searchQuery: string;
+        sort: SkillCatalogSort;
       }>,
     ) => {
       setSearchParams((current) => applySkillsViewStatePatch(current, patch), {
@@ -458,6 +642,24 @@ export function SkillsPage() {
     [data?.installedSlugs],
   );
   const installedSkills: InstalledSkill[] = data?.installedSkills ?? [];
+  const installedIdentities = useMemo(
+    () =>
+      new Set(
+        installedSkills.flatMap((skill) =>
+          skill.ownerHandle ? [getSkillIdentity(skill)] : [],
+        ),
+      ),
+    [installedSkills],
+  );
+  const legacyInstalledSlugs = useMemo(
+    () =>
+      new Set(
+        installedSkills
+          .filter((skill) => !skill.ownerHandle)
+          .map((skill) => skill.slug),
+      ),
+    [installedSkills],
+  );
 
   // Queue items that should appear in the Yours tab: active installs
   // (queued/downloading/installing-deps) plus terminal failures so the user
@@ -471,41 +673,18 @@ export function SkillsPage() {
       "failed",
     ]);
     return (data?.queue ?? []).filter(
-      (qi) => visibleStatuses.has(qi.status) && !installedSlugs.has(qi.slug),
+      (queueItem) =>
+        visibleStatuses.has(queueItem.status) &&
+        (queueItem.ownerHandle
+          ? !installedIdentities.has(getSkillIdentity(queueItem)) &&
+            !legacyInstalledSlugs.has(queueItem.slug)
+          : !installedSlugs.has(queueItem.slug)),
     );
-  }, [data?.queue, installedSlugs]);
-  const queueBySlug = useMemo(() => {
-    const map = new Map<
-      string,
-      "queued" | "downloading" | "installing-deps" | "done" | "failed"
-    >();
+  }, [data?.queue, installedIdentities, installedSlugs, legacyInstalledSlugs]);
+  const queueByIdentity = useMemo(() => {
+    const map = new Map<string, QueueItem>();
     for (const item of data?.queue ?? []) {
-      map.set(item.slug, item.status);
-    }
-    return map;
-  }, [data?.queue]);
-  const queueErrorBySlug = useMemo(() => {
-    const map = new Map<string, QueueErrorCode>();
-    for (const item of data?.queue ?? []) {
-      if (item.status === "failed" && item.errorCode) {
-        map.set(item.slug, item.errorCode);
-      }
-    }
-    return map;
-  }, [data?.queue]);
-  const queueErrorMessageBySlug = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const item of data?.queue ?? []) {
-      if (item.status === "failed" && item.error) {
-        map.set(item.slug, item.error);
-      }
-    }
-    return map;
-  }, [data?.queue]);
-  const queueSourceBySlug = useMemo(() => {
-    const map = new Map<string, SkillSource>();
-    for (const item of data?.queue ?? []) {
-      map.set(item.slug, item.source);
+      map.set(getSkillIdentity(item), item);
     }
     return map;
   }, [data?.queue]);
@@ -516,6 +695,9 @@ export function SkillsPage() {
 
   // Compute top tags
   const topTags = useMemo(() => {
+    if (topTab === "explore" && data?.facets?.length) {
+      return data.facets;
+    }
     const counts: Record<string, number> = {};
     for (const s of allSkills) {
       for (const tag of s.tags) {
@@ -526,34 +708,49 @@ export function SkillsPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12)
       .map(([tag, count]) => ({ tag, count }));
-  }, [allSkills]);
+  }, [allSkills, data?.facets, topTab]);
 
-  // Build skill lists based on tabs — explore sorted by downloads desc
-  const exploreSkills = [...allSkills]
-    .filter((s) => !installedSlugs.has(s.slug))
-    .sort((a, b) => b.downloads - a.downloads);
+  // Explore keeps the server-provided order so cursor pagination remains stable.
+  const exploreSkills = allSkills;
   const yourSkillsList = useMemo(() => {
     const installed = installedSkills.map((is) => {
-      const catalogEntry = allSkills.find((s) => s.slug === is.slug);
-      return (
-        catalogEntry ?? {
-          slug: is.slug,
-          name: is.name || is.slug,
-          description: is.description || "",
-          downloads: 0,
-          stars: 0,
-          tags: [],
-          version: "",
-          updatedAt: "",
-        }
+      const catalogEntry = allSkills.find(
+        (skill) =>
+          (is.ownerHandle &&
+            getSkillIdentity(skill) === getSkillIdentity(is)) ||
+          (!is.ownerHandle && skill.slug === is.slug),
       );
+      const skill = catalogEntry ?? {
+        ...(is.ownerHandle ? { ownerHandle: is.ownerHandle } : {}),
+        slug: is.slug,
+        name: is.name || is.slug,
+        description: is.description || "",
+        downloads: 0,
+        stars: 0,
+        tags: [],
+        version: is.version ?? "",
+        updatedAt: "",
+      };
+      return {
+        skill: {
+          ...skill,
+          identity: getInstalledSkillRenderKey(is),
+        },
+        source: is.source,
+      };
     });
 
     // Map active queue items to MinimalSkill shape with source for filtering
     const downloadingWithSource = activeQueueItems.map((qi) => {
-      const catalogEntry = allSkills.find((s) => s.slug === qi.slug);
+      const catalogEntry = allSkills.find((skill) =>
+        qi.ownerHandle
+          ? getSkillIdentity(skill) === getSkillIdentity(qi)
+          : skill.slug === qi.slug,
+      );
       return {
         skill: catalogEntry ?? {
+          identity: getSkillIdentity(qi),
+          ...(qi.ownerHandle ? { ownerHandle: qi.ownerHandle } : {}),
           slug: qi.slug,
           name: qi.slug,
           description: "",
@@ -568,30 +765,19 @@ export function SkillsPage() {
     });
 
     if (yoursSubTab === "builtin") {
-      const builtinSlugs = new Set(
-        installedSkills
-          .filter((is) => is.source === "curated" || is.source === "managed")
-          .map((is) => is.slug),
-      );
       const filteredDownloading = downloadingWithSource
         .filter((d) => d.source === "curated" || d.source === "managed")
         .map((d) => d.skill);
       return [
         ...filteredDownloading,
-        ...installed.filter((s) => builtinSlugs.has(s.slug)),
+        ...installed
+          .filter(
+            (item) => item.source === "curated" || item.source === "managed",
+          )
+          .map((item) => item.skill),
       ];
     }
     if (yoursSubTab === "custom") {
-      const customSlugs = new Set(
-        installedSkills
-          .filter(
-            (is) =>
-              is.source === "custom" ||
-              is.source === "workspace" ||
-              is.source === "user",
-          )
-          .map((is) => is.slug),
-      );
       const filteredDownloading = downloadingWithSource
         .filter(
           (d) =>
@@ -602,16 +788,30 @@ export function SkillsPage() {
         .map((d) => d.skill);
       return [
         ...filteredDownloading,
-        ...installed.filter((s) => customSlugs.has(s.slug)),
+        ...installed
+          .filter(
+            (item) =>
+              item.source === "custom" ||
+              item.source === "workspace" ||
+              item.source === "user",
+          )
+          .map((item) => item.skill),
       ];
     }
-    return [...downloadingWithSource.map((d) => d.skill), ...installed];
+    return [
+      ...downloadingWithSource.map((d) => d.skill),
+      ...installed.map((item) => item.skill),
+    ];
   }, [installedSkills, allSkills, yoursSubTab, activeQueueItems]);
 
   const baseSkills = topTab === "explore" ? exploreSkills : yourSkillsList;
 
   // Filter by tag and search
   const filteredSkills = useMemo(() => {
+    if (topTab === "explore") {
+      return baseSkills;
+    }
+
     let list = [...baseSkills];
 
     if (activeTag) {
@@ -626,20 +826,30 @@ export function SkillsPage() {
     }
 
     return list;
-  }, [baseSkills, activeTag, debouncedQuery]);
+  }, [baseSkills, activeTag, debouncedQuery, topTab]);
 
   // Reset visible count when filters change — deps are intentional triggers
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps trigger reset on filter change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [debouncedQuery, activeTag, topTab, yoursSubTab]);
+  }, [debouncedQuery, activeTag, sort, topTab, yoursSubTab]);
 
   // Intersection Observer for lazy loading
   const loadMore = useCallback(() => {
+    if (topTab === "explore" && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+      return;
+    }
     setVisibleCount((prev) =>
       prev >= filteredSkills.length ? prev : prev + PAGE_SIZE,
     );
-  }, [filteredSkills.length]);
+  }, [
+    fetchNextPage,
+    filteredSkills.length,
+    hasNextPage,
+    isFetchingNextPage,
+    topTab,
+  ]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -658,25 +868,26 @@ export function SkillsPage() {
     return () => observer.disconnect();
   }, [loadMore]);
 
-  const visibleSkills = filteredSkills.slice(0, visibleCount);
+  const visibleSkills =
+    topTab === "explore"
+      ? filteredSkills
+      : filteredSkills.slice(0, visibleCount);
 
-  const installationBySlug = useMemo(() => {
+  const installationByIdentity = useMemo(() => {
     const map = new Map<string, SkillSelection>();
     for (const skill of installedSkills) {
-      const existing = map.get(skill.slug);
+      const identity = getSkillIdentity(skill);
+      const selection = toSkillSelection(skill);
+      map.set(getInstalledSkillRenderKey(skill), selection);
+
+      const existing = map.get(identity);
       if (!existing) {
-        map.set(skill.slug, {
-          source: toUninstallSource(skill.source),
-          agentId: skill.agentId,
-        });
+        map.set(identity, selection);
         continue;
       }
 
       if (existing.source === "workspace" && skill.source !== "workspace") {
-        map.set(skill.slug, {
-          source: toUninstallSource(skill.source),
-          agentId: skill.agentId,
-        });
+        map.set(identity, selection);
       }
     }
 
@@ -687,25 +898,35 @@ export function SkillsPage() {
   const categoryTabs = useMemo(() => {
     const base =
       topTab === "explore"
-        ? [{ id: "all", label: t("skills.all"), count: exploreSkills.length }]
+        ? [
+            {
+              id: "all",
+              label: t("skills.all"),
+              count: data?.total ?? exploreSkills.length,
+            },
+          ]
         : [{ id: "all", label: t("skills.all"), count: yourSkillsList.length }];
 
     const tagTabs = topTags
-      .filter((t) => {
-        const skills = topTab === "explore" ? exploreSkills : yourSkillsList;
-        return skills.some((s) => s.tags.includes(t.tag));
-      })
+      .filter(
+        (tag) =>
+          topTab === "explore" ||
+          yourSkillsList.some((skill) => skill.tags.includes(tag.tag)),
+      )
       .map((t) => {
-        const skills = topTab === "explore" ? exploreSkills : yourSkillsList;
         return {
           id: t.tag,
           label: getTagLabel(t.tag, locale),
-          count: skills.filter((s) => s.tags.includes(t.tag)).length,
+          count:
+            topTab === "explore"
+              ? t.count
+              : yourSkillsList.filter((skill) => skill.tags.includes(t.tag))
+                  .length,
         };
       });
 
     return [...base, ...tagTabs];
-  }, [topTab, exploreSkills, yourSkillsList, topTags, locale, t]);
+  }, [topTab, data?.total, exploreSkills, yourSkillsList, topTags, locale, t]);
 
   // Yours sub-tab counts (include actively downloading items)
   const builtinCount =
@@ -774,7 +995,7 @@ export function SkillsPage() {
       <div className="shrink-0 px-6 pt-6">
         <div style={{ paddingTop: isDesktopClient ? "2rem" : "0" }}>
           {/* Header */}
-          <div className="flex items-center justify-between mb-10">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
             <div>
               <h1 className="text-lg font-semibold text-[var(--color-tabby-foreground)]">
                 {t("skills.pageTitle")}
@@ -784,6 +1005,36 @@ export function SkillsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {topTab === "explore" && (
+                <div className="relative">
+                  <ArrowDownUp
+                    size={13}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+                  />
+                  <select
+                    aria-label={t("skills.sortBy")}
+                    value={sort}
+                    onChange={(event) =>
+                      updateViewState({
+                        sort: event.target.value as SkillCatalogSort,
+                      })
+                    }
+                    className="h-8 appearance-none rounded-lg border border-border bg-surface-1 py-1.5 pl-8 pr-8 text-[12px] text-text-primary focus:outline-none focus:border-[var(--color-brand-primary)]/30 focus:ring-1 focus:ring-[var(--color-brand-primary)]/20"
+                  >
+                    <option value="downloads">
+                      {t("skills.sortDownloads")}
+                    </option>
+                    <option value="stars">{t("skills.sortStars")}</option>
+                    <option value="updated">{t("skills.sortNewest")}</option>
+                  </select>
+                  <ChevronRight
+                    size={12}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rotate-90 text-text-muted"
+                  />
+                </div>
+              )}
               <div className="relative">
                 <Search
                   size={14}
@@ -922,7 +1173,7 @@ export function SkillsPage() {
 
           {/* Category pill filters (Explore only) */}
           {topTab === "explore" && (
-            <div className="relative mb-5">
+            <div className="relative mb-3">
               <div
                 ref={pillScrollRef}
                 onScroll={checkPillOverflow}
@@ -990,6 +1241,18 @@ export function SkillsPage() {
             </div>
           )}
 
+          {topTab === "explore" && data?.meta && (
+            <div className="mb-3 flex items-center gap-1.5 text-[11px] text-text-muted">
+              <Clock3 size={12} aria-hidden="true" />
+              <span>
+                {t("skills.lastUpdated", {
+                  time: formatCatalogAge(data.meta.updatedAt, t),
+                  count: data.meta.skillCount,
+                })}
+              </span>
+            </div>
+          )}
+
           {/* ClawHub disclaimer */}
           <p className="text-[12px] text-text-tertiary mb-4 font-medium">
             {t("skills.clawhubDisclaimer")}{" "}
@@ -1012,45 +1275,65 @@ export function SkillsPage() {
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(max(160px,calc(25%-9px)),1fr))]">
           {visibleSkills.map((skill) => {
             const firstTag = skill.tags[0];
+            const catalogIdentity = getSkillIdentity(skill);
+            const renderIdentity =
+              topTab === "explore"
+                ? catalogIdentity
+                : (skill.identity ?? catalogIdentity);
+            const installedCatalogSkill =
+              topTab === "explore"
+                ? getCatalogSkillInstallation(skill, installedSkills)
+                : undefined;
+            const identityConflict =
+              topTab === "explore"
+                ? getCatalogSkillIdentityConflict(skill, installedSkills)
+                : undefined;
+            const installation = installedCatalogSkill
+              ? toSkillSelection(installedCatalogSkill)
+              : installationByIdentity.get(renderIdentity);
+            const queueItem = queueByIdentity.get(catalogIdentity);
             return (
               <SkillCard
-                key={skill.slug}
+                key={renderIdentity}
                 skill={skill}
-                isInstalled={installedSlugs.has(skill.slug)}
-                queueStatus={queueBySlug.get(skill.slug)}
-                queueErrorCode={queueErrorBySlug.get(skill.slug) ?? null}
-                queueErrorMessage={
-                  queueErrorMessageBySlug.get(skill.slug) ?? null
-                }
+                isInstalled={Boolean(installation)}
+                queueStatus={queueItem?.status}
+                queueErrorCode={queueItem?.errorCode ?? null}
+                queueErrorMessage={queueItem?.error ?? null}
                 detailTo={createSkillDetailPath(
                   skill.slug,
                   location.search,
-                  installationBySlug.get(skill.slug),
+                  installation ?? {
+                    ownerHandle: skill.ownerHandle,
+                    version: skill.version || undefined,
+                  },
                 )}
-                installation={installationBySlug.get(skill.slug)}
-                isDetailAvailable={!unavailableDetailSlugs.has(skill.slug)}
+                installation={installation}
+                hasIdentityConflict={Boolean(identityConflict)}
+                isDetailAvailable={!unavailableDetailSlugs.has(catalogIdentity)}
                 skillSource={
                   topTab === "explore"
                     ? "explore"
                     : mapInstalledSkillSource(
-                        installedSkills.find((item) => item.slug === skill.slug)
-                          ?.source ??
-                          queueSourceBySlug.get(skill.slug) ??
-                          "managed",
+                        installation?.source ?? queueItem?.source ?? "managed",
                       )
                 }
                 categoryLabel={
                   firstTag ? getTagLabel(firstTag, locale) : undefined
                 }
+                locale={locale}
               />
             );
           })}
         </div>
 
         {/* Sentinel for infinite scroll */}
-        {visibleCount < filteredSkills.length && (
+        {((topTab === "explore" && hasNextPage) ||
+          (topTab !== "explore" && visibleCount < filteredSkills.length)) && (
           <div ref={sentinelRef} className="flex justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-text-muted" />
+            {isFetchingNextPage && (
+              <Loader2 size={20} className="animate-spin text-text-muted" />
+            )}
           </div>
         )}
 
