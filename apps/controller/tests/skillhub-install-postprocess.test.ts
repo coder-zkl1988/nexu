@@ -77,7 +77,10 @@ describe("CatalogManager staged post-processing", () => {
 
     const catalog = new CatalogManager(path.join(rootDir, "cache"), {
       skillsDir,
-      skillDb: { close: vi.fn() } as unknown as SkillDb,
+      skillDb: {
+        close: vi.fn(),
+        getInstalledRecordsBySlug: vi.fn(() => []),
+      } as unknown as SkillDb,
     });
 
     await expect(catalog.executeInstall("weather")).rejects.toThrow(

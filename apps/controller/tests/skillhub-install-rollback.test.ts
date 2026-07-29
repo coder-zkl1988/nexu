@@ -112,7 +112,10 @@ describe("CatalogManager install rollback", () => {
     mocks.ensureNpmAvailable.mockResolvedValue(undefined);
     mocks.runNpmInstall.mockRejectedValue(new Error("registry unavailable"));
 
-    const skillDb = { close: vi.fn() } as unknown as SkillDb;
+    const skillDb = {
+      close: vi.fn(),
+      getInstalledRecordsBySlug: vi.fn(() => []),
+    } as unknown as SkillDb;
     const catalog = new CatalogManager(path.join(rootDir, "cache"), {
       skillsDir,
       skillDb,
@@ -155,7 +158,10 @@ describe("CatalogManager install rollback", () => {
       },
     );
 
-    const skillDb = { close: vi.fn() } as unknown as SkillDb;
+    const skillDb = {
+      close: vi.fn(),
+      getInstalledRecordsBySlug: vi.fn(() => []),
+    } as unknown as SkillDb;
     const catalog = new CatalogManager(path.join(rootDir, "cache"), {
       skillsDir,
       skillDb,
