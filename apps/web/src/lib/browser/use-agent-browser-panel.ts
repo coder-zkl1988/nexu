@@ -1,6 +1,10 @@
 import { useEffect } from "react";
 import { requestAgentBrowserTab } from "./agent-browser-relay";
-import { getBrowserPanelState, openBrowserPanel } from "./browser-panel-store";
+import {
+  getBrowserPanelState,
+  openBrowserPanel,
+  releaseAgentBrowserPanelPin,
+} from "./browser-panel-store";
 
 /**
  * Raises the browser panel when the agent opens a page.
@@ -31,6 +35,10 @@ export function useAgentBrowserPanel(): void {
     if (typeof onDesktopCommand !== "function") return;
 
     return onDesktopCommand.call(candidate, (command: DesktopCommand) => {
+      if (command.type === "browser:agent-run-ended") {
+        releaseAgentBrowserPanelPin();
+        return;
+      }
       if (command.type !== "browser:agent-opened") return;
       if (!command.tabId || !command.url) return;
       requestAgentBrowserTab(command.tabId, command.url);

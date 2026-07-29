@@ -1204,6 +1204,9 @@ function startAgentBrowserRelay(): void {
         url,
       });
     },
+    onRunEnded: (sessionKey) => {
+      sendHostDesktopCommand({ type: "browser:agent-run-ended", sessionKey });
+    },
     onLog: (message) => {
       console.error(`[agent-browser] ${message}`);
       writeDesktopMainLog({

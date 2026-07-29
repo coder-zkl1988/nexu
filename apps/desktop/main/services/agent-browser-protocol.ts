@@ -38,6 +38,27 @@ export function parseCommandFrame(frame: string): CommandEnvelope | null {
   }
 }
 
+/** Parses one SSE frame, returning a session key only for `run-ended` events. */
+export function parseRunEndedFrame(
+  frame: string,
+): { sessionKey: string } | null {
+  let event = "message";
+  const data: string[] = [];
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+  }
+  if (event !== "run-ended" || data.length === 0) return null;
+  try {
+    const parsed: unknown = JSON.parse(data.join("\n"));
+    if (!parsed || typeof parsed !== "object") return null;
+    const { sessionKey } = parsed as { sessionKey?: unknown };
+    return typeof sessionKey === "string" ? { sessionKey } : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Splits a stream buffer into complete SSE frames, returning the unconsumed
  * remainder so the next chunk can finish a partial frame.

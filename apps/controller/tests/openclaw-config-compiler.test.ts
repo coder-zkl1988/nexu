@@ -218,6 +218,16 @@ describe("compileOpenClawConfig", () => {
     expect(result.agents.list[0]?.tools?.alsoAllow).toEqual(
       expect.arrayContaining([...EMBEDDED_BROWSER_TOOLS]),
     );
+    // OpenClaw silently blocks `agent_end` for non-bundled plugins without
+    // this grant, and the run-ended signal that unpins the browser panel dies
+    // with it — measured: the hook never fired until the flag was compiled.
+    expect(
+      (
+        result.plugins?.entries?.["nexu-browser"] as {
+          hooks?: { allowConversationAccess?: boolean };
+        }
+      )?.hooks?.allowConversationAccess,
+    ).toBe(true);
     // OpenClaw's own browser tool drove the user's real Chrome through a
     // paired extension. It is not compiled at all any more: the agent gets the
     // browser panel inside the app, which needs no extension, no pairing, and

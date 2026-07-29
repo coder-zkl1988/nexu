@@ -149,6 +149,37 @@ const UNVERIFIABLE_ACTION_TOOLS = new Set([
 const UNVERIFIED_COMPUTER_ACTION_MESSAGE =
   "电脑操作未确认完成：工具可能只投递了动作，后续状态没有证明请求结果。系统不会仅凭成功回执或一次普通截图报告完成。";
 
+const MAX_NAMED_EVIDENCE_GAPS = 5;
+
+// Names what is actually missing, per action. The generic verdict alone reads
+// as a contradiction: the transcript shows a success story and the reply calls
+// the run unconfirmed without saying which step it doubts. Tool names and gap
+// categories only — params can carry the user's typed text, which must never
+// be echoed into a message. Mirrors describeEvidenceGaps in
+// apps/controller/src/services/local-automation-completion-guard.ts.
+function describeEvidenceGaps(state) {
+  const gaps = [];
+  for (const fingerprint of state.inFlight.keys()) {
+    const toolName = String(fingerprint).split(":")[0] || "unknown-tool";
+    gaps.push(`${toolName}（调用未返回结果，动作可能未投递）`);
+  }
+  for (const action of state.pending) {
+    if (action.failed) {
+      gaps.push(`${action.toolName}（失败后未以相同参数重试成功）`);
+    } else if (action.verificationKind === "element-value") {
+      gaps.push(`${action.toolName}（写入的值未从同一元素读回确认）`);
+    } else if (action.verificationKind === "target-observed") {
+      gaps.push(`${action.toolName}（目标启动后未被观察到）`);
+    }
+  }
+  const unique = [...new Set(gaps)];
+  const shown = unique.slice(0, MAX_NAMED_EVIDENCE_GAPS);
+  if (shown.length === 0) return "";
+  const suffix =
+    unique.length > shown.length ? `（另有 ${unique.length - shown.length} 项）` : "";
+  return `\n缺少证据的动作：${shown.join("、")}${suffix}。`;
+}
+
 // Click/hotkey/scroll/drag/menu/dock/dialog/window have no read-back, so no
 // provider can prove they achieved intent. Replacing a correct reply with a
 // failure for those reports successful work as failed. Append a caveat
@@ -1024,7 +1055,10 @@ const plugin = {
         message: {
           ...message,
           content: [
-            { type: "text", text: UNVERIFIED_COMPUTER_ACTION_MESSAGE },
+            {
+              type: "text",
+              text: `${UNVERIFIED_COMPUTER_ACTION_MESSAGE}${describeEvidenceGaps(state)}`,
+            },
           ],
         },
       };

@@ -42,6 +42,7 @@ type FakeController = {
   subscribers: () => number;
   totalSubscriptions: () => number;
   send: (envelope: unknown) => void;
+  sendRunEnded: (sessionKey: string) => void;
   results: unknown[];
   close: () => Promise<void>;
 };
@@ -99,6 +100,13 @@ async function startFakeController(port?: number): Promise<FakeController> {
         stream.write(`event: command\ndata: ${JSON.stringify(envelope)}\n\n`);
       }
     },
+    sendRunEnded: (sessionKey) => {
+      for (const stream of streams) {
+        stream.write(
+          `event: run-ended\ndata: ${JSON.stringify({ sessionKey })}\n\n`,
+        );
+      }
+    },
     results,
     close: () =>
       new Promise<void>((resolve) => {
@@ -121,11 +129,15 @@ async function waitUntil(
   throw new Error(`timed out waiting for ${what}`);
 }
 
-function createRelay(port: number): AgentBrowserRelay {
+function createRelay(
+  port: number,
+  onRunEnded?: (sessionKey: string) => void,
+): AgentBrowserRelay {
   return new AgentBrowserRelay({
     controllerBaseUrl: `http://127.0.0.1:${port}`,
     getWindow: () => ({ isDestroyed: () => false }) as unknown as BrowserWindow,
     onOpen: () => undefined,
+    onRunEnded,
     timing: TIMING,
   });
 }
@@ -206,6 +218,27 @@ describe("AgentBrowserRelay", () => {
       () => controller.totalSubscriptions() >= 2,
       "watchdog-driven resubscription",
     );
+  });
+
+  it("surfaces a run-ended signal without treating it as a command", async () => {
+    const controller = await startFakeController();
+    const ended: string[] = [];
+    const relay = createRelay(controller.port, (sessionKey) =>
+      ended.push(sessionKey),
+    );
+    cleanups.push(
+      () => controller.close(),
+      () => relay.stop(),
+    );
+
+    relay.start();
+    await waitUntil(() => controller.subscribers() === 1, "subscription");
+    controller.sendRunEnded("agent:bot:main");
+
+    await waitUntil(() => ended.length === 1, "run-ended callback");
+    expect(ended).toEqual(["agent:bot:main"]);
+    // A run end must not produce a phantom command result.
+    expect(controller.results).toEqual([]);
   });
 
   it("stays down after stop", async () => {

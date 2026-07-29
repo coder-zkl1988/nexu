@@ -4,6 +4,7 @@ import {
   buildObservation,
   drainFrames,
   parseCommandFrame,
+  parseRunEndedFrame,
 } from "../../apps/desktop/main/services/agent-browser-protocol";
 
 const snapshot = (
@@ -36,6 +37,22 @@ describe("parseCommandFrame", () => {
     expect(parseCommandFrame("event: connected\ndata: connected")).toBeNull();
     expect(parseCommandFrame("event: command\ndata: not-json")).toBeNull();
     expect(parseCommandFrame("event: command")).toBeNull();
+  });
+});
+
+describe("parseRunEndedFrame", () => {
+  it("reads a run-ended signal and rejects everything else", () => {
+    expect(
+      parseRunEndedFrame(
+        'event: run-ended\ndata: {"sessionKey":"agent:bot:main"}',
+      ),
+    ).toEqual({ sessionKey: "agent:bot:main" });
+    // A command frame is not a run end; treating one as the other would
+    // release the panel pin mid-task.
+    expect(
+      parseRunEndedFrame('event: command\ndata: {"sessionKey":"x"}'),
+    ).toBeNull();
+    expect(parseRunEndedFrame("event: run-ended\ndata: not-json")).toBeNull();
   });
 });
 

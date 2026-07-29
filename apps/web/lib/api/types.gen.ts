@@ -7236,6 +7236,26 @@ export type PostApiV1BrowserAgentActResponses = {
 
 export type PostApiV1BrowserAgentActResponse = PostApiV1BrowserAgentActResponses[keyof PostApiV1BrowserAgentActResponses];
 
+export type PostApiV1BrowserAgentRunEndedData = {
+    body?: {
+        sessionKey: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/run-ended';
+};
+
+export type PostApiV1BrowserAgentRunEndedResponses = {
+    /**
+     * Run-end signal forwarded to the desktop
+     */
+    200: {
+        accepted: boolean;
+    };
+};
+
+export type PostApiV1BrowserAgentRunEndedResponse = PostApiV1BrowserAgentRunEndedResponses[keyof PostApiV1BrowserAgentRunEndedResponses];
+
 export type PostApiV1BrowserAgentResultData = {
     body?: {
         requestId: string;

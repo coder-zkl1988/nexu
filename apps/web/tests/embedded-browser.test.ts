@@ -11,6 +11,7 @@ import {
   closeBrowserPanelForSessionNavigation,
   getBrowserPanelState,
   openBrowserPanel,
+  releaseAgentBrowserPanelPin,
   resetBrowserPanelForTests,
 } from "../src/lib/browser/browser-panel-store";
 import {
@@ -223,6 +224,26 @@ describe("embedded browser helpers", () => {
 
     // An explicit close still ends it.
     closeBrowserPanel();
+    expect(getBrowserPanelState().isOpen).toBe(false);
+  });
+
+  it("releases the agent pin when the run ends, keeping the panel open", () => {
+    // The pin protects an agent mid-task; once the run is over it has no
+    // purpose. The panel stays up — the user may be reading the result — but
+    // goes back to closing on navigation like any other workbench.
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    releaseAgentBrowserPanelPin();
+
+    expect(getBrowserPanelState().isOpen).toBe(true);
+    expect(getBrowserPanelState().openedByAgent).toBe(false);
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(true);
     expect(getBrowserPanelState().isOpen).toBe(false);
   });
 

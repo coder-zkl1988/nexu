@@ -3,6 +3,49 @@ const MAX_TRACKED_RUNS = 500;
 export const LOCAL_AUTOMATION_UNVERIFIED_MESSAGE =
   "电脑操作未确认完成：工具可能只投递了动作，后续状态没有证明请求结果。系统不会仅凭成功回执或一次普通截图报告完成。";
 
+const MAX_NAMED_EVIDENCE_GAPS = 5;
+
+/**
+ * Names what is actually missing, per action.
+ *
+ * The generic verdict alone reads as a contradiction: the transcript shows a
+ * step-by-step success story and the reply calls the run unconfirmed without
+ * saying which step it doubts. Tool names and gap categories only — params can
+ * carry the user's typed text, which must never be echoed into a message.
+ */
+export function describeEvidenceGaps(
+  unfinishedMutations: string[],
+  pending: ReadonlyArray<{
+    failed: boolean;
+    toolName: string;
+    verificationKind: "element-value" | "provider-only" | "target-observed";
+  }>,
+): string {
+  const gaps: string[] = [];
+  for (const name of unfinishedMutations) {
+    gaps.push(`${name}（调用未返回结果，动作可能未投递）`);
+  }
+  for (const action of pending) {
+    if (action.failed) {
+      gaps.push(`${action.toolName}（失败后未以相同参数重试成功）`);
+    } else if (action.verificationKind === "element-value") {
+      gaps.push(`${action.toolName}（写入的值未从同一元素读回确认）`);
+    } else if (action.verificationKind === "target-observed") {
+      gaps.push(`${action.toolName}（目标启动后未被观察到）`);
+    }
+    // provider-only actions are unverifiable by nature; they surface through
+    // the advisory message, not this list.
+  }
+  const unique = [...new Set(gaps)];
+  const shown = unique.slice(0, MAX_NAMED_EVIDENCE_GAPS);
+  if (shown.length === 0) return "";
+  const suffix =
+    unique.length > shown.length
+      ? `（另有 ${unique.length - shown.length} 项）`
+      : "";
+  return `\n缺少证据的动作：${shown.join("、")}${suffix}。`;
+}
+
 // Click, hotkey, scroll, drag, menu, Dock, dialog, and window actions have no
 // read-back: the OS delivers the event and what happens next is the target
 // app's business. No provider can prove intent for them — cua-driver 0.12.6
@@ -767,9 +810,10 @@ export class LocalAutomationCompletionGuard {
     const finalizedFailure = this.finalFailures.get(runId);
     if (finalizedFailure) return finalizedFailure;
     const state = this.runs.get(runId);
-    const hasUnfinishedMutation = [...(state?.calls.values() ?? [])].some(
-      (call) => isMutation(call.name, call.params),
-    );
+    const unfinishedMutations = [...(state?.calls.values() ?? [])]
+      .filter((call) => isMutation(call.name, call.params))
+      .map((call) => call.name);
+    const hasUnfinishedMutation = unfinishedMutations.length > 0;
     if (!state || (state.pending.length === 0 && !hasUnfinishedMutation)) {
       this.runs.delete(runId);
       return null;
@@ -787,7 +831,10 @@ export class LocalAutomationCompletionGuard {
       ? {
           severity: "error",
           errorKind: "local_automation_unverified",
-          errorMessage: LOCAL_AUTOMATION_UNVERIFIED_MESSAGE,
+          errorMessage: `${LOCAL_AUTOMATION_UNVERIFIED_MESSAGE}${describeEvidenceGaps(
+            unfinishedMutations,
+            state.pending,
+          )}`,
         }
       : {
           severity: "advisory",

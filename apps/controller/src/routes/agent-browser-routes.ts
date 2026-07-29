@@ -7,6 +7,7 @@ import {
 } from "@nexu/shared";
 import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
+import { logger } from "../lib/logger.js";
 import {
   AgentBrowserTimeoutError,
   AgentBrowserUnavailableError,
@@ -51,13 +52,18 @@ export function registerAgentBrowserRoutes(
         aborted = true;
       });
 
-      const unsubscribe = container.agentBrowserBridge.subscribe((envelope) => {
+      const unsubscribe = container.agentBrowserBridge.subscribe((message) => {
         if (aborted) return;
-        void stream
-          .writeSSE({ data: JSON.stringify(envelope), event: "command" })
-          .catch(() => {
-            // Client is gone; the abort handler and unsubscribe clean up.
-          });
+        const frame =
+          message.kind === "command"
+            ? { data: JSON.stringify(message.envelope), event: "command" }
+            : {
+                data: JSON.stringify({ sessionKey: message.sessionKey }),
+                event: "run-ended",
+              };
+        void stream.writeSSE(frame).catch(() => {
+          // Client is gone; the abort handler and unsubscribe clean up.
+        });
       });
 
       await stream.writeSSE({ data: "connected", event: "connected" });
@@ -126,6 +132,48 @@ export function registerAgentBrowserRoutes(
         }
         throw error;
       }
+    },
+  );
+
+  // One-way signal from the nexu-browser plugin's agent_end hook: the run that
+  // drove the browser is over, so the desktop can release the panel's agent
+  // pin. Best-effort — a missed signal leaves the panel pinned, nothing worse.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/browser/agent/run-ended",
+      tags: ["Browser"],
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({ sessionKey: z.string() }),
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({ accepted: z.boolean() }),
+            },
+          },
+          description: "Run-end signal forwarded to the desktop",
+        },
+      },
+    }),
+    (c) => {
+      const { sessionKey } = c.req.valid("json");
+      const accepted = container.agentBrowserBridge.notifyRunEnded(sessionKey);
+      // The only observable trace of this one-way chain: plugin agent_end →
+      // here → SSE → desktop → panel unpin. Without it, "the panel never
+      // unpins" cannot be told apart from "the signal never arrived".
+      logger.info(
+        { sessionKey, accepted },
+        "agent browser run-ended forwarded",
+      );
+      return c.json({ accepted }, 200);
     },
   );
 

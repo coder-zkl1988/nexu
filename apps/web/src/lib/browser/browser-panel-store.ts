@@ -54,6 +54,18 @@ export function closeBrowserPanelForRouting(): boolean {
   return true;
 }
 
+/**
+ * The agent's run is over: keep the panel open — the user may be reading the
+ * result — but drop the pin, so it goes back to closing on navigation like
+ * any other workbench. The pin exists to protect an agent mid-task; without a
+ * release it outlives its purpose and glues the panel across routes forever.
+ */
+export function releaseAgentBrowserPanelPin(): void {
+  if (!state.openedByAgent) return;
+  state = { ...state, openedByAgent: false };
+  emit();
+}
+
 export function closeBrowserPanelForSessionNavigation(
   previousPath: string | null,
   nextPath: string,

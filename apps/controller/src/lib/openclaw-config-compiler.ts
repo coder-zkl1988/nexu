@@ -631,6 +631,14 @@ function compilePlugins(
           // controller relays it to the desktop browser panel.
           controllerUrl: `http://127.0.0.1:${env.port}`,
         },
+        hooks: {
+          // OpenClaw gates `agent_end` behind this flag for non-bundled
+          // plugins; without it the hook is silently blocked at registration.
+          // The plugin uses agent_end only for ctx.sessionKey — the run-ended
+          // signal that lets the desktop release the browser panel's agent
+          // pin. It does not read the conversation messages the flag exposes.
+          allowConversationAccess: true,
+        },
       },
       "nexu-toolcall-guard": {
         enabled: true,

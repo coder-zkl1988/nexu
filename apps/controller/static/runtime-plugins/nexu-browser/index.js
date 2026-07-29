@@ -41,6 +41,14 @@ function textResult(text, isError) {
 const callContexts = new Map();
 const MAX_TRACKED_CALLS = 200;
 
+/**
+ * Sessions whose current run drove the browser. On `agent_end` these get a
+ * one-way run-ended signal so the desktop can release the panel's agent pin —
+ * without it the panel stays glued across routes long after the agent
+ * finished. Best-effort: a missed signal leaves the pin, nothing worse.
+ */
+const browserSessions = new Set();
+
 function rememberCallContext(toolCallId, ctx) {
   if (!toolCallId) return;
   callContexts.set(toolCallId, {
@@ -104,6 +112,8 @@ async function act(toolCallId, command) {
     );
   }
 
+  browserSessions.add(context.sessionKey);
+
   let response;
   try {
     response = await fetch(`${origin}${ACT_PATH}`, {
@@ -159,6 +169,20 @@ const plugin = {
     api.on("before_tool_call", (event, ctx) => {
       if (!event?.toolName?.startsWith("browser_")) return;
       rememberCallContext(event.toolCallId ?? ctx?.toolCallId, ctx);
+    });
+
+    api.on("agent_end", (event, ctx) => {
+      const sessionKey = ctx?.sessionKey ?? event?.sessionKey;
+      if (!sessionKey || !browserSessions.delete(sessionKey)) return;
+      const origin = controllerOrigin();
+      if (!origin) return;
+      void fetch(`${origin}/api/v1/browser/agent/run-ended`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionKey }),
+      }).catch(() => {
+        // Best-effort; a missed release leaves the panel pinned, not broken.
+      });
     });
 
     const registerBrowserTools = () => [

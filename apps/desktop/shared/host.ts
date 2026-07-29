@@ -760,6 +760,14 @@ export type HostDesktopCommand =
       url: string;
     }
   | {
+      /**
+       * The run that drove the browser ended. The panel stays open but drops
+       * its agent pin, so routing closes it again like any other workbench.
+       */
+      type: "browser:agent-run-ended";
+      sessionKey: string;
+    }
+  | {
       type: "develop:focus-surface";
       surface: Exclude<DesktopSurface, "control">;
       chromeMode: DesktopChromeMode;

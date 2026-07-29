@@ -17,7 +17,20 @@ export type AgentBrowserEnvelope = {
   command: AgentBrowserCommand;
 };
 
-export type AgentBrowserSubscriber = (envelope: AgentBrowserEnvelope) => void;
+/**
+ * Commands carry a requestId and expect an answer; `run-ended` is one-way.
+ * The desktop uses it to release the browser panel's agent pin — the pin
+ * exists so mid-task navigation cannot take the page off screen, and a pin
+ * with no release outlives its purpose: the panel stays glued across routes
+ * long after the agent finished.
+ */
+export type AgentBrowserBridgeMessage =
+  | { kind: "command"; envelope: AgentBrowserEnvelope }
+  | { kind: "run-ended"; sessionKey: string };
+
+export type AgentBrowserSubscriber = (
+  message: AgentBrowserBridgeMessage,
+) => void;
 
 export const AGENT_BROWSER_TIMEOUT_MS = 30_000;
 
@@ -97,7 +110,10 @@ export class AgentBrowserBridge {
     });
 
     try {
-      subscriber({ requestId, sessionKey, command });
+      subscriber({
+        kind: "command",
+        envelope: { requestId, sessionKey, command },
+      });
     } catch (error) {
       const pending = this.pending.get(requestId);
       if (pending) {
@@ -108,6 +124,18 @@ export class AgentBrowserBridge {
     }
 
     return outcome;
+  }
+
+  /** One-way; returns false when no desktop is listening. */
+  notifyRunEnded(sessionKey: string): boolean {
+    const subscriber = this.subscriber;
+    if (!subscriber) return false;
+    try {
+      subscriber({ kind: "run-ended", sessionKey });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Returns false when nobody is waiting — the request already timed out. */

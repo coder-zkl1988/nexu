@@ -25,9 +25,10 @@ describe("AgentBrowserBridge", () => {
   it("delivers a command to the subscriber and resolves with its outcome", async () => {
     const bridge = new AgentBrowserBridge();
     let seen: { requestId: string; sessionKey: string } | null = null;
-    bridge.subscribe((envelope) => {
-      seen = envelope;
-      bridge.settle(envelope.requestId, OK);
+    bridge.subscribe((message) => {
+      if (message.kind !== "command") return;
+      seen = message.envelope;
+      bridge.settle(message.envelope.requestId, OK);
     });
 
     const outcome = await bridge.dispatch("agent:bot:main", {
@@ -92,8 +93,8 @@ describe("AgentBrowserBridge", () => {
   it("does not settle the same request twice", async () => {
     const bridge = new AgentBrowserBridge();
     let requestId = "";
-    bridge.subscribe((envelope) => {
-      requestId = envelope.requestId;
+    bridge.subscribe((message) => {
+      if (message.kind === "command") requestId = message.envelope.requestId;
     });
 
     const pending = bridge.dispatch("agent:bot:main", { action: "snapshot" });
@@ -107,8 +108,8 @@ describe("AgentBrowserBridge", () => {
     const bridge = new AgentBrowserBridge(60_000);
     const stale = bridge.subscribe(() => undefined);
     let requestId = "";
-    bridge.subscribe((envelope) => {
-      requestId = envelope.requestId;
+    bridge.subscribe((message) => {
+      if (message.kind === "command") requestId = message.envelope.requestId;
     });
 
     const pending = bridge.dispatch("agent:bot:main", { action: "snapshot" });
@@ -121,11 +122,29 @@ describe("AgentBrowserBridge", () => {
     await expect(pending).resolves.toEqual(OK);
   });
 
+  it("forwards a run-ended signal and reports whether anyone heard it", () => {
+    const bridge = new AgentBrowserBridge();
+    // Nobody listening: the signal is lost, and the caller should know.
+    expect(bridge.notifyRunEnded("agent:bot:main")).toBe(false);
+
+    const heard: string[] = [];
+    bridge.subscribe((message) => {
+      if (message.kind === "run-ended") heard.push(message.sessionKey);
+    });
+
+    expect(bridge.notifyRunEnded("agent:bot:main")).toBe(true);
+    expect(heard).toEqual(["agent:bot:main"]);
+  });
+
   it("hands commands to the newest panel only", async () => {
     const bridge = new AgentBrowserBridge();
     const first = vi.fn();
     bridge.subscribe(first);
-    bridge.subscribe((envelope) => bridge.settle(envelope.requestId, OK));
+    bridge.subscribe(
+      (message) =>
+        message.kind === "command" &&
+        bridge.settle(message.envelope.requestId, OK),
+    );
 
     await bridge.dispatch("agent:bot:main", { action: "snapshot" });
 

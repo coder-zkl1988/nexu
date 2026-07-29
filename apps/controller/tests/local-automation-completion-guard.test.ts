@@ -1277,5 +1277,38 @@ describe("LocalAutomationCompletionGuard", () => {
 
       expect(guard.finalFailureFor("sev-mixed")?.severity).toBe("error");
     });
+
+    it("names the action whose evidence is missing, without echoing its params", () => {
+      // The generic verdict alone reads as a contradiction — the transcript
+      // shows a success story and the reply doubts it without saying which
+      // step. The lived case: set_value succeeded, the read-back checked a
+      // window title instead of the field, and the user was told "unconfirmed"
+      // with no pointer to why.
+      const guard = new LocalAutomationCompletionGuard();
+      for (const event of [
+        toolEvent({
+          runId: "named-gap",
+          phase: "start",
+          name: "cua-driver__set_value",
+          toolCallId: "sv-1",
+          args: { element_index: 3, value: "世界杯" },
+        }),
+        toolEvent({
+          runId: "named-gap",
+          phase: "result",
+          name: "cua-driver__set_value",
+          toolCallId: "sv-1",
+          isError: false,
+        }),
+      ]) {
+        guard.observeAgentEvent(event);
+      }
+
+      const failure = guard.finalFailureFor("named-gap");
+      expect(failure?.errorMessage).toContain("cua-driver__set_value");
+      expect(failure?.errorMessage).toContain("读回确认");
+      // Params may carry the user's typed text; it must never surface.
+      expect(failure?.errorMessage).not.toContain("世界杯");
+    });
   });
 });

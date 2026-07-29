@@ -9,6 +9,7 @@ import {
   buildObservation,
   drainFrames,
   parseCommandFrame,
+  parseRunEndedFrame,
 } from "./agent-browser-protocol";
 import {
   AGENT_TAB_ID,
@@ -87,6 +88,8 @@ export type AgentBrowserRelayOptions = {
   getWindow: () => BrowserWindow | null;
   /** Raises the browser panel so the user sees the page the agent opened. */
   onOpen: (url: string) => void;
+  /** The run that drove the browser ended; the panel's agent pin can go. */
+  onRunEnded?: (sessionKey: string) => void;
   /**
    * Connection lifecycle, not just failures.
    *
@@ -193,7 +196,12 @@ export class AgentBrowserRelay {
         buffer = rest;
         for (const frame of frames) {
           const envelope = parseCommandFrame(frame);
-          if (envelope) void this.runAndReport(envelope);
+          if (envelope) {
+            void this.runAndReport(envelope);
+            continue;
+          }
+          const runEnded = parseRunEndedFrame(frame);
+          if (runEnded) this.options.onRunEnded?.(runEnded.sessionKey);
         }
       }
     } finally {

@@ -21745,6 +21745,50 @@
         }
       }
     },
+    "/api/v1/browser/agent/run-ended": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sessionKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run-end signal forwarded to the desktop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/browser/agent/result": {
       "post": {
         "tags": [
