@@ -287,6 +287,48 @@ describe("controller route compatibility", () => {
     expect(permissionsSpy).not.toHaveBeenCalled();
   });
 
+  it("admits the desktop shell's boot probe of the ready endpoint", async () => {
+    // The file:// shell polls readiness with an opaque origin and cross-site
+    // fetch metadata — exactly what the global guard rejects. Measured on CI:
+    // gating it left the packaged app on the boot screen through every health
+    // attempt while the endpoint answered ready:true to plain probes, because
+    // the packaged web sidecar proxies the shell's headers here verbatim.
+    const app = createApp(container);
+
+    const probe = await app.request(
+      "http://127.0.0.1:50800/api/internal/desktop/ready",
+      {
+        headers: {
+          host: "127.0.0.1:50800",
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+        },
+      },
+    );
+    // Not 403 is the assertion; the handler's own status is its business.
+    expect(probe.status).not.toBe(403);
+
+    // The exception is path-exact, method-exact, and never overrides the
+    // loopback-host requirement.
+    const evilHost = await app.request(
+      "http://evil.example/api/internal/desktop/ready",
+      { headers: { host: "evil.example" } },
+    );
+    expect(evilHost.status).toBe(403);
+    const post = await app.request(
+      "http://127.0.0.1:50800/api/internal/desktop/ready",
+      {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:50800",
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+        },
+      },
+    );
+    expect(post.status).toBe(403);
+  });
+
   it("supports channel connect, integration connect, session lifecycle, and runtime config routes", async () => {
     vi.stubGlobal(
       "fetch",

@@ -42,7 +42,25 @@ export function createApp(container: ControllerContainer) {
     await next();
   });
   app.use("*", async (c, next) => {
+    // The desktop shell renders from file://, so its boot poll of the ready
+    // endpoint arrives with an opaque origin and cross-site fetch metadata —
+    // the exact shape this guard exists to reject. It is also the one request
+    // that must succeed before anything same-origin exists to send it: the
+    // shell only mounts the web surface once this answers, and in packaged
+    // mode the web sidecar proxies it here verbatim. Measured on CI: with the
+    // guard unconditional, the packaged app sat on the boot screen through
+    // every health attempt while this endpoint answered ready:true to plain
+    // probes. GET-only, path-exact, loopback host still enforced below;
+    // discloses readiness state only.
+    const isBootReadyProbe =
+      c.req.method === "GET" &&
+      new URL(c.req.url).pathname === "/api/internal/desktop/ready" &&
+      isTrustedLocalRequest({
+        requestUrl: c.req.url,
+        host: c.req.header("host"),
+      });
     if (
+      !isBootReadyProbe &&
       !isTrustedLocalRequest({
         requestUrl: c.req.url,
         host: c.req.header("host"),
