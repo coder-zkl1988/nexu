@@ -343,9 +343,17 @@ export async function stopControllerDevProcess(): Promise<ControllerDevSnapshot>
   if (snapshot.pid) {
     await ensureProcessStopped(snapshot.pid);
   }
-
-  // The worker holds the port. Its death is verified, not assumed: this used
-  // to fire SIGTERM and remove the lock regardless, and a worker that
+  // The snapshot's workerPid was read off the port while the worker still
+  // listened. Kill it by that pid, not only by asking the port again: a
+  // gracefully dying worker closes its listener first and then drains
+  // connections, so the port lookup below can come up empty while the
+  // process lives on — measured as a zombie that kept pinging the desktop's
+  // agent-browser stream long after its successor owned the port.
+  if (snapshot.workerPid) {
+    await ensureProcessStopped(snapshot.workerPid);
+  }
+  // Whatever holds the port now. Its death is verified, not assumed: this
+  // used to fire SIGTERM and remove the lock regardless, and a worker that
   // survived the signal became an orphan the launcher then reported as
   // `stopped` — while it kept serving `/health` on the port.
   try {

@@ -43,6 +43,14 @@ async function main(): Promise<void> {
 
         resolve();
       });
+      // `close()` alone waits for every connection to drain, and an SSE
+      // stream never drains. Measured: a replaced controller lingered as a
+      // zombie — listener gone, `process.exit` never reached — pinging the
+      // desktop's agent-browser stream from beyond the grave, which kept the
+      // relay attached to a bridge no /act request would ever reach again.
+      if ("closeAllConnections" in server) {
+        (server as { closeAllConnections: () => void }).closeAllConnections();
+      }
     });
 
   const shutdown = async () => {

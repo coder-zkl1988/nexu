@@ -30,26 +30,36 @@ import {
  * lifetime.
  */
 
-// Long enough for a click to start a navigation or a framework to re-render,
-// short enough that a no-op click still answers quickly.
-const SETTLE_MS = 700;
-// Long enough for the panel to mount and place the view, short enough to fall
-// back well inside the controller's own 30s ceiling.
-const PANEL_WAIT_MS = 4_000;
-const RECONNECT_DELAY_MS = 2_000;
-/**
- * How long to wait for any frame before assuming the stream is dead.
- *
- * The controller pings every 15s. A restarted controller does not necessarily
- * break the socket — measured, the connection stayed open and silent while the
- * new instance had no subscriber registered, so the relay sat there reading
- * from a stream that would never produce anything and the agent's browser was
- * simply gone until the desktop was restarted. Silence, not socket errors, is
- * what has to trigger the reconnect.
- */
-const STREAM_IDLE_TIMEOUT_MS = 45_000;
-/** The controller answers immediately when healthy; anything slower is stuck. */
-const CONNECT_TIMEOUT_MS = 8_000;
+export type AgentBrowserRelayTiming = {
+  /** Post-action settle before the evidence snapshot: long enough for a click
+   * to start a navigation or a framework to re-render, short enough that a
+   * no-op click still answers quickly. */
+  settleMs: number;
+  /** Long enough for the panel to mount and place the view, short enough to
+   * fail well inside the controller's own 30s ceiling. */
+  panelWaitMs: number;
+  reconnectDelayMs: number;
+  /**
+   * How long to wait for any frame before assuming the stream is dead.
+   *
+   * The controller pings every 15s. A restarted controller does not
+   * necessarily break the socket — measured, the connection stayed open and
+   * silent, so the relay sat reading from a stream that would never produce
+   * anything and the agent's browser was simply gone until the desktop was
+   * restarted. Silence, not socket errors, is what triggers the reconnect.
+   */
+  streamIdleTimeoutMs: number;
+  /** The controller answers immediately when healthy; slower is stuck. */
+  connectTimeoutMs: number;
+};
+
+const DEFAULT_TIMING: AgentBrowserRelayTiming = {
+  settleMs: 700,
+  panelWaitMs: 4_000,
+  reconnectDelayMs: 2_000,
+  streamIdleTimeoutMs: 45_000,
+  connectTimeoutMs: 8_000,
+};
 
 const NO_WINDOW =
   "the desktop window is not available right now — ask the user to bring Nexu to the front and try again";
@@ -85,14 +95,19 @@ export type AgentBrowserRelayOptions = {
    * trail is what makes the difference readable.
    */
   onLog?: (message: string) => void;
+  /** Test override; production uses the defaults. */
+  timing?: Partial<AgentBrowserRelayTiming>;
 };
 
 export class AgentBrowserRelay {
   private abort: AbortController | null = null;
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private readonly timing: AgentBrowserRelayTiming;
 
-  constructor(private readonly options: AgentBrowserRelayOptions) {}
+  constructor(private readonly options: AgentBrowserRelayOptions) {
+    this.timing = { ...DEFAULT_TIMING, ...options.timing };
+  }
 
   start(): void {
     this.stopped = false;
@@ -112,7 +127,7 @@ export class AgentBrowserRelay {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();
-    }, RECONNECT_DELAY_MS);
+    }, this.timing.reconnectDelayMs);
   }
 
   private async connect(): Promise<void> {
@@ -121,7 +136,10 @@ export class AgentBrowserRelay {
     this.abort = abort;
     // A connect that never answers has to time out too: the same replaced
     // controller can leave `fetch` itself hanging on a pooled connection.
-    const connectTimer = setTimeout(() => abort.abort(), CONNECT_TIMEOUT_MS);
+    const connectTimer = setTimeout(
+      () => abort.abort(),
+      this.timing.connectTimeoutMs,
+    );
     try {
       const response = await fetch(
         `${this.options.controllerBaseUrl}/api/v1/browser/agent/stream`,
@@ -149,15 +167,27 @@ export class AgentBrowserRelay {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    // The watchdog cancels the reader after silence. Cancelling closes the
+    // stream, which resolves a pending `read()` as done even when the
+    // underlying socket is wedged — measured: a replaced controller left the
+    // socket open and silent, `reader.read()` never settled, and aborting the
+    // fetch did not reach it. One resettable timer, not a `Promise.race`
+    // against a deadline: the losing deadline promise of a race still rejects
+    // later, and every such rejection is an unhandled one.
+    let idleTimer: NodeJS.Timeout | null = null;
+    const armWatchdog = (): void => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        this.options.onLog?.("stream idle, cancelling");
+        void reader.cancel().catch(() => undefined);
+      }, this.timing.streamIdleTimeoutMs);
+    };
     try {
+      armWatchdog();
       while (!this.stopped) {
-        // Race the read against the idle deadline rather than trusting the
-        // abort signal to reach it. Measured: when the controller was replaced,
-        // the body stream neither ended nor errored — `reader.read()` simply
-        // never settled, so aborting the fetch changed nothing and the relay
-        // sat on a dead stream until the desktop was restarted.
-        const chunk = await Promise.race([reader.read(), this.idleDeadline()]);
+        const chunk = await reader.read();
         if (chunk.done) return;
+        armWatchdog();
         buffer += decoder.decode(chunk.value, { stream: true });
         const { frames, rest } = drainFrames(buffer);
         buffer = rest;
@@ -167,20 +197,11 @@ export class AgentBrowserRelay {
         }
       }
     } finally {
+      if (idleTimer) clearTimeout(idleTimer);
       // The read may still be pending; cancelling releases the socket so the
       // reconnect does not stack a second stream on top of it.
       void reader.cancel().catch(() => undefined);
     }
-  }
-
-  private idleDeadline(): Promise<never> {
-    return new Promise((_resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("stream idle")),
-        STREAM_IDLE_TIMEOUT_MS,
-      );
-      timer.unref?.();
-    });
   }
 
   private async runAndReport(envelope: CommandEnvelope): Promise<void> {
@@ -233,7 +254,10 @@ export class AgentBrowserRelay {
     const ensureHosted = async (url: string): Promise<boolean> => {
       if (embeddedBrowserManager.isAgentTabPanelHosted(owner)) return true;
       this.options.onOpen(url);
-      return embeddedBrowserManager.waitForAgentTabPanel(owner, PANEL_WAIT_MS);
+      return embeddedBrowserManager.waitForAgentTabPanel(
+        owner,
+        this.timing.panelWaitMs,
+      );
     };
 
     const snapshot = async (): Promise<AgentBrowserSnapshot> => {
@@ -302,7 +326,7 @@ export class AgentBrowserRelay {
     }
     // Clicks and submits kick off navigation and re-render asynchronously;
     // snapshotting immediately would read the page as it was.
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    await new Promise((resolve) => setTimeout(resolve, this.timing.settleMs));
 
     // Read the page back and report the element that was acted on. This is the
     // completion evidence: a click that did nothing shows an unchanged element,

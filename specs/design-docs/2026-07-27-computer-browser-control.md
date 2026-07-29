@@ -27,17 +27,18 @@ Nexu 桌面端增加两项本地自动化能力：
 
 CDP 走 Electron 的进程内 `webContents.debugger`，**不使用** `--remote-debugging-port`：后者会开一个真实 TCP 监听，把 app 内每一个 WebContents（包括携带用户登录态的 nexu renderer）暴露给任意本地进程，过滤代理无法兜底，因为任何进程都能绕过代理直连端口。
 
-#### 已知问题：controller 重启后 relay 不恢复（未解决）
+#### 已解决：controller 重启后 relay 不恢复（僵尸 controller）
 
-**症状**：`pnpm dev restart controller` 之后，桌面 relay 不再收到命令。agent 调用任何浏览器工具都得到 `no desktop browser panel is listening`，模型通常退回 Computer Use 去操作用户的真实浏览器——正是本方案要避免的结果。
+**症状曾是**：`pnpm dev restart controller` 之后，桌面 relay 不再收到命令，agent 调用任何浏览器工具都得到 `no desktop browser panel is listening`，模型退回 Computer Use 去操作用户的真实浏览器。日志诡异：`connected` 之后一片死寂，连空闲看门狗都不触发。
 
-**规避**（开发环境）：`pnpm dev restart controller`，然后 `pnpm dev restart desktop`。
+**根因（socket 表实测定位）**：controller 收到 SIGTERM 后走优雅退出，`server.close()` 要等所有连接排完才回调——SSE 是无限流永远排不完，于是进程卡死在 shutdown：监听 socket 已关（端口空出，新实例正常绑定），进程本体却活着，**每 15 秒继续给 relay 的旧流发 ping**。relay 看到的是一条完全健康的流，空闲看门狗被持续喂食，毫无重连理由；而 `/act` 打到新实例的 bridge，那里没有订阅者，永远 503。启动器旧的 stop 只按"谁在监听端口"找 worker，此时僵尸已不监听，被漏杀。
 
-曾经的加重因素已修复：`pnpm dev` 会把 controller 跟丢，留下孤儿进程——旧的 stop 只发 SIGTERM 不确认死亡就删锁，status 因锁不存在而误报 `stopped`（该 pid 实际仍在监听、`/health` 返回 200），desktop 预检据此拒绝启动。现在 stop 确认进程死亡（SIGKILL 升级）后才删锁（`ensureProcessStopped`），status 在无锁但端口被占时如实报 `stale` 并注明原因，start/stop 会自行清理孤儿。controller/web/openclaw 三个服务都已采用此模式（openclaw 保留特例：无锁但 `/health` 健康的监听者视为外部托管实例，仍报 `running`）。
+**三层修复**：
+1. controller shutdown 在 `server.close()` 后立即 `closeAllConnections()`，SSE 连接被摧毁而不是排水（`apps/controller/src/index.ts`；回归测试 `apps/controller/tests/agent-browser-stream-shutdown.test.ts` 同时钉住机制与接线）。
+2. 启动器 stop 显式按 snapshot 记录的 `workerPid` 强杀（SIGKILL 升级），不只依赖端口查询——对旧版 controller 的排水僵尸同样有效。
+3. relay 空闲看门狗改为单一可重置计时器 + `reader.cancel()`（规范保证把挂起的 read 以 done 解决），替换原来每轮 `Promise.race` 一个必然 reject 的 deadline——那个实现输掉竞速的 Promise 会成为 unhandled rejection 且计时器泄漏。重连行为由 `tests/desktop/agent-browser-relay.test.ts` 用真实 HTTP 假 controller 钉住（含同端口复活、静默卡死流两个场景）。
 
-**已排除**：abort 信号传播（改为读取与空闲超时显式竞速后仍不恢复）；连接握手挂起（已加 `CONNECT_TIMEOUT_MS`）；多个 controller 实例抢占同一端口（实测只有单个监听进程——`lsof -ti:PORT` 会把客户端连接一并列出，据此判断多实例是误读）。
-
-**最后一次测量**：单实例、controller 与 desktop 全程 `running`，t+20s 至 t+100s 持续 503，且 `agent-browser.log` 在 `connected` 之后**不再产生任何条目**。说明读取仍然卡死，连失败路径都没走到。下次排查从这里入手：为什么竞速里的空闲超时没有触发；并先用上面的方式确认环境里没有孤儿 controller，否则测的不是真实行为。
+**修复后实测**：连续两轮 `pnpm dev restart controller`，agent 浏览器工具均在 **8 秒内自动恢复**（重连日志 `terminated` → 2 秒后 `connected`），socket 表单监听、无僵尸。
 
 排查日志在 `<userData>/logs/agent-browser.log`（开发环境为 `.tmp/desktop/electron/user-data/logs/`），记录 connect / end / fail 全过程。
 
