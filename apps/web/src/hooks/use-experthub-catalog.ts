@@ -1,3 +1,4 @@
+import type { SkillReference } from "@nexu/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getApiV1ExperthubCatalog,
@@ -61,6 +62,7 @@ export function useInstallExpert() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: ["bots"] });
+      void queryClient.invalidateQueries({ queryKey: ["skillhub", "status"] });
     },
   });
 }
@@ -79,6 +81,7 @@ export function useUninstallExpert() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["skillhub", "status"] });
     },
   });
 }
@@ -90,10 +93,11 @@ export function useUpdateExpertSkills() {
     mutationFn: async ({
       slug,
       skills,
-    }: { slug: string; skills: string[] }) => {
+      skillRefs,
+    }: { slug: string; skills: string[]; skillRefs: SkillReference[] }) => {
       const { data, error } = await putApiV1ExperthubExpertsBySlugSkills({
         path: { slug },
-        body: { skills },
+        body: { skills, skillRefs },
       });
       if (error) throw new Error("Update expert skills request failed");
       if (!data) throw new Error("Update expert skills returned no data");
@@ -102,6 +106,7 @@ export function useUpdateExpertSkills() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: ["bots"] });
+      void queryClient.invalidateQueries({ queryKey: ["skillhub", "status"] });
     },
   });
 }

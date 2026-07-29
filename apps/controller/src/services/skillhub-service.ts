@@ -1,12 +1,22 @@
-import { cpSync, existsSync } from "node:fs";
-import path from "node:path";
-import type { ControllerEnv } from "../app/env.js";
-import { CatalogManager } from "./skillhub/catalog-manager.js";
 import {
-  alignSkillName,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import path from "node:path";
+import { isSkillUpdateAvailable } from "@nexu/shared";
+import type { ControllerEnv } from "../app/env.js";
+import {
+  CatalogManager,
+  type SkillInstallRequest,
+} from "./skillhub/catalog-manager.js";
+import {
   copyStaticSkills,
   replaceLibtvVideoFromBundle,
-  stripRequiresBins,
 } from "./skillhub/curated-skills.js";
 import { InstallQueue } from "./skillhub/install-queue.js";
 import { ensureNpmAvailable, runNpmInstall } from "./skillhub/npm-runner.js";
@@ -25,6 +35,79 @@ export type SkillUninstallRequest = {
   source?: SkillSource;
   agentId?: string | null;
 };
+
+export type SkillhubInstallRequest = SkillInstallRequest & {
+  update?: boolean;
+};
+
+const SKILL_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,127}$/;
+const OWNER_HANDLE_REGEX = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const SKILL_VERSION_REGEX = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$/;
+
+function readInstalledOriginMetadata(
+  skillsDir: string,
+  expectedSlug: string,
+): { ownerHandle?: string; version?: string } | null {
+  if (!SKILL_SLUG_REGEX.test(expectedSlug)) return null;
+  const skillDir = path.join(skillsDir, expectedSlug);
+  if (!existsSync(path.join(skillDir, "SKILL.md"))) return null;
+
+  try {
+    const parsed = JSON.parse(
+      readFileSync(path.join(skillDir, ".clawhub", "origin.json"), "utf8"),
+    ) as unknown;
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const origin = parsed as Record<string, unknown>;
+    if (origin.slug !== expectedSlug) return null;
+
+    let ownerHandle: string | undefined;
+    if (origin.ownerHandle !== undefined) {
+      if (typeof origin.ownerHandle !== "string") return null;
+      const normalizedOwner = origin.ownerHandle
+        .replace(/^@+/, "")
+        .toLowerCase();
+      if (!OWNER_HANDLE_REGEX.test(normalizedOwner)) return null;
+      ownerHandle = normalizedOwner;
+    }
+
+    let version: string | undefined;
+    if (origin.installedVersion !== undefined) {
+      if (
+        typeof origin.installedVersion !== "string" ||
+        !SKILL_VERSION_REGEX.test(origin.installedVersion)
+      ) {
+        return null;
+      }
+      version = origin.installedVersion;
+    }
+
+    if (!ownerHandle && !version) return null;
+    return {
+      ...(ownerHandle ? { ownerHandle } : {}),
+      ...(version ? { version } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export class SkillInstallConflictError extends Error {
+  constructor(slug: string, state: "installing" | "installed" = "installing") {
+    super(
+      state === "installing"
+        ? `A different publisher is already installing ${slug}`
+        : `A different or unknown skill identity already occupies ${slug}`,
+    );
+    this.name = "SkillInstallConflictError";
+  }
+}
+
+export class SkillUpdateNotAllowedError extends Error {
+  constructor(slug: string) {
+    super(`Skill update is not allowed for ${slug}`);
+    this.name = "SkillUpdateNotAllowedError";
+  }
+}
 
 export class SkillhubService {
   private readonly catalogManager: CatalogManager;
@@ -74,22 +157,29 @@ export class SkillhubService {
     });
 
     const installQueue = new InstallQueue({
-      executor: async (slug) => {
-        await catalogManager.executeInstall(slug);
-        alignSkillName(env.openclawSkillsDir, slug);
-        stripRequiresBins(env.openclawSkillsDir, slug);
-      },
+      executor: async (slug) => catalogManager.executeInstall(slug),
       onComplete: (slug, source) => {
-        skillDb.recordInstall(slug, source);
+        const metadata = catalogManager.consumeInstalledMetadata(slug);
+        try {
+          skillDb.recordInstall(
+            slug,
+            source,
+            metadata?.version,
+            undefined,
+            metadata?.ownerHandle,
+          );
+        } catch (error) {
+          catalogManager.rollbackInstall(slug);
+          throw error;
+        }
+        catalogManager.commitInstall(slug);
       },
       onIdle: () => {
         options?.onSyncNeeded?.();
       },
       onCancelled: async (slug) => {
-        const result = await catalogManager.uninstallSkill(slug);
-        if (!result.ok) {
-          throw new Error(result.error ?? `Cancel cleanup failed for ${slug}`);
-        }
+        catalogManager.rollbackInstall(slug);
+        catalogManager.clearPreparedInstall(slug);
         options?.onSyncNeeded?.();
       },
       log,
@@ -98,7 +188,9 @@ export class SkillhubService {
     const dirWatcher = new SkillDirWatcher({
       skillsDir: env.openclawSkillsDir,
       userSkillsDir: env.userSkillsDir,
-      isSlugInFlight: (slug) => installQueue.isInFlight(slug),
+      isSlugInFlight: (slug) =>
+        installQueue.isInFlight(slug) ||
+        catalogManager.isInstallTransactionActive(slug),
       skillDb,
       log,
       openclawStateDir: env.openclawStateDir,
@@ -151,17 +243,21 @@ export class SkillhubService {
     // push, but re-running here is harmless (idempotent) and catches any
     // skills that appeared between bootstrap() and start().
     this.dirWatcher.syncNow();
+    this.backfillManagedInstallMetadata();
     this.initialize();
 
     // Always start watching for external skill changes (agent installs)
     this.dirWatcher.start();
+    void this.enqueueMissingCuratedSkills().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[skillhub] curated startup install failed: ${message}`);
+    });
   }
 
   /**
-   * Copy static skills and enqueue missing curated skills.
+   * Copy static bundled skills into the shared skill directory.
    * Runs on every non-CI startup. Both operations are idempotent:
    * - copyStaticSkills skips when SKILL.md exists on disk OR slug is known in ledger
-   * - getCuratedSlugsToEnqueue filters against all known slugs in ledger
    */
   private initialize(): void {
     // Step 1: Copy static bundled skills to skills dir + record in DB
@@ -186,12 +282,37 @@ export class SkillhubService {
         skillDb: this.db,
       });
     }
+  }
 
-    // Step 2: Enqueue curated skills from ClawHub that aren't on disk yet
-    const toEnqueue = this.catalogManager.getCuratedSlugsToEnqueue();
-    for (const slug of toEnqueue) {
-      const canonical = this.catalogManager.canonicalizeSlug(slug);
-      this.installQueue.enqueue(canonical, "managed");
+  private async enqueueMissingCuratedSkills(): Promise<void> {
+    const requests = await this.catalogManager.getCuratedInstallRequests();
+    for (const request of requests) {
+      try {
+        this.enqueueInstall(request);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[skillhub] curated startup install skipped @${request.ownerHandle ?? "unknown"}/${request.slug}: ${message}`,
+        );
+      }
+    }
+  }
+
+  private backfillManagedInstallMetadata(): void {
+    for (const record of this.db.getAllInstalled()) {
+      if (
+        record.source !== "managed" ||
+        (record.ownerHandle !== null && record.version !== null)
+      ) {
+        continue;
+      }
+      const metadata = readInstalledOriginMetadata(
+        this.env.openclawSkillsDir,
+        record.slug,
+      );
+      if (metadata) {
+        this.db.backfillInstalledManagedMetadata(record.slug, metadata);
+      }
     }
   }
 
@@ -211,14 +332,111 @@ export class SkillhubService {
     return this.installQueue;
   }
 
-  enqueueInstall(slug: string): QueueItem {
-    const canonical = this.catalogManager.canonicalizeSlug(slug);
-    return this.installQueue.enqueue(canonical, "managed");
+  enqueueInstall(request: string | SkillhubInstallRequest): QueueItem {
+    const payload: SkillhubInstallRequest =
+      typeof request === "string" ? { slug: request } : request;
+    const ownerHandle = payload.ownerHandle?.replace(/^@+/, "").toLowerCase();
+    const canonicalSlug = ownerHandle
+      ? payload.slug
+      : this.catalogManager.canonicalizeSlug(payload.slug);
+    const existingQueueItem = this.installQueue
+      .getQueue()
+      .find((item) => item.slug === canonicalSlug && item.status !== "failed");
+    if (existingQueueItem && existingQueueItem.status !== "done") {
+      const sameOwner =
+        (existingQueueItem.ownerHandle ?? null) === (ownerHandle ?? null);
+      if (!sameOwner) {
+        throw new SkillInstallConflictError(canonicalSlug);
+      }
+      return existingQueueItem;
+    }
+
+    const occupiedRecords = this.db
+      .getInstalledRecordsBySlug(canonicalSlug)
+      .filter((record) => record.source !== "workspace");
+    const matchingManagedRecord = ownerHandle
+      ? occupiedRecords.find(
+          (record) =>
+            record.source === "managed" &&
+            record.ownerHandle?.replace(/^@+/, "").toLowerCase() ===
+              ownerHandle,
+        )
+      : undefined;
+    const occupiedOnDisk = existsSync(
+      path.join(this.env.openclawSkillsDir, canonicalSlug, "SKILL.md"),
+    );
+    const hasConflictingRecord = occupiedRecords.some(
+      (record) => record !== matchingManagedRecord,
+    );
+
+    if (payload.update) {
+      if (
+        !ownerHandle ||
+        !payload.version ||
+        !matchingManagedRecord?.version ||
+        hasConflictingRecord ||
+        !isSkillUpdateAvailable(payload.version, matchingManagedRecord.version)
+      ) {
+        throw new SkillUpdateNotAllowedError(canonicalSlug);
+      }
+    } else {
+      if (hasConflictingRecord || (occupiedOnDisk && !matchingManagedRecord)) {
+        throw new SkillInstallConflictError(canonicalSlug, "installed");
+      }
+      if (matchingManagedRecord && occupiedOnDisk) {
+        if (
+          existingQueueItem?.status === "done" &&
+          existingQueueItem.ownerHandle === ownerHandle
+        ) {
+          return existingQueueItem;
+        }
+        return {
+          slug: canonicalSlug,
+          ownerHandle: ownerHandle ?? null,
+          source: "managed",
+          status: "done",
+          position: 0,
+          error: null,
+          errorCode: null,
+          retries: 0,
+          enqueuedAt:
+            matchingManagedRecord.installedAt ?? new Date().toISOString(),
+        };
+      }
+      if (
+        existingQueueItem?.status === "done" &&
+        existingQueueItem.ownerHandle !== (ownerHandle ?? null)
+      ) {
+        throw new SkillInstallConflictError(canonicalSlug, "installed");
+      }
+    }
+    const canonical = this.catalogManager.prepareInstall({
+      slug: payload.slug,
+      ...(ownerHandle ? { ownerHandle } : {}),
+      ...(payload.version ? { version: payload.version } : {}),
+    });
+    if (payload.update) {
+      return this.installQueue.enqueue(canonical, "managed", ownerHandle, {
+        replaceCompleted: true,
+        operation: "update",
+      });
+    }
+    if (
+      existingQueueItem?.status === "done" &&
+      existingQueueItem.ownerHandle === (ownerHandle ?? null)
+    ) {
+      return this.installQueue.enqueue(canonical, "managed", ownerHandle, {
+        replaceCompleted: true,
+      });
+    }
+    return this.installQueue.enqueue(canonical, "managed", ownerHandle);
   }
 
   cancelInstall(slug: string): boolean {
     const canonical = this.catalogManager.canonicalizeSlug(slug);
-    return this.installQueue.cancel(canonical);
+    const cancelled = this.installQueue.cancel(canonical);
+    if (cancelled) this.catalogManager.clearPreparedInstall(canonical);
+    return cancelled;
   }
 
   /**
@@ -232,16 +450,107 @@ export class SkillhubService {
    * downloaded first via the catalog manager.
    */
   async installWorkspaceSkill(
-    slug: string,
+    request: string | SkillInstallRequest,
     agentId: string,
   ): Promise<{ ok: boolean; error?: string }> {
-    const canonical = this.catalogManager.canonicalizeSlug(slug);
+    const payload: SkillInstallRequest =
+      typeof request === "string" ? { slug: request } : request;
+    const requestedOwner = payload.ownerHandle
+      ?.replace(/^@+/, "")
+      .toLowerCase();
+    let canonical = payload.slug;
+    let downloadedSharedSkill = false;
+    let catalogSkill: Awaited<ReturnType<CatalogManager["getCatalogSkill"]>> =
+      undefined;
 
     // Ensure the skill exists in the shared skills directory first.
-    const sharedDir = path.join(this.env.openclawSkillsDir, canonical);
-    if (!existsSync(path.join(sharedDir, "SKILL.md"))) {
+    let sharedDir = path.join(this.env.openclawSkillsDir, canonical);
+    let sharedExists = existsSync(path.join(sharedDir, "SKILL.md"));
+    let sharedRecord = this.db
+      .getInstalledRecordsBySlug(canonical)
+      .find((record) => record.source !== "workspace");
+    let originMetadata = readInstalledOriginMetadata(
+      this.env.openclawSkillsDir,
+      canonical,
+    );
+    let sharedOwner = (sharedRecord?.ownerHandle ?? originMetadata?.ownerHandle)
+      ?.replace(/^@+/, "")
+      .toLowerCase();
+    let sharedVersion = sharedRecord?.version ?? originMetadata?.version;
+    if (sharedExists && requestedOwner && sharedOwner !== requestedOwner) {
+      return {
+        ok: false,
+        error: `A different or unknown skill identity already occupies ${canonical}`,
+      };
+    }
+
+    let shouldInstallShared =
+      !sharedExists ||
+      Boolean(payload.version && sharedVersion !== payload.version);
+    if (shouldInstallShared) {
       try {
-        await this.catalogManager.executeInstall(canonical);
+        catalogSkill = await this.catalogManager.getCatalogSkill(
+          payload.slug,
+          requestedOwner,
+        );
+        if (!catalogSkill) {
+          if (requestedOwner) {
+            throw new Error(
+              `catalog did not return @${requestedOwner}/${payload.slug}`,
+            );
+          }
+          canonical = this.catalogManager.canonicalizeSlug(payload.slug);
+          sharedDir = path.join(this.env.openclawSkillsDir, canonical);
+          sharedExists = existsSync(path.join(sharedDir, "SKILL.md"));
+          sharedRecord = this.db
+            .getInstalledRecordsBySlug(canonical)
+            .find((record) => record.source !== "workspace");
+          originMetadata = readInstalledOriginMetadata(
+            this.env.openclawSkillsDir,
+            canonical,
+          );
+          sharedOwner = (
+            sharedRecord?.ownerHandle ?? originMetadata?.ownerHandle
+          )
+            ?.replace(/^@+/, "")
+            .toLowerCase();
+          sharedVersion = sharedRecord?.version ?? originMetadata?.version;
+          if (
+            sharedExists &&
+            (!payload.version || sharedVersion === payload.version)
+          ) {
+            shouldInstallShared = false;
+          } else if (canonical !== payload.slug && !sharedExists) {
+            catalogSkill = await this.catalogManager.getCatalogSkill(canonical);
+          }
+        }
+        if (shouldInstallShared) {
+          const catalogOwner = catalogSkill?.ownerHandle
+            ?.replace(/^@+/, "")
+            .toLowerCase();
+          if (
+            requestedOwner &&
+            (!catalogSkill || catalogOwner !== requestedOwner)
+          ) {
+            throw new Error(
+              `catalog did not return @${requestedOwner}/${payload.slug}`,
+            );
+          }
+          canonical = this.catalogManager.prepareInstall({
+            slug: catalogSkill?.slug ?? canonical,
+            ...((requestedOwner ?? catalogOwner ?? sharedOwner)
+              ? {
+                  ownerHandle: requestedOwner ?? catalogOwner ?? sharedOwner,
+                }
+              : {}),
+            ...(payload.version || catalogSkill?.version
+              ? { version: payload.version ?? catalogSkill?.version }
+              : {}),
+          });
+          sharedDir = path.join(this.env.openclawSkillsDir, canonical);
+          await this.catalogManager.executeInstall(canonical);
+          downloadedSharedSkill = true;
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { ok: false, error: `Failed to download skill: ${message}` };
@@ -256,19 +565,32 @@ export class SkillhubService {
       "skills",
       canonical,
     );
+    const workspaceParent = path.dirname(workspaceDir);
+    mkdirSync(workspaceParent, { recursive: true });
+    const workspaceTransactionDir = mkdtempSync(
+      path.join(workspaceParent, `.${canonical}-install-`),
+    );
+    const stagedWorkspaceDir = path.join(workspaceTransactionDir, "next");
+    const previousWorkspaceDir = path.join(workspaceTransactionDir, "previous");
     try {
-      cpSync(sharedDir, workspaceDir, { recursive: true });
+      cpSync(sharedDir, stagedWorkspaceDir, { recursive: true });
     } catch (err) {
+      rmSync(workspaceTransactionDir, { recursive: true, force: true });
+      if (downloadedSharedSkill) this.catalogManager.rollbackInstall(canonical);
       const message = err instanceof Error ? err.message : String(err);
       return { ok: false, error: `Failed to copy skill: ${message}` };
     }
 
     // Install npm dependencies if the skill has a package.json.
-    if (existsSync(path.join(workspaceDir, "package.json"))) {
+    if (existsSync(path.join(stagedWorkspaceDir, "package.json"))) {
       try {
         await ensureNpmAvailable();
-        await runNpmInstall(workspaceDir);
+        await runNpmInstall(stagedWorkspaceDir);
       } catch (err) {
+        rmSync(workspaceTransactionDir, { recursive: true, force: true });
+        if (downloadedSharedSkill) {
+          this.catalogManager.rollbackInstall(canonical);
+        }
         const message = err instanceof Error ? err.message : String(err);
         return {
           ok: false,
@@ -277,8 +599,80 @@ export class SkillhubService {
       }
     }
 
+    let previousWorkspaceMoved = false;
+    let stagedWorkspaceMoved = false;
+    try {
+      if (existsSync(workspaceDir)) {
+        renameSync(workspaceDir, previousWorkspaceDir);
+        previousWorkspaceMoved = true;
+      }
+      renameSync(stagedWorkspaceDir, workspaceDir);
+      stagedWorkspaceMoved = true;
+    } catch (err) {
+      if (stagedWorkspaceMoved) {
+        rmSync(workspaceDir, { recursive: true, force: true });
+      }
+      if (previousWorkspaceMoved && existsSync(previousWorkspaceDir)) {
+        renameSync(previousWorkspaceDir, workspaceDir);
+      }
+      rmSync(workspaceTransactionDir, { recursive: true, force: true });
+      if (downloadedSharedSkill) this.catalogManager.rollbackInstall(canonical);
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `Failed to copy skill: ${message}` };
+    }
+
     // Record install in ledger and trigger sync.
-    this.db.recordInstall(canonical, "workspace", undefined, agentId);
+    const metadata = this.catalogManager.consumeInstalledMetadata(canonical);
+    const installedVersion =
+      metadata?.version ??
+      payload.version ??
+      catalogSkill?.version ??
+      sharedRecord?.version ??
+      undefined;
+    const resolvedOwner =
+      metadata?.ownerHandle ??
+      catalogSkill?.ownerHandle ??
+      sharedRecord?.ownerHandle ??
+      undefined;
+    try {
+      if (downloadedSharedSkill) {
+        this.db.recordInstalls([
+          {
+            slug: canonical,
+            source: "managed",
+            version: installedVersion,
+            ownerHandle: resolvedOwner,
+          },
+          {
+            slug: canonical,
+            source: "workspace",
+            version: installedVersion,
+            agentId,
+            ownerHandle: resolvedOwner,
+          },
+        ]);
+      } else {
+        this.db.recordInstall(
+          canonical,
+          "workspace",
+          installedVersion,
+          agentId,
+          resolvedOwner,
+        );
+      }
+    } catch (error) {
+      rmSync(workspaceDir, { recursive: true, force: true });
+      if (previousWorkspaceMoved && existsSync(previousWorkspaceDir)) {
+        renameSync(previousWorkspaceDir, workspaceDir);
+      }
+      rmSync(workspaceTransactionDir, { recursive: true, force: true });
+      if (downloadedSharedSkill) {
+        this.catalogManager.rollbackInstall(canonical);
+      }
+      throw error;
+    }
+    if (downloadedSharedSkill) this.catalogManager.commitInstall(canonical);
+    rmSync(workspaceTransactionDir, { recursive: true, force: true });
     this.dirWatcher.syncNow();
     this.onSyncNeeded?.();
 
@@ -289,6 +683,12 @@ export class SkillhubService {
     request: SkillUninstallRequest,
   ): Promise<{ ok: boolean; error?: string }> {
     const canonical = this.catalogManager.canonicalizeSlug(request.slug);
+    if (this.installQueue.hasActiveUpdate(canonical)) {
+      return {
+        ok: false,
+        error: `Cannot uninstall ${canonical} while an update is in progress`,
+      };
+    }
     this.cancelInstall(canonical);
     const result = await this.catalogManager.uninstallSkill({
       ...request,

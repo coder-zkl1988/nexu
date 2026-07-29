@@ -31,6 +31,11 @@ vi.mock("@/hooks/use-community-catalog", () => ({
       installedSkills: [],
     },
   }),
+  useCommunitySkillStatus: () => ({
+    data: {
+      installedSkills: [],
+    },
+  }),
 }));
 
 vi.mock("@/hooks/use-locale", () => ({

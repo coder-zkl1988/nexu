@@ -30,7 +30,7 @@ vi.mock("@/hooks/use-auto-update", () => ({
 }));
 
 vi.mock("@/hooks/use-community-catalog", () => ({
-  useCommunitySkills: () => ({
+  useCommunitySkillStatus: () => ({
     data: {
       installedSkills: [],
     },

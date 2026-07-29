@@ -2,6 +2,8 @@ export type SkillSource = "curated" | "managed" | "custom" | "workspace" | "user
 
 export type InstalledSkill = {
   slug: string;
+  ownerHandle: string | null;
+  version: string | null;
   source: SkillSource;
   name: string;
   description: string;
@@ -26,6 +28,7 @@ export type QueueErrorCode =
 
 export type QueueItem = {
   readonly slug: string;
+  readonly ownerHandle: string | null;
   readonly source: SkillSource;
   readonly status: QueueItemStatus;
   readonly position: number;
@@ -42,7 +45,20 @@ export type SkillhubCatalogData = {
   meta: CatalogMeta | null;
 };
 
+export type SkillhubCatalogPageData = SkillhubCatalogData & {
+  nextCursor: string | null;
+  total: number;
+  facets: Array<{ tag: string; count: number }>;
+};
+
+export type SkillhubStatusData = Pick<
+  SkillhubCatalogData,
+  "installedSlugs" | "installedSkills" | "queue"
+>;
+
 export type MinimalSkill = {
+  identity?: string;
+  ownerHandle?: string;
   slug: string;
   name: string;
   description: string;

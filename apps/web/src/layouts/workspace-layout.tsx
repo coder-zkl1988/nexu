@@ -2,7 +2,7 @@ import { BudgetWarningBanner } from "@/components/budget-warning-banner";
 import { PlatformIcon } from "@/components/platform-icons";
 import { useAutoUpdate } from "@/hooks/use-auto-update";
 import { useCloudConnect } from "@/hooks/use-cloud-connect";
-import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import { useCommunitySkillStatus } from "@/hooks/use-community-catalog";
 import {
   getBudgetBannerRouteVariant,
   useDesktopBudgetGuard,
@@ -645,7 +645,7 @@ function WorkspaceLayoutContent() {
     );
   }, [isSessionRoute, location.pathname, rightSidebarOpen, closeCanvasSidebar]);
   const { data: session } = authClient.useSession();
-  const { data: skillsData } = useCommunitySkills();
+  const { data: skillsData } = useCommunitySkillStatus();
   const {
     data: desktopCloudStatus,
     isLoading: cloudStatusLoading,

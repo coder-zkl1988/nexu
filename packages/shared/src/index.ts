@@ -33,5 +33,6 @@ export * from "./schemas/canvas-ops.js";
 export * from "./schemas/schedule.js";
 export * from "./lifecycle/index.js";
 export * from "./platform/index.js";
+export * from "./skill-version.js";
 export { ensure } from "./ensure/index.js";
 export * from "./schemas/device-control.js";
