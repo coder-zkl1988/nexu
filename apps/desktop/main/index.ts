@@ -102,7 +102,7 @@ import {
 import { flushV8CoverageIfEnabled } from "./services/v8-coverage";
 import { readPendingWindowsUserDataMigration } from "./services/windows-user-data-migration";
 import { SleepGuard, type SleepGuardLogEntry } from "./sleep-guard";
-import { ComponentUpdater } from "./updater/component-updater";
+import { ComponentUpdater, R2_BASE_URL } from "./updater/component-updater";
 import { StartupHealthCheck } from "./updater/rollback";
 import { UpdateManager } from "./updater/update-manager";
 import {
@@ -528,10 +528,9 @@ function isRunningUnderRosetta(): boolean {
  * channel + feed URL into build-config.json, not live env vars.
  */
 async function resolveLatestArm64DownloadUrl(): Promise<string> {
-  const R2_BASE = "https://desktop-releases.nexu.io";
   const channel = runtimeConfig.updates.channel ?? "stable";
 
-  let baseUrl = `${R2_BASE}/${channel}/arm64`;
+  let baseUrl = `${R2_BASE_URL}/${channel}/arm64`;
   const feedOverride = runtimeConfig.urls.updateFeed;
   if (feedOverride) {
     try {
