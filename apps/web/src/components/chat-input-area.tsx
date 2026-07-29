@@ -12,8 +12,10 @@ import {
   FileImage,
   FileSpreadsheet,
   FileText,
+  MessageCircleQuestion,
   Plus,
   Presentation,
+  Route,
   Sparkles,
   Star,
   Users,
@@ -63,7 +65,7 @@ export interface ChatInputAreaProps {
   ) => void;
   onTyping?: (text: string) => void;
   onCancel?: () => void;
-  onRunMessage?: (text: string) => void;
+  onRunMessage?: (text: string, mode: RunMessageMode) => void;
   runMessageSending?: boolean;
   sending: boolean;
   waitingReply: boolean;
@@ -82,6 +84,8 @@ export interface ChatInputAreaProps {
   /** Current session key for browser selections and annotated screenshots. */
   externalInputSessionKey?: string | null;
 }
+
+export type RunMessageMode = "auto" | "side-question" | "steer";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -475,6 +479,7 @@ export function ChatInputArea({
     null,
   );
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [runMessageMode, setRunMessageMode] = useState<RunMessageMode>("auto");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -658,7 +663,7 @@ export function ChatInputArea({
       if (!canSendRunMessage) return;
       const text = input.trim();
       setInput("");
-      onRunMessage?.(text);
+      onRunMessage?.(text, runMessageMode);
       return;
     }
     if (!canSend) return;
@@ -713,107 +718,147 @@ export function ChatInputArea({
         canSend={runMessageActive ? canSendRunMessage : canSend}
         subtlePlaceholder={runMessageActive}
         leftActions={
-          <>
-            <ChatInputAttachButton
-              onClick={() => fileRef.current?.click()}
-              disabled={runMessageActive}
-              label={
-                runMessageActive
-                  ? t("sessions.chat.runToolsUnavailable")
-                  : t("localChat.attachFile")
-              }
-            />
-            <div className="relative flex items-center" ref={skillDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setSkillDropdownOpen(!skillDropdownOpen)}
+          runMessageActive ? (
+            <fieldset className="flex h-8 items-center rounded-lg bg-[var(--color-tabby-canvas)] p-0.5">
+              <legend className="sr-only">
+                {t("sessions.chat.runModeLabel")}
+              </legend>
+              {(
+                [
+                  ["auto", Sparkles, t("sessions.chat.runModeAuto")],
+                  [
+                    "side-question",
+                    MessageCircleQuestion,
+                    t("sessions.chat.runModeSideQuestion"),
+                  ],
+                  ["steer", Route, t("sessions.chat.runModeSteer")],
+                ] as const
+              ).map(([mode, Icon, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setRunMessageMode(mode)}
+                  data-run-message-mode={mode}
+                  aria-pressed={runMessageMode === mode}
+                  title={label}
+                  className={cn(
+                    "flex h-7 items-center gap-1 rounded-md px-2 text-xs transition-colors",
+                    runMessageMode === mode
+                      ? "bg-[var(--color-tabby-bg)] text-[var(--color-tabby-foreground)] shadow-sm"
+                      : "text-[var(--color-tabby-muted)] hover:text-[var(--color-tabby-foreground)]",
+                  )}
+                >
+                  <Icon className="size-3.5 shrink-0" />
+                  <span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
+            </fieldset>
+          ) : (
+            <>
+              <ChatInputAttachButton
+                onClick={() => fileRef.current?.click()}
                 disabled={runMessageActive}
-                data-chat-skill="true"
-                title={
+                label={
                   runMessageActive
                     ? t("sessions.chat.runToolsUnavailable")
-                    : undefined
+                    : t("localChat.attachFile")
                 }
-                className={cn(
-                  "flex items-center gap-1.5 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-sm disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
-                  selectedSkillSlug
-                    ? "text-[var(--color-tabby-foreground)] font-medium"
-                    : "text-[var(--color-tabby-muted)]",
-                )}
+              />
+              <div
+                className="relative flex items-center"
+                ref={skillDropdownRef}
               >
-                <Sparkles className="w-4 h-4" />
-                <span className="max-w-32 truncate">
-                  {selectedSkillSlug
-                    ? (installedSkills.find(
-                        (skill) => skill.slug === selectedSkillSlug,
-                      )?.name ?? selectedSkillSlug)
-                    : "Skills"}
-                </span>
-              </button>
-              {selectedSkillSlug && !runMessageActive && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSelectedSkillSlug(null);
-                    setSkillDropdownOpen(false);
-                  }}
-                  className="flex size-7 items-center justify-center rounded-md text-[var(--color-tabby-muted)] transition-colors hover:bg-[var(--color-tabby-canvas)] hover:text-[var(--color-tabby-foreground)]"
-                  title={t("localChat.clearSkill")}
-                  aria-label={t("localChat.clearSkill")}
-                >
-                  <X size={13} />
-                </button>
-              )}
-              {skillDropdownOpen && (
-                <div className="absolute bottom-full left-0 mb-1 w-56 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
-                  <div className="px-3 py-2 text-[11px] text-[var(--color-tabby-muted)] font-medium border-b border-[var(--color-tabby-border)]">
-                    {t("skills.installed", { defaultValue: "已安装技能" })}
-                  </div>
-                  {installedSkills.length === 0 ? (
-                    <div className="px-3 py-4 text-xs text-[var(--color-tabby-muted)] text-center">
-                      {t("skills.noInstalled", {
-                        defaultValue: "暂无已安装技能",
-                      })}
-                    </div>
-                  ) : (
-                    installedSkills.map((skill) => (
-                      <button
-                        key={skill.slug}
-                        type="button"
-                        onClick={() => {
-                          setSelectedSkillSlug(
-                            selectedSkillSlug === skill.slug
-                              ? null
-                              : skill.slug,
-                          );
-                          setSkillDropdownOpen(false);
-                        }}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
-                      >
-                        <div className="w-6 h-6 rounded-md bg-[var(--color-tabby-canvas)] flex items-center justify-center shrink-0">
-                          <Zap
-                            size={12}
-                            className="text-[var(--color-tabby-muted)]"
-                          />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
-                            {skill.name}
-                          </div>
-                        </div>
-                        {selectedSkillSlug === skill.slug && (
-                          <Check
-                            size={14}
-                            className="text-[var(--color-tabby-orange)] shrink-0"
-                          />
-                        )}
-                      </button>
-                    ))
+                  onClick={() => setSkillDropdownOpen(!skillDropdownOpen)}
+                  disabled={runMessageActive}
+                  data-chat-skill="true"
+                  title={
+                    runMessageActive
+                      ? t("sessions.chat.runToolsUnavailable")
+                      : undefined
+                  }
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-sm disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
+                    selectedSkillSlug
+                      ? "text-[var(--color-tabby-foreground)] font-medium"
+                      : "text-[var(--color-tabby-muted)]",
                   )}
-                </div>
-              )}
-            </div>
-          </>
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span className="max-w-32 truncate">
+                    {selectedSkillSlug
+                      ? (installedSkills.find(
+                          (skill) => skill.slug === selectedSkillSlug,
+                        )?.name ?? selectedSkillSlug)
+                      : "Skills"}
+                  </span>
+                </button>
+                {selectedSkillSlug && !runMessageActive && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSkillSlug(null);
+                      setSkillDropdownOpen(false);
+                    }}
+                    className="flex size-7 items-center justify-center rounded-md text-[var(--color-tabby-muted)] transition-colors hover:bg-[var(--color-tabby-canvas)] hover:text-[var(--color-tabby-foreground)]"
+                    title={t("localChat.clearSkill")}
+                    aria-label={t("localChat.clearSkill")}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+                {skillDropdownOpen && (
+                  <div className="absolute bottom-full left-0 mb-1 w-56 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg z-50 max-h-64 overflow-y-auto">
+                    <div className="px-3 py-2 text-[11px] text-[var(--color-tabby-muted)] font-medium border-b border-[var(--color-tabby-border)]">
+                      {t("skills.installed", { defaultValue: "已安装技能" })}
+                    </div>
+                    {installedSkills.length === 0 ? (
+                      <div className="px-3 py-4 text-xs text-[var(--color-tabby-muted)] text-center">
+                        {t("skills.noInstalled", {
+                          defaultValue: "暂无已安装技能",
+                        })}
+                      </div>
+                    ) : (
+                      installedSkills.map((skill) => (
+                        <button
+                          key={skill.slug}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSkillSlug(
+                              selectedSkillSlug === skill.slug
+                                ? null
+                                : skill.slug,
+                            );
+                            setSkillDropdownOpen(false);
+                          }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
+                        >
+                          <div className="w-6 h-6 rounded-md bg-[var(--color-tabby-canvas)] flex items-center justify-center shrink-0">
+                            <Zap
+                              size={12}
+                              className="text-[var(--color-tabby-muted)]"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
+                              {skill.name}
+                            </div>
+                          </div>
+                          {selectedSkillSlug === skill.slug && (
+                            <Check
+                              size={14}
+                              className="text-[var(--color-tabby-orange)] shrink-0"
+                            />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )
         }
         rightActions={
           <>

@@ -112,6 +112,11 @@ Frontend code must use `apps/web/lib/api/` and should not call controller routes
 Long-running chat controls use dedicated OpenAPI routes instead of the normal
 local-chat send path:
 
+- `POST /api/v1/chat/intent` classifies Auto-mode busy input on a fresh,
+  isolated subagent session. The Controller assigns the configured utility
+  model when present, never writes to the active session, aborts timed-out
+  classifier runs, archives the classifier session, and returns a
+  `side-question` fallback when classification fails.
 - `POST /api/v1/chat/steer` sends plain guidance through `sessions.steer`.
   OpenClaw interrupts the active run, waits for it to release the session, then
   starts a replacement run with the new guidance. Do not forward an explicit

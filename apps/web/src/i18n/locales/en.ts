@@ -973,6 +973,12 @@ const en = {
   "sessions.chat.newSession": "New conversation",
   "sessions.chat.runMessagePlaceholder":
     "Continue typing to guide the task or ask about progress",
+  "sessions.chat.runModeLabel": "Message intent",
+  "sessions.chat.runModeAuto": "Auto",
+  "sessions.chat.runModeSideQuestion": "Quick question",
+  "sessions.chat.runModeSteer": "Adjust task",
+  "sessions.chat.runIntentConfirm": "What should this message do?",
+  "sessions.chat.runIntentDismiss": "Dismiss intent choice",
   "sessions.chat.sendRunMessage": "Send",
   "sessions.chat.stopCurrentTask": "Stop current task",
   "sessions.chat.runMessageEmpty": "Enter a message to send",

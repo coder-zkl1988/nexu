@@ -46,6 +46,7 @@ type ActiveSession = {
   startedAt: number;
   lastObservedAt: number;
   runIds: Set<string>;
+  terminalRunIds: Set<string>;
   pendingStarts: number;
 };
 
@@ -62,6 +63,7 @@ export class SessionRunRegistry {
       startedAt: now,
       lastObservedAt: now,
       runIds: new Set<string>(),
+      terminalRunIds: new Set<string>(),
       pendingStarts: 0,
     };
     if (runId) activeSession.runIds.add(runId);
@@ -75,8 +77,13 @@ export class SessionRunRegistry {
     const activeSession = this.active.get(sessionKey);
     if (!activeSession) return;
     activeSession.pendingStarts = Math.max(0, activeSession.pendingStarts - 1);
-    activeSession.runIds.add(runId);
+    if (!activeSession.terminalRunIds.delete(runId)) {
+      activeSession.runIds.add(runId);
+    }
     activeSession.lastObservedAt = Date.now();
+    if (activeSession.pendingStarts === 0 && activeSession.runIds.size === 0) {
+      this.active.delete(sessionKey);
+    }
   }
 
   /** Release one optimistic send reservation after chat.send fails. */
@@ -158,7 +165,12 @@ export class SessionRunRegistry {
       }
       const activeSession = this.active.get(sessionKey);
       if (!activeSession) return;
-      activeSession.runIds.delete(eventRunId);
+      if (
+        !activeSession.runIds.delete(eventRunId) &&
+        activeSession.pendingStarts > 0
+      ) {
+        activeSession.terminalRunIds.add(eventRunId);
+      }
       activeSession.lastObservedAt = Date.now();
       if (
         activeSession.pendingStarts === 0 &&

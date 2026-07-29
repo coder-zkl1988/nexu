@@ -151,6 +151,21 @@ describe("SessionRunRegistry", () => {
     expect(registry.isBusy("s1")).toBe(false);
   });
 
+  it("does not revive a run that finishes before its gateway id is attached", () => {
+    const registry = new SessionRunRegistry();
+    registry.markStarted("s1");
+
+    registry.handleChatEvent({
+      runId: "fast-run",
+      sessionKey: "s1",
+      state: "final",
+    });
+    expect(registry.isBusy("s1")).toBe(true);
+
+    registry.attachRunId("s1", "fast-run");
+    expect(registry.isBusy("s1")).toBe(false);
+  });
+
   it("ignores malformed chat events", () => {
     const registry = new SessionRunRegistry();
     registry.markStarted("s1");

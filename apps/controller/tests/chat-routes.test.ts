@@ -11,12 +11,17 @@ function createChatRoutesApp({
   sessionRunRegistry = new SessionRunRegistry(),
   sendSideQuestion = vi.fn(async () => ({ runId: "side-run-1" })),
   steerChatSession = vi.fn(async () => ({ runId: "steer-command-1" })),
+  classifyRunMessage = vi.fn(async () => ({
+    intent: "side-question" as const,
+    confidence: 0.9,
+  })),
 }: {
   sendToMainSession: ControllerContainer["gatewayService"]["sendToMainSession"];
   getSessionBySessionKey: ControllerContainer["sessionService"]["getSessionBySessionKey"];
   sessionRunRegistry?: SessionRunRegistry;
   sendSideQuestion?: ControllerContainer["gatewayService"]["sendSideQuestion"];
   steerChatSession?: ControllerContainer["gatewayService"]["steerChatSession"];
+  classifyRunMessage?: ControllerContainer["runMessageIntentService"]["classify"];
 }) {
   const app = new OpenAPIHono<ControllerBindings>();
   registerChatRoutes(app, {
@@ -36,6 +41,9 @@ function createChatRoutesApp({
       getSessionBySessionKey,
     },
     sessionRunRegistry,
+    runMessageIntentService: {
+      classify: classifyRunMessage,
+    },
     wsClient: {
       onChatEvent: () => () => {},
       onChatSideResult: () => () => {},
@@ -45,6 +53,62 @@ function createChatRoutesApp({
 }
 
 describe("chat routes", () => {
+  it("classifies a busy-session message without touching the main session", async () => {
+    const classifyRunMessage = vi.fn(async () => ({
+      intent: "steer" as const,
+      confidence: 0.93,
+    }));
+    const sendToMainSession = vi.fn(async () => ({}));
+    const { app } = createChatRoutesApp({
+      sendToMainSession,
+      getSessionBySessionKey: vi.fn(async () => null),
+      classifyRunMessage,
+    });
+
+    const response = await app.request("/api/v1/chat/intent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        botId: "bot-1",
+        message: "Usa SQLite en lugar de Postgres",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      intent: "steer",
+      confidence: 0.93,
+      source: "model",
+    });
+    expect(classifyRunMessage).toHaveBeenCalledWith({
+      botId: "bot-1",
+      message: "Usa SQLite en lugar de Postgres",
+    });
+    expect(sendToMainSession).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a side question when intent classification fails", async () => {
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      classifyRunMessage: vi.fn(async () => {
+        throw new Error("utility lane timed out");
+      }),
+    });
+
+    const response = await app.request("/api/v1/chat/intent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ botId: "bot-1", message: "ambiguous" }),
+    });
+
+    expect(await response.json()).toEqual({
+      intent: "side-question",
+      confidence: 0,
+      source: "fallback",
+    });
+  });
+
   it("starts a local chat run without waiting for session discovery", async () => {
     const sendToMainSession = vi.fn(async () => ({
       runId: "run-1",

@@ -264,6 +264,7 @@ export class OpenClawGatewayService {
     label?: string | null;
     category?: string | null;
     archived?: boolean;
+    model?: string | null;
   }): Promise<unknown> {
     return this.wsClient.request("sessions.patch", params);
   }

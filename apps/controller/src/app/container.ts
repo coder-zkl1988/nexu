@@ -53,6 +53,7 @@ import { OpenClawCronGateway } from "../services/openclaw-cron-gateway.js";
 import { OpenClawGatewayService } from "../services/openclaw-gateway-service.js";
 import { OpenClawSyncService } from "../services/openclaw-sync-service.js";
 import { QuotaFallbackService } from "../services/quota-fallback-service.js";
+import { RunMessageIntentService } from "../services/run-message-intent-service.js";
 import { RuntimeConfigService } from "../services/runtime-config-service.js";
 import { RuntimeModelStateService } from "../services/runtime-model-state-service.js";
 import { ScheduleService } from "../services/schedule-service.js";
@@ -100,6 +101,7 @@ export interface ControllerContainer {
   skillhubService: SkillhubService;
   teamService: TeamService;
   mediaGenerationService: MediaGenerationService;
+  runMessageIntentService: RunMessageIntentService;
   teamWorkflowService: TeamWorkflowService;
   experthubCatalogManager: ExperthubCatalogManager;
   installExpertFn: (args: { slug: string }) => Promise<InstallExpertResult>;
@@ -424,6 +426,19 @@ export async function createContainer(): Promise<ControllerContainer> {
     genId: () => randomUUID(),
   });
 
+  const runMessageIntentService = new RunMessageIntentService({
+    getUtilityModelId: async () =>
+      (await configStore.getConfig()).runtime.utilityModelId,
+    createSession: (input) => gatewayService.sessionsCreate(input),
+    patchSession: (input) => gatewayService.sessionsPatch(input),
+    sendChat: (input) => gatewayService.sendToMainSession(input),
+    abortSession: (sessionKey) => gatewayService.abortChatSession(sessionKey),
+    readSessionEntry: (botId, sessionKey) =>
+      readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
+    readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
+    genId: () => randomUUID(),
+  });
+
   const teamWorkflowService = new TeamWorkflowService({
     workflows: teamWorkflowLedgerStore,
     getTeam: (teamId) => teamLedgerStore.get(teamId),
@@ -736,6 +751,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     skillhubService,
     teamService,
     mediaGenerationService,
+    runMessageIntentService,
     teamWorkflowService,
     experthubCatalogManager,
     installExpertFn,

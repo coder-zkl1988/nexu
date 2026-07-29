@@ -80,6 +80,17 @@ const localChatControlResponseSchema = z.object({
   runId: z.string().nullable(),
 });
 
+const localChatIntentBodySchema = z.object({
+  botId: z.string().min(1),
+  message: z.string().trim().min(1).max(4000),
+});
+
+const localChatIntentResponseSchema = z.object({
+  intent: z.enum(["side-question", "steer"]),
+  confidence: z.number().min(0).max(1),
+  source: z.enum(["model", "fallback"]),
+});
+
 const localChatMessageOutputSchema = z.object({
   id: z.string(),
   runId: z.string().nullable().optional(),
@@ -143,6 +154,54 @@ export function registerChatRoutes(
         sessionKey,
       );
       return c.json({ session });
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/chat/intent",
+      tags: ["Chat"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: localChatIntentBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Busy-session message intent classification",
+          content: {
+            "application/json": { schema: localChatIntentResponseSchema },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { botId, message } = c.req.valid("json");
+      try {
+        const result = await container.runMessageIntentService.classify({
+          botId,
+          message,
+        });
+        return c.json({ ...result, source: "model" as const }, 200);
+      } catch (error) {
+        logger.warn(
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "run message intent classification failed; using side-question fallback",
+        );
+        return c.json(
+          {
+            intent: "side-question" as const,
+            confidence: 0,
+            source: "fallback" as const,
+          },
+          200,
+        );
+      }
     },
   );
 

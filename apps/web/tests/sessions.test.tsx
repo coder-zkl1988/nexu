@@ -189,19 +189,18 @@ describe("SessionsPage", () => {
     expect(markup).toContain("placeholder:text-text-tertiary");
     expect(markup).toContain('data-chat-action="stop"');
     expect(markup).toContain('aria-label="Stop current task"');
-    expect(markup).toContain('data-chat-attachment="true"');
-    expect(markup).toContain('data-chat-skill="true"');
+    expect(markup).toContain('data-run-message-mode="auto"');
+    expect(markup).toContain('data-run-message-mode="side-question"');
+    expect(markup).toContain('data-run-message-mode="steer"');
+    expect(markup).toMatch(
+      /<button[^>]*(?:data-run-message-mode="auto"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-run-message-mode="auto")/,
+    );
+    expect(markup).not.toContain('data-chat-attachment="true"');
+    expect(markup).not.toContain('data-chat-skill="true"');
     expect(markup).toContain('data-chat-agent="true"');
     expect(markup).toContain('data-chat-model="true"');
     expect(markup).toContain("Provider expert");
     expect(markup).toContain("openai/gpt-5.6");
-    expect(markup).toContain("Available after the current task finishes");
-    expect(markup).toMatch(
-      /<button[^>]*(?:disabled=""[^>]*data-chat-attachment="true"|data-chat-attachment="true"[^>]*disabled="")/,
-    );
-    expect(markup).toMatch(
-      /<button[^>]*(?:disabled=""[^>]*data-chat-skill="true"|data-chat-skill="true"[^>]*disabled="")/,
-    );
     expect(markup).not.toContain('data-chat-action="send"');
     expect(markup).not.toContain("Stop and redirect");
     expect(markup).not.toContain("Side question");

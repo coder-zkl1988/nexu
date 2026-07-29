@@ -2,6 +2,7 @@ import {
   type BotItem,
   ChatInputArea,
   type PendingAttachment,
+  type RunMessageMode,
 } from "@/components/chat-input-area";
 import { PlatformIcon } from "@/components/platform-icons";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
@@ -53,7 +54,14 @@ import {
   buildTranscriptItems,
   stripRenderedAssistantText,
 } from "@/lib/chat/chat-transcript-groups";
-import { classifyRunMessage } from "@/lib/chat/run-message-intent";
+import { classifyExplicitRunMessage } from "@/lib/chat/run-message-intent";
+import {
+  type SteerRunHandoff,
+  acceptSteerRunHandoff,
+  beginSteerRunHandoff,
+  consumePreviousRunAbort,
+  consumeReplacementRunTerminal,
+} from "@/lib/chat/steer-run-handoff";
 import { invokeDesktopHost } from "@/lib/desktop-host";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
@@ -92,6 +100,7 @@ import {
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
   postApiV1ChatCancel,
+  postApiV1ChatIntent,
   postApiV1ChatLocal,
   postApiV1ChatSideQuestion,
   postApiV1ChatSteer,
@@ -102,6 +111,7 @@ import {
 const BOT_AVATAR = "/images/claw-avatar.png";
 const USER_AVATAR = "/images/tabby-avatar.png";
 const SIDE_QUESTION_AUTO_DISMISS_MS = 8_000;
+const RUN_MESSAGE_CONFIDENCE_THRESHOLD = 0.8;
 
 /**
  * Speak-reply button for assistant bubbles (OpenClaw >=2026.7.1 tts.speak).
@@ -1222,6 +1232,54 @@ function SideQuestionPanel({
   );
 }
 
+function RunMessageChoicePanel({
+  message,
+  onChoose,
+  onDismiss,
+}: {
+  message: string;
+  onChoose: (intent: "side-question" | "steer") => void;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-run-message-choice="true"
+      className="mb-2 flex flex-wrap items-center gap-2 border-l-2 border-[var(--color-tabby-orange)] px-3 py-1.5"
+    >
+      <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
+        <div className="text-xs font-medium text-text-primary">
+          {t("sessions.chat.runIntentConfirm")}
+        </div>
+        <div className="truncate text-[11px] text-text-muted">{message}</div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onChoose("side-question")}
+        className="h-8 shrink-0 rounded-md border border-border px-2.5 text-xs text-text-primary transition-colors hover:bg-surface-2"
+      >
+        {t("sessions.chat.runModeSideQuestion")}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChoose("steer")}
+        className="h-8 shrink-0 rounded-md bg-[var(--color-tabby-orange)] px-2.5 text-xs text-white transition-colors hover:bg-[var(--color-tabby-orange-hover)]"
+      >
+        {t("sessions.chat.runModeSteer")}
+      </button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text-primary"
+        aria-label={t("sessions.chat.runIntentDismiss")}
+        title={t("sessions.chat.runIntentDismiss")}
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -1321,7 +1379,14 @@ export function SessionsPage() {
   const [sideQuestion, setSideQuestion] = useState<SideQuestionView | null>(
     null,
   );
+  const [pendingRunMessageChoice, setPendingRunMessageChoice] = useState<
+    string | null
+  >(null);
   const sideRunIdsRef = useRef(new Set<string>());
+  const steerRunHandoffRef = useRef<SteerRunHandoff | null>(null);
+  const sideQuestionRequestRef = useRef<symbol | null>(null);
+  const steerRequestRef = useRef<symbol | null>(null);
+  const intentRequestRef = useRef<symbol | null>(null);
 
   useEffect(() => {
     if (!sideQuestion || sideQuestion.status === "pending") return;
@@ -1361,6 +1426,11 @@ export function SessionsPage() {
       onFinal: (final) => {
         if (sideRunIdsRef.current.delete(final.runId)) {
           return;
+        }
+        if (
+          consumeReplacementRunTerminal(steerRunHandoffRef.current, final.runId)
+        ) {
+          activeRunIdRef.current = final.runId;
         }
         void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
         void queryClient.invalidateQueries({
@@ -1415,6 +1485,22 @@ export function SessionsPage() {
         void queryClient.invalidateQueries({
           queryKey: ["chat-run-status", id],
         });
+        const steerHandoff = steerRunHandoffRef.current;
+        if (consumePreviousRunAbort(steerHandoff, aborted.runId)) {
+          setStreamingText("");
+          latestAssistantReplyTextRef.current = "";
+          latestStreamingReplyTextRef.current = "";
+          if (steerHandoff?.accepted) {
+            steerRunHandoffRef.current = null;
+          }
+          void queryClient.invalidateQueries({
+            queryKey: ["chat-history", id],
+          });
+          return;
+        }
+        if (consumeReplacementRunTerminal(steerHandoff, aborted.runId)) {
+          activeRunIdRef.current = aborted.runId;
+        }
         if (
           activeRunIdRef.current &&
           aborted.runId &&
@@ -1442,6 +1528,11 @@ export function SessionsPage() {
       onError: (error) => {
         if (sideRunIdsRef.current.delete(error.runId)) {
           return;
+        }
+        if (
+          consumeReplacementRunTerminal(steerRunHandoffRef.current, error.runId)
+        ) {
+          activeRunIdRef.current = error.runId;
         }
         void queryClient.invalidateQueries({ queryKey: ["session-meta", id] });
         void queryClient.invalidateQueries({
@@ -1668,6 +1759,10 @@ export function SessionsPage() {
     sentAtRef.current = 0;
     deskpetReplyStartedAtRef.current = 0;
     activeRunIdRef.current = null;
+    steerRunHandoffRef.current = null;
+    sideQuestionRequestRef.current = null;
+    steerRequestRef.current = null;
+    intentRequestRef.current = null;
     deskpetReplyPendingRef.current = false;
     latestAssistantReplyTextRef.current = "";
     latestStreamingReplyTextRef.current = "";
@@ -1675,6 +1770,7 @@ export function SessionsPage() {
     setPendingMessages([]);
     setStreamingText("");
     setSideQuestion(null);
+    setPendingRunMessageChoice(null);
     sideRunIdsRef.current.clear();
   }, [id]);
 
@@ -1953,6 +2049,8 @@ export function SessionsPage() {
   const handleSideQuestion = useCallback(
     async (question: string) => {
       if (!selectedBot || !session?.sessionKey) return;
+      const requestToken = Symbol("side-question");
+      sideQuestionRequestRef.current = requestToken;
       setRunMessageSending(true);
       setSideQuestion({
         runId: null,
@@ -1974,6 +2072,7 @@ export function SessionsPage() {
               t("sessions.chat.sideQuestionFailed"),
           );
         }
+        if (sideQuestionRequestRef.current !== requestToken) return;
         if (result.data.runId) {
           sideRunIdsRef.current.add(result.data.runId);
         }
@@ -1983,6 +2082,7 @@ export function SessionsPage() {
             : current,
         );
       } catch (error) {
+        if (sideQuestionRequestRef.current !== requestToken) return;
         setSideQuestion({
           runId: null,
           question,
@@ -1993,7 +2093,10 @@ export function SessionsPage() {
           status: "error",
         });
       } finally {
-        setRunMessageSending(false);
+        if (sideQuestionRequestRef.current === requestToken) {
+          sideQuestionRequestRef.current = null;
+          setRunMessageSending(false);
+        }
       }
     },
     [selectedBot, session?.sessionKey, t],
@@ -2002,6 +2105,10 @@ export function SessionsPage() {
   const handleSteer = useCallback(
     async (message: string) => {
       if (!selectedBot || !id || !session?.sessionKey) return;
+      const handoff = beginSteerRunHandoff(activeRunIdRef.current);
+      const requestToken = Symbol("steer");
+      steerRunHandoffRef.current = handoff;
+      steerRequestRef.current = requestToken;
       setRunMessageSending(true);
       try {
         const result = await postApiV1ChatSteer({
@@ -2017,19 +2124,58 @@ export function SessionsPage() {
               t("sessions.chat.steerFailed"),
           );
         }
+        if (
+          steerRunHandoffRef.current !== handoff ||
+          steerRequestRef.current !== requestToken
+        ) {
+          return;
+        }
+        const replacementRunId = result.data.runId ?? null;
+        acceptSteerRunHandoff(handoff, replacementRunId);
+        activeRunIdRef.current = handoff.replacementRunTerminated
+          ? null
+          : replacementRunId;
+        if (handoff.previousRunAborted) {
+          steerRunHandoffRef.current = null;
+        }
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["chat-history", id] }),
           queryClient.invalidateQueries({ queryKey: ["chat-run-status", id] }),
           queryClient.invalidateQueries({ queryKey: ["session-meta", id] }),
         ]);
       } catch (error) {
+        if (
+          steerRunHandoffRef.current !== handoff ||
+          steerRequestRef.current !== requestToken
+        ) {
+          return;
+        }
+        steerRunHandoffRef.current = null;
+        if (handoff.replacementRunTerminated) return;
+        if (handoff.previousRunAborted) {
+          activeRunIdRef.current = null;
+          deskpetReplyPendingRef.current = false;
+          setStreamingText("");
+          setWaitingForReply(false);
+          sentAtRef.current = 0;
+          deskpetReplyStartedAtRef.current = 0;
+          latestAssistantReplyTextRef.current = "";
+          latestStreamingReplyTextRef.current = "";
+          invokeDesktopHost("desktop:deskpet-activity", {
+            mood: "error",
+            durationMs: DESKPET_ERROR_DURATION_MS,
+          });
+        }
         toast.error(
           error instanceof Error
             ? error.message
             : t("sessions.chat.steerFailed"),
         );
       } finally {
-        setRunMessageSending(false);
+        if (steerRequestRef.current === requestToken) {
+          steerRequestRef.current = null;
+          setRunMessageSending(false);
+        }
       }
     },
     [selectedBot, id, session?.sessionKey, queryClient, t],
@@ -2060,6 +2206,9 @@ export function SessionsPage() {
 
   const handleCancel = useCallback(async () => {
     if (!session?.sessionKey || !selectedBot) return false;
+    intentRequestRef.current = null;
+    setPendingRunMessageChoice(null);
+    setRunMessageSending(false);
     try {
       const { data } = await postApiV1ChatCancel({
         body: {
@@ -2071,6 +2220,9 @@ export function SessionsPage() {
         },
       });
       if (data) {
+        steerRunHandoffRef.current = null;
+        steerRequestRef.current = null;
+        setRunMessageSending(false);
         activeRunIdRef.current = null;
         deskpetReplyPendingRef.current = false;
         setWaitingForReply(false);
@@ -2094,33 +2246,82 @@ export function SessionsPage() {
     return false;
   }, [session?.sessionKey, selectedBot, queryClient, id, t]);
 
+  const dispatchRunMessage = useCallback(
+    async (message: string, intent: "side-question" | "steer") => {
+      setPendingRunMessageChoice(null);
+      if (intent === "side-question") {
+        if (sideQuestion?.status === "pending") {
+          toast.info(t("sessions.chat.sideQuestionPending"));
+          return;
+        }
+        await handleSideQuestion(message);
+        return;
+      }
+      await handleSteer(message);
+    },
+    [handleSideQuestion, handleSteer, sideQuestion?.status, t],
+  );
+
   const handleRunMessage = useCallback(
-    async (input: string) => {
-      const classified = classifyRunMessage(input);
-      if (classified.intent === "abort") {
+    async (input: string, mode: RunMessageMode) => {
+      const explicit = classifyExplicitRunMessage(input);
+      if (mode === "auto" && explicit?.intent === "abort") {
         if (await handleCancel()) {
           toast.success(t("sessions.chat.runStopped"));
         }
         return;
       }
 
-      if (!classified.message) {
+      const message =
+        mode === "auto" ? (explicit?.message ?? input.trim()) : input.trim();
+      if (!message) {
         toast.info(t("sessions.chat.runMessageEmpty"));
         return;
       }
 
-      if (classified.intent === "side-question") {
-        if (sideQuestion?.status === "pending") {
-          toast.info(t("sessions.chat.sideQuestionPending"));
-          return;
-        }
-        await handleSideQuestion(classified.message);
+      if (mode !== "auto") {
+        await dispatchRunMessage(message, mode);
         return;
       }
 
-      await handleSteer(classified.message);
+      if (explicit && explicit.intent !== "abort") {
+        await dispatchRunMessage(message, explicit.intent);
+        return;
+      }
+
+      if (!selectedBot) return;
+      const requestToken = Symbol("run-message-intent");
+      intentRequestRef.current = requestToken;
+      setRunMessageSending(true);
+      try {
+        const result = await postApiV1ChatIntent({
+          body: { botId: selectedBot.id, message },
+        });
+        if (intentRequestRef.current !== requestToken) return;
+        const classification = result.data;
+        if (!classification || result.error) {
+          await dispatchRunMessage(message, "side-question");
+          return;
+        }
+        if (
+          classification.source === "model" &&
+          classification.confidence < RUN_MESSAGE_CONFIDENCE_THRESHOLD
+        ) {
+          setPendingRunMessageChoice(message);
+          return;
+        }
+        await dispatchRunMessage(message, classification.intent);
+      } catch {
+        if (intentRequestRef.current !== requestToken) return;
+        await dispatchRunMessage(message, "side-question");
+      } finally {
+        if (intentRequestRef.current === requestToken) {
+          intentRequestRef.current = null;
+          setRunMessageSending(false);
+        }
+      }
     },
-    [handleCancel, handleSideQuestion, handleSteer, sideQuestion?.status, t],
+    [dispatchRunMessage, handleCancel, selectedBot, t],
   );
 
   // Poll the session's active-run state so runs this composer did NOT start
@@ -2141,6 +2342,10 @@ export function SessionsPage() {
   const sessionBusy = runStatus?.busy === true;
   const replyInProgress =
     waitingForReply || sessionBusy || streamingText.trim().length > 0;
+
+  useEffect(() => {
+    if (!replyInProgress) setPendingRunMessageChoice(null);
+  }, [replyInProgress]);
 
   useEffect(() => {
     if (runStatus?.busy !== false || waitingForReply) return;
@@ -2867,6 +3072,15 @@ export function SessionsPage() {
               onDismiss={() => setSideQuestion(null)}
             />
           )}
+          {pendingRunMessageChoice && replyInProgress && (
+            <RunMessageChoicePanel
+              message={pendingRunMessageChoice}
+              onChoose={(intent) => {
+                void dispatchRunMessage(pendingRunMessageChoice, intent);
+              }}
+              onDismiss={() => setPendingRunMessageChoice(null)}
+            />
+          )}
           <ChatInputArea
             bots={bots}
             selectedBot={selectedBot}
@@ -2876,8 +3090,8 @@ export function SessionsPage() {
             }}
             onTyping={handleDeskpetTyping}
             onCancel={handleCancel}
-            onRunMessage={(text) => {
-              void handleRunMessage(text);
+            onRunMessage={(text, mode) => {
+              void handleRunMessage(text, mode);
             }}
             runMessageSending={runMessageSending}
             sending={false}
