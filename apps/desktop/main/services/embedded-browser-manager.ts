@@ -77,16 +77,15 @@ function clampBounds(
 }
 
 /**
- * Where the agent's tab goes when the panel is not placing it.
+ * A layout viewport for a tab the panel has not placed yet.
  *
- * Synthesized clicks need the view on screen: measured, the same click that
- * navigates a shown view does nothing at all when the view is hidden with
- * `setVisible(false)` *or* parked outside the window bounds — both take it out
- * of hit-testing, and the action fails silently. So an agent acting without a
- * panel to host it gets this fallback placement rather than a dead view. The
- * panel overrides it with real bounds as soon as it opens.
+ * Only ever applied while the view is hidden: a page still has to lay out at a
+ * plausible size for a snapshot to describe what the user will eventually see.
+ * The main process must not put the view *on screen* itself — with no address
+ * bar, tabs or header it reads as a raw page pasted over the app, with no way
+ * to navigate or dismiss it. Showing the view is the panel's job.
  */
-function agentFallbackBounds(owner: BrowserWindow): Electron.Rectangle {
+function offscreenLayoutBounds(owner: BrowserWindow): Electron.Rectangle {
   const content = owner.getContentBounds();
   const width = Math.max(1, Math.round(content.width * 0.45));
   return {
@@ -240,7 +239,7 @@ export class EmbeddedBrowserManager {
     // Give the tab a real layout viewport before anything shows it, so a
     // snapshot taken straight after `navigate` measures the page at the size
     // it will actually be seen at.
-    view.setBounds(agentFallbackBounds(owner));
+    view.setBounds(offscreenLayoutBounds(owner));
     const tab: ManagedTab = {
       owner,
       view,
@@ -307,20 +306,9 @@ export class EmbeddedBrowserManager {
     return this.controlWindow(resolveOwnerWindow(sender), input);
   }
 
-  /**
-   * Puts the agent's tab on screen so its clicks can land.
-   *
-   * Called before every mutating agent command. If the panel is already
-   * showing this tab it keeps the panel's bounds; otherwise it falls back to a
-   * placement of its own, because a click into an off-screen view is a silent
-   * no-op rather than an error.
-   */
-  revealAgentTab(owner: BrowserWindow): boolean {
-    const tab = this.ensureTab(owner, AGENT_TAB_ID);
-    if (tab.view.getVisible()) return false;
-    tab.view.setBounds(agentFallbackBounds(owner));
-    tab.view.setVisible(true);
-    return true;
+  /** Creates the agent's tab if needed, without putting it on screen. */
+  ensureAgentTab(owner: BrowserWindow): void {
+    this.ensureTab(owner, AGENT_TAB_ID);
   }
 
   async controlWindow(

@@ -33,9 +33,6 @@ import {
 // Long enough for a click to start a navigation or a framework to re-render,
 // short enough that a no-op click still answers quickly.
 const SETTLE_MS = 700;
-// A viewport resize has to reach the renderer and produce a new layout before
-// element coordinates mean anything.
-const RELAYOUT_MS = 250;
 // Long enough for the panel to mount and place the view, short enough to fall
 // back well inside the controller's own 30s ceiling.
 const PANEL_WAIT_MS = 4_000;
@@ -56,6 +53,9 @@ const CONNECT_TIMEOUT_MS = 8_000;
 
 const NO_WINDOW =
   "the desktop window is not available right now — ask the user to bring Nexu to the front and try again";
+
+const NO_PANEL =
+  "the browser panel did not open, so there is nowhere the user could watch this happen — ask them to open a conversation in Nexu and try again. Reading the page still works.";
 
 function normalizeUrl(value: string): string | null {
   const trimmed = value.trim();
@@ -216,32 +216,24 @@ export class AgentBrowserRelay {
     const owner = this.options.getWindow();
     if (!owner || owner.isDestroyed()) return { ok: false, error: NO_WINDOW };
 
-    /** Places the view well enough to read from. Reads need no hit-testing. */
-    const reveal = async (): Promise<void> => {
-      if (!embeddedBrowserManager.revealAgentTab(owner)) return;
-      await new Promise((resolve) => setTimeout(resolve, RELAYOUT_MS));
-    };
-
     /**
      * Gets the panel to host the view before acting on it.
      *
      * Clicks are only reliable in a panel-placed view: measured, a click into a
-     * view the manager positioned itself is swallowed while the same click into
-     * a panel-hosted view lands, and no amount of visibility, bounds, focus or
-     * settling changed that. So an agent that wants to act raises the panel —
-     * which is also the honest behaviour, since the user should see the click
-     * that is about to happen.
+     * view the main process positioned itself is swallowed while the same click
+     * into a panel-hosted view lands, and no amount of visibility, bounds,
+     * focus or settling changed that.
+     *
+     * Failing here rather than placing the view as a fallback is deliberate.
+     * The main process can only show a bare `WebContentsView` — no address bar,
+     * no tabs, no header — which lands as a raw page pasted over the app that
+     * the user can neither navigate nor dismiss, all to perform a click that
+     * would have been swallowed anyway.
      */
-    const ensureHosted = async (url: string): Promise<void> => {
-      if (embeddedBrowserManager.isAgentTabPanelHosted(owner)) return;
+    const ensureHosted = async (url: string): Promise<boolean> => {
+      if (embeddedBrowserManager.isAgentTabPanelHosted(owner)) return true;
       this.options.onOpen(url);
-      const hosted = await embeddedBrowserManager.waitForAgentTabPanel(
-        owner,
-        PANEL_WAIT_MS,
-      );
-      // No panel arrived — the window may be on a route that has none. Place
-      // the view ourselves and try anyway rather than refuse outright.
-      if (!hosted) await reveal();
+      return embeddedBrowserManager.waitForAgentTabPanel(owner, PANEL_WAIT_MS);
     };
 
     const snapshot = async (): Promise<AgentBrowserSnapshot> => {
@@ -258,9 +250,10 @@ export class AgentBrowserRelay {
     if (command.action === "open") {
       const url = normalizeUrl(command.url);
       if (!url) return { ok: false, error: "invalid web address" };
-      // Reveal before navigating so the page lays out at the size it will be
-      // measured and clicked at, rather than being resized underneath itself.
-      await reveal();
+      // Reading a page needs no hit-testing, so `open` works whether or not the
+      // panel ever shows up. Ask for it anyway — the point of this browser is
+      // that the user can watch it.
+      embeddedBrowserManager.ensureAgentTab(owner);
       await embeddedBrowserManager.controlWindow(owner, {
         action: "navigate",
         tabId: AGENT_TAB_ID,
@@ -273,7 +266,9 @@ export class AgentBrowserRelay {
       return { ok: true, snapshot: await snapshot() };
     }
     if (command.action === "scroll") {
-      await ensureHosted((await snapshot()).url);
+      if (!(await ensureHosted((await snapshot()).url))) {
+        return { ok: false, error: NO_PANEL };
+      }
       await embeddedBrowserManager.controlWindow(owner, {
         action: "scroll",
         tabId: AGENT_TAB_ID,
@@ -287,7 +282,9 @@ export class AgentBrowserRelay {
     }
 
     const urlBefore = (await snapshot()).url;
-    await ensureHosted(urlBefore);
+    if (!(await ensureHosted(urlBefore))) {
+      return { ok: false, error: NO_PANEL };
+    }
     if (command.action === "click") {
       await embeddedBrowserManager.controlWindow(owner, {
         action: "click-ref",
