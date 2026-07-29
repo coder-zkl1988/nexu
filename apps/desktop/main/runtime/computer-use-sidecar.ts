@@ -159,6 +159,13 @@ function hasValidDistribution(
 function isExecutableFile(filePath: string): boolean {
   try {
     const metadata = statSync(filePath);
+    // Windows has no execute bit — libuv synthesizes one from the file
+    // extension (.exe/.cmd/...), so a bundle binary with no extension always
+    // reads as non-executable there. Production only consults this for app
+    // bundles, which only exist on macOS hosts; the host check keeps the
+    // darwin scenarios testable on Windows runners without weakening the
+    // macOS lost-exec-bit repair this gate exists for.
+    if (process.platform === "win32") return metadata.isFile();
     return metadata.isFile() && (metadata.mode & 0o111) !== 0;
   } catch {
     return false;
