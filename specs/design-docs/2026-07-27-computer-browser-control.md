@@ -31,15 +31,9 @@ CDP 走 Electron 的进程内 `webContents.debugger`，**不使用** `--remote-d
 
 **症状**：`pnpm dev restart controller` 之后，桌面 relay 不再收到命令。agent 调用任何浏览器工具都得到 `no desktop browser panel is listening`，模型通常退回 Computer Use 去操作用户的真实浏览器——正是本方案要避免的结果。
 
-**规避**（开发环境）：
+**规避**（开发环境）：`pnpm dev restart controller`，然后 `pnpm dev restart desktop`。
 
-```
-pnpm dev stop
-lsof -nP -iTCP:<controller port> | grep LISTEN   # 确认没有残留监听进程，有就 kill -9
-pnpm dev start
-```
-
-只重启桌面端往往不够：`pnpm dev` 会把 controller 跟丢，留下一个孤儿进程——`pnpm dev status controller` 报 `stopped`，而该 pid 仍在监听且 `/health` 返回 200。启动器据此拒绝启动桌面端（报 `controller is not running`），于是 relay 根本没机会连上。这是 `tools/dev` 的问题，不是运行时的。
+曾经的加重因素已修复：`pnpm dev` 会把 controller 跟丢，留下孤儿进程——旧的 stop 只发 SIGTERM 不确认死亡就删锁，status 因锁不存在而误报 `stopped`（该 pid 实际仍在监听、`/health` 返回 200），desktop 预检据此拒绝启动。现在 stop 确认进程死亡（SIGKILL 升级）后才删锁（`ensureProcessStopped`），status 在无锁但端口被占时如实报 `stale` 并注明原因，start/stop 会自行清理孤儿。controller/web/openclaw 三个服务都已采用此模式（openclaw 保留特例：无锁但 `/health` 健康的监听者视为外部托管实例，仍报 `running`）。
 
 **已排除**：abort 信号传播（改为读取与空闲超时显式竞速后仍不恢复）；连接握手挂起（已加 `CONNECT_TIMEOUT_MS`）；多个 controller 实例抢占同一端口（实测只有单个监听进程——`lsof -ti:PORT` 会把客户端连接一并列出，据此判断多实例是误读）。
 
