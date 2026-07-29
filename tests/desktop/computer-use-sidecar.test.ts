@@ -107,7 +107,11 @@ describe("prepareComputerUseSidecar", () => {
     expect(await readFile(path.join(targetRoot, "LICENSE"), "utf8")).toBe(
       "MIT",
     );
-    expect((await stat(result.binPath ?? "")).mode & 0o111).not.toBe(0);
+    // Windows has no execute bit to assert — libuv synthesizes one from the
+    // file extension only, and the bundle binary has none.
+    if (process.platform !== "win32") {
+      expect((await stat(result.binPath ?? "")).mode & 0o111).not.toBe(0);
+    }
   });
 
   it("repairs an incomplete versioned distribution", async () => {
