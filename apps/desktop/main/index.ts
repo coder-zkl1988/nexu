@@ -529,6 +529,8 @@ function isRunningUnderRosetta(): boolean {
  */
 async function resolveLatestArm64DownloadUrl(): Promise<string> {
   const channel = runtimeConfig.updates.channel ?? "stable";
+  const r2Origin = new URL(R2_BASE_URL).origin;
+  const fallbackDmgUrl = `${r2Origin}/releases/tabby-latest-mac-arm64.dmg`;
 
   let baseUrl = `${R2_BASE_URL}/${channel}/arm64`;
   const feedOverride = runtimeConfig.urls.updateFeed;
@@ -548,13 +550,23 @@ async function resolveLatestArm64DownloadUrl(): Promise<string> {
   try {
     const res = await fetch(ymlUrl, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      // electron-builder latest-mac.yml lists both .zip (for delta updates)
-      // and .dmg under `files:`. We want the dmg.
-      const match = (await res.text()).match(/url:\s*(\S+\.dmg)/);
-      if (match?.[1]) return `${baseUrl}/${match[1]}`;
+      const manifest = await res.text();
+      const dmgMatch = manifest.match(/url:\s*(\S+\.dmg)/);
+      if (dmgMatch?.[1]) {
+        return new URL(dmgMatch[1], `${baseUrl}/`).toString();
+      }
+
+      // Tabby's update feed intentionally publishes only the ZIP used by
+      // electron-updater. Its matching manual-install DMG is versioned under
+      // /releases/ on the same R2 origin.
+      const zipMatch = manifest.match(/url:\s*(\S+\.zip)/);
+      if (zipMatch?.[1] && new URL(baseUrl).origin === r2Origin) {
+        const dmgName = zipMatch[1].replace(/\.zip$/, ".dmg");
+        return new URL(dmgName, `${r2Origin}/releases/`).toString();
+      }
     }
   } catch {}
-  return ymlUrl;
+  return fallbackDmgUrl;
 }
 
 /**
