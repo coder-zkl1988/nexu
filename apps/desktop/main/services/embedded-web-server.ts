@@ -90,10 +90,20 @@ async function proxyToController(
       body = await collectBody(req);
     }
 
-    // Forward headers, filtering out host
+    // Forward headers, filtering out host and browser trust metadata. The
+    // trust decision for this hop was already made at this server's edge gate
+    // (same-origin policy, stricter than the controller's own); the forwarded
+    // request is server-to-server on loopback. Passing Origin/Sec-Fetch-*
+    // through makes the controller's global guard re-judge the *original*
+    // browser context — measured: the file:// shell's boot probe cleared the
+    // edge gate here and then died 403 at the controller, leaving the packaged
+    // app on the boot screen with every unit healthy, exactly as before the
+    // edge gate learned to admit it.
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      if (key.toLowerCase() === "host") continue;
+      const name = key.toLowerCase();
+      if (name === "host" || name === "origin" || name.startsWith("sec-fetch-"))
+        continue;
       if (typeof value === "string") {
         headers[key] = value;
       } else if (Array.isArray(value)) {

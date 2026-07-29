@@ -2,7 +2,7 @@
  * Embedded Web Server tests — routing, proxying, auth mock, SPA fallback.
  */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { request as httpRequest } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -67,20 +67,61 @@ describe("EmbeddedWebServer", () => {
     expect(res.status).toBe(502);
   });
 
-  it("lets the file:// shell's boot probe through the trust gate", async () => {
+  it("carries the file:// shell's boot probe to a controller that answers", async () => {
     // The desktop shell renders from file://, so its readiness poll arrives
     // exactly like an attack would: opaque origin, cross-site fetch metadata.
-    // Gating it left the packaged app on the boot screen forever — the shell
-    // mounts the web surface only once this answers. 502 here because the
-    // harness runs no controller; the assertion is that the gate lets it
-    // reach the proxy at all.
-    const res = await fetch(`${baseUrl}/api/internal/desktop/ready`, {
-      headers: {
-        Origin: "null",
-        "Sec-Fetch-Site": "cross-site",
-      },
+    // Two gates killed it in turn — first this server's edge gate, then, once
+    // that learned to admit it, the controller's own global guard re-judging
+    // the forwarded browser headers. Either failure leaves the packaged app on
+    // the boot screen forever with every unit healthy. This test runs the full
+    // two-hop path: a controller stand-in that rejects any browser trust
+    // metadata (as the real guard would) and answers ready otherwise.
+    const CONTROLLER_STUB_PORT = 51788;
+    const PROBE_WEB_PORT = 51789;
+    const seenHeaders: Record<string, string | string[] | undefined>[] = [];
+    const controller = createServer((req, res) => {
+      seenHeaders.push({
+        origin: req.headers.origin,
+        "sec-fetch-site": req.headers["sec-fetch-site"],
+      });
+      if (req.headers.origin || req.headers["sec-fetch-site"]) {
+        res.writeHead(403).end("Forbidden");
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"ready":true}');
     });
-    expect(res.status).toBe(502);
+    await new Promise<void>((resolve) => {
+      controller.listen(CONTROLLER_STUB_PORT, "127.0.0.1", resolve);
+    });
+    const probeServer = await startEmbeddedWebServer({
+      port: PROBE_WEB_PORT,
+      webRoot,
+      controllerPort: CONTROLLER_STUB_PORT,
+    });
+
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${PROBE_WEB_PORT}/api/internal/desktop/ready`,
+        {
+          headers: {
+            Origin: "null",
+            "Sec-Fetch-Site": "cross-site",
+          },
+        },
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ready: true });
+      // The proxy must have stripped the browser context before forwarding.
+      expect(seenHeaders).toEqual([
+        { origin: undefined, "sec-fetch-site": undefined },
+      ]);
+    } finally {
+      await probeServer.close();
+      await new Promise<void>((resolve) => {
+        controller.close(() => resolve());
+      });
+    }
   });
 
   it("keeps the boot-probe exception GET-only and path-exact", async () => {
