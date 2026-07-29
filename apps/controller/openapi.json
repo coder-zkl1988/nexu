@@ -12816,6 +12816,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "identity": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string"
+                          },
                           "slug": {
                             "type": "string"
                           },
@@ -12870,6 +12876,14 @@
                           "slug": {
                             "type": "string"
                           },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "version": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "source": {
                             "type": "string",
                             "enum": [
@@ -12900,6 +12914,8 @@
                         },
                         "required": [
                           "slug",
+                          "ownerHandle",
+                          "version",
                           "source",
                           "name",
                           "description",
@@ -12936,6 +12952,10 @@
                         "properties": {
                           "slug": {
                             "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
                           },
                           "source": {
                             "type": "string",
@@ -12983,6 +13003,7 @@
                         },
                         "required": [
                           "slug",
+                          "ownerHandle",
                           "source",
                           "status",
                           "position",
@@ -13008,6 +13029,502 @@
         }
       }
     },
+    "/api/v1/skillhub/status": {
+      "get": {
+        "tags": [
+          "SkillHub"
+        ],
+        "responses": {
+          "200": {
+            "description": "Installed skills and install queue status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "installedSlugs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "installedSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "version": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "installedAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentName": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "version",
+                          "source",
+                          "name",
+                          "description",
+                          "installedAt",
+                          "agentId",
+                          "agentName"
+                        ]
+                      }
+                    },
+                    "queue": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "downloading",
+                              "installing-deps",
+                              "done",
+                              "failed"
+                            ]
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "error": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "errorCode": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "skill_not_found",
+                              "rate_limit",
+                              "npm_missing",
+                              "deps_install_failed",
+                              "unknown"
+                            ]
+                          },
+                          "retries": {
+                            "type": "number"
+                          },
+                          "enqueuedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "source",
+                          "status",
+                          "position",
+                          "error",
+                          "errorCode",
+                          "retries",
+                          "enqueuedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "installedSlugs",
+                    "installedSkills",
+                    "queue"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skillhub/catalog-page": {
+      "get": {
+        "tags": [
+          "SkillHub"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "required": false,
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 48
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "downloads",
+                "updated",
+                "stars"
+              ],
+              "default": "downloads"
+            },
+            "required": false,
+            "name": "sort",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated SkillHub catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "identity": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "downloads": {
+                            "type": "number"
+                          },
+                          "stars": {
+                            "type": "number"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "name",
+                          "description",
+                          "downloads",
+                          "stars",
+                          "tags",
+                          "version",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "installedSlugs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "installedSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "version": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "installedAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentName": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "version",
+                          "source",
+                          "name",
+                          "description",
+                          "installedAt",
+                          "agentId",
+                          "agentName"
+                        ]
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "skillCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "updatedAt",
+                        "skillCount"
+                      ]
+                    },
+                    "queue": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "downloading",
+                              "installing-deps",
+                              "done",
+                              "failed"
+                            ]
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "error": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "errorCode": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "skill_not_found",
+                              "rate_limit",
+                              "npm_missing",
+                              "deps_install_failed",
+                              "unknown"
+                            ]
+                          },
+                          "retries": {
+                            "type": "number"
+                          },
+                          "enqueuedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "source",
+                          "status",
+                          "position",
+                          "error",
+                          "errorCode",
+                          "retries",
+                          "enqueuedAt"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "facets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tag": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "tag",
+                          "count"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "skills",
+                    "installedSlugs",
+                    "installedSkills",
+                    "meta",
+                    "queue",
+                    "nextCursor",
+                    "total",
+                    "facets"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Catalog revision changed during pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "catalog_revision_changed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/skillhub/install": {
       "post": {
         "tags": [
@@ -13023,18 +13540,17 @@
                     "type": "string",
                     "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
                   },
-                  "source": {
+                  "ownerHandle": {
                     "type": "string",
-                    "enum": [
-                      "managed",
-                      "custom",
-                      "workspace",
-                      "user"
-                    ]
+                    "pattern": "^@?[a-z0-9][a-z0-9._-]{0,127}$"
                   },
-                  "agentId": {
+                  "version": {
                     "type": "string",
-                    "nullable": true
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "update": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -13047,6 +13563,46 @@
         "responses": {
           "200": {
             "description": "Install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "queued": {
+                      "type": "boolean"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "downloading",
+                        "installing-deps",
+                        "done",
+                        "failed"
+                      ]
+                    },
+                    "position": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Install conflict or update not allowed",
             "content": {
               "application/json": {
                 "schema": {
@@ -13268,6 +13824,15 @@
             "required": false,
             "name": "agentId",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^@?[a-z0-9][a-z0-9._-]{0,127}$"
+            },
+            "required": false,
+            "name": "ownerHandle",
+            "in": "query"
           }
         ],
         "responses": {
@@ -13278,6 +13843,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "ownerHandle": {
+                      "type": "string"
+                    },
                     "slug": {
                       "type": "string"
                     },
@@ -13301,6 +13869,13 @@
                     },
                     "version": {
                       "type": "string"
+                    },
+                    "installedVersion": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "updateEligible": {
+                      "type": "boolean"
                     },
                     "updatedAt": {
                       "type": "string"
@@ -13344,6 +13919,8 @@
                     "stars",
                     "tags",
                     "version",
+                    "installedVersion",
+                    "updateEligible",
                     "updatedAt",
                     "installed",
                     "installedSource",
@@ -13584,6 +14161,29 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "configuredSkillRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "slug": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                                },
+                                "ownerHandle": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                                },
+                                "version": {
+                                  "type": "string",
+                                  "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                                }
+                              },
+                              "required": [
+                                "slug"
+                              ]
+                            }
                           }
                         },
                         "required": [
@@ -13775,6 +14375,29 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "skillRefs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slug": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                        },
+                        "ownerHandle": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                        }
+                      },
+                      "required": [
+                        "slug"
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -13803,11 +14426,35 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "configuredSkillRefs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                          },
+                          "version": {
+                            "type": "string",
+                            "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                          }
+                        },
+                        "required": [
+                          "slug"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "ok",
-                    "configuredSkills"
+                    "configuredSkills",
+                    "configuredSkillRefs"
                   ]
                 }
               }
@@ -14052,6 +14699,29 @@
                       "type": "string"
                     },
                     "default": []
+                  },
+                  "skillRefs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slug": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                        },
+                        "ownerHandle": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                        }
+                      },
+                      "required": [
+                        "slug"
+                      ]
+                    }
                   },
                   "existingSlug": {
                     "type": "string"

@@ -1,5 +1,5 @@
 import { ChatInput, ChatInputAttachButton } from "@/components/chat-input";
-import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import { useCommunitySkillStatus } from "@/hooks/use-community-catalog";
 import { useTeams } from "@/hooks/use-teams";
 import { subscribeExternalChatInput } from "@/lib/chat/external-chat-input";
 import { isImeComposing } from "@/lib/keyboard";
@@ -475,7 +475,7 @@ export function ChatInputArea({
   const skillDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
-  const { data: skillsData } = useCommunitySkills();
+  const { data: skillsData } = useCommunitySkillStatus();
   const installedSkills = skillsData?.installedSkills ?? [];
 
   const { data: modelsData } = useQuery({

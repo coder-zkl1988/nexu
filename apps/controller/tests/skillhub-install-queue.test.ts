@@ -6,6 +6,157 @@ function flush(): Promise<void> {
 }
 
 describe("InstallQueue retry after failure", () => {
+  it("preserves publisher identity in queue state", () => {
+    const queue = new InstallQueue({
+      executor: () => new Promise<void>(() => {}),
+    });
+
+    const item = queue.enqueue("foo", "managed", "publisher");
+
+    expect(item.ownerHandle).toBe("publisher");
+    expect(queue.getQueue()[0]?.ownerHandle).toBe("publisher");
+    queue.dispose();
+  });
+
+  it("allows a completed slug to be replaced by another publisher", async () => {
+    const executor = vi.fn(async () => {});
+    const queue = new InstallQueue({ executor, cleanupDelayMs: 10_000 });
+
+    queue.enqueue("foo", "managed", "publisher-a");
+    await flush();
+    queue.enqueue("foo", "managed", "publisher-b");
+    await flush();
+
+    expect(executor).toHaveBeenCalledTimes(2);
+    expect(queue.getQueue()).toHaveLength(1);
+    expect(queue.getQueue()[0]?.ownerHandle).toBe("publisher-b");
+    queue.dispose();
+  });
+
+  it("re-enqueues a completed slug for the same publisher when updating", async () => {
+    const executor = vi.fn(async () => {});
+    const queue = new InstallQueue({ executor, cleanupDelayMs: 10_000 });
+
+    queue.enqueue("foo", "managed", "publisher");
+    await flush();
+    queue.enqueue("foo", "managed", "publisher", {
+      replaceCompleted: true,
+    });
+    await flush();
+
+    expect(executor).toHaveBeenCalledTimes(2);
+    expect(queue.getQueue()).toHaveLength(1);
+    expect(queue.getQueue()[0]).toMatchObject({
+      slug: "foo",
+      ownerHandle: "publisher",
+      status: "done",
+    });
+    queue.dispose();
+  });
+
+  it("keeps an in-flight install when an update request arrives", () => {
+    const executor = vi.fn(() => new Promise<void>(() => {}));
+    const queue = new InstallQueue({ executor });
+
+    const first = queue.enqueue("foo", "managed", "publisher");
+    const duplicate = queue.enqueue("foo", "managed", "publisher", {
+      replaceCompleted: true,
+    });
+
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(duplicate.enqueuedAt).toBe(first.enqueuedAt);
+    expect(queue.getQueue()).toHaveLength(1);
+    queue.dispose();
+  });
+
+  it("refuses to cancel an active update", async () => {
+    let finishInstall: (() => void) | undefined;
+    const onCancelled = vi.fn();
+    const onComplete = vi.fn();
+    const queue = new InstallQueue({
+      executor: () =>
+        new Promise<void>((resolve) => {
+          finishInstall = resolve;
+        }),
+      onCancelled,
+      onComplete,
+      cleanupDelayMs: 10_000,
+    });
+
+    queue.enqueue("foo", "managed", "publisher", {
+      operation: "update",
+      replaceCompleted: true,
+    });
+
+    expect(queue.hasActiveUpdate("foo")).toBe(true);
+    expect(queue.cancel("foo")).toBe(false);
+    finishInstall?.();
+    await flush();
+
+    expect(queue.getQueue()[0]?.status).toBe("done");
+    expect(onComplete).toHaveBeenCalledWith("foo", "managed");
+    expect(onCancelled).not.toHaveBeenCalled();
+    queue.dispose();
+  });
+
+  it("clears active cancellation state when the executor rejects", async () => {
+    let failInstall: ((error: Error) => void) | undefined;
+    const onCancelled = vi.fn();
+    const executor = vi
+      .fn<(slug: string) => Promise<void>>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failInstall = reject;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+    const queue = new InstallQueue({
+      executor,
+      onCancelled,
+      cleanupDelayMs: 10_000,
+    });
+
+    queue.enqueue("foo", "managed");
+    expect(queue.cancel("foo")).toBe(true);
+    failInstall?.(new Error("network failed"));
+    await flush();
+
+    expect(queue.getQueue()[0]).toMatchObject({
+      slug: "foo",
+      status: "failed",
+      error: "Cancelled",
+    });
+
+    queue.enqueue("foo", "managed");
+    await flush();
+
+    expect(queue.getQueue()[0]?.status).toBe("done");
+    expect(onCancelled).not.toHaveBeenCalled();
+    queue.dispose();
+  });
+
+  it("marks the item failed when install metadata cannot be recorded", async () => {
+    const queue = new InstallQueue({
+      executor: vi.fn(async () => {}),
+      onComplete: () => {
+        throw new Error("ledger unavailable");
+      },
+      cleanupDelayMs: 10_000,
+    });
+
+    queue.enqueue("foo", "managed");
+    await flush();
+
+    expect(queue.getQueue()[0]).toMatchObject({
+      slug: "foo",
+      status: "failed",
+      errorCode: "unknown",
+      error: "Install completed but could not be recorded: ledger unavailable",
+    });
+    queue.dispose();
+  });
+
   it("replaces the stale failed entry when the same slug is re-enqueued", async () => {
     const executor = vi
       .fn<(slug: string) => Promise<void>>()

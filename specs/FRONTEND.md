@@ -37,6 +37,17 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 | `/workspace/skills` | Skills | Skill catalog |
 | `/workspace/skills/:slug` | Skill Detail | Individual skill info and actions |
 
+### Skill Store data flow
+
+- `Explore` uses cursor pagination through the generated SDK. The controller proxies `https://tabby.picaso.studio/api/v1/skill-catalog`, which is the server-side ClawHub mirror.
+- `Yours` and install progress use the lightweight local `/api/v1/skillhub/status` endpoint. They do not wait for the remote catalog.
+- While a queue item is active, React Query polls local status every three seconds; the full catalog is not re-downloaded for progress updates.
+- Catalog identity is `@ownerHandle/slug`. The owner and installed version are persisted in the local ledger so duplicate slugs from different publishers remain distinguishable.
+- If the mirror is unavailable, only the first page may fall back to the legacy local cache. A failed remote continuation page is surfaced as an error rather than mixing two catalog revisions.
+- `Explore` exposes server-backed download, star, and recently-updated sorting, the full category facet list, catalog freshness, publisher/version metadata, and compact download/star counts. Search results are not filtered again in the browser, so publisher-only matches remain visible.
+- A one-click update is shown only when an installed `managed` skill has the exact same owner-scoped identity and the catalog version is newer. The detail page follows the local queue until completion and then refreshes the installed version.
+- Active updates cannot be cancelled or uninstalled because the underlying atomic replacement cannot be interrupted safely after the staged directory swap. Legacy ownerless installs remain available under `Yours` but are never attributed to an owner-scoped catalog card.
+
 ## Layouts
 
 - **`AuthLayout`** — Requires authenticated session, wraps all workspace routes.

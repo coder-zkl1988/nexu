@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { ExpertManifest } from "@nexu/shared";
+import type { ExpertManifest, SkillReference } from "@nexu/shared";
 import type { ExpertLedger, ResolvedExpert } from "./types.js";
 
 /**
@@ -26,6 +26,8 @@ export type InstallExpertDeps = {
   skillhub: {
     install: (input: {
       slug: string;
+      ownerHandle?: string;
+      version?: string;
       agentId: string;
       source: "workspace";
     }) => Promise<{ ok: boolean; error?: string }>;
@@ -62,6 +64,61 @@ export class ExpertNotFoundError extends Error {
     this.name = "ExpertNotFoundError";
     this.slug = slug;
   }
+}
+
+function normalizeSkillReference(reference: SkillReference): SkillReference {
+  const ownerHandle = reference.ownerHandle
+    ?.replace(/^@+/, "")
+    .trim()
+    .toLowerCase();
+  return {
+    slug: reference.slug,
+    ...(ownerHandle ? { ownerHandle } : {}),
+    ...(reference.version ? { version: reference.version } : {}),
+  };
+}
+
+function skillReferenceKey(reference: SkillReference): string {
+  const normalized = normalizeSkillReference(reference);
+  const identity = normalized.ownerHandle
+    ? `@${normalized.ownerHandle}/${normalized.slug}`
+    : normalized.slug;
+  return normalized.version ? `${identity}@${normalized.version}` : identity;
+}
+
+function resolveSkillReferences(
+  skills: string[],
+  skillRefs?: SkillReference[],
+): SkillReference[] {
+  if (!skillRefs) {
+    return [...new Set(skills)].map((slug) => ({ slug }));
+  }
+  const normalized = skillRefs.map(normalizeSkillReference);
+  if (
+    normalized.length !== skills.length ||
+    normalized.some((reference, index) => reference.slug !== skills[index])
+  ) {
+    throw new Error("Skill references do not match submitted skill slugs");
+  }
+  const seenSlugs = new Set<string>();
+  for (const reference of normalized) {
+    if (seenSlugs.has(reference.slug)) {
+      throw new Error(`Duplicate skill reference: ${reference.slug}`);
+    }
+    seenSlugs.add(reference.slug);
+  }
+  return normalized;
+}
+
+function mergeSkillReferences(...groups: SkillReference[][]): SkillReference[] {
+  const merged: SkillReference[] = [];
+  const seenSlugs = new Set<string>();
+  for (const reference of groups.flat()) {
+    if (seenSlugs.has(reference.slug)) continue;
+    seenSlugs.add(reference.slug);
+    merged.push(normalizeSkillReference(reference));
+  }
+  return merged;
 }
 
 /**
@@ -115,16 +172,20 @@ export async function installExpert(args: {
   const preLedger = await deps.catalog.readLedger();
   const preConfiguredSkills =
     preLedger.entries[manifest.slug]?.configuredSkills ?? [];
-
-  const allSkillsToInstall = [
-    ...new Set([...manifest.requiredSkills, ...preConfiguredSkills]),
-  ];
+  const preConfiguredSkillRefs = resolveSkillReferences(
+    preConfiguredSkills,
+    preLedger.entries[manifest.slug]?.configuredSkillRefs,
+  );
+  const allSkillsToInstall = mergeSkillReferences(
+    preConfiguredSkillRefs,
+    manifest.requiredSkills.map((skillSlug) => ({ slug: skillSlug })),
+  );
 
   // Install each skill, continuing on failure so one broken
   // skill download doesn't block the rest of the expert setup.
-  for (const skillSlug of allSkillsToInstall) {
+  for (const skill of allSkillsToInstall) {
     const result = await deps.skillhub.install({
-      slug: skillSlug,
+      ...skill,
       agentId: bot.id,
       source: "workspace",
     });
@@ -167,6 +228,7 @@ export async function installExpert(args: {
     botId: bot.id,
     installedAt,
     configuredSkills: preConfiguredSkills,
+    configuredSkillRefs: preConfiguredSkillRefs,
   };
   ledger.updatedAt = installedAt;
   await deps.catalog.writeLedger(ledger);
@@ -260,6 +322,8 @@ export type CreateCustomExpertDeps = {
   skillhub: {
     install: (input: {
       slug: string;
+      ownerHandle?: string;
+      version?: string;
       agentId: string;
       source: "workspace";
     }) => Promise<{ ok: boolean; error?: string }>;
@@ -341,6 +405,7 @@ export async function createCustomExpert(args: {
   modelId: string;
   description?: string;
   skills: string[];
+  skillRefs?: SkillReference[];
   existingSlug?: string;
   workspaceFiles: Record<string, string>;
   deps: CreateCustomExpertDeps;
@@ -350,12 +415,14 @@ export async function createCustomExpert(args: {
     modelId,
     description,
     skills,
+    skillRefs,
     existingSlug,
     workspaceFiles,
     deps,
   } = args;
 
   const ledger = await deps.catalog.readLedger();
+  const resolvedSkillRefs = resolveSkillReferences(skills, skillRefs);
 
   if (existingSlug) {
     const existingEntry = ledger.entries[existingSlug];
@@ -391,9 +458,9 @@ export async function createCustomExpert(args: {
     expertSlug,
   });
 
-  for (const skillSlug of skills) {
+  for (const skill of resolvedSkillRefs) {
     await deps.skillhub.install({
-      slug: skillSlug,
+      ...skill,
       agentId: bot.id,
       source: "workspace",
     });
@@ -450,6 +517,8 @@ export async function createCustomExpert(args: {
     name,
     avatarDataUrl: args.avatarDataUrl ?? undefined,
     description,
+    configuredSkills: skills,
+    configuredSkillRefs: resolvedSkillRefs,
   };
   ledger.updatedAt = installedAt;
   await deps.catalog.writeLedger(ledger);
@@ -468,6 +537,8 @@ export type UpdateExpertSkillsDeps = {
   skillhub: {
     install: (input: {
       slug: string;
+      ownerHandle?: string;
+      version?: string;
       agentId: string;
       source: "workspace";
     }) => Promise<{ ok: boolean; error?: string }>;
@@ -484,16 +555,28 @@ export type UpdateExpertSkillsDeps = {
 export async function updateExpertSkills(args: {
   slug: string;
   skills: string[];
+  skillRefs?: SkillReference[];
   deps: UpdateExpertSkillsDeps;
-}): Promise<{ ok: true; configuredSkills: string[] }> {
-  let { slug, skills: submittedSkills } = args;
+}): Promise<{
+  ok: true;
+  configuredSkills: string[];
+  configuredSkillRefs: SkillReference[];
+}> {
+  const { slug, skills: submittedSkills } = args;
   const { deps } = args;
+  let submittedSkillRefs = resolveSkillReferences(
+    submittedSkills,
+    args.skillRefs,
+  );
 
   const resolved = await deps.catalog.resolveExpert(slug);
   const requiredSkills = resolved?.manifest.requiredSkills ?? [];
 
   // Always merge required skills — server-side enforcement
-  const finalSkills = [...new Set([...requiredSkills, ...submittedSkills])];
+  const finalSkillRefs = mergeSkillReferences(
+    submittedSkillRefs,
+    requiredSkills.map((skillSlug) => ({ slug: skillSlug })),
+  );
 
   const ledger = await deps.catalog.readLedger();
   const entry = ledger.entries[slug];
@@ -501,34 +584,58 @@ export async function updateExpertSkills(args: {
   if (entry?.botId) {
     // Installed expert: diff and apply changes to bot workspace
     const prevSkills = entry.configuredSkills ?? requiredSkills;
-    const prevSet = new Set(prevSkills);
-    const finalSet = new Set(finalSkills);
+    const prevSkillRefs = mergeSkillReferences(
+      resolveSkillReferences(prevSkills, entry.configuredSkillRefs),
+      requiredSkills.map((skillSlug) => ({ slug: skillSlug })),
+    );
+    const prevKeys = new Set(prevSkillRefs.map(skillReferenceKey));
+    const finalKeys = new Set(finalSkillRefs.map(skillReferenceKey));
 
-    const toAdd = finalSkills.filter((s) => !prevSet.has(s));
-    const toRemove = prevSkills.filter(
-      (s) => !finalSet.has(s) && !requiredSkills.includes(s),
+    const toAdd = finalSkillRefs.filter(
+      (reference) => !prevKeys.has(skillReferenceKey(reference)),
+    );
+    const toRemove = prevSkillRefs.filter(
+      (reference) =>
+        !finalKeys.has(skillReferenceKey(reference)) &&
+        !requiredSkills.includes(reference.slug),
     );
 
-    for (const skillSlug of toAdd) {
+    const replacementSlugs = new Set(toAdd.map((skill) => skill.slug));
+    for (const skill of toAdd) {
       const result = await deps.skillhub.install({
-        slug: skillSlug,
+        ...skill,
         agentId: entry.botId,
         source: "workspace",
       });
       if (!result.ok) {
-        // Drop from submittedSkills so the UI can surface the failure
-        // and the user can retry on the next save.
-        submittedSkills = submittedSkills.filter((s) => s !== skillSlug);
+        const previousReference = prevSkillRefs.find(
+          (reference) => reference.slug === skill.slug,
+        );
+        submittedSkillRefs = previousReference
+          ? submittedSkillRefs.map((reference) =>
+              reference.slug === skill.slug ? previousReference : reference,
+            )
+          : submittedSkillRefs.filter(
+              (reference) => reference.slug !== skill.slug,
+            );
       }
     }
 
-    for (const skillSlug of toRemove) {
-      await deps.skillhub.uninstall({
-        slug: skillSlug,
+    for (const skill of toRemove) {
+      // Same-slug additions replace the physical workspace directory
+      // transactionally. On failure the installer restores the old copy.
+      if (replacementSlugs.has(skill.slug)) continue;
+      const result = await deps.skillhub.uninstall({
+        slug: skill.slug,
         agentId: entry.botId,
       });
+      if (!result.ok) {
+        submittedSkillRefs = mergeSkillReferences(submittedSkillRefs, [skill]);
+      }
     }
   }
+
+  const savedSkills = submittedSkillRefs.map((reference) => reference.slug);
 
   // Write configured skills to ledger
   ledger.entries[slug] = {
@@ -537,14 +644,19 @@ export async function updateExpertSkills(args: {
     version: entry?.version ?? "",
     botId: entry?.botId ?? "",
     installedAt: entry?.installedAt ?? "",
-    configuredSkills: submittedSkills,
+    configuredSkills: savedSkills,
+    configuredSkillRefs: submittedSkillRefs,
   };
   ledger.updatedAt = new Date().toISOString();
   await deps.catalog.writeLedger(ledger);
 
   await deps.sync.syncAll();
 
-  return { ok: true, configuredSkills: submittedSkills };
+  return {
+    ok: true,
+    configuredSkills: savedSkills,
+    configuredSkillRefs: submittedSkillRefs,
+  };
 }
 
 export const DEFAULT_EXPERT_SLUGS = [

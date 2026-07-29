@@ -59,6 +59,26 @@ function buildApp(overrides: Partial<ExperthubRoutesDeps> = {}) {
         botId: "bot_1",
         slug: manifest.slug,
       }),
+    createCustomExpert:
+      overrides.createCustomExpert ??
+      vi.fn().mockResolvedValue({
+        ok: true as const,
+        botId: "bot_custom",
+        slug: "custom-expert",
+      }),
+    updateExpertSkills:
+      overrides.updateExpertSkills ??
+      vi.fn().mockResolvedValue({
+        ok: true as const,
+        configuredSkills: [],
+        configuredSkillRefs: [],
+      }),
+    botService: overrides.botService ?? {
+      deleteBot: vi.fn().mockResolvedValue(true),
+    },
+    agentsDir: overrides.agentsDir ?? "/tmp/nexu-experthub-test-agents",
+    platformTemplatesDir:
+      overrides.platformTemplatesDir ?? "/tmp/nexu-experthub-test-templates",
   };
   return { app: buildExperthubRoutes(deps), deps };
 }
@@ -194,6 +214,40 @@ describe("experthub routes", () => {
     const body = await res.json();
     expect(body).toEqual({ meta });
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("PUT /experts/{slug}/skills forwards exact skill references", async () => {
+    const skillRefs = [
+      {
+        slug: "weather",
+        ownerHandle: "publisher",
+        version: "2.0.0",
+      },
+    ];
+    const updateExpertSkills = vi.fn().mockResolvedValue({
+      ok: true as const,
+      configuredSkills: ["weather"],
+      configuredSkillRefs: skillRefs,
+    });
+    const { app } = buildApp({ updateExpertSkills });
+
+    const res = await app.request(`/experts/${manifest.slug}/skills`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ skills: ["weather"], skillRefs }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(updateExpertSkills).toHaveBeenCalledWith({
+      slug: manifest.slug,
+      skills: ["weather"],
+      skillRefs,
+    });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      configuredSkills: ["weather"],
+      configuredSkillRefs: skillRefs,
+    });
   });
 
   it("GET /experts/{slug} returns the full manifest when resolved", async () => {

@@ -46,7 +46,7 @@ vi.mock("../lib/api/sdk.gen", () => ({
 }));
 
 vi.mock("@/hooks/use-community-catalog", () => ({
-  useCommunitySkills: () => ({
+  useCommunitySkillStatus: () => ({
     data: {
       installedSkills: [],
     },

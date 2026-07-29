@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import type { SkillReference } from "@nexu/shared";
 import { logger } from "../lib/logger.js";
 import { startChannelHealthWatchdog } from "../runtime/channel-health-watchdog.js";
 import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
@@ -116,13 +117,19 @@ export interface ControllerContainer {
     modelId: string;
     description?: string;
     skills: string[];
+    skillRefs?: SkillReference[];
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) => Promise<{ ok: true; botId: string; slug: string }>;
   updateExpertSkillsFn: (args: {
     slug: string;
     skills: string[];
-  }) => Promise<{ ok: true; configuredSkills: string[] }>;
+    skillRefs?: SkillReference[];
+  }) => Promise<{
+    ok: true;
+    configuredSkills: string[];
+    configuredSkillRefs: SkillReference[];
+  }>;
   openclawSyncService: OpenClawSyncService;
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
@@ -512,10 +519,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         },
         skillhub: {
           install: async (input) => {
-            return skillhubService.installWorkspaceSkill(
-              input.slug,
-              input.agentId,
-            );
+            return skillhubService.installWorkspaceSkill(input, input.agentId);
           },
         },
         sync: openclawSyncService,
@@ -564,10 +568,12 @@ export async function createContainer(): Promise<ControllerContainer> {
     skillhub: {
       install: async (input: {
         slug: string;
+        ownerHandle?: string;
+        version?: string;
         agentId: string;
         source: "workspace";
       }) => {
-        return skillhubService.installWorkspaceSkill(input.slug, input.agentId);
+        return skillhubService.installWorkspaceSkill(input, input.agentId);
       },
     },
     sync: openclawSyncService,
@@ -597,6 +603,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     modelId: string;
     description?: string;
     skills: string[];
+    skillRefs?: SkillReference[];
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) =>
@@ -631,10 +638,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         },
         skillhub: {
           install: async (input) => {
-            return skillhubService.installWorkspaceSkill(
-              input.slug,
-              input.agentId,
-            );
+            return skillhubService.installWorkspaceSkill(input, input.agentId);
           },
         },
         sync: openclawSyncService,
@@ -651,10 +655,15 @@ export async function createContainer(): Promise<ControllerContainer> {
       },
     });
 
-  const updateExpertSkillsFn = (args: { slug: string; skills: string[] }) =>
+  const updateExpertSkillsFn = (args: {
+    slug: string;
+    skills: string[];
+    skillRefs?: SkillReference[];
+  }) =>
     updateExpertSkills({
       slug: args.slug,
       skills: args.skills,
+      ...(args.skillRefs ? { skillRefs: args.skillRefs } : {}),
       deps: {
         catalog: {
           resolveExpert: (slug) => experthubCatalogManager.resolveExpert(slug),
@@ -663,10 +672,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         },
         skillhub: {
           install: async (input) => {
-            return skillhubService.installWorkspaceSkill(
-              input.slug,
-              input.agentId,
-            );
+            return skillhubService.installWorkspaceSkill(input, input.agentId);
           },
           uninstall: async (input) => {
             const result = await skillhubService.uninstallSkill({

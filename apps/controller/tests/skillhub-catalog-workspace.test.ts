@@ -2,8 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CatalogManager } from "../src/services/skillhub/catalog-manager.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  CatalogManager,
+  CatalogRevisionChangedError,
+} from "../src/services/skillhub/catalog-manager.js";
 import { SkillDb } from "../src/services/skillhub/skill-db.js";
 
 describe("CatalogManager.getCatalog() workspace skills", () => {
@@ -26,6 +29,7 @@ describe("CatalogManager.getCatalog() workspace skills", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     skillDb.close();
     await rm(tmpDir, { recursive: true, force: true });
   });
@@ -51,6 +55,23 @@ describe("CatalogManager.getCatalog() workspace skills", () => {
     expect(managed).toBeDefined();
     expect(managed?.agentId).toBeNull();
     expect(managed?.source).toBe("managed");
+  });
+
+  it("returns the publisher recorded for an owner-scoped install", () => {
+    skillDb.recordInstall(
+      "weather",
+      "managed",
+      "2.4.0",
+      undefined,
+      "publisher",
+    );
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+
+    expect(catalog.getInstalledState().installedSkills[0]).toMatchObject({
+      slug: "weather",
+      ownerHandle: "publisher",
+      version: "2.4.0",
+    });
   });
 
   it("returns agentId for workspace skills", () => {
@@ -168,5 +189,276 @@ describe("CatalogManager.getCatalog() workspace skills", () => {
 
     expect(managed?.agentId).toBeNull();
     expect(workspace?.agentId).toBe("bot-1");
+  });
+
+  it("falls back to a filtered, paginated local catalog", async () => {
+    writeFileSync(
+      path.join(cacheDir, "catalog.json"),
+      JSON.stringify([
+        {
+          slug: "alpha",
+          name: "Alpha",
+          description: "Search helper",
+          downloads: 30,
+          stars: 2,
+          tags: ["search"],
+          version: "1.0.0",
+          updatedAt: "2026-01-01",
+        },
+        {
+          slug: "beta",
+          name: "Beta",
+          description: "Search helper",
+          downloads: 20,
+          stars: 1,
+          tags: ["search"],
+          version: "2.0.0",
+          updatedAt: "2026-01-02",
+        },
+        {
+          slug: "gamma",
+          name: "Gamma",
+          description: "Calendar",
+          downloads: 10,
+          stars: 0,
+          tags: ["productivity"],
+          version: "1.0.0",
+          updatedAt: "2026-01-03",
+        },
+      ]),
+    );
+    const catalog = new CatalogManager(cacheDir, {
+      skillsDir,
+      skillDb,
+      catalogApiUrl: "http://127.0.0.1:1/api/v1/skill-catalog",
+    });
+
+    const first = await catalog.getCatalogPage({ query: "search", limit: 1 });
+    const second = await catalog.getCatalogPage({
+      query: "search",
+      cursor: first.nextCursor ?? undefined,
+      limit: 1,
+    });
+
+    expect(first.skills.map((skill) => skill.slug)).toEqual(["alpha"]);
+    expect(first.total).toBe(2);
+    expect(first.nextCursor).toBe("local:1");
+    expect(second.skills.map((skill) => skill.slug)).toEqual(["beta"]);
+  });
+
+  it("preserves owner-scoped slugs returned by the server catalog", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          skills: [
+            {
+              identity: "@guipi888/find-skills",
+              ownerHandle: "guipi888",
+              slug: "find-skills",
+              name: "Find Skills",
+              description: "Discover skills",
+              downloads: 10,
+              stars: 1,
+              tags: ["search"],
+              version: "2.0.0",
+              updatedAt: 1_785_000_000_000,
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+          facets: [],
+          meta: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const catalog = new CatalogManager(cacheDir, {
+      skillsDir,
+      skillDb,
+      catalogApiUrl: "https://tabby.picaso.studio/api/v1/skill-catalog",
+    });
+
+    const page = await catalog.getCatalogPage({ limit: 1 });
+
+    expect(page.skills[0]).toMatchObject({
+      identity: "@guipi888/find-skills",
+      slug: "find-skills",
+      ownerHandle: "guipi888",
+      version: "2.0.0",
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mix a remote first page with local fallback after a page failure", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("unavailable", {
+        status: 503,
+      }),
+    );
+    const catalog = new CatalogManager(cacheDir, {
+      skillsDir,
+      skillDb,
+      catalogApiUrl: "https://tabby.picaso.studio/api/v1/skill-catalog",
+    });
+
+    await expect(
+      catalog.getCatalogPage({
+        cursor: "remote-cursor",
+        limit: 1,
+      }),
+    ).rejects.toThrow("catalog API returned 503");
+  });
+
+  it("surfaces a changed remote revision so clients can restart pagination", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: "Catalog revision changed; restart pagination",
+          code: "catalog_revision_changed",
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+
+    await expect(
+      catalog.getCatalogPage({ cursor: "stale-cursor", limit: 1 }),
+    ).rejects.toBeInstanceOf(CatalogRevisionChangedError);
+  });
+
+  it("resolves curated skills to an owner and mirrored version", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          skills: [
+            {
+              identity: "@steipete/weather",
+              ownerHandle: "steipete",
+              slug: "weather",
+              name: "Weather",
+              description: "Forecasts",
+              downloads: 20,
+              stars: 2,
+              tags: [],
+              version: "3.1.0",
+              updatedAt: 1_785_000_000_000,
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+          facets: [],
+          meta: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+    vi.spyOn(catalog, "getCuratedSlugsToEnqueue").mockReturnValue(["weather"]);
+
+    await expect(catalog.getCuratedInstallRequests()).resolves.toEqual([
+      {
+        slug: "weather",
+        ownerHandle: "steipete",
+        version: "3.1.0",
+      },
+    ]);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: expect.stringContaining("ownerHandle=steipete"),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("skips a curated skill when the fixed publisher is missing", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          skills: [
+            {
+              identity: "@different/weather",
+              ownerHandle: "different",
+              slug: "weather",
+              name: "Weather",
+              description: "Forecasts",
+              downloads: 20,
+              stars: 2,
+              tags: [],
+              version: "3.1.0",
+              updatedAt: 1_785_000_000_000,
+            },
+          ],
+          nextCursor: null,
+          total: 1,
+          facets: [],
+          meta: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+    vi.spyOn(catalog, "getCuratedSlugsToEnqueue").mockReturnValue(["weather"]);
+
+    await expect(catalog.getCuratedInstallRequests()).resolves.toEqual([]);
+  });
+
+  it("normalizes and validates owner-scoped install context", () => {
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+
+    expect(
+      catalog.prepareInstall({
+        slug: "alpha",
+        ownerHandle: "@Publisher.Name",
+        version: "2.3.4",
+      }),
+    ).toBe("alpha");
+    expect(() =>
+      catalog.prepareInstall({
+        slug: "alpha",
+        ownerHandle: "../publisher",
+      }),
+    ).toThrow("Invalid skill owner");
+    expect(catalog.consumeInstalledVersion("alpha")).toBeUndefined();
+    catalog.clearPreparedInstall("alpha");
+  });
+
+  it("does not apply legacy slug corrections to owner-scoped packages", () => {
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+
+    expect(
+      catalog.prepareInstall({
+        slug: "find-skills",
+        ownerHandle: "guipi888",
+      }),
+    ).toBe("find-skills");
+    expect(catalog.canonicalizeSlug("find-skills")).toBe("find-skills");
+    catalog.clearPreparedInstall("find-skills");
+    expect(catalog.canonicalizeSlug("find-skills")).toBe("find-skill");
+  });
+
+  it("preserves an installed raw alias even when the corrected slug also exists", () => {
+    for (const slug of ["find-skills", "find-skill"]) {
+      const skillDir = path.join(skillsDir, slug);
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(path.join(skillDir, "SKILL.md"), `# ${slug}\n`);
+    }
+    skillDb.recordInstall(
+      "find-skills",
+      "managed",
+      "1.0.0",
+      undefined,
+      "guipi888",
+    );
+    skillDb.recordInstall("find-skill", "managed", "1.0.0");
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+
+    expect(catalog.canonicalizeSlug("find-skills")).toBe("find-skills");
+  });
+
+  it("re-enqueues a curated ledger entry when its directory is missing", () => {
+    skillDb.recordInstall("weather", "managed", "3.1.0", undefined, "steipete");
+    const catalog = new CatalogManager(cacheDir, { skillsDir, skillDb });
+
+    expect(catalog.getCuratedSlugsToEnqueue()).toContain("weather");
   });
 });

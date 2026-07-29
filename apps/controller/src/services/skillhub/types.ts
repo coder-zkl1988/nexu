@@ -1,4 +1,6 @@
 export type MinimalSkill = {
+  identity?: string;
+  ownerHandle?: string;
   slug: string;
   name: string;
   description: string;
@@ -19,6 +21,8 @@ export type SkillSource = "managed" | "custom" | "workspace" | "user";
 
 export type InstalledSkill = {
   slug: string;
+  ownerHandle: string | null;
+  version: string | null;
   source: SkillSource;
   name: string;
   description: string;
@@ -31,6 +35,17 @@ export type SkillhubCatalogData = {
   installedSlugs: string[];
   installedSkills: InstalledSkill[];
   meta: CatalogMeta | null;
+};
+
+export type CatalogFacet = {
+  tag: string;
+  count: number;
+};
+
+export type SkillhubCatalogPageData = SkillhubCatalogData & {
+  nextCursor: string | null;
+  total: number;
+  facets: CatalogFacet[];
 };
 
 export type QueueItemStatus =
@@ -49,6 +64,7 @@ export type QueueErrorCode =
 
 export type QueueItem = {
   readonly slug: string;
+  readonly ownerHandle: string | null;
   readonly source: SkillSource;
   readonly status: QueueItemStatus;
   readonly position: number;

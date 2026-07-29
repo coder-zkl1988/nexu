@@ -1,3 +1,11 @@
+import {
+  createSkillReference,
+  getSkillReferenceKey,
+  installedSkillMatchesCatalogSkill,
+  skillReferenceMatchesSkill,
+} from "@/hooks/use-expert-skill-catalog";
+import type { InstalledSkill, MinimalSkill } from "@/types/desktop";
+import type { SkillReference } from "@nexu/shared";
 import { Check, Loader2, Lock, Search, Zap } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -5,26 +13,27 @@ import { useTranslation } from "react-i18next";
 const PAGE_SIZE = 50;
 
 export function SkillList({
-  skills,
   displaySkills,
-  selectedSkillsSet,
-  installedSlugs,
+  selectedSkillRefs,
+  installedSkills,
   lockedSkills,
   onToggleSkill,
+  isLoading = false,
+  hasNextPage = false,
+  isFetchingNextPage = false,
+  onLoadMore,
   emptyLabel,
   noResultsLabel,
 }: {
-  skills: Array<{
-    slug: string;
-    name: string;
-    description: string;
-    tags: string[];
-  }>;
-  displaySkills: typeof skills;
-  selectedSkillsSet: Set<string>;
-  installedSlugs: Set<string>;
+  displaySkills: MinimalSkill[];
+  selectedSkillRefs: SkillReference[];
+  installedSkills: InstalledSkill[];
   lockedSkills?: Set<string>;
-  onToggleSkill: (slug: string) => void;
+  onToggleSkill: (skill: MinimalSkill) => void;
+  isLoading?: boolean;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  onLoadMore?: () => void;
   emptyLabel: string;
   noResultsLabel: string;
 }) {
@@ -37,51 +46,86 @@ export function SkillList({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
-          setVisibleCount((prev) =>
-            Math.min(prev + PAGE_SIZE, displaySkills.length),
-          );
+          if (visibleCount < displaySkills.length) {
+            setVisibleCount((prev) =>
+              Math.min(prev + PAGE_SIZE, displaySkills.length),
+            );
+            return;
+          }
+          if (hasNextPage && !isFetchingNextPage) {
+            onLoadMore?.();
+          }
         }
       },
       { rootMargin: "200px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [displaySkills.length]);
+  }, [
+    displaySkills.length,
+    hasNextPage,
+    isFetchingNextPage,
+    onLoadMore,
+    visibleCount,
+  ]);
 
   useEffect(() => {
-    setVisibleCount(Math.min(PAGE_SIZE, displaySkills.length));
+    setVisibleCount((previous) =>
+      Math.max(
+        Math.min(previous, displaySkills.length),
+        Math.min(PAGE_SIZE, displaySkills.length),
+      ),
+    );
   }, [displaySkills.length]);
 
   const visibleSkills = displaySkills.slice(0, visibleCount);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-border bg-surface-0">
-      {skills.length === 0 ? (
+      {isLoading ? (
         <div className="flex flex-col items-center justify-center py-12 gap-2">
           <Loader2 size={20} className="animate-spin text-text-muted" />
           <span className="text-[12px] text-text-muted">{emptyLabel}</span>
+        </div>
+      ) : displaySkills.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-2">
+          <Search size={20} className="text-text-muted" />
+          <span className="text-[12px] text-text-muted">{noResultsLabel}</span>
+          {hasNextPage && (
+            <div
+              ref={sentinelRef}
+              className="flex h-8 items-center justify-center"
+            >
+              {isFetchingNextPage && (
+                <Loader2 size={16} className="animate-spin text-text-muted" />
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="divide-y divide-border">
           {visibleSkills.map((skill) => (
             <SkillCheckboxItem
-              key={skill.slug}
+              key={getSkillReferenceKey(createSkillReference(skill))}
               skill={skill}
-              isSelected={selectedSkillsSet.has(skill.slug)}
-              isInstalled={installedSlugs.has(skill.slug)}
+              isSelected={selectedSkillRefs.some((reference) =>
+                skillReferenceMatchesSkill(reference, skill),
+              )}
+              isInstalled={installedSkills.some((installedSkill) =>
+                installedSkillMatchesCatalogSkill(installedSkill, skill),
+              )}
               isLocked={lockedSkills?.has(skill.slug) ?? false}
-              onToggle={() => onToggleSkill(skill.slug)}
+              onToggle={() => onToggleSkill(skill)}
             />
           ))}
-          {visibleSkills.length < displaySkills.length && (
-            <div ref={sentinelRef} className="h-1" />
-          )}
-          {displaySkills.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 gap-2">
-              <Search size={20} className="text-text-muted" />
-              <span className="text-[12px] text-text-muted">
-                {noResultsLabel}
-              </span>
+          {(visibleSkills.length < displaySkills.length || hasNextPage) && (
+            <div
+              ref={sentinelRef}
+              className="flex h-8 items-center justify-center"
+            >
+              {isFetchingNextPage && (
+                <Loader2 size={16} className="animate-spin text-text-muted" />
+              )}
             </div>
           )}
         </div>

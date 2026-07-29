@@ -13,40 +13,38 @@ const LIBTV_VIDEO_SLUG = "libtv-video";
 
 /**
  * Skills to install from ClawHub on first launch.
+ *
+ * Publisher identity is pinned so unattended startup installs never select a
+ * same-slug package by popularity or search order.
  */
-export const CURATED_SKILL_SLUGS: readonly string[] = [
-  // Security & tools
-  "1password",
-  "healthcheck",
-  "skill-vetter",
-  // Coding & GitHub
-  "github",
-  // Search & information
-  "multi-search-engine",
-  "xiaohongshu-mcp",
-  "weather",
-  // Communication & calendar
-  "imap-smtp-email",
-  "calendar",
-  // Notes & content
-  "apple-notes",
+export const CURATED_SKILLS: ReadonlyArray<{
+  slug: string;
+  ownerHandle: string;
+}> = [
+  { slug: "1password", ownerHandle: "steipete" },
+  { slug: "healthcheck", ownerHandle: "stellarhold170nt" },
+  { slug: "skill-vetter", ownerHandle: "spclaudehome" },
+  { slug: "github", ownerHandle: "steipete" },
+  { slug: "multi-search-engine", ownerHandle: "gpyangyoujun" },
+  { slug: "weather", ownerHandle: "steipete" },
+  { slug: "imap-smtp-email", ownerHandle: "gzlicanyi" },
+  { slug: "calendar", ownerHandle: "ndcccccc" },
+  { slug: "apple-notes", ownerHandle: "steipete" },
   // NOTE: "humanize-ai-text" was removed — ClawHub flagged it as malware and
   // blocks installation, which made every packaged-app boot retry the install.
-  // File & system
-  "file-organizer-skill",
-  "video-frames",
-  "session-logs",
-  // Skill management
-  "skill-creator",
-  // Skill discovery
-  "find-skill",
-  // Search & content (ClawHub)
-  "wechat-article-search",
-  // Image generation (ClawHub)
-  "liblib-ai-gen",
-  // Audio & music
-  "listenhub-ai",
+  { slug: "file-organizer-skill", ownerHandle: "1999azzar" },
+  { slug: "video-frames", ownerHandle: "steipete" },
+  { slug: "session-logs", ownerHandle: "guogang1024" },
+  { slug: "skill-creator", ownerHandle: "chindden" },
+  { slug: "find-skill", ownerHandle: "breckengan" },
+  { slug: "wechat-article-search", ownerHandle: "wuchubuzai2018" },
+  { slug: "liblib-ai-gen", ownerHandle: "xtaq" },
+  { slug: "listenhub-ai", ownerHandle: "kkaticld" },
 ] as const;
+
+export const CURATED_SKILL_SLUGS: readonly string[] = CURATED_SKILLS.map(
+  ({ slug }) => slug,
+);
 
 /**
  * Skills shipped as static files in the app bundle (apps/desktop/static/bundled-skills/).

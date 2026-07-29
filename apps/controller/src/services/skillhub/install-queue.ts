@@ -53,7 +53,9 @@ export function parseRateLimitPauseMs(message: string): number | null {
 
 type MutableQueueItem = {
   slug: string;
+  ownerHandle: string | null;
   source: SkillSource;
+  operation: "install" | "update";
   status: QueueItemStatus;
   error: string | null;
   errorCode: QueueErrorCode | null;
@@ -105,11 +107,28 @@ export class InstallQueue {
     this.cleanupDelayMs = opts.cleanupDelayMs ?? 60000;
   }
 
-  enqueue(slug: string, source: SkillSource): QueueItem {
+  enqueue(
+    slug: string,
+    source: SkillSource,
+    ownerHandle?: string | null,
+    options?: {
+      replaceCompleted?: boolean;
+      operation?: "install" | "update";
+    },
+  ): QueueItem {
     // Dedup: check active, pending, and completed
     const existing = this.findItem(slug);
     if (existing) {
-      return this.toReadonly(existing);
+      const sameOwner =
+        (existing.ownerHandle ?? null) === (ownerHandle ?? null);
+      if (
+        existing.status !== "done" ||
+        (sameOwner && !options?.replaceCompleted)
+      ) {
+        return this.toReadonly(existing);
+      }
+      const completedIndex = this.completed.indexOf(existing);
+      if (completedIndex !== -1) this.completed.splice(completedIndex, 1);
     }
 
     // Clear any prior failed entry so a retry produces a single queued row.
@@ -124,7 +143,9 @@ export class InstallQueue {
 
     const item: MutableQueueItem = {
       slug,
+      ownerHandle: ownerHandle ?? null,
       source,
+      operation: options?.operation ?? "install",
       status: "queued",
       error: null,
       errorCode: null,
@@ -145,6 +166,10 @@ export class InstallQueue {
    */
   isInFlight(slug: string): boolean {
     return this.active.has(slug) || this.pending.some((i) => i.slug === slug);
+  }
+
+  hasActiveUpdate(slug: string): boolean {
+    return this.active.get(slug)?.operation === "update";
   }
 
   /**
@@ -168,7 +193,12 @@ export class InstallQueue {
     }
 
     // Mark active as cancelled (executor will check on completion)
-    if (this.active.has(slug)) {
+    const activeItem = this.active.get(slug);
+    if (activeItem) {
+      if (activeItem.operation === "update") {
+        this.log("warn", `queue: cannot cancel active update ${slug}`);
+        return false;
+      }
       this.cancelled.add(slug);
       this.log("info", `queue: cancelling active ${slug}`);
       return true;
@@ -288,15 +318,21 @@ export class InstallQueue {
           this.log("info", `queue: ${item.slug} completed but was cancelled`);
         } else {
           this.active.delete(item.slug);
-          item.status = "done";
-          this.hadCompletionSinceIdle = true;
           // Record in DB only on successful, non-cancelled completion
           try {
             this.onComplete?.(item.slug, item.source);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
+            item.status = "failed";
+            item.errorCode = "unknown";
+            item.error = `Install completed but could not be recorded: ${msg}`;
+            this.completed.push(item);
             this.log("error", `onComplete failed for ${item.slug}: ${msg}`);
+            this.drain();
+            return;
           }
+          item.status = "done";
+          this.hadCompletionSinceIdle = true;
           this.log("info", `Install complete: ${item.slug}`);
         }
 
@@ -306,6 +342,17 @@ export class InstallQueue {
       },
       (err: unknown) => {
         if (this.disposed) return;
+        if (this.cancelled.delete(item.slug)) {
+          this.active.delete(item.slug);
+          item.status = "failed";
+          item.error = "Cancelled";
+          item.errorCode = null;
+          this.completed.push(item);
+          this.scheduleCleanup(item);
+          this.log("info", `queue: ${item.slug} failed after cancellation`);
+          this.drain();
+          return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         const code = classifyError(message);
         const pauseMs = parseRateLimitPauseMs(message);
@@ -380,6 +427,7 @@ export class InstallQueue {
   private toReadonly(item: MutableQueueItem): QueueItem {
     return {
       slug: item.slug,
+      ownerHandle: item.ownerHandle,
       source: item.source,
       status: item.status,
       position: this.computePosition(item),
@@ -396,6 +444,7 @@ export class InstallQueue {
   ): QueueItem {
     return {
       slug: item.slug,
+      ownerHandle: item.ownerHandle,
       source: item.source,
       status: item.status,
       position,
