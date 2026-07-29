@@ -176,10 +176,26 @@ export function startEmbeddedWebServer(
         url.pathname.startsWith("/v1") ||
         url.pathname === "/openapi.json";
 
+      // The desktop shell renders from file://, so its boot probe of the ready
+      // endpoint arrives as a cross-site GET with an opaque origin — the exact
+      // shape the trust gate rejects. It is also the one request that has to
+      // succeed before anything same-origin exists to send it: the shell only
+      // mounts the web surface once this answers, so gating it left the
+      // packaged app permanently on the boot screen with every unit healthy.
+      // GET-only and disclosure-free (readiness state, no secrets), with the
+      // loopback-host requirement still applied below.
+      const isBootReadyProbe =
+        req.method === "GET" &&
+        url.pathname === "/api/internal/desktop/ready" &&
+        isTrustedLocalRequestMetadata(
+          { requestUrl: req.url, host: req.headers.host ?? "" },
+          "same-origin",
+        );
+
       // The embedded renderer and API share one loopback origin. Reject browser
       // requests from every other origin instead of exposing the unauthenticated
       // local controller through reflective CORS or DNS rebinding.
-      if (isApiRequest && !isTrustedLocalRequest(req)) {
+      if (isApiRequest && !isBootReadyProbe && !isTrustedLocalRequest(req)) {
         rejectUntrustedRequest(res);
         return;
       }

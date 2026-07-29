@@ -67,6 +67,35 @@ describe("EmbeddedWebServer", () => {
     expect(res.status).toBe(502);
   });
 
+  it("lets the file:// shell's boot probe through the trust gate", async () => {
+    // The desktop shell renders from file://, so its readiness poll arrives
+    // exactly like an attack would: opaque origin, cross-site fetch metadata.
+    // Gating it left the packaged app on the boot screen forever — the shell
+    // mounts the web surface only once this answers. 502 here because the
+    // harness runs no controller; the assertion is that the gate lets it
+    // reach the proxy at all.
+    const res = await fetch(`${baseUrl}/api/internal/desktop/ready`, {
+      headers: {
+        Origin: "null",
+        "Sec-Fetch-Site": "cross-site",
+      },
+    });
+    expect(res.status).toBe(502);
+  });
+
+  it("keeps the boot-probe exception GET-only and path-exact", async () => {
+    const post = await fetch(`${baseUrl}/api/internal/desktop/ready`, {
+      method: "POST",
+      headers: { Origin: "null", "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(post.status).toBe(403);
+
+    const sibling = await fetch(`${baseUrl}/api/internal/desktop/ready/other`, {
+      headers: { Origin: "null", "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(sibling.status).toBe(403);
+  });
+
   it("rejects cross-origin CORS preflight without reflecting the origin", async () => {
     const res = await fetch(`${baseUrl}/api/test`, {
       method: "OPTIONS",
