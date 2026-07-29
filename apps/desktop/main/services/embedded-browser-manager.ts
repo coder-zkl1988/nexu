@@ -25,6 +25,14 @@ const DEFAULT_SNAPSHOT_NODES = 400;
 
 const TAB_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+/**
+ * The tab the agent drives. Fixed rather than generated so the panel can adopt
+ * it by id after a remount: the renderer's tab ids live in React state, which
+ * a collapsed panel throws away, while this tab outlives it in the main
+ * process.
+ */
+export const AGENT_TAB_ID = "agent";
+
 function isSafeBrowserUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -65,6 +73,27 @@ function clampBounds(
       1,
       Math.min(Math.round(bounds.height), content.height - y),
     ),
+  };
+}
+
+/**
+ * Where the agent's tab goes when the panel is not placing it.
+ *
+ * Synthesized clicks need the view on screen: measured, the same click that
+ * navigates a shown view does nothing at all when the view is hidden with
+ * `setVisible(false)` *or* parked outside the window bounds — both take it out
+ * of hit-testing, and the action fails silently. So an agent acting without a
+ * panel to host it gets this fallback placement rather than a dead view. The
+ * panel overrides it with real bounds as soon as it opens.
+ */
+function agentFallbackBounds(owner: BrowserWindow): Electron.Rectangle {
+  const content = owner.getContentBounds();
+  const width = Math.max(1, Math.round(content.width * 0.45));
+  return {
+    x: Math.max(0, content.width - width),
+    y: 0,
+    width,
+    height: Math.max(1, content.height),
   };
 }
 
@@ -138,6 +167,54 @@ const elementPickerScript = `new Promise((resolve) => {
 
 export class EmbeddedBrowserManager {
   private readonly tabs = new Map<string, ManagedTab>();
+  /**
+   * Windows whose panel is currently hosting the agent tab.
+   *
+   * Synthesized clicks are only reliable in a view the panel has placed:
+   * measured, the first click into a view the manager positioned itself is
+   * swallowed, while every click into a panel-hosted view lands. So mutating
+   * commands wait for this rather than acting into a view that will silently
+   * ignore them.
+   */
+  private readonly panelHosted = new Set<number>();
+  private readonly panelWaiters = new Map<number, Set<() => void>>();
+
+  isAgentTabPanelHosted(owner: BrowserWindow): boolean {
+    return this.panelHosted.has(owner.id);
+  }
+
+  /** Resolves true once the panel places the agent tab, false on timeout. */
+  waitForAgentTabPanel(
+    owner: BrowserWindow,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    if (this.isAgentTabPanelHosted(owner)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const waiters = this.panelWaiters.get(owner.id) ?? new Set();
+      const settle = (): void => {
+        clearTimeout(timer);
+        waiters.delete(settle);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        waiters.delete(settle);
+        resolve(false);
+      }, timeoutMs);
+      waiters.add(settle);
+      this.panelWaiters.set(owner.id, waiters);
+    });
+  }
+
+  private markPanelHosted(owner: BrowserWindow, hosted: boolean): void {
+    if (!hosted) {
+      this.panelHosted.delete(owner.id);
+      return;
+    }
+    this.panelHosted.add(owner.id);
+    const waiters = this.panelWaiters.get(owner.id);
+    if (!waiters) return;
+    for (const waiter of [...waiters]) waiter();
+  }
 
   private key(owner: BrowserWindow, tabId: string): string {
     if (!TAB_ID_PATTERN.test(tabId)) throw new Error("Invalid browser tab id.");
@@ -160,6 +237,10 @@ export class EmbeddedBrowserManager {
     view.setBackgroundColor("#ffffff");
     view.setVisible(false);
     owner.contentView.addChildView(view);
+    // Give the tab a real layout viewport before anything shows it, so a
+    // snapshot taken straight after `navigate` measures the page at the size
+    // it will actually be seen at.
+    view.setBounds(agentFallbackBounds(owner));
     const tab: ManagedTab = {
       owner,
       view,
@@ -219,15 +300,38 @@ export class EmbeddedBrowserManager {
     }
   }
 
-  async control(
+  control(
     sender: Electron.WebContents,
     input: DesktopBrowserControl,
   ): Promise<DesktopBrowserControlResult> {
-    const owner = resolveOwnerWindow(sender);
+    return this.controlWindow(resolveOwnerWindow(sender), input);
+  }
+
+  /**
+   * Puts the agent's tab on screen so its clicks can land.
+   *
+   * Called before every mutating agent command. If the panel is already
+   * showing this tab it keeps the panel's bounds; otherwise it falls back to a
+   * placement of its own, because a click into an off-screen view is a silent
+   * no-op rather than an error.
+   */
+  revealAgentTab(owner: BrowserWindow): boolean {
+    const tab = this.ensureTab(owner, AGENT_TAB_ID);
+    if (tab.view.getVisible()) return false;
+    tab.view.setBounds(agentFallbackBounds(owner));
+    tab.view.setVisible(true);
+    return true;
+  }
+
+  async controlWindow(
+    owner: BrowserWindow,
+    input: DesktopBrowserControl,
+  ): Promise<DesktopBrowserControlResult> {
     if (input.action === "hide" || input.action === "dispose") {
       for (const tab of this.tabs.values()) {
         if (tab.owner === owner) tab.view.setVisible(false);
       }
+      this.markPanelHosted(owner, false);
       if (input.action === "dispose") this.disposeOwner(owner);
       return { kind: "ok" };
     }
@@ -252,6 +356,7 @@ export class EmbeddedBrowserManager {
           candidate.view.setVisible(candidate === tab);
       }
       tab.view.setBounds(clampBounds(owner, input.bounds));
+      this.markPanelHosted(owner, input.tabId === AGENT_TAB_ID);
       await this.loadTab(tab, input.url);
       return { kind: "ok" };
     }

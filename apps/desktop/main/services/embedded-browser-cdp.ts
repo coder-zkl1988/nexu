@@ -234,6 +234,10 @@ export async function clickRef(
       x: point.x,
       y: point.y,
       button: "left",
+      // The bitmask of buttons held *during* the event, which CDP treats
+      // separately from `button`. Omitting it sends a press that claims no
+      // button is down.
+      buttons: type === "mousePressed" ? 1 : 0,
       clickCount: 1,
     });
   }

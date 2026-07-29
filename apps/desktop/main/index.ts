@@ -81,6 +81,7 @@ import {
   runTeardownAndExit,
   teardownLaunchdServices,
 } from "./services";
+import { AgentBrowserRelay } from "./services/agent-browser-relay";
 import {
   type DesktopShellPreferences,
   applyDesktopShellPreferencesOnStartup,
@@ -93,6 +94,7 @@ import {
   startDesktopDevInspectServer,
   stopDesktopDevInspectServer,
 } from "./services/dev-inspect-server";
+import { AGENT_TAB_ID } from "./services/embedded-browser-manager";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
 import {
@@ -450,6 +452,7 @@ if (sentryDsn && readCrashReportsConsent()) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let agentBrowserRelay: AgentBrowserRelay | null = null;
 let deskpetWindow: BrowserWindow | null = null;
 let deskpetSize: DesktopDeskpetSize = "medium";
 let deskpetAlwaysOnTop = true;
@@ -675,6 +678,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
 
   try {
     sleepGuard?.dispose(reason);
+    agentBrowserRelay?.stop();
+    agentBrowserRelay = null;
     unsubscribeIpc?.();
     unsubscribeIpc = null;
     unsubscribeDeskpetRuntime?.();
@@ -1181,6 +1186,37 @@ function getDesktopLogFilePath(name: string): string {
 
 function getMainWindowId(): number | null {
   return mainWindow?.webContents.id ?? null;
+}
+
+function startAgentBrowserRelay(): void {
+  if (agentBrowserRelay) return;
+  agentBrowserRelay = new AgentBrowserRelay({
+    controllerBaseUrl: runtimeConfig.urls.controllerBase,
+    getWindow: () => mainWindow,
+    onOpen: (url) => {
+      // The browser view is already loading; the panel is how the user gets to
+      // watch it, so raise it in the window that owns the view.
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!mainWindow.isVisible()) mainWindow.show();
+      sendHostDesktopCommand({
+        type: "browser:agent-opened",
+        tabId: AGENT_TAB_ID,
+        url,
+      });
+    },
+    onLog: (message) => {
+      console.error(`[agent-browser] ${message}`);
+      writeDesktopMainLog({
+        source: "agent-browser",
+        stream: "stderr",
+        kind: "lifecycle",
+        message,
+        logFilePath: getDesktopLogFilePath("agent-browser.log"),
+        windowId: getMainWindowId(),
+      });
+    },
+  });
+  agentBrowserRelay.start();
 }
 
 function logColdStart(message: string): void {
@@ -2447,6 +2483,7 @@ app.whenReady().then(async () => {
         await runDesktopColdStart();
       }
       await refreshProxyDiagnostics();
+      startAgentBrowserRelay();
       healthCheck.recordSuccess();
     } catch (error) {
       await refreshProxyDiagnostics().catch(() => undefined);

@@ -6,6 +6,8 @@ import {
   getAnnotationTextInputPosition,
 } from "../src/lib/browser/browser-annotation-editor";
 import {
+  closeBrowserPanel,
+  closeBrowserPanelForRouting,
   closeBrowserPanelForSessionNavigation,
   getBrowserPanelState,
   openBrowserPanel,
@@ -200,7 +202,28 @@ describe("embedded browser helpers", () => {
     expect(getBrowserPanelState()).toEqual({
       isOpen: false,
       sessionKey: null,
+      openedByAgent: false,
     });
+  });
+
+  it("keeps an agent's browser open across navigation", () => {
+    // The panel is what places the browser view, so closing it mid-task does
+    // not just hide the work — it stops the agent's clicks from landing.
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(false);
+    expect(closeBrowserPanelForRouting()).toBe(false);
+    expect(getBrowserPanelState().isOpen).toBe(true);
+
+    // An explicit close still ends it.
+    closeBrowserPanel();
+    expect(getBrowserPanelState().isOpen).toBe(false);
   });
 
   it("builds a visible arrow head at the annotation endpoint", () => {

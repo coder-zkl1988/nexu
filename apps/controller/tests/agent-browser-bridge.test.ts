@@ -103,6 +103,24 @@ describe("AgentBrowserBridge", () => {
     await expect(pending).resolves.toEqual(OK);
   });
 
+  it("keeps a live command alive when a stale connection tears down", async () => {
+    const bridge = new AgentBrowserBridge(60_000);
+    const stale = bridge.subscribe(() => undefined);
+    let requestId = "";
+    bridge.subscribe((envelope) => {
+      requestId = envelope.requestId;
+    });
+
+    const pending = bridge.dispatch("agent:bot:main", { action: "snapshot" });
+    // The desktop reconnected — after a controller restart, say — so an older
+    // stream closes while the new one is mid-command. Failing the command here
+    // would tell the agent there is no browser while one is plainly connected.
+    stale();
+
+    expect(bridge.settle(requestId, OK)).toBe(true);
+    await expect(pending).resolves.toEqual(OK);
+  });
+
   it("hands commands to the newest panel only", async () => {
     const bridge = new AgentBrowserBridge();
     const first = vi.fn();

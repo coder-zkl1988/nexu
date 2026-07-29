@@ -93,4 +93,7 @@ export const agentBrowserResultAckSchema = z.object({
 
 export type AgentBrowserCommand = z.infer<typeof agentBrowserCommandSchema>;
 export type AgentBrowserSnapshot = z.infer<typeof agentBrowserSnapshotSchema>;
+export type AgentBrowserObservation = z.infer<
+  typeof agentBrowserObservationSchema
+>;
 export type AgentBrowserOutcome = z.infer<typeof agentBrowserOutcomeSchema>;

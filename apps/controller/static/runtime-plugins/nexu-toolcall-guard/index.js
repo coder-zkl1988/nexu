@@ -926,8 +926,12 @@ const plugin = {
         HOST_EXECUTION_TOOLS.has(event?.toolName);
       if (protectedLocalTool && !isLocalInteractiveSession(ctx)) {
         try {
+          // Name the failing condition: a refusal that does not say which of
+          // "wrong channel" or "wrong session shape" tripped is guesswork to
+          // debug from a transcript.
           api.logger.warn(
-            `[nexu-toolcall-guard] BLOCKING protected local tool "${event.toolName}" outside the desktop main session`,
+            `[nexu-toolcall-guard] BLOCKING protected local tool "${event.toolName}" outside the desktop main session ` +
+              `(sessionKey=${ctx?.sessionKey ?? "<none>"} channelId=${ctx?.channelId ?? "<none>"})`,
           );
         } catch {}
 

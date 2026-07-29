@@ -751,6 +751,15 @@ export type DesktopDeskpetMoodSource = "auto" | "manual" | "runtime";
 
 export type HostDesktopCommand =
   | {
+      /**
+       * The agent opened a page in the browser view it drives. The panel is
+       * what makes that visible, so it raises itself and adopts the agent tab.
+       */
+      type: "browser:agent-opened";
+      tabId: string;
+      url: string;
+    }
+  | {
       type: "develop:focus-surface";
       surface: Exclude<DesktopSurface, "control">;
       chromeMode: DesktopChromeMode;

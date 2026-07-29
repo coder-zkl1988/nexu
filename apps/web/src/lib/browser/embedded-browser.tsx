@@ -1,10 +1,5 @@
 import { publishExternalChatInput } from "@/lib/chat/external-chat-input";
 import { openExternalUrl } from "@/lib/desktop-links";
-import type {
-  AgentBrowserCommand,
-  AgentBrowserOutcome,
-  AgentBrowserSnapshot,
-} from "@nexu/shared";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -30,10 +25,7 @@ import type {
   DesktopBrowserControlResult,
 } from "../../../../desktop/shared/host";
 import { getApiV1Artifacts } from "../../../lib/api/sdk.gen";
-import {
-  registerAgentBrowserExecutor,
-  takeAgentBrowserOpenUrl,
-} from "./agent-browser-relay";
+import { useAgentBrowserTabRequest } from "./agent-browser-relay";
 import { BrowserAnnotationEditor } from "./browser-annotation-editor";
 
 export interface PreviewArtifact {
@@ -61,13 +53,14 @@ type BrowserTab = {
 };
 
 const MAX_TABS = 8;
-// Long enough for a click to start a navigation or a framework to re-render,
-// short enough that a no-op click still answers quickly.
-const AGENT_SETTLE_MS = 700;
 
-function createBrowserTab(url = "", title = "New tab"): BrowserTab {
+function createBrowserTab(
+  url = "",
+  title = "New tab",
+  id: string = crypto.randomUUID(),
+): BrowserTab {
   return {
-    id: crypto.randomUUID(),
+    id,
     title,
     url,
     address: url,
@@ -190,6 +183,7 @@ export function EmbeddedBrowser({
   const historyPanelRef = useRef<HTMLElement>(null);
   const lastAutoArtifactIdRef = useRef<string | null>(null);
   const desktopBrowser = hasDesktopBrowserHost();
+  const agentTabRequest = useAgentBrowserTabRequest();
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 
   const updateTab = useCallback(
@@ -392,122 +386,32 @@ export function EmbeddedBrowser({
     updateTab,
   ]);
 
+  // Collapsing the panel hides the view; it does not dispose it. The page, its
+  // login state and the agent's element refs outlive the panel, so reopening
+  // resumes rather than restarts — and an agent mid-task is not cut off just
+  // because the user wanted the sidebar back.
   useEffect(
     () => () => {
-      if (desktopBrowser) void controlDesktopBrowser({ action: "dispose" });
+      if (desktopBrowser) void controlDesktopBrowser({ action: "hide" });
     },
     [desktopBrowser],
   );
 
-  // Agent control. The panel registers itself as the executor so an agent
-  // command runs in the tab the user is looking at — see agent-browser-relay.
-  const runAgentCommand = useCallback(
-    async (command: AgentBrowserCommand): Promise<AgentBrowserOutcome> => {
-      const tabId = activeTab?.id;
-      if (!desktopBrowser || !tabId) {
-        return { ok: false, error: "the browser panel has no active tab" };
-      }
-
-      const snapshot = async (): Promise<AgentBrowserSnapshot> => {
-        const result = await controlDesktopBrowser({
-          action: "snapshot",
-          tabId,
-        });
-        if (result?.kind !== "snapshot") {
-          throw new Error("could not read the page");
-        }
-        const { kind: _kind, ...rest } = result;
-        return rest;
-      };
-
-      // Read the page back after acting, and report the element that was acted
-      // on. This is the completion evidence: a click that did nothing shows an
-      // unchanged element, and a click that navigated shows a new URL.
-      const observe = async (
-        ref: string,
-        urlBefore: string,
-      ): Promise<AgentBrowserOutcome> => {
-        const after = await snapshot();
-        const element = after.nodes.find((node) => node.ref === ref);
-        return {
-          ok: true,
-          observation: {
-            url: after.url,
-            title: after.title,
-            ...(element ? { element } : {}),
-            navigated: after.url !== urlBefore,
-          },
-        };
-      };
-
-      if (command.action === "open") {
-        const normalized = normalizeBrowserUrl(command.url);
-        if (!normalized) return { ok: false, error: "invalid web address" };
-        navigateTab(tabId, normalized);
-        // The show effect loads the same URL; loadTab dedupes, so awaiting here
-        // just means the snapshot below sees a loaded page.
-        await controlDesktopBrowser({
-          action: "navigate",
-          tabId,
-          url: normalized,
-        });
-        return { ok: true, snapshot: await snapshot() };
-      }
-      if (command.action === "snapshot") {
-        return { ok: true, snapshot: await snapshot() };
-      }
-      if (command.action === "scroll") {
-        await controlDesktopBrowser({
-          action: "scroll",
-          tabId,
-          deltaY: command.deltaY,
-        });
-        const after = await snapshot();
-        return {
-          ok: true,
-          observation: {
-            url: after.url,
-            title: after.title,
-            navigated: false,
-          },
-        };
-      }
-
-      const urlBefore = (await snapshot()).url;
-      if (command.action === "click") {
-        await controlDesktopBrowser({
-          action: "click-ref",
-          tabId,
-          ref: command.ref,
-        });
-      } else {
-        await controlDesktopBrowser({
-          action: "type-ref",
-          tabId,
-          ref: command.ref,
-          text: command.text,
-          submit: command.submit,
-        });
-      }
-      // Clicks and submits kick off navigation and re-render asynchronously;
-      // snapshotting immediately would read the page as it was.
-      await new Promise((resolve) => setTimeout(resolve, AGENT_SETTLE_MS));
-      return observe(command.ref, urlBefore);
-    },
-    [activeTab?.id, desktopBrowser, navigateTab],
-  );
-
-  useEffect(
-    () => registerAgentBrowserExecutor(runAgentCommand),
-    [runAgentCommand],
-  );
-
-  // An agent asked for a page while the panel was closed; the panel is open
-  // now, so honour it.
+  // The agent drives its own tab in the main process. Adopt it by id so the
+  // user sees the page it is working on; the main process already navigated,
+  // so this only mirrors the tab into the panel's own list.
   useEffect(() => {
-    const url = takeAgentBrowserOpenUrl();
-    if (url) navigateTab(activeTabId, url);
-  }, [activeTabId, navigateTab]);
+    if (!agentTabRequest) return;
+    const { tabId, url } = agentTabRequest;
+    setTabs((current) =>
+      current.some((tab) => tab.id === tabId)
+        ? current.map((tab) =>
+            tab.id === tabId ? { ...tab, url, address: url } : tab,
+          )
+        : [...current, createBrowserTab(url, "New tab", tabId)],
+    );
+    setActiveTabId(tabId);
+  }, [agentTabRequest]);
 
   const addTab = (): void => {
     if (tabs.length >= MAX_TABS) return;

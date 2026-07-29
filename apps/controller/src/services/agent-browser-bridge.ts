@@ -40,6 +40,8 @@ type Pending = {
   resolve: (outcome: AgentBrowserOutcome) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Who this went to, so a different subscriber's exit cannot fail it. */
+  owner: AgentBrowserSubscriber;
 };
 
 export class AgentBrowserBridge {
@@ -55,11 +57,14 @@ export class AgentBrowserBridge {
   subscribe(subscriber: AgentBrowserSubscriber): () => void {
     this.subscriber = subscriber;
     return () => {
-      if (this.subscriber !== subscriber) return;
-      this.subscriber = null;
-      // Whoever is waiting is waiting on a panel that just went away. Failing
-      // now beats making the model sit through the full timeout.
+      if (this.subscriber === subscriber) this.subscriber = null;
+      // Fail only what this subscriber was actually given: a command dispatched
+      // to a newer connection must survive an older one's teardown. A desktop
+      // that reconnects — after a controller restart, say — otherwise kills the
+      // request that is running right now, and the agent is told there is no
+      // browser while one is plainly connected.
       for (const [requestId, pending] of this.pending) {
+        if (pending.owner !== subscriber) continue;
         clearTimeout(pending.timer);
         this.pending.delete(requestId);
         pending.reject(new AgentBrowserUnavailableError());
@@ -83,7 +88,12 @@ export class AgentBrowserBridge {
         reject(new AgentBrowserTimeoutError());
       }, this.timeoutMs);
       timer.unref?.();
-      this.pending.set(requestId, { resolve, reject, timer });
+      this.pending.set(requestId, {
+        resolve,
+        reject,
+        timer,
+        owner: subscriber,
+      });
     });
 
     try {

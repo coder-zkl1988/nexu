@@ -16,6 +16,7 @@ import { DESKTOP_REWARDS_QUERY_KEY } from "./hooks/use-desktop-rewards";
 import { LocaleProvider } from "./hooks/use-locale";
 import "./lib/api";
 import { getAnalyticsAppMetadata } from "./lib/analytics-app-metadata";
+import { useAgentBrowserPanel } from "./lib/browser/use-agent-browser-panel";
 import { readAnalyticsPreferenceFromStorage } from "./lib/desktop-analytics-preference";
 import {
   ANALYTICS_PREFERENCE_STORAGE_KEY,
@@ -179,6 +180,11 @@ function DesktopShellPreferencesSync() {
   return null;
 }
 
+function AgentBrowserPanelSync() {
+  useAgentBrowserPanel();
+  return null;
+}
+
 function DesktopRewardsSync() {
   const queryClient = useQueryClient();
 
@@ -231,6 +237,7 @@ ReactDOM.createRoot(root).render(
           <AnalyticsSessionSync />
           <DesktopRewardsSync />
           <DesktopShellPreferencesSync />
+          <AgentBrowserPanelSync />
           <App />
           <Toaster position="top-right" />
         </BrowserRouter>

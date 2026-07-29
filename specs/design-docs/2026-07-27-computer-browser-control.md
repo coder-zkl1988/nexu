@@ -15,9 +15,35 @@ Nexu 桌面端增加两项本地自动化能力：
 
 **决策变更（2026-07-28）**：放弃控制用户的真实 Chrome，改为只控制内嵌浏览器。原方案用 OpenClaw 内置 `browser` plugin 加 MV3 扩展的 `chrome.debugger` 接管用户主动连接的标签页，功能可用但装扩展、复制配对串、把标签页拖进专用 tab group 三步缺一不可，任何一步做错都表现为“连上了但看不到标签页”。内嵌浏览器不需要其中任何一步。OpenClaw 的 `browser` plugin、`browser` 工具和顶层 `browser` 配置块因此完全不再编译，相关的配对 API、扩展目录入口和 `OpenClawConfig["browser"]` 类型一并删除。
 
-执行链路是 plugin → controller → SSE → renderer → 桌面主进程，工具为 `browser_open` / `browser_snapshot` / `browser_click` / `browser_type` / `browser_scroll`。**执行者是面板本身而不是 controller**：面板拥有浏览器视图的 bounds，让它执行使“用户能看见 agent 在操作什么”成为结构性保证——面板关着就没有执行者，命令直接带解释失败，而不是去驱动一个没人看得见的视图。同理，`open` 在不处于对话页时被拒绝（布局会立刻关掉工作台），等待面板后要重新读取执行者而不是提前抓引用。
+执行链路是 plugin → controller → SSE → 桌面主进程 → WebContentsView，工具为 `browser_open` / `browser_snapshot` / `browser_click` / `browser_type` / `browser_scroll`。
+
+**执行者在主进程，因为浏览器视图在主进程。** 初版把面板组件当执行者，想让”面板关着就无法操作”成为结构约束；实际后果是收起侧栏会连同视图一起销毁、任务中途丢页面和登录态，而且在 workspace 路由之外的会话（webchat 就是一例）根本没有执行者。现在可见性由 `open` 拉起面板承担，而不是由执行者的生命周期承担。
+
+**但点击必须由面板托管视图。** 实测：主进程自行摆放的视图，第一次合成点击会被吞掉；面板托管过的视图每次都命中。排除过的假设包括 `setVisible(false)`、把视图停到窗口外、视图不在屏内、首次显示后的重排、焦点与 `buttons` 位缺失、导航未及时提交——坐标与视口在失败与成功两次之间完全一致（`156,235` / `576x720`），因此不是坐标问题。结论是合成输入需要面板真正托管过的视图。所以 `click` / `type` / `scroll` 先请求拉起面板并等待托管（`PANEL_WAIT_MS`），拿不到才退回自摆放尽力执行。这同时也是诚实的行为：agent 要动手，用户就该看见。
+
+由 agent 打开的面板带 `openedByAgent` 标记，路由切换不会关掉它（工作台默认属于对话视图，离开就关）——否则任务中途换页不只是把工作藏起来，而是直接让点击失效。用户显式关闭仍然有效。
 
 CDP 走 Electron 的进程内 `webContents.debugger`，**不使用** `--remote-debugging-port`：后者会开一个真实 TCP 监听，把 app 内每一个 WebContents（包括携带用户登录态的 nexu renderer）暴露给任意本地进程，过滤代理无法兜底，因为任何进程都能绕过代理直连端口。
+
+#### 已知问题：controller 重启后 relay 不恢复（未解决）
+
+**症状**：`pnpm dev restart controller` 之后，桌面 relay 不再收到命令。agent 调用任何浏览器工具都得到 `no desktop browser panel is listening`，模型通常退回 Computer Use 去操作用户的真实浏览器——正是本方案要避免的结果。
+
+**规避**（开发环境）：
+
+```
+pnpm dev stop
+lsof -nP -iTCP:<controller port> | grep LISTEN   # 确认没有残留监听进程，有就 kill -9
+pnpm dev start
+```
+
+只重启桌面端往往不够：`pnpm dev` 会把 controller 跟丢，留下一个孤儿进程——`pnpm dev status controller` 报 `stopped`，而该 pid 仍在监听且 `/health` 返回 200。启动器据此拒绝启动桌面端（报 `controller is not running`），于是 relay 根本没机会连上。这是 `tools/dev` 的问题，不是运行时的。
+
+**已排除**：abort 信号传播（改为读取与空闲超时显式竞速后仍不恢复）；连接握手挂起（已加 `CONNECT_TIMEOUT_MS`）；多个 controller 实例抢占同一端口（实测只有单个监听进程——`lsof -ti:PORT` 会把客户端连接一并列出，据此判断多实例是误读）。
+
+**最后一次测量**：单实例、controller 与 desktop 全程 `running`，t+20s 至 t+100s 持续 503，且 `agent-browser.log` 在 `connected` 之后**不再产生任何条目**。说明读取仍然卡死，连失败路径都没走到。下次排查从这里入手：为什么竞速里的空闲超时没有触发；并先用上面的方式确认环境里没有孤儿 controller，否则测的不是真实行为。
+
+排查日志在 `<userData>/logs/agent-browser.log`（开发环境为 `.tmp/desktop/electron/user-data/logs/`），记录 connect / end / fail 全过程。
 
 元素引用（`ref`）建立在 `backendDOMNodeId` 上，它比产出它的 AX 树活得久，因此 ref 在页面生命周期内稳定，只在跨文档导航（`did-start-navigation` 且 `isInPlace === false`）时重置。每个成功动作都返回证据而非空回执：`open`/`snapshot` 返回页面元素，`click`/`type` 返回被操作元素**之后**的状态。浏览器可以读回（桌面点击不能），所以“成功了”和“这是操作后的元素”花同样一次往返，而只有后者可核对。
 
@@ -93,7 +119,9 @@ Controller 的 `GET /api/v1/runtime-config` 返回配置、当前安装状态和
 
 - 关闭两项能力时，不编译浏览器/Computer Use 工具；非沙箱 host `exec` 保持拒绝，不能成为隐式电脑控制后门。
 - 开启浏览器控制后，编译配置包含 `nexu-browser` plugin 和 `browser_*` agent tool allowlist；顶层 `browser` 块、`browser` 工具和 OpenClaw 内置 browser plugin 在任何开关状态下都不出现。
-- 面板未打开时命令带解释失败而不是静默执行；不在对话页时 `open` 同样被拒绝。
+- 冷启动后无需用户先打开侧栏：`open` 直接返回真实快照，`click` 首次即命中（跨两次冷重启验证）。
+- 收起侧栏只隐藏不销毁：页面、登录态与元素引用存活，重开面板按固定 tab id 认领回来。
+- 导航之后不再把新页面上同名 ref 当作"你操作的那个元素"报回。
 - 开启 Computer Use 后，仅在有效绝对路径存在时写入 `mcp.servers.cua-driver`；缺失时 UI 明确显示未安装。
 - 已启用的 Peekaboo 在 controller 重启时自动恢复 Nexu 专用 daemon，关闭开关、回滚或退出 controller 时停止该 daemon。
 - macOS 15 以下即使持久化配置残留 `enabled=true`，也不会启动 Peekaboo 或编译 MCP，并且设置页仍允许关闭残留开关。

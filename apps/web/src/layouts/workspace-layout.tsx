@@ -16,11 +16,11 @@ import {
 import { authClient } from "@/lib/auth-client";
 import {
   closeBrowserPanel,
+  closeBrowserPanelForRouting,
   closeBrowserPanelForSessionNavigation,
   useBrowserPanel,
 } from "@/lib/browser/browser-panel-store";
 import { EmbeddedBrowser } from "@/lib/browser/embedded-browser";
-import { useAgentBrowserRelay } from "@/lib/browser/use-agent-browser-relay";
 import { exportBoardAsZip } from "@/lib/canvas/canvas-export";
 import { CanvasBoardTitle } from "@/lib/canvas/canvas-toolbar";
 import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
@@ -484,7 +484,6 @@ function WorkspaceLayoutContent() {
   const browserPanel = useBrowserPanel();
   // Listens from the layout, not the panel: the agent's first command is
   // usually the one that opens the panel.
-  useAgentBrowserRelay(true);
   const rightSidebarOpen = canvasSidebarOpen || browserPanel.isOpen;
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
@@ -639,7 +638,7 @@ function WorkspaceLayoutContent() {
 
     if (!isSessionRoute && rightSidebarOpen) {
       closeCanvasSidebar();
-      closeBrowserPanel();
+      closeBrowserPanelForRouting();
       return;
     }
 
