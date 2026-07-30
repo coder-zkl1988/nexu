@@ -492,6 +492,32 @@ const en = {
   "settings.general.languageHint": "Choose your interface language",
   "settings.section.desktop": "Application behavior",
   "settings.section.data": "Data & Privacy",
+  "automation.title": "Devices & automation",
+  "automation.loading": "Reading local capabilities...",
+  "automation.loadFailed": "Unable to read local automation settings",
+  "automation.retry": "Try again",
+  "automation.retrying": "Retrying...",
+  "automation.updateFailed": "Unable to update local automation settings",
+  "automation.updated": "Local automation settings updated",
+  "automation.browser.title": "Browser control",
+  "automation.computer.title": "Computer Use",
+  "automation.computer.ready": "Computer control is ready",
+  "automation.computer.installed": "Computer control is available",
+  "automation.computer.permissionRequired": "System permission is required",
+  "automation.computer.backendUnavailable": "Computer control is not running",
+  "automation.computer.statusUnknown":
+    "Unable to confirm the computer control status",
+  "automation.computer.requiresMacOS13":
+    "Computer control requires macOS 13 or later",
+  "automation.computer.permissionAccessibility": "Accessibility",
+  "automation.computer.permissionScreenRecording": "Screen Recording",
+  "automation.computer.permissionHint":
+    "macOS adds \u201cCua Driver\u201d to the permission list for you \u2014 just switch it on in the settings pane that opens. You do not need to add it by hand.",
+  "automation.computer.requestPermissions": "Grant system permissions",
+  "automation.computer.permissionRequestFailed":
+    "Unable to request the system permission",
+  "automation.computer.unavailable":
+    "Computer control is not included in this build",
   "settings.desktop.launchAtLogin": "Launch at startup",
   "settings.desktop.launchAtLoginHint":
     "Automatically open Tabby when your computer starts.",

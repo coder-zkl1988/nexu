@@ -1,7 +1,7 @@
 {
   "id": "nexu-toolcall-guard",
   "name": "Nexu Tool Call Guard",
-  "description": "Breaks infinite tool-call retry loops when a model repeatedly fails argument validation (e.g. emits empty arguments with no progress), preventing runaway token usage.",
+  "description": "Restricts local browser and computer automation to desktop main sessions, and breaks infinite tool-call retry loops when a model repeatedly fails argument validation.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

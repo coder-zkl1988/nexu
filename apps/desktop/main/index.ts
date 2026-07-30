@@ -52,6 +52,7 @@ import {
 } from "./ipc";
 import { getDesktopRuntimePlatformAdapter } from "./platforms";
 import { resolveLaunchdPaths } from "./platforms/mac/launchd-paths";
+import { expandHomePath } from "./platforms/shared/runtime-roots";
 import type { PrepareForUpdateInstallArgs } from "./platforms/types";
 import { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
 import {
@@ -80,6 +81,7 @@ import {
   runTeardownAndExit,
   teardownLaunchdServices,
 } from "./services";
+import { AgentBrowserRelay } from "./services/agent-browser-relay";
 import {
   type DesktopShellPreferences,
   applyDesktopShellPreferencesOnStartup,
@@ -92,6 +94,7 @@ import {
   startDesktopDevInspectServer,
   stopDesktopDevInspectServer,
 } from "./services/dev-inspect-server";
+import { AGENT_TAB_ID } from "./services/embedded-browser-manager";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
 import {
@@ -449,6 +452,7 @@ if (sentryDsn && readCrashReportsConsent()) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let agentBrowserRelay: AgentBrowserRelay | null = null;
 let deskpetWindow: BrowserWindow | null = null;
 let deskpetSize: DesktopDeskpetSize = "medium";
 let deskpetAlwaysOnTop = true;
@@ -685,6 +689,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
 
   try {
     sleepGuard?.dispose(reason);
+    agentBrowserRelay?.stop();
+    agentBrowserRelay = null;
     unsubscribeIpc?.();
     unsubscribeIpc = null;
     unsubscribeDeskpetRuntime?.();
@@ -1193,6 +1199,40 @@ function getMainWindowId(): number | null {
   return mainWindow?.webContents.id ?? null;
 }
 
+function startAgentBrowserRelay(): void {
+  if (agentBrowserRelay) return;
+  agentBrowserRelay = new AgentBrowserRelay({
+    controllerBaseUrl: runtimeConfig.urls.controllerBase,
+    getWindow: () => mainWindow,
+    onOpen: (url) => {
+      // The browser view is already loading; the panel is how the user gets to
+      // watch it, so raise it in the window that owns the view.
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!mainWindow.isVisible()) mainWindow.show();
+      sendHostDesktopCommand({
+        type: "browser:agent-opened",
+        tabId: AGENT_TAB_ID,
+        url,
+      });
+    },
+    onRunEnded: (sessionKey) => {
+      sendHostDesktopCommand({ type: "browser:agent-run-ended", sessionKey });
+    },
+    onLog: (message) => {
+      console.error(`[agent-browser] ${message}`);
+      writeDesktopMainLog({
+        source: "agent-browser",
+        stream: "stderr",
+        kind: "lifecycle",
+        message,
+        logFilePath: getDesktopLogFilePath("agent-browser.log"),
+        windowId: getMainWindowId(),
+      });
+    },
+  });
+  agentBrowserRelay.start();
+}
+
 function logColdStart(message: string): void {
   writeDesktopMainLog({
     source: "cold-start",
@@ -1316,10 +1356,7 @@ async function runLaunchdColdStart(): Promise<void> {
   sendSetupProgress("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
-  const nexuHome = runtimeConfig.paths.nexuHome.replace(
-    /^~/,
-    process.env.HOME ?? "",
-  );
+  const nexuHome = expandHomePath(runtimeConfig.paths.nexuHome);
   const runtimeRoots = runtimePlatformAdapter.capabilities.resolveRuntimeRoots({
     app,
     electronRoot,
@@ -1397,6 +1434,8 @@ async function runLaunchdColdStart(): Promise<void> {
     platformTemplatesDir,
     openclawBinPath,
     openclawExtensionsDir,
+    localAutomationPreviewEnabled:
+      isDev || runtimeConfig.localAutomationPreviewEnabled ? "true" : undefined,
     skillNodePath,
     openclawTmpDir,
     proxyEnv,
@@ -2458,6 +2497,7 @@ app.whenReady().then(async () => {
         await runDesktopColdStart();
       }
       await refreshProxyDiagnostics();
+      startAgentBrowserRelay();
       healthCheck.recordSuccess();
     } catch (error) {
       await refreshProxyDiagnostics().catch(() => undefined);

@@ -6,9 +6,12 @@ import {
   getAnnotationTextInputPosition,
 } from "../src/lib/browser/browser-annotation-editor";
 import {
+  closeBrowserPanel,
+  closeBrowserPanelForRouting,
   closeBrowserPanelForSessionNavigation,
   getBrowserPanelState,
   openBrowserPanel,
+  releaseAgentBrowserPanelPin,
   resetBrowserPanelForTests,
 } from "../src/lib/browser/browser-panel-store";
 import {
@@ -200,7 +203,48 @@ describe("embedded browser helpers", () => {
     expect(getBrowserPanelState()).toEqual({
       isOpen: false,
       sessionKey: null,
+      openedByAgent: false,
     });
+  });
+
+  it("keeps an agent's browser open across navigation", () => {
+    // The panel is what places the browser view, so closing it mid-task does
+    // not just hide the work — it stops the agent's clicks from landing.
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(false);
+    expect(closeBrowserPanelForRouting()).toBe(false);
+    expect(getBrowserPanelState().isOpen).toBe(true);
+
+    // An explicit close still ends it.
+    closeBrowserPanel();
+    expect(getBrowserPanelState().isOpen).toBe(false);
+  });
+
+  it("releases the agent pin when the run ends, keeping the panel open", () => {
+    // The pin protects an agent mid-task; once the run is over it has no
+    // purpose. The panel stays up — the user may be reading the result — but
+    // goes back to closing on navigation like any other workbench.
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    releaseAgentBrowserPanelPin();
+
+    expect(getBrowserPanelState().isOpen).toBe(true);
+    expect(getBrowserPanelState().openedByAgent).toBe(false);
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(true);
+    expect(getBrowserPanelState().isOpen).toBe(false);
   });
 
   it("builds a visible arrow head at the annotation endpoint", () => {

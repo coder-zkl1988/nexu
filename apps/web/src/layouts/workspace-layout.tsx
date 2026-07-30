@@ -16,6 +16,7 @@ import {
 import { authClient } from "@/lib/auth-client";
 import {
   closeBrowserPanel,
+  closeBrowserPanelForRouting,
   closeBrowserPanelForSessionNavigation,
   useBrowserPanel,
 } from "@/lib/browser/browser-panel-store";
@@ -481,6 +482,8 @@ function WorkspaceLayoutContent() {
   const { isOpen: canvasSidebarOpen, close: closeCanvasSidebar } =
     useA2UISidebar();
   const browserPanel = useBrowserPanel();
+  // Listens from the layout, not the panel: the agent's first command is
+  // usually the one that opens the panel.
   const rightSidebarOpen = canvasSidebarOpen || browserPanel.isOpen;
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
@@ -635,7 +638,7 @@ function WorkspaceLayoutContent() {
 
     if (!isSessionRoute && rightSidebarOpen) {
       closeCanvasSidebar();
-      closeBrowserPanel();
+      closeBrowserPanelForRouting();
       return;
     }
 

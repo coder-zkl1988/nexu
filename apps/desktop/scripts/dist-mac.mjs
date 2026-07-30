@@ -652,6 +652,14 @@ async function ensureBuildConfig() {
             existingConfig.NEXU_DESKTOP_AUTO_UPDATE_ENABLED,
         }
       : {}),
+    ...((merged.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED ??
+    existingConfig.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED)
+      ? {
+          NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED:
+            merged.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED ??
+            existingConfig.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED,
+        }
+      : {}),
     NEXU_DESKTOP_BUILD_SOURCE:
       merged.NEXU_DESKTOP_BUILD_SOURCE ??
       existingConfig.NEXU_DESKTOP_BUILD_SOURCE ??

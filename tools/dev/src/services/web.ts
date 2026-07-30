@@ -2,6 +2,7 @@ import {
   createNodeOptions,
   ensureDirectory,
   ensureParentDirectory,
+  ensureProcessStopped,
   getListeningPortPid,
   readDevLock,
   removeDevLock,
@@ -189,14 +190,21 @@ export async function stopWebDevProcess(): Promise<WebDevSnapshot> {
   );
 
   if (snapshot.pid) {
-    await terminateProcess(snapshot.pid);
+    await ensureProcessStopped(snapshot.pid);
   }
 
+  // The listener holds the port. Its death is verified, not assumed: this used
+  // to fire SIGTERM and remove the lock regardless, and a listener that
+  // survived the signal became an orphan the launcher then reported as
+  // `stopped` — while it kept serving on the port.
   try {
     const listenerPid = await getWebPortPid();
-    await terminateProcess(listenerPid);
-  } catch {}
+    await ensureProcessStopped(listenerPid);
+  } catch {
+    // Nothing is listening — the listener is already gone.
+  }
 
+  // Reached only once nothing holds the port, so `stopped` stays truthful.
   await removeDevLock(webDevLockPath);
 
   return snapshot;
@@ -262,6 +270,24 @@ export async function getCurrentWebDevSnapshot(): Promise<WebDevSnapshot> {
     };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      // No lock. Before calling that `stopped`, check the port: a stop that
+      // lost its listener leaves a live web server behind, and reporting it as
+      // cleanly stopped hides the orphan from the launcher. Reported as
+      // `stale`, the start/stop paths kill the orphan and heal.
+      let orphanPid: number | undefined;
+      try {
+        orphanPid = await getWebPortPid();
+      } catch {}
+      if (orphanPid) {
+        return {
+          service: "web",
+          status: "stale",
+          listenerPid: orphanPid,
+          staleReason:
+            "no dev lock, but a process is still listening on the web port",
+        };
+      }
+
       return {
         service: "web",
         status: "stopped",

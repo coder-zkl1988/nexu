@@ -25,6 +25,7 @@ import type {
   DesktopBrowserControlResult,
 } from "../../../../desktop/shared/host";
 import { getApiV1Artifacts } from "../../../lib/api/sdk.gen";
+import { useAgentBrowserTabRequest } from "./agent-browser-relay";
 import { BrowserAnnotationEditor } from "./browser-annotation-editor";
 
 export interface PreviewArtifact {
@@ -53,9 +54,13 @@ type BrowserTab = {
 
 const MAX_TABS = 8;
 
-function createBrowserTab(url = "", title = "New tab"): BrowserTab {
+function createBrowserTab(
+  url = "",
+  title = "New tab",
+  id: string = crypto.randomUUID(),
+): BrowserTab {
   return {
-    id: crypto.randomUUID(),
+    id,
     title,
     url,
     address: url,
@@ -178,6 +183,7 @@ export function EmbeddedBrowser({
   const historyPanelRef = useRef<HTMLElement>(null);
   const lastAutoArtifactIdRef = useRef<string | null>(null);
   const desktopBrowser = hasDesktopBrowserHost();
+  const agentTabRequest = useAgentBrowserTabRequest();
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 
   const updateTab = useCallback(
@@ -380,12 +386,32 @@ export function EmbeddedBrowser({
     updateTab,
   ]);
 
+  // Collapsing the panel hides the view; it does not dispose it. The page, its
+  // login state and the agent's element refs outlive the panel, so reopening
+  // resumes rather than restarts — and an agent mid-task is not cut off just
+  // because the user wanted the sidebar back.
   useEffect(
     () => () => {
-      if (desktopBrowser) void controlDesktopBrowser({ action: "dispose" });
+      if (desktopBrowser) void controlDesktopBrowser({ action: "hide" });
     },
     [desktopBrowser],
   );
+
+  // The agent drives its own tab in the main process. Adopt it by id so the
+  // user sees the page it is working on; the main process already navigated,
+  // so this only mirrors the tab into the panel's own list.
+  useEffect(() => {
+    if (!agentTabRequest) return;
+    const { tabId, url } = agentTabRequest;
+    setTabs((current) =>
+      current.some((tab) => tab.id === tabId)
+        ? current.map((tab) =>
+            tab.id === tabId ? { ...tab, url, address: url } : tab,
+          )
+        : [...current, createBrowserTab(url, "New tab", tabId)],
+    );
+    setActiveTabId(tabId);
+  }, [agentTabRequest]);
 
   const addTab = (): void => {
     if (tabs.length >= MAX_TABS) return;

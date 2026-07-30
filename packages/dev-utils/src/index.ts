@@ -3,6 +3,7 @@ export { createDevLogger } from "./logger.js";
 export type { DevLogger } from "./logger.js";
 export {
   createNodeOptions,
+  ensureProcessStopped,
   getListeningPortPid,
   isProcessRunning,
   terminateProcess,

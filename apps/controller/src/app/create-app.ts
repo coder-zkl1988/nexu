@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
+import { isTrustedLocalRequest } from "../lib/local-request-guard.js";
+import { registerAgentBrowserRoutes } from "../routes/agent-browser-routes.js";
 import { registerArtifactRoutes } from "../routes/artifact-routes.js";
 import { registerBotRoutes } from "../routes/bot-routes.js";
 import { registerCanvasRoutes } from "../routes/canvas-routes.js";
@@ -37,6 +39,37 @@ export function createApp(container: ControllerContainer) {
 
   app.use("*", async (c, next) => {
     c.set("requestId", crypto.randomUUID());
+    await next();
+  });
+  app.use("*", async (c, next) => {
+    // The desktop shell renders from file://, so its boot poll of the ready
+    // endpoint arrives with an opaque origin and cross-site fetch metadata —
+    // the exact shape this guard exists to reject. It is also the one request
+    // that must succeed before anything same-origin exists to send it: the
+    // shell only mounts the web surface once this answers, and in packaged
+    // mode the web sidecar proxies it here verbatim. Measured on CI: with the
+    // guard unconditional, the packaged app sat on the boot screen through
+    // every health attempt while this endpoint answered ready:true to plain
+    // probes. GET-only, path-exact, loopback host still enforced below;
+    // discloses readiness state only.
+    const isBootReadyProbe =
+      c.req.method === "GET" &&
+      new URL(c.req.url).pathname === "/api/internal/desktop/ready" &&
+      isTrustedLocalRequest({
+        requestUrl: c.req.url,
+        host: c.req.header("host"),
+      });
+    if (
+      !isBootReadyProbe &&
+      !isTrustedLocalRequest({
+        requestUrl: c.req.url,
+        host: c.req.header("host"),
+        origin: c.req.header("origin"),
+        secFetchSite: c.req.header("sec-fetch-site"),
+      })
+    ) {
+      return c.text("Forbidden", 403);
+    }
     await next();
   });
   app.use(
@@ -99,6 +132,7 @@ export function createApp(container: ControllerContainer) {
   registerScheduleRoutes(app, container);
   registerMediaRoutes(app, container);
   registerCanvasRoutes(app);
+  registerAgentBrowserRoutes(app, container);
 
   app.doc("/openapi.json", {
     openapi: "3.1.0",

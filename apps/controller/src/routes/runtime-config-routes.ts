@@ -1,15 +1,58 @@
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import type { ControllerContainer } from "../app/container.js";
 import { getLocalIp } from "../lib/local-ip.js";
+import { LocalAutomationUnavailableError } from "../services/local-automation-service.js";
 import {
   controllerRuntimeConfigSchema,
   deviceControlConfigSchema,
+  localAutomationConfigSchema,
 } from "../store/schemas.js";
 import type { ControllerBindings } from "../types.js";
+
+const localAutomationStatusSchema = z.object({
+  previewEnabled: z.boolean(),
+  computerUseAvailable: z.boolean(),
+  // Preserve null in the generated SDK while the Hono generator emits an OAS 3.1 document.
+  computerUseUnavailableReason: z
+    .enum(["missing-sidecar", "unsupported-os"])
+    .nullable()
+    .openapi({
+      type: ["string", "null"],
+      enum: ["missing-sidecar", "unsupported-os", null],
+    }),
+  computerUseBinaryPath: z
+    .string()
+    .nullable()
+    .openapi({ type: ["string", "null"] }),
+  computerUseBackend: z
+    .enum(["cua-driver"])
+    .nullable()
+    .openapi({
+      type: ["string", "null"],
+      enum: ["cua-driver", null],
+    }),
+  computerUsePermissionState: z.enum([
+    "ready",
+    "permission-required",
+    "unavailable",
+    "unknown",
+    "disabled",
+  ]),
+  computerUsePermissions: z.array(
+    z.object({
+      name: z.string(),
+      granted: z.boolean(),
+      required: z.boolean(),
+    }),
+  ),
+});
 
 const runtimeConfigEnvelopeSchema = z.object({
   runtime: controllerRuntimeConfigSchema,
   deviceControl: deviceControlConfigSchema,
+  localAutomation: localAutomationConfigSchema,
+  localAutomationStatus: localAutomationStatusSchema,
 });
 
 const runtimeConfigPutEnvelopeSchema = z.object({
@@ -35,6 +78,14 @@ const hostStatusResponseSchema = z.object({
   diskPath: z.string().optional(),
 });
 
+function assertJsonContentType(contentType: string | undefined): void {
+  if (!contentType?.trim().toLowerCase().startsWith("application/json")) {
+    throw new HTTPException(415, {
+      message: "Content-Type must be application/json",
+    });
+  }
+}
+
 export function registerRuntimeConfigRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
@@ -54,17 +105,103 @@ export function registerRuntimeConfigRoutes(
       },
     }),
     async (c) => {
-      const [runtime, deviceControl] = await Promise.all([
+      const [runtime, deviceControl, localAutomation] = await Promise.all([
         container.runtimeConfigService.getRuntimeConfig(),
         container.configStore.getDeviceControlConfig(),
+        container.configStore.getLocalAutomationConfig(),
       ]);
+      const localAutomationStatus =
+        await container.localAutomationService.getStatus(localAutomation);
       return c.json(
         {
           runtime,
           deviceControl: { ...deviceControl, localIp: getLocalIp() },
+          localAutomation,
+          localAutomationStatus,
         },
         200,
       );
+    },
+  );
+
+  const localAutomationPatchSchema = z.object({
+    browser: z.object({ enabled: z.boolean() }).optional(),
+    computerUse: z.object({ enabled: z.boolean() }).optional(),
+  });
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/runtime-config/local-automation",
+      tags: ["Runtime Config"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: localAutomationPatchSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                localAutomation: localAutomationConfigSchema,
+              }),
+            },
+          },
+          description: "Updated local automation settings",
+        },
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      try {
+        const localAutomation =
+          await container.localAutomationService.updateConfig(body);
+        return c.json({ localAutomation }, 200);
+      } catch (error: unknown) {
+        if (error instanceof LocalAutomationUnavailableError) {
+          throw new HTTPException(409, { message: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/runtime-config/local-automation/computer-use/permissions",
+      tags: ["Runtime Config"],
+      request: {
+        body: {
+          content: { "application/json": { schema: z.object({}) } },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({ requested: z.literal(true) }),
+            },
+          },
+          description: "Requested the platform grants Computer Use needs",
+        },
+      },
+    }),
+    async (c) => {
+      assertJsonContentType(c.req.header("content-type"));
+      c.req.valid("json");
+      try {
+        await container.localAutomationService.requestComputerUsePermissions();
+        return c.json({ requested: true as const }, 200);
+      } catch (error: unknown) {
+        if (error instanceof LocalAutomationUnavailableError) {
+          throw new HTTPException(409, { message: error.message });
+        }
+        throw error;
+      }
     },
   );
 

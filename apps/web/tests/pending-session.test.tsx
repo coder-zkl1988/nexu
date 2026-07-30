@@ -2,7 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { PendingSessionPage } from "../src/pages/pending-session";
+import {
+  PendingSessionPage,
+  shouldShowPendingStreamingText,
+  transitionPendingStream,
+} from "../src/pages/pending-session";
 
 vi.mock("@/lib/api/event-source", () => ({
   createLocalStreamSSEClient: () => ({
@@ -64,6 +68,34 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("PendingSessionPage", () => {
+  it("never displays stale streamed success text after the run fails", () => {
+    expect(shouldShowPendingStreamingText("error", "电脑操作已完成。")).toBe(
+      false,
+    );
+    expect(shouldShowPendingStreamingText("streaming", "处理中")).toBe(true);
+  });
+
+  it("treats error and aborted as terminal against late delta and final events", () => {
+    let lifecycle = transitionPendingStream("active", "error");
+    expect(lifecycle).toEqual({ accepted: true, lifecycle: "failed" });
+    lifecycle = transitionPendingStream(lifecycle.lifecycle, "delta");
+    expect(lifecycle).toEqual({ accepted: false, lifecycle: "failed" });
+    lifecycle = transitionPendingStream(lifecycle.lifecycle, "final");
+    expect(lifecycle).toEqual({ accepted: false, lifecycle: "failed" });
+
+    expect(transitionPendingStream("active", "aborted")).toEqual({
+      accepted: true,
+      lifecycle: "failed",
+    });
+  });
+
+  it("keeps the SSE lifecycle active after session lookup fails", () => {
+    let lifecycle = transitionPendingStream("active", "session_lookup_failed");
+    expect(lifecycle).toEqual({ accepted: true, lifecycle: "active" });
+    lifecycle = transitionPendingStream(lifecycle.lifecycle, "final");
+    expect(lifecycle).toEqual({ accepted: true, lifecycle: "succeeded" });
+  });
+
   it("uses the same centered chat layout and input shell as session detail", () => {
     const queryClient = new QueryClient({
       defaultOptions: {

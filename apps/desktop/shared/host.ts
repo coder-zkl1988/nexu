@@ -107,7 +107,19 @@ export type DesktopBrowserControl =
       action: "command";
       tabId: string;
       command: "back" | "forward" | "reload" | "stop";
-    };
+    }
+  // Agent-facing actions. `click-ref` and `type-ref` address elements by a ref
+  // handed out by `snapshot`, so the agent never has to guess coordinates.
+  | { action: "snapshot"; tabId: string; maxNodes?: number }
+  | { action: "click-ref"; tabId: string; ref: string }
+  | {
+      action: "type-ref";
+      tabId: string;
+      ref: string;
+      text: string;
+      submit?: boolean;
+    }
+  | { action: "scroll"; tabId: string; deltaY: number };
 
 export type DesktopBrowserControlResult =
   | { kind: "ok" }
@@ -129,7 +141,21 @@ export type DesktopBrowserControlResult =
         ariaLabel: string;
       } | null;
     }
-  | { kind: "capture"; dataUrl: string };
+  | { kind: "capture"; dataUrl: string }
+  | {
+      kind: "snapshot";
+      url: string;
+      title: string;
+      truncated: boolean;
+      nodes: Array<{
+        ref: string;
+        role: string;
+        name: string;
+        value?: string;
+        disabled?: boolean;
+        depth: number;
+      }>;
+    };
 
 export type StartupProbeStatus = "ok" | "error";
 
@@ -724,6 +750,23 @@ export type DesktopDeskpetSize = "small" | "medium" | "large";
 export type DesktopDeskpetMoodSource = "auto" | "manual" | "runtime";
 
 export type HostDesktopCommand =
+  | {
+      /**
+       * The agent opened a page in the browser view it drives. The panel is
+       * what makes that visible, so it raises itself and adopts the agent tab.
+       */
+      type: "browser:agent-opened";
+      tabId: string;
+      url: string;
+    }
+  | {
+      /**
+       * The run that drove the browser ended. The panel stays open but drops
+       * its agent pin, so routing closes it again like any other workbench.
+       */
+      type: "browser:agent-run-ended";
+      sessionKey: string;
+    }
   | {
       type: "develop:focus-surface";
       surface: Exclude<DesktopSurface, "control">;

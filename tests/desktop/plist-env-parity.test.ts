@@ -46,6 +46,7 @@ describe("controller plist env var parity with manifests", () => {
     nodeV8Coverage: "/tmp/nexu-coverage/node-v8",
     desktopE2ECoverage: "1",
     desktopE2ECoverageRunId: "run-123",
+    localAutomationPreviewEnabled: "true",
   };
 
   /**
@@ -87,6 +88,7 @@ describe("controller plist env var parity with manifests", () => {
     "NODE_V8_COVERAGE",
     "NEXU_DESKTOP_E2E_COVERAGE",
     "NEXU_DESKTOP_E2E_COVERAGE_RUN_ID",
+    "NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED",
     // Runtime control
     "RUNTIME_MANAGE_OPENCLAW_PROCESS",
     "RUNTIME_GATEWAY_PROBE_ENABLED",
@@ -148,6 +150,7 @@ describe("controller plist env var parity with manifests", () => {
       nodeV8Coverage: undefined,
       desktopE2ECoverage: undefined,
       desktopE2ECoverageRunId: undefined,
+      localAutomationPreviewEnabled: undefined,
     };
 
     const plist = generatePlist("controller", minimalEnv);
@@ -158,6 +161,9 @@ describe("controller plist env var parity with manifests", () => {
     expect(plist).not.toContain("<key>NODE_V8_COVERAGE</key>");
     expect(plist).not.toContain("<key>NEXU_DESKTOP_E2E_COVERAGE</key>");
     expect(plist).not.toContain("<key>NEXU_DESKTOP_E2E_COVERAGE_RUN_ID</key>");
+    expect(plist).not.toContain(
+      "<key>NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED</key>",
+    );
     // Required vars should still be present
     expect(plist).toContain("<key>PORT</key>");
     expect(plist).toContain("<key>OPENCLAW_CONFIG_PATH</key>");

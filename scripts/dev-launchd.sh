@@ -181,6 +181,8 @@ start_services() {
   rm -rf "$REPO_ROOT/packages/shared/dist" "$REPO_ROOT/apps/controller/dist" "$REPO_ROOT/apps/desktop/dist-electron"
   pnpm build
 
+  pnpm --dir "$REPO_ROOT/tools/dev" exec tsx ./src/prepare-computer-use-sidecar.ts
+
   # Ensure desktop shell dist exists (Electron loadFile needs it on disk)
   if [ ! -f "$REPO_ROOT/apps/desktop/dist/index.html" ]; then
     echo "Building desktop shell..."

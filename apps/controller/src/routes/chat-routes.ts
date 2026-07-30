@@ -6,6 +6,7 @@ import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
 import { logger } from "../lib/logger.js";
 import { ChatService } from "../services/chat-service.js";
+import { LocalAutomationCompletionGuard } from "../services/local-automation-completion-guard.js";
 import { SessionBusyError } from "../services/session-run-registry.js";
 import type { ControllerBindings } from "../types.js";
 import {
@@ -82,6 +83,21 @@ export function registerChatRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
+  const localAutomationCompletionGuard = new LocalAutomationCompletionGuard();
+  if (typeof container.wsClient.on === "function") {
+    container.wsClient.on("agent", (payload) => {
+      localAutomationCompletionGuard.observeAgentEvent(payload);
+    });
+  } else {
+    // Without the agent event stream the guard observes nothing, so every run
+    // looks verified and desktop SSE stops downgrading unproven completions.
+    // The in-runtime nexu-toolcall-guard still covers the persisted message,
+    // but this layer is gone — say so instead of degrading silently.
+    logger.warn(
+      { reason: "no-agent-event-subscription" },
+      "local automation completion guard is inactive; desktop SSE will not downgrade unverified computer-use completions",
+    );
+  }
   const chatService = new ChatService(
     container.gatewayService,
     container.attachmentStore,
@@ -647,6 +663,7 @@ export function registerChatRoutes(
     }
 
     let aborted = false;
+    const terminalRunIds = new Set<string>();
     let streamCleanup: (() => void) | null = null;
     const stream = new ReadableStream({
       start(controller) {
@@ -671,6 +688,9 @@ export function registerChatRoutes(
           const evt = payload as Record<string, unknown>;
           if (runId && evt.runId !== runId) return;
           if (evt.sessionKey && evt.sessionKey !== sessionKey) return;
+          const eventRunId =
+            typeof evt.runId === "string" ? evt.runId : undefined;
+          if (eventRunId && terminalRunIds.has(eventRunId)) return;
 
           const state = evt.state as string;
           if (state === "delta") {
@@ -684,6 +704,22 @@ export function registerChatRoutes(
               }),
             );
           } else if (state === "final") {
+            if (eventRunId) terminalRunIds.add(eventRunId);
+            const finalFailure = eventRunId
+              ? localAutomationCompletionGuard.finalFailureFor(eventRunId)
+              : null;
+            if (finalFailure?.severity === "error") {
+              send(
+                "error",
+                JSON.stringify({
+                  runId: evt.runId,
+                  seq: evt.seq,
+                  errorKind: finalFailure.errorKind,
+                  errorMessage: finalFailure.errorMessage,
+                }),
+              );
+              return;
+            }
             send(
               "final",
               JSON.stringify({
@@ -691,12 +727,28 @@ export function registerChatRoutes(
                 seq: evt.seq,
                 message: evt.message,
                 stopReason: evt.stopReason,
+                // An advisory keeps the reply but marks it unconfirmed; the
+                // run did not fail, so it must not consume the error channel.
+                ...(finalFailure
+                  ? {
+                      noticeKind: finalFailure.errorKind,
+                      noticeMessage: finalFailure.errorMessage,
+                    }
+                  : {}),
               }),
             );
             // Don't close — there might be side_results after final
           } else if (state === "aborted") {
+            if (eventRunId) {
+              terminalRunIds.add(eventRunId);
+              localAutomationCompletionGuard.discardRun(eventRunId);
+            }
             send("aborted", JSON.stringify({ runId: evt.runId, seq: evt.seq }));
           } else if (state === "error") {
+            if (eventRunId) {
+              terminalRunIds.add(eventRunId);
+              localAutomationCompletionGuard.discardRun(eventRunId);
+            }
             send(
               "error",
               JSON.stringify({

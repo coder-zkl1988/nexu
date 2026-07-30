@@ -51,6 +51,12 @@ export interface PlistEnv {
   openclawBinPath: string;
   /** OpenClaw extensions directory */
   openclawExtensionsDir: string;
+  /** Platform-specific Computer Use backend */
+  computerUseBackend?: "cua-driver" | null;
+  /** Absolute path to the materialized Computer Use sidecar */
+  computerUseBinPath?: string | null;
+  /** Explicit opt-in for local automation in production builds */
+  localAutomationPreviewEnabled?: string;
   /** Skill NODE_PATH for controller module resolution */
   skillNodePath: string;
   /** TMPDIR for openclaw temp files */
@@ -118,6 +124,18 @@ function renderProxyEnvEntries(proxyEnv: Record<string, string>): string {
       ];
     })
     .join("");
+}
+
+function renderComputerUseEnvEntries(env: PlistEnv): string {
+  if (!env.computerUseBackend || !env.computerUseBinPath) {
+    return "";
+  }
+
+  return `
+        <key>COMPUTER_USE_BACKEND</key>
+        <string>${escapeXml(env.computerUseBackend)}</string>
+        <key>COMPUTER_USE_BIN</key>
+        <string>${escapeXml(env.computerUseBinPath)}</string>`;
 }
 
 /**
@@ -191,7 +209,15 @@ function generateControllerPlist(label: string, env: PlistEnv): string {
         <key>OPENCLAW_ELECTRON_EXECUTABLE</key>
         <string>${escapeXml(env.nodePath)}</string>
         <key>OPENCLAW_EXTENSIONS_DIR</key>
-        <string>${escapeXml(env.openclawExtensionsDir)}</string>
+        <string>${escapeXml(env.openclawExtensionsDir)}</string>${renderComputerUseEnvEntries(
+          env,
+        )}${
+          env.localAutomationPreviewEnabled !== undefined
+            ? `
+        <key>NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED</key>
+        <string>${escapeXml(env.localAutomationPreviewEnabled)}</string>`
+            : ""
+        }
         <key>NODE_PATH</key>
         <string>${escapeXml(env.skillNodePath)}</string>
         <key>OPENCLAW_DISABLE_BONJOUR</key>

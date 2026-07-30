@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
 import {
+  EMBEDDED_BROWSER_TOOLS,
   type OAuthConnectionState,
   compileOpenClawConfig,
   resolveControlUiRoot,
@@ -30,6 +31,7 @@ function createEnv(overrides: Record<string, unknown> = {}): ControllerEnv {
     runtimeSyncIntervalMs: 2000,
     runtimeHealthIntervalMs: 5000,
     defaultModelId: "link/gemini-3-flash-preview",
+    localAutomationPreviewEnabled: true,
     ...overrides,
   } as unknown as ControllerEnv;
 }
@@ -157,6 +159,267 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("denies host shell execution outside an explicit sandbox", () => {
+    const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
+    Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
+    try {
+      const result = compileOpenClawConfig(createConfig(), createEnv());
+      expect(result.tools?.exec?.security).toBe("deny");
+      expect(result.tools?.deny).toEqual(["exec", "process"]);
+    } finally {
+      if (previousSandboxEnabled === undefined) {
+        Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
+      } else {
+        process.env.SANDBOX_ENABLED = previousSandboxEnabled;
+      }
+    }
+  });
+
+  it("pins the control UI to explicit loopback origins", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+    expect(result.gateway.controlUi?.allowedOrigins).toEqual([
+      "http://localhost:5173",
+      "http://127.0.0.1:18789",
+      "http://localhost:18789",
+    ]);
+    expect(
+      result.gateway.controlUi?.dangerouslyAllowHostHeaderOriginFallback,
+    ).toBe(false);
+  });
+
+  it("keeps local automation absent when the persisted config predates it", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+
+    expect(result.mcp).toBeUndefined();
+    expect(result.tools?.exec?.security).toBe("deny");
+    expect(result.tools?.deny).toEqual(["exec", "process"]);
+    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
+  });
+
+  it("does not grant external command ownership or channel restarts", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+
+    expect(result.commands?.restart).toBe(false);
+    expect(result.commands?.ownerAllowFrom).toBeUndefined();
+  });
+
+  it("grants the embedded browser tools instead of control of the user's Chrome", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: true },
+          computerUse: { enabled: false },
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(result.agents.list[0]?.tools?.alsoAllow).toEqual(
+      expect.arrayContaining([...EMBEDDED_BROWSER_TOOLS]),
+    );
+    // OpenClaw silently blocks `agent_end` for non-bundled plugins without
+    // this grant, and the run-ended signal that unpins the browser panel dies
+    // with it — measured: the hook never fired until the flag was compiled.
+    expect(
+      (
+        result.plugins?.entries?.["nexu-browser"] as {
+          hooks?: { allowConversationAccess?: boolean };
+        }
+      )?.hooks?.allowConversationAccess,
+    ).toBe(true);
+    // OpenClaw's own browser tool drove the user's real Chrome through a
+    // paired extension. It is not compiled at all any more: the agent gets the
+    // browser panel inside the app, which needs no extension, no pairing, and
+    // carries no session the user did not open in it. The top-level `browser`
+    // block is gone from OpenClawConfig entirely, so the type — not this test —
+    // is what stops it coming back.
+    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.plugins?.entries?.browser).toBeUndefined();
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
+    expect(result.tools?.exec?.security).toBe("deny");
+    expect(result.tools?.deny).toEqual(["exec", "process"]);
+  });
+
+  it("withholds the embedded browser tools while the switch is off", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: false },
+        },
+      }),
+      createEnv(),
+    );
+
+    for (const tool of EMBEDDED_BROWSER_TOOLS) {
+      expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(tool);
+    }
+  });
+
+  it("fails closed when local automation preview is disabled", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: true },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        localAutomationPreviewEnabled: false,
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+
+    expect(result.mcp).toBeUndefined();
+    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.plugins?.entries?.browser).toBeUndefined();
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
+    expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(
+      "cua-driver__click",
+    );
+    expect(result.tools?.exec?.security).toBe("deny");
+  });
+
+  it("fails closed when the local automation preview flag is missing", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: true },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        localAutomationPreviewEnabled: undefined,
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+
+    expect(result.mcp).toBeUndefined();
+  });
+
+  it("registers the notarized CuaDriver bundle as the macOS MCP backend", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+    const server = result.mcp?.servers["cua-driver"] as
+      | Record<string, unknown>
+      | undefined;
+
+    expect(server).toMatchObject({
+      command: process.execPath,
+      transport: "stdio",
+    });
+    // The MCP process is a thin client of the daemon that owns the grants.
+    expect(server?.args).toEqual(["mcp", "--embedded"]);
+    expect(server?.toolFilter).toMatchObject({
+      include: expect.arrayContaining([
+        "click",
+        "type_text",
+        "set_value",
+        "get_window_state",
+      ]),
+    });
+    // Peekaboo's nested agent loop and remote-debugging browser are not part
+    // of the reviewed surface on any platform.
+    expect(server?.toolFilter).not.toMatchObject({
+      include: expect.arrayContaining(["agent"]),
+    });
+    expect(result.tools?.exec?.security).toBe("deny");
+  });
+
+  it("registers cua-driver on Windows and omits a missing sidecar", () => {
+    const enabledConfig = createConfig({
+      localAutomation: {
+        browser: { enabled: false },
+        computerUse: { enabled: true },
+      },
+    });
+    const available = compileOpenClawConfig(
+      enabledConfig,
+      createEnv({
+        computerUseBackend: "cua-driver",
+        computerUseBin: process.execPath,
+      }),
+    );
+    const unavailable = compileOpenClawConfig(
+      enabledConfig,
+      createEnv({
+        computerUseBackend: "cua-driver",
+        computerUseBin: "/definitely/missing/cua-driver.exe",
+      }),
+    );
+
+    expect(available.mcp?.servers["cua-driver"]).toMatchObject({
+      command: process.execPath,
+      args: ["mcp", "--embedded"],
+      env: {
+        CUA_DRIVER_EMBEDDED: "1",
+        CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
+      },
+      toolFilter: {
+        include: expect.arrayContaining([
+          "get_desktop_state",
+          "get_window_state",
+          "type_text",
+          "press_key",
+        ]),
+      },
+    });
+    expect(unavailable.mcp).toBeUndefined();
+    expect(available.tools?.exec?.security).toBe("deny");
+    expect(available.tools?.deny).toEqual(["exec", "process"]);
+  });
+
+  it("keeps command execution inside an explicitly enabled sandbox", () => {
+    const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
+    process.env.SANDBOX_ENABLED = "true";
+    try {
+      const result = compileOpenClawConfig(createConfig(), createEnv());
+
+      expect(result.tools?.exec).toMatchObject({
+        security: "full",
+        host: "sandbox",
+      });
+      expect(result.tools?.deny).toBeUndefined();
+    } finally {
+      if (previousSandboxEnabled === undefined) {
+        Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
+      } else {
+        process.env.SANDBOX_ENABLED = previousSandboxEnabled;
+      }
+    }
+  });
+
+  it("does not expose persisted Computer Use on an unsupported platform", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: true },
+        },
+      }),
+      createEnv({
+        computerUseBackend: "peekaboo",
+        computerUseBin: process.execPath,
+        computerUsePlatformSupported: false,
+      }),
+    );
+
+    expect(result.mcp).toBeUndefined();
+  });
+
   it("marks the desktop defaultBotId agent as the default agent", () => {
     const now = new Date().toISOString();
     const botBase = {
@@ -286,6 +549,14 @@ describe("compileOpenClawConfig", () => {
 
     expect(result.gateway.auth.mode).toBe("token");
     expect(result.gateway.auth.token).toBe("token-123");
+    expect(result.gateway.controlUi?.allowedOrigins).toEqual([
+      "http://localhost:5173",
+      "http://127.0.0.1:18789",
+      "http://localhost:18789",
+    ]);
+    expect(
+      result.gateway.controlUi?.dangerouslyAllowHostHeaderOriginFallback,
+    ).toBe(false);
     // bot modelId "anthropic/claude-sonnet-4" matches the proxied anthropic
     // descriptor (byok_anthropic); namespace prefix is stripped from model id.
     expect(result.agents.defaults?.model).toEqual({

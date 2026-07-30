@@ -18193,11 +18193,121 @@
                           "type": "string"
                         }
                       }
+                    },
+                    "localAutomation": {
+                      "type": "object",
+                      "properties": {
+                        "browser": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        },
+                        "computerUse": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        }
+                      }
+                    },
+                    "localAutomationStatus": {
+                      "type": "object",
+                      "properties": {
+                        "previewEnabled": {
+                          "type": "boolean"
+                        },
+                        "computerUseAvailable": {
+                          "type": "boolean"
+                        },
+                        "computerUseUnavailableReason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "missing-sidecar",
+                            "unsupported-os",
+                            null
+                          ]
+                        },
+                        "computerUseBinaryPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "computerUseBackend": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "cua-driver",
+                            null
+                          ]
+                        },
+                        "computerUsePermissionState": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "permission-required",
+                            "unavailable",
+                            "unknown",
+                            "disabled"
+                          ]
+                        },
+                        "computerUsePermissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "granted": {
+                                "type": "boolean"
+                              },
+                              "required": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "granted",
+                              "required"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "previewEnabled",
+                        "computerUseAvailable",
+                        "computerUseUnavailableReason",
+                        "computerUseBinaryPath",
+                        "computerUseBackend",
+                        "computerUsePermissionState",
+                        "computerUsePermissions"
+                      ]
                     }
                   },
                   "required": [
                     "runtime",
-                    "deviceControl"
+                    "deviceControl",
+                    "localAutomation",
+                    "localAutomationStatus"
                   ]
                 }
               }
@@ -18320,6 +18430,132 @@
                   },
                   "required": [
                     "runtime"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation": {
+      "patch": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "browser": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  },
+                  "computerUse": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated local automation settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "localAutomation": {
+                      "type": "object",
+                      "properties": {
+                        "browser": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        },
+                        "computerUse": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "localAutomation"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation/computer-use/permissions": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requested the platform grants Computer Use needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requested": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "requested"
                   ]
                 }
               }
@@ -21834,6 +22070,603 @@
                     "connections",
                     "viewport",
                     "selectedNodeIds"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/stream": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/act": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "command": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "open"
+                            ]
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "url"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "snapshot"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "action"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "click"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "ref"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "type"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "submit": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "ref",
+                          "text"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "scroll"
+                            ]
+                          },
+                          "deltaY": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "deltaY"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionKey",
+                  "command"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Command executed by the desktop browser panel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "snapshot": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "nodes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "ref": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  },
+                                  "disabled": {
+                                    "type": "boolean"
+                                  },
+                                  "depth": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "ref",
+                                  "role",
+                                  "name",
+                                  "depth"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "url",
+                            "title",
+                            "truncated",
+                            "nodes"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "snapshot"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "observation": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "element": {
+                              "type": "object",
+                              "properties": {
+                                "ref": {
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "disabled": {
+                                  "type": "boolean"
+                                },
+                                "depth": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "ref",
+                                "role",
+                                "name",
+                                "depth"
+                              ]
+                            },
+                            "navigated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "url",
+                            "title",
+                            "navigated"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "observation"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "error"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a local desktop session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No desktop browser panel is listening",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "The desktop browser panel did not answer in time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/run-ended": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sessionKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run-end signal forwarded to the desktop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/result": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          },
+                          "snapshot": {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "truncated": {
+                                "type": "boolean"
+                              },
+                              "nodes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "ref": {
+                                      "type": "string"
+                                    },
+                                    "role": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "disabled": {
+                                      "type": "boolean"
+                                    },
+                                    "depth": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "ref",
+                                    "role",
+                                    "name",
+                                    "depth"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "url",
+                              "title",
+                              "truncated",
+                              "nodes"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "ok",
+                          "snapshot"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          },
+                          "observation": {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "element": {
+                                "type": "object",
+                                "properties": {
+                                  "ref": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  },
+                                  "disabled": {
+                                    "type": "boolean"
+                                  },
+                                  "depth": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "ref",
+                                  "role",
+                                  "name",
+                                  "depth"
+                                ]
+                              },
+                              "navigated": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "url",
+                              "title",
+                              "navigated"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "ok",
+                          "observation"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean",
+                            "enum": [
+                              false
+                            ]
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "ok",
+                          "error"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "outcome"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "accepted"
                   ]
                 }
               }

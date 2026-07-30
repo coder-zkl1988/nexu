@@ -61,6 +61,7 @@ import {
   type CloudProfilesFile,
   type ControllerRuntimeConfig,
   type DeviceControlConfig,
+  type LocalAutomationConfig,
   type NexuConfig,
   cloudProfilesFileSchema,
   nexuConfigSchema,
@@ -692,6 +693,10 @@ export class NexuConfigStore {
           enabled: true,
           wsPort: 18790,
           rpcPort: 18801,
+        },
+        localAutomation: {
+          browser: { enabled: false },
+          computerUse: { enabled: false },
         },
         schedules: [],
         secrets: {},
@@ -3375,6 +3380,34 @@ export class NexuConfigStore {
         ...patch,
       },
     }));
+  }
+
+  async getLocalAutomationConfig(): Promise<LocalAutomationConfig> {
+    const config = await this.getConfig();
+    return config.localAutomation;
+  }
+
+  async setLocalAutomationConfig(
+    patch: Partial<LocalAutomationConfig>,
+  ): Promise<LocalAutomationConfig> {
+    let nextConfig: LocalAutomationConfig = {
+      browser: { enabled: false },
+      computerUse: { enabled: false },
+    };
+    await this.store.update((config) => {
+      nextConfig = {
+        browser: {
+          ...config.localAutomation.browser,
+          ...patch.browser,
+        },
+        computerUse: {
+          ...config.localAutomation.computerUse,
+          ...patch.computerUse,
+        },
+      };
+      return { ...config, localAutomation: nextConfig };
+    });
+    return nextConfig;
   }
 
   async getModelProviderConfigDocument(): Promise<PersistedModelsConfig> {

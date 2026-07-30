@@ -6001,6 +6001,27 @@ export type GetApiV1RuntimeConfigResponses = {
             rpcPort?: number;
             localIp?: string;
         };
+        localAutomation: {
+            browser?: {
+                enabled?: boolean;
+            };
+            computerUse?: {
+                enabled?: boolean;
+            };
+        };
+        localAutomationStatus: {
+            previewEnabled: boolean;
+            computerUseAvailable: boolean;
+            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | null;
+            computerUseBinaryPath: string | null;
+            computerUseBackend: 'cua-driver' | null;
+            computerUsePermissionState: 'ready' | 'permission-required' | 'unavailable' | 'unknown' | 'disabled';
+            computerUsePermissions: Array<{
+                name: string;
+                granted: boolean;
+                required: boolean;
+            }>;
+        };
     };
 };
 
@@ -6039,6 +6060,58 @@ export type PutApiV1RuntimeConfigResponses = {
 };
 
 export type PutApiV1RuntimeConfigResponse = PutApiV1RuntimeConfigResponses[keyof PutApiV1RuntimeConfigResponses];
+
+export type PatchApiV1RuntimeConfigLocalAutomationData = {
+    body?: {
+        browser?: {
+            enabled: boolean;
+        };
+        computerUse?: {
+            enabled: boolean;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation';
+};
+
+export type PatchApiV1RuntimeConfigLocalAutomationResponses = {
+    /**
+     * Updated local automation settings
+     */
+    200: {
+        localAutomation: {
+            browser?: {
+                enabled?: boolean;
+            };
+            computerUse?: {
+                enabled?: boolean;
+            };
+        };
+    };
+};
+
+export type PatchApiV1RuntimeConfigLocalAutomationResponse = PatchApiV1RuntimeConfigLocalAutomationResponses[keyof PatchApiV1RuntimeConfigLocalAutomationResponses];
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation/computer-use/permissions';
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses = {
+    /**
+     * Requested the platform grants Computer Use needs
+     */
+    200: {
+        requested: true;
+    };
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponse = PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses];
 
 export type PatchApiV1RuntimeConfigDeviceControlData = {
     body?: {
@@ -7238,6 +7311,187 @@ export type PostApiV1CanvasMirrorResponses = {
 };
 
 export type PostApiV1CanvasMirrorResponse = PostApiV1CanvasMirrorResponses[keyof PostApiV1CanvasMirrorResponses];
+
+export type GetApiV1BrowserAgentStreamData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/stream';
+};
+
+export type GetApiV1BrowserAgentStreamResponses = {
+    /**
+     * SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)
+     */
+    200: string;
+};
+
+export type GetApiV1BrowserAgentStreamResponse = GetApiV1BrowserAgentStreamResponses[keyof GetApiV1BrowserAgentStreamResponses];
+
+export type PostApiV1BrowserAgentActData = {
+    body?: {
+        sessionKey: string;
+        command: {
+            action: 'open';
+            url: string;
+        } | {
+            action: 'snapshot';
+        } | {
+            action: 'click';
+            ref: string;
+        } | {
+            action: 'type';
+            ref: string;
+            text: string;
+            submit?: boolean;
+        } | {
+            action: 'scroll';
+            deltaY: number;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/act';
+};
+
+export type PostApiV1BrowserAgentActErrors = {
+    /**
+     * Not a local desktop session
+     */
+    403: {
+        message: string;
+    };
+    /**
+     * No desktop browser panel is listening
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * The desktop browser panel did not answer in time
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type PostApiV1BrowserAgentActError = PostApiV1BrowserAgentActErrors[keyof PostApiV1BrowserAgentActErrors];
+
+export type PostApiV1BrowserAgentActResponses = {
+    /**
+     * Command executed by the desktop browser panel
+     */
+    200: {
+        ok: true;
+        snapshot: {
+            url: string;
+            title: string;
+            truncated: boolean;
+            nodes: Array<{
+                ref: string;
+                role: string;
+                name: string;
+                value?: string;
+                disabled?: boolean;
+                depth: number;
+            }>;
+        };
+    } | {
+        ok: true;
+        observation: {
+            url: string;
+            title: string;
+            element?: {
+                ref: string;
+                role: string;
+                name: string;
+                value?: string;
+                disabled?: boolean;
+                depth: number;
+            };
+            navigated: boolean;
+        };
+    } | {
+        ok: false;
+        error: string;
+    };
+};
+
+export type PostApiV1BrowserAgentActResponse = PostApiV1BrowserAgentActResponses[keyof PostApiV1BrowserAgentActResponses];
+
+export type PostApiV1BrowserAgentRunEndedData = {
+    body?: {
+        sessionKey: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/run-ended';
+};
+
+export type PostApiV1BrowserAgentRunEndedResponses = {
+    /**
+     * Run-end signal forwarded to the desktop
+     */
+    200: {
+        accepted: boolean;
+    };
+};
+
+export type PostApiV1BrowserAgentRunEndedResponse = PostApiV1BrowserAgentRunEndedResponses[keyof PostApiV1BrowserAgentRunEndedResponses];
+
+export type PostApiV1BrowserAgentResultData = {
+    body?: {
+        requestId: string;
+        outcome: {
+            ok: true;
+            snapshot: {
+                url: string;
+                title: string;
+                truncated: boolean;
+                nodes: Array<{
+                    ref: string;
+                    role: string;
+                    name: string;
+                    value?: string;
+                    disabled?: boolean;
+                    depth: number;
+                }>;
+            };
+        } | {
+            ok: true;
+            observation: {
+                url: string;
+                title: string;
+                element?: {
+                    ref: string;
+                    role: string;
+                    name: string;
+                    value?: string;
+                    disabled?: boolean;
+                    depth: number;
+                };
+                navigated: boolean;
+            };
+        } | {
+            ok: false;
+            error: string;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/result';
+};
+
+export type PostApiV1BrowserAgentResultResponses = {
+    /**
+     * Result recorded
+     */
+    200: {
+        accepted: boolean;
+    };
+};
+
+export type PostApiV1BrowserAgentResultResponse = PostApiV1BrowserAgentResultResponses[keyof PostApiV1BrowserAgentResultResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
