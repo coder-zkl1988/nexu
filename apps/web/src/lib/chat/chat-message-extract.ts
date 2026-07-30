@@ -161,6 +161,7 @@ export interface FileCardInfo {
   name: string;
   mimeType: string;
   size?: number;
+  url?: string;
 }
 
 export interface ToolCallInfo {
@@ -387,6 +388,12 @@ export function extractMessage(msg: Record<string, unknown>): ExtractedMessage {
               ? metadata.mimeType
               : "application/octet-stream",
           size: typeof metadata?.size === "number" ? metadata.size : undefined,
+          url:
+            typeof b?.url === "string"
+              ? b.url
+              : typeof metadata?.url === "string"
+                ? metadata.url
+                : undefined,
         });
       }
     }

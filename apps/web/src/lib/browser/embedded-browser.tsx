@@ -27,6 +27,7 @@ import type {
 import { getApiV1Artifacts } from "../../../lib/api/sdk.gen";
 import { useAgentBrowserTabRequest } from "./agent-browser-relay";
 import { BrowserAnnotationEditor } from "./browser-annotation-editor";
+import type { BrowserNavigationRequest } from "./browser-panel-store";
 
 export interface PreviewArtifact {
   id: string;
@@ -53,6 +54,36 @@ type BrowserTab = {
 };
 
 const MAX_TABS = 8;
+
+type BrowserNavigationTarget =
+  | { kind: "existing"; tabId: string }
+  | { kind: "blank"; tabId: string }
+  | { kind: "create" }
+  | { kind: "replace"; tabId: string }
+  | { kind: "unavailable" };
+
+export function selectBrowserNavigationTarget(
+  tabs: Pick<BrowserTab, "id" | "url">[],
+  activeTabId: string,
+  normalizedUrl: string,
+  protectedTabId: string | null,
+): BrowserNavigationTarget {
+  const existing = tabs.find((tab) => tab.url === normalizedUrl);
+  if (existing) return { kind: "existing", tabId: existing.id };
+
+  const blank = tabs.find((tab) => !tab.url && tab.id !== protectedTabId);
+  if (blank) return { kind: "blank", tabId: blank.id };
+
+  if (tabs.length < MAX_TABS) return { kind: "create" };
+
+  const active = tabs.find(
+    (tab) => tab.id === activeTabId && tab.id !== protectedTabId,
+  );
+  const replacement = active ?? tabs.find((tab) => tab.id !== protectedTabId);
+  return replacement
+    ? { kind: "replace", tabId: replacement.id }
+    : { kind: "unavailable" };
+}
 
 function createBrowserTab(
   url = "",
@@ -159,6 +190,7 @@ async function controlDesktopBrowser(
 
 interface EmbeddedBrowserProps {
   sessionKey: string;
+  navigationRequest: BrowserNavigationRequest | null;
   maximized: boolean;
   onToggleMaximize: () => void;
   onClose: () => void;
@@ -166,6 +198,7 @@ interface EmbeddedBrowserProps {
 
 export function EmbeddedBrowser({
   sessionKey,
+  navigationRequest,
   maximized,
   onToggleMaximize,
   onClose,
@@ -182,6 +215,7 @@ export function EmbeddedBrowser({
   const historyRef = useRef<HTMLDivElement>(null);
   const historyPanelRef = useRef<HTMLElement>(null);
   const lastAutoArtifactIdRef = useRef<string | null>(null);
+  const lastNavigationRequestIdRef = useRef<number | null>(null);
   const desktopBrowser = hasDesktopBrowserHost();
   const agentTabRequest = useAgentBrowserTabRequest();
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
@@ -278,6 +312,12 @@ export function EmbeddedBrowser({
     if (!latestArtifact || lastAutoArtifactIdRef.current === latestArtifact.id)
       return;
     lastAutoArtifactIdRef.current = latestArtifact.id;
+    if (
+      navigationRequest &&
+      Date.parse(latestArtifact.createdAt) <= navigationRequest.requestedAt
+    ) {
+      return;
+    }
     const url = latestArtifact.previewUrl ?? "";
     setTabs((current) => {
       const existing = current.find(
@@ -318,7 +358,62 @@ export function EmbeddedBrowser({
       setActiveTabId(created.id);
       return [...current, created];
     });
-  }, [latestArtifact]);
+  }, [latestArtifact, navigationRequest]);
+
+  useEffect(() => {
+    if (
+      !navigationRequest ||
+      lastNavigationRequestIdRef.current === navigationRequest.id
+    ) {
+      return;
+    }
+    lastNavigationRequestIdRef.current = navigationRequest.id;
+    const normalized = normalizeBrowserUrl(navigationRequest.url);
+    if (!normalized) {
+      setNavigationError(
+        t("browser.invalidUrl", {
+          defaultValue: "Enter a valid web address",
+        }),
+      );
+      return;
+    }
+
+    setNavigationError(null);
+    setTabs((current) => {
+      const target = selectBrowserNavigationTarget(
+        current,
+        activeTabId,
+        normalized,
+        agentTabRequest?.tabId ?? null,
+      );
+      if (target.kind === "unavailable") return current;
+      if (target.kind === "existing") {
+        setActiveTabId(target.tabId);
+        return current;
+      }
+      if (target.kind === "create") {
+        const created = createBrowserTab(normalized);
+        setActiveTabId(created.id);
+        return [...current, created];
+      }
+
+      setActiveTabId(target.tabId);
+      return current.map((tab) =>
+        tab.id === target.tabId
+          ? {
+              ...tab,
+              url: normalized,
+              address: normalized,
+              loading: true,
+              history:
+                target.kind === "blank"
+                  ? { entries: [normalized], index: 0 }
+                  : pushBrowserHistory(tab.history, normalized),
+            }
+          : tab,
+      );
+    });
+  }, [activeTabId, agentTabRequest?.tabId, navigationRequest, t]);
 
   useEffect(() => {
     if (!desktopBrowser || !activeTab?.url || annotationImage) {

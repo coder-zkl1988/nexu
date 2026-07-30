@@ -7940,12 +7940,17 @@
                               "type": "string",
                               "enum": [
                                 "image",
-                                "file"
+                                "file",
+                                "directory"
                               ]
                             },
                             "content": {
                               "type": "string",
                               "maxLength": 10000000
+                            },
+                            "stagedPath": {
+                              "type": "string",
+                              "maxLength": 4096
                             },
                             "metadata": {
                               "type": "object",
@@ -7957,16 +7962,18 @@
                                   "type": "string"
                                 },
                                 "size": {
-                                  "type": "number"
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 500000000
                                 }
                               }
                             }
                           },
                           "required": [
-                            "type",
-                            "content"
+                            "type"
                           ]
-                        }
+                        },
+                        "maxItems": 200
                       },
                       "skillSlug": {
                         "type": "string"
@@ -8195,12 +8202,17 @@
                               "type": "string",
                               "enum": [
                                 "image",
-                                "file"
+                                "file",
+                                "directory"
                               ]
                             },
                             "content": {
                               "type": "string",
                               "maxLength": 10000000
+                            },
+                            "stagedPath": {
+                              "type": "string",
+                              "maxLength": 4096
                             },
                             "metadata": {
                               "type": "object",
@@ -8212,16 +8224,18 @@
                                   "type": "string"
                                 },
                                 "size": {
-                                  "type": "number"
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 500000000
                                 }
                               }
                             }
                           },
                           "required": [
-                            "type",
-                            "content"
+                            "type"
                           ]
-                        }
+                        },
+                        "maxItems": 200
                       },
                       "skillSlug": {
                         "type": "string"
@@ -21721,6 +21735,8 @@
                               "enum": [
                                 "a2ui",
                                 "team-step",
+                                "xhs",
+                                "phone",
                                 "group"
                               ]
                             }
@@ -21931,6 +21947,8 @@
                                 "enum": [
                                   "a2ui",
                                   "team-step",
+                                  "xhs",
+                                  "phone",
                                   "group"
                                 ]
                               }

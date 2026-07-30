@@ -105,12 +105,27 @@ export function ChatInput({
   );
 }
 
-export function ChatInputAttachButton({ onClick }: { onClick: () => void }) {
+export function ChatInputAttachButton({
+  onClick,
+  title = "Attach file",
+  active = false,
+}: {
+  onClick: () => void;
+  title?: string;
+  active?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)]"
+      title={title}
+      aria-label={title}
+      aria-expanded={active}
+      className={cn(
+        "flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)]",
+        active &&
+          "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-foreground)]",
+      )}
     >
       <Plus className="w-5 h-5" />
     </button>

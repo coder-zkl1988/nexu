@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { sessionResponseSchema } from "@nexu/shared";
+import { CHAT_ATTACHMENT_LIMITS, sessionResponseSchema } from "@nexu/shared";
 import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
 import { logger } from "../lib/logger.js";
@@ -16,23 +16,33 @@ import {
 } from "./local-chat-session-wait.js";
 
 // ~10 MB base64 cap → raw file ≈ 7.5 MB; prevents OOM/body-size attacks
-const MAX_ATTACHMENT_CONTENT_BYTES = 10_000_000;
+const MAX_ATTACHMENT_CONTENT_BYTES =
+  CHAT_ATTACHMENT_LIMITS.maxInlineContentChars;
 
-const chatAttachmentSchema = z.object({
-  // Images go through OpenClaw's chat.send attachments pipeline unchanged.
-  // Files (PDF / text-readable) are extracted on the controller and folded
-  // into message text as <file>…</file> blocks before forwarding; OpenClaw's
-  // gateway RPC itself only carries images over the wire.
-  type: z.enum(["image", "file"]),
-  content: z.string().max(MAX_ATTACHMENT_CONTENT_BYTES),
-  metadata: z
-    .object({
-      mimeType: z.string().optional(),
-      filename: z.string().optional(),
-      size: z.number().optional(),
-    })
-    .optional(),
-});
+const chatAttachmentSchema = z
+  .object({
+    // Desktop clients send paths inside the app-owned inbound staging root.
+    // Browser-only clients retain the inline base64 fallback.
+    type: z.enum(["image", "file", "directory"]),
+    content: z.string().max(MAX_ATTACHMENT_CONTENT_BYTES).optional(),
+    stagedPath: z.string().max(4096).optional(),
+    metadata: z
+      .object({
+        mimeType: z.string().optional(),
+        filename: z.string().optional(),
+        size: z
+          .number()
+          .nonnegative()
+          .max(CHAT_ATTACHMENT_LIMITS.maxTotalBytes)
+          .optional(),
+      })
+      .optional(),
+  })
+  .refine(
+    (attachment) =>
+      Boolean(attachment.content?.length || attachment.stagedPath?.length),
+    { message: "Attachment requires content or stagedPath" },
+  );
 
 const localChatMessageInputSchema = z.object({
   type: z.enum(["text", "image", "video", "audio", "file"]),
@@ -48,7 +58,10 @@ const localChatMessageInputSchema = z.object({
     })
     .optional(),
   /** Optional additional attachments for multipart (text + images/files) messages */
-  attachments: z.array(chatAttachmentSchema).optional(),
+  attachments: z
+    .array(chatAttachmentSchema)
+    .max(CHAT_ATTACHMENT_LIMITS.maxCount)
+    .optional(),
   /**
    * Optional skill the user picked in the composer.  Single-shot: the
    * controller folds it into the message text as a directive (OpenClaw's

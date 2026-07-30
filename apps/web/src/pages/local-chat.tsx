@@ -171,7 +171,7 @@ export function LocalChatPage() {
       atts: PendingAttachment[],
       skillSlug: string | null,
     ) => {
-      if (!selectedBot) return;
+      if (!selectedBot) return false;
 
       const botId = selectedBot.id;
       const ctxKey = botId;
@@ -186,7 +186,10 @@ export function LocalChatPage() {
         });
 
         const onlyImage = atts.length === 1 ? atts[0] : undefined;
-        const isImageOnly = onlyImage?.type === "image" && !text.trim();
+        const isImageOnly =
+          onlyImage?.type === "image" &&
+          Boolean(onlyImage.content) &&
+          !text.trim();
         const msgContent =
           isImageOnly && onlyImage
             ? {
@@ -203,6 +206,7 @@ export function LocalChatPage() {
                     ? atts.map((a) => ({
                         type: a.type,
                         content: a.content,
+                        stagedPath: a.stagedPath,
                         metadata: {
                           mimeType: a.mimeType,
                           filename: a.filename,
@@ -226,14 +230,14 @@ export function LocalChatPage() {
             mood: "error",
             durationMs: DESKPET_ERROR_DURATION_MS,
           });
-          return;
+          return false;
         }
 
         const responseData = result.data;
 
         if (contextKeyRef.current !== ctxKey) {
           setWaitingReply(false);
-          return;
+          return true;
         }
 
         const runId =
@@ -254,7 +258,7 @@ export function LocalChatPage() {
                 responseData?.sessionKey ?? newSessionKey,
             },
           });
-          return;
+          return true;
         }
 
         const pendingText = text.trim()
@@ -274,12 +278,14 @@ export function LocalChatPage() {
             state: { pendingText, pendingBotName: selectedBot.name },
           },
         );
+        return true;
       } catch {
         setWaitingReply(false);
         invokeDesktopHost("desktop:deskpet-activity", {
           mood: "error",
           durationMs: DESKPET_ERROR_DURATION_MS,
         });
+        return false;
       }
     },
     [selectedBot, navigate],

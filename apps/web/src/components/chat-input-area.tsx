@@ -2,16 +2,25 @@ import { ChatInput, ChatInputAttachButton } from "@/components/chat-input";
 import { useCommunitySkillStatus } from "@/hooks/use-community-catalog";
 import { useTeams } from "@/hooks/use-teams";
 import { subscribeExternalChatInput } from "@/lib/chat/external-chat-input";
+import { requestDesktopHost } from "@/lib/desktop-host";
 import { isImeComposing } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
+import {
+  CHAT_ATTACHMENT_LIMITS,
+  type DesktopAttachmentPickerKind,
+  type DesktopStagedAttachment,
+} from "@nexu/shared";
 import { useQuery } from "@tanstack/react-query";
 import {
   Check,
   ChevronDown,
-  File,
+  File as FileIcon,
   FileImage,
   FileSpreadsheet,
   FileText,
+  FileUp,
+  FolderOpen,
+  Image as ImageIcon,
   Plus,
   Presentation,
   Sparkles,
@@ -40,9 +49,10 @@ export interface BotItem {
 
 export interface PendingAttachment {
   id: string;
-  type: "image" | "file";
+  type: "image" | "file" | "directory";
   previewUrl: string;
   content: string;
+  stagedPath?: string;
   mimeType: string;
   filename?: string;
   size?: number;
@@ -60,7 +70,7 @@ export interface ChatInputAreaProps {
     text: string,
     attachments: PendingAttachment[],
     skillSlug: string | null,
-  ) => void;
+  ) => boolean | Promise<boolean>;
   onTyping?: (text: string) => void;
   onCancel?: () => void;
   sending: boolean;
@@ -84,8 +94,6 @@ export interface ChatInputAreaProps {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const MAX_FILE_BYTES = 7_500_000;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -120,11 +128,15 @@ function FileBubble({
   const isTxt = ext === "txt";
   const isImage = mimeType.startsWith("image/");
   const isAudio = mimeType.startsWith("audio/");
+  const isDirectory = mimeType === "application/x-directory";
 
-  let Icon = File;
+  let Icon = FileIcon;
   let color = "text-gray-400";
 
-  if (isPdf) {
+  if (isDirectory) {
+    Icon = FolderOpen;
+    color = "text-amber-500";
+  } else if (isPdf) {
     Icon = FileText;
     color = "text-red-500";
   } else if (isExcel) {
@@ -143,7 +155,7 @@ function FileBubble({
     Icon = FileImage;
     color = "text-purple-500";
   } else if (isAudio) {
-    Icon = File;
+    Icon = FileIcon;
     color = "text-pink-500";
   }
 
@@ -179,7 +191,7 @@ function AttachmentTray({
       <div className="flex gap-2 w-max">
         {attachments.map((att) => (
           <div key={att.id} className="relative group shrink-0">
-            {att.type === "image" ? (
+            {att.type === "image" && att.previewUrl ? (
               <img
                 src={att.previewUrl}
                 alt=""
@@ -469,9 +481,14 @@ export function ChatInputArea({
     null,
   );
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [submitPending, setSubmitPending] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
+  const directoryRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const skillDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -519,13 +536,7 @@ export function ChatInputArea({
   }, []);
 
   const readFileBlob = useCallback(
-    (file: File) => {
-      if (file.size > MAX_FILE_BYTES) {
-        toast.error(
-          `File "${file.name}" is too large (${formatBytes(file.size)}). Maximum allowed size is ${formatBytes(MAX_FILE_BYTES)}.`,
-        );
-        return;
-      }
+    (file: File, displayName = file.name) => {
       const isImage = file.type.startsWith("image/");
       const reader = new FileReader();
       reader.onload = () => {
@@ -535,7 +546,7 @@ export function ChatInputArea({
           previewUrl: dataUrl,
           content: extractBase64FromDataUrl(dataUrl),
           mimeType: file.type || "application/octet-stream",
-          filename: file.name,
+          filename: displayName,
           size: file.size,
         });
       };
@@ -544,14 +555,147 @@ export function ChatInputArea({
     [addAttachment],
   );
 
-  const handleFile = useCallback(
+  const addFiles = useCallback(
+    (files: File[]) => {
+      let nextCount = pendingAttachments.length;
+      let nextOverallTotal = pendingAttachments.reduce(
+        (total, attachment) => total + (attachment.size ?? 0),
+        0,
+      );
+      let nextInlineTotal = pendingAttachments.reduce(
+        (total, attachment) =>
+          attachment.stagedPath ? total : total + (attachment.size ?? 0),
+        0,
+      );
+
+      for (const file of files) {
+        const relativePath = (
+          file as File & { webkitRelativePath?: string }
+        ).webkitRelativePath?.trim();
+        const displayName = relativePath || file.name;
+        if (nextCount >= CHAT_ATTACHMENT_LIMITS.maxCount) {
+          toast.error(
+            t("localChat.attachmentCountLimit", {
+              count: CHAT_ATTACHMENT_LIMITS.maxCount,
+            }),
+          );
+          break;
+        }
+        if (file.size > CHAT_ATTACHMENT_LIMITS.maxInlineFileBytes) {
+          toast.error(
+            t("localChat.attachmentTooLarge", {
+              name: displayName,
+              size: formatBytes(CHAT_ATTACHMENT_LIMITS.maxInlineFileBytes),
+            }),
+          );
+          continue;
+        }
+        if (
+          nextOverallTotal + file.size >
+          CHAT_ATTACHMENT_LIMITS.maxTotalBytes
+        ) {
+          toast.error(
+            t("localChat.attachmentTotalLimit", {
+              size: formatBytes(CHAT_ATTACHMENT_LIMITS.maxTotalBytes),
+            }),
+          );
+          break;
+        }
+        if (
+          nextInlineTotal + file.size >
+          CHAT_ATTACHMENT_LIMITS.maxInlineTotalBytes
+        ) {
+          toast.error(
+            t("localChat.attachmentTotalLimit", {
+              size: formatBytes(CHAT_ATTACHMENT_LIMITS.maxInlineTotalBytes),
+            }),
+          );
+          break;
+        }
+        nextCount += 1;
+        nextOverallTotal += file.size;
+        nextInlineTotal += file.size;
+        readFileBlob(file, displayName);
+      }
+    },
+    [pendingAttachments, readFileBlob, t],
+  );
+
+  const addStagedAttachments = useCallback(
+    (attachments: DesktopStagedAttachment[]) => {
+      const currentSize = pendingAttachments.reduce(
+        (total, attachment) => total + (attachment.size ?? 0),
+        0,
+      );
+      const availableCount =
+        CHAT_ATTACHMENT_LIMITS.maxCount - pendingAttachments.length;
+      if (attachments.length > availableCount) {
+        toast.error(
+          t("localChat.attachmentCountLimit", {
+            count: CHAT_ATTACHMENT_LIMITS.maxCount,
+          }),
+        );
+        return;
+      }
+      const incomingSize = attachments.reduce(
+        (total, attachment) => total + attachment.size,
+        0,
+      );
+      if (currentSize + incomingSize > CHAT_ATTACHMENT_LIMITS.maxTotalBytes) {
+        toast.error(
+          t("localChat.attachmentTotalLimit", {
+            size: formatBytes(CHAT_ATTACHMENT_LIMITS.maxTotalBytes),
+          }),
+        );
+        return;
+      }
+      setPendingAttachments((current) => [
+        ...current,
+        ...attachments.map((attachment) => ({
+          id: crypto.randomUUID(),
+          type: attachment.type,
+          previewUrl: "",
+          content: "",
+          stagedPath: attachment.stagedPath,
+          mimeType: attachment.mimeType,
+          filename: attachment.filename,
+          size: attachment.size,
+        })),
+      ]);
+    },
+    [pendingAttachments, t],
+  );
+
+  const pickAttachments = useCallback(
+    async (kind: DesktopAttachmentPickerKind, fallback: () => void) => {
+      try {
+        const result = await requestDesktopHost<{
+          attachments: DesktopStagedAttachment[];
+        }>("desktop:pick-attachments", { kind });
+        if (!result) {
+          fallback();
+          return;
+        }
+        addStagedAttachments(result.attachments);
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t("localChat.attachmentStageFailed"),
+        );
+      }
+    },
+    [addStagedAttachments, t],
+  );
+
+  const handleFiles = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      readFileBlob(file);
+      const files = Array.from(e.target.files ?? []);
+      if (files.length === 0) return;
+      addFiles(files);
       e.target.value = "";
     },
-    [readFileBlob],
+    [addFiles],
   );
 
   const handlePaste = useCallback(
@@ -564,31 +708,24 @@ export function ChatInputArea({
       e.preventDefault();
       const blob = imageItem.getAsFile();
       if (!blob) return;
-      if (blob.size > MAX_FILE_BYTES) {
-        toast.error(
-          `Pasted image is too large (${formatBytes(blob.size)}). Maximum allowed size is ${formatBytes(MAX_FILE_BYTES)}.`,
-        );
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        addAttachment({
-          type: "image",
-          previewUrl: dataUrl,
-          content: extractBase64FromDataUrl(dataUrl),
-          mimeType: blob.type || "image/png",
-          filename: `pasted-image-${Date.now()}.png`,
-          size: blob.size,
-        });
-      };
-      reader.readAsDataURL(blob);
+      const pastedFile = new File(
+        [blob],
+        blob.name || `pasted-image-${Date.now()}.png`,
+        { type: blob.type || "image/png" },
+      );
+      addFiles([pastedFile]);
     },
-    [addAttachment, selectedBot, waitingReply],
+    [addFiles, selectedBot, waitingReply],
   );
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      if (
+        attachmentMenuRef.current &&
+        !attachmentMenuRef.current.contains(e.target as Node)
+      ) {
+        setAttachmentMenuOpen(false);
+      }
       if (
         skillDropdownRef.current &&
         !skillDropdownRef.current.contains(e.target as Node)
@@ -604,6 +741,13 @@ export function ChatInputArea({
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    const directoryInput = directoryRef.current;
+    if (!directoryInput) return;
+    directoryInput.setAttribute("webkitdirectory", "");
+    directoryInput.setAttribute("directory", "");
   }, []);
 
   useEffect(() => {
@@ -624,27 +768,42 @@ export function ChatInputArea({
     // Enter while an IME is composing commits the candidate — never sends.
     if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   }
 
   const canSend =
     !!selectedBot &&
     !sending &&
+    !submitPending &&
     !waitingReply &&
     (input.trim().length > 0 || pendingAttachments.length > 0);
 
-  function handleSend() {
+  async function handleSend() {
     if (!canSend) return;
-    const text = input.trim();
-    setInput("");
+    const draftInput = input;
+    const text = draftInput.trim();
     const atts = [...pendingAttachments];
-    setPendingAttachments([]);
     const skillSlug = selectedSkillSlug;
-    // Skill selection is single-shot: applies to this message only, then
-    // resets so the next message isn't silently forced into the same skill.
-    setSelectedSkillSlug(null);
-    onSend(text, atts, skillSlug);
+    setSubmitPending(true);
+    try {
+      const accepted = await onSend(text, atts, skillSlug);
+      if (accepted === false) return;
+
+      const sentIds = new Set(atts.map((attachment) => attachment.id));
+      setInput((current) => (current === draftInput ? "" : current));
+      setPendingAttachments((current) =>
+        current.filter((attachment) => !sentIds.has(attachment.id)),
+      );
+      // Skill selection is single-shot only after the server accepts the send.
+      setSelectedSkillSlug((current) =>
+        current === skillSlug ? null : current,
+      );
+    } catch {
+      // The owning page reports the request error; keep the draft retryable.
+    } finally {
+      setSubmitPending(false);
+    }
   }
 
   function handleInputChange(nextValue: string) {
@@ -657,9 +816,24 @@ export function ChatInputArea({
       <input
         ref={fileRef}
         type="file"
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+        multiple
         className="hidden"
-        onChange={handleFile}
+        onChange={handleFiles}
+      />
+      <input
+        ref={imageRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleFiles}
+      />
+      <input
+        ref={directoryRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFiles}
       />
       {pendingAttachments.length > 0 && (
         <AttachmentTray
@@ -673,15 +847,67 @@ export function ChatInputArea({
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        onSend={handleSend}
+        onSend={() => void handleSend()}
         onCancel={onCancel}
         placeholder={placeholder}
-        disabled={disabled}
-        sending={sending}
+        disabled={disabled || submitPending}
+        sending={sending || submitPending}
         waitingReply={waitingReply}
         leftActions={
           <>
-            <ChatInputAttachButton onClick={() => fileRef.current?.click()} />
+            <div className="relative" ref={attachmentMenuRef}>
+              <ChatInputAttachButton
+                onClick={() => setAttachmentMenuOpen((open) => !open)}
+                title={t("localChat.attachFile")}
+                active={attachmentMenuOpen}
+              />
+              {attachmentMenuOpen && (
+                <div className="absolute bottom-full left-0 z-50 mb-1 w-44 overflow-hidden rounded-lg border border-[var(--color-tabby-border)] bg-[var(--color-tabby-bg)] py-1 shadow-lg">
+                  {[
+                    {
+                      key: "image",
+                      label: t("localChat.attachImage"),
+                      icon: ImageIcon,
+                      action: () =>
+                        void pickAttachments("image", () =>
+                          imageRef.current?.click(),
+                        ),
+                    },
+                    {
+                      key: "file",
+                      label: t("localChat.attachFiles"),
+                      icon: FileUp,
+                      action: () =>
+                        void pickAttachments("file", () =>
+                          fileRef.current?.click(),
+                        ),
+                    },
+                    {
+                      key: "directory",
+                      label: t("localChat.attachDirectory"),
+                      icon: FolderOpen,
+                      action: () =>
+                        void pickAttachments("directory", () =>
+                          directoryRef.current?.click(),
+                        ),
+                    },
+                  ].map(({ key, label, icon: Icon, action }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        setAttachmentMenuOpen(false);
+                        action();
+                      }}
+                      className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] text-[var(--color-tabby-foreground)] transition-colors hover:bg-[var(--color-tabby-canvas)]"
+                    >
+                      <Icon className="size-4 text-[var(--color-tabby-muted)]" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="relative" ref={skillDropdownRef}>
               <button
                 type="button"

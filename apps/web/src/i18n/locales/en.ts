@@ -1005,6 +1005,7 @@ const en = {
   "sessions.chat.collapseToolDetails": "Collapse task details",
   "sessions.chat.interactivePanel": "Interactive panel",
   "sessions.chat.openPanel": "Open",
+  "sessions.chat.downloadFile": "Download file",
   "sessions.chat.thinking": "Thinking...",
   "sessions.chat.newSession": "New conversation",
   "sessions.pending.title": "Starting conversation",
@@ -1548,6 +1549,15 @@ const en = {
   "localChat.inputPlaceholder":
     "Ask Tabby… (Enter to send, Shift+Enter for newline)",
   "localChat.attachFile": "Attach image or file",
+  "localChat.attachImage": "Images",
+  "localChat.attachFiles": "Files",
+  "localChat.attachDirectory": "Folder",
+  "localChat.attachmentCountLimit": "You can attach up to {{count}} files",
+  "localChat.attachmentTooLarge":
+    "{{name}} exceeds the {{size}} per-file limit",
+  "localChat.attachmentStageFailed": "Failed to stage attachment",
+  "localChat.attachmentTotalLimit":
+    "Attachments cannot exceed {{size}} in total",
   "localChat.removeAttachment": "Remove",
   "localChat.startChat": "Chat with {{name}}",
   "localChat.pickBot": "Pick a bot to get started",

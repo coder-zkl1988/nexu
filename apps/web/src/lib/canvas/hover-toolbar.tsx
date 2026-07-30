@@ -79,11 +79,13 @@ export function HoverToolbar({
 }) {
   const [describePending, setDescribePending] = useState(false);
 
-  // a2ui, team-step and group nodes keep minimal chrome — no toolbar (groups
-  // are inert containers with no image ops, lock, or font controls).
+  // Rich editors/previews, team-step and group nodes keep minimal chrome — no
+  // generic media toolbar (groups are inert containers).
   if (
     node.type === "a2ui" ||
     node.type === "team-step" ||
+    node.type === "xhs" ||
+    node.type === "phone" ||
     node.type === "group"
   ) {
     return null;

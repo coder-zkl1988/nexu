@@ -235,18 +235,27 @@ function isTrivialHeartbeatReply(content: unknown): boolean {
   return false;
 }
 
-const IMAGE_EXTENSION_MIME: Record<string, string> = {
+const MEDIA_EXTENSION_MIME: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".webp": "image/webp",
   ".gif": "image/gif",
+  ".pdf": "application/pdf",
+  ".docx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pptx":
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".doc": "application/msword",
+  ".xls": "application/vnd.ms-excel",
+  ".ppt": "application/vnd.ms-powerpoint",
 };
 
 function mimeTypeForMediaPath(filePath: string, hint?: string): string {
   if (hint?.trim()) return hint;
   return (
-    IMAGE_EXTENSION_MIME[path.extname(filePath).toLowerCase()] ??
+    MEDIA_EXTENSION_MIME[path.extname(filePath).toLowerCase()] ??
     "application/octet-stream"
   );
 }
@@ -353,7 +362,13 @@ export class SessionsRuntime {
       this.mediaRootDir(),
       path.resolve(absolutePath),
     );
-    if (relative.startsWith("..") || path.isAbsolute(relative)) return;
+    if (
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) {
+      return;
+    }
     this.mediaCacheQueue.add(absolutePath);
   }
 
@@ -366,7 +381,7 @@ export class SessionsRuntime {
     for (const absolutePath of queued) {
       this.mediaCacheAttempted.add(absolutePath);
       try {
-        await ensureMediaCached(cacheDir, absolutePath);
+        await ensureMediaCached(cacheDir, absolutePath, this.mediaRootDir());
       } catch (err) {
         logger.warn(
           {
@@ -1416,11 +1431,14 @@ export class SessionsRuntime {
           mimeType,
         });
       } else {
+        this.queueMediaCache(entry.path);
         mediaBlocks.push({
           type: "file",
+          url: mediaFileUrl(entry.path),
           metadata: {
             filename: path.basename(entry.path),
             mimeType,
+            url: mediaFileUrl(entry.path),
           },
         });
       }

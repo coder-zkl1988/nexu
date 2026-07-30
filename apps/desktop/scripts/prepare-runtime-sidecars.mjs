@@ -78,6 +78,7 @@ async function main() {
   }
 
   const scripts = [
+    "prepare:officecli-runtime",
     "prepare:controller-sidecar",
     "prepare:openclaw-sidecar",
     "prepare:computer-use-sidecar",

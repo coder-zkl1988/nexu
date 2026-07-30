@@ -1941,6 +1941,7 @@ function WorkspaceLayoutContent() {
             <EmbeddedBrowser
               key={browserPanel.sessionKey}
               sessionKey={browserPanel.sessionKey}
+              navigationRequest={browserPanel.navigationRequest}
               maximized={rightSidebarMaximized}
               onToggleMaximize={toggleRightSidebarMaximize}
               onClose={closeBrowserPanel}

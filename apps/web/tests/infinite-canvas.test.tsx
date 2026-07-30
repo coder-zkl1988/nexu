@@ -718,9 +718,11 @@ describe("ConfigNode markup", () => {
     expect(markup).toContain("音频");
   });
 
-  it("toolbar contains 生成配置 button", () => {
+  it("toolbar contains config, XHS, and phone node buttons", () => {
     const markup = renderToStaticMarkup(<CanvasSurface />);
     expect(markup).toContain("生成配置");
+    expect(markup).toContain("小红书");
+    expect(markup).toContain("手机");
   });
 
   it("config node never shows 参考视频/参考音频 chips — no mode forwards them to generation", () => {
@@ -842,6 +844,37 @@ describe("CanvasMinimap markup", () => {
 });
 
 describe("connection effects", () => {
+  it("image → canvas XHS node appends the image once", async () => {
+    const { applyConnectionEffects } = await import(
+      "../src/lib/canvas/connection-effects"
+    );
+    const image = addNode({
+      type: "image",
+      title: "cover",
+      metadata: { content: "data:image/png;base64,COVER" },
+    });
+    const xhs = addNode({
+      type: "xhs",
+      title: "post",
+      metadata: {
+        xhs: {
+          title: "",
+          content: "",
+          images: [],
+          hashtags: [],
+        },
+      },
+    });
+
+    applyConnectionEffects(image, xhs);
+    applyConnectionEffects(image, xhs);
+
+    const updated = getCanvasState().nodes.find((node) => node.id === xhs.id);
+    expect(updated?.metadata.xhs?.images).toEqual([
+      "data:image/png;base64,COVER",
+    ]);
+  });
+
   it("image → XHS editor connection feeds the post's image list", async () => {
     const { applyConnectionEffects } = await import(
       "../src/lib/canvas/connection-effects"

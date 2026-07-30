@@ -3,7 +3,7 @@ import {
   updatePost,
 } from "@/lib/a2ui/custom-components/xhs-batch-store";
 import type { CanvasNode } from "./canvas-store";
-import { getA2UIPayload } from "./canvas-store";
+import { getA2UIPayload, updateNode } from "./canvas-store";
 
 /**
  * Push-on-connect effect registry (W2.1).
@@ -27,6 +27,30 @@ type ConnectionEffect = {
 };
 
 const effects: ReadonlyArray<ConnectionEffect> = [
+  {
+    name: "image-to-xhs-node",
+    matches(source: CanvasNode, target: CanvasNode): boolean {
+      return (
+        source.type === "image" &&
+        Boolean(source.metadata.content) &&
+        target.type === "xhs"
+      );
+    },
+    apply(source: CanvasNode, target: CanvasNode): void {
+      const image = source.metadata.content;
+      if (!image) return;
+      const post = target.metadata.xhs ?? {
+        title: "",
+        content: "",
+        images: [],
+        hashtags: [],
+      };
+      if (post.images.includes(image)) return;
+      updateNode(target.id, {
+        metadata: { xhs: { ...post, images: [...post.images, image] } },
+      });
+    },
+  },
   {
     name: "image-to-xhs-editor",
     matches(source: CanvasNode, target: CanvasNode): boolean {

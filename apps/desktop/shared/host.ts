@@ -1,3 +1,7 @@
+import type {
+  DesktopAttachmentPickerKind,
+  DesktopStagedAttachment,
+} from "@nexu/shared";
 import type { DesktopBuildInfo, DesktopRuntimeConfig } from "./runtime-config";
 export type { DesktopBuildInfo, DesktopRuntimeConfig } from "./runtime-config";
 
@@ -43,6 +47,7 @@ export const hostInvokeChannels = [
   "desktop:get-rewards-status",
   "desktop:set-reward-balance",
   "desktop:rewards-updated",
+  "desktop:pick-attachments",
   "desktop:browser-control",
   "shell:open-external",
   "update:check",
@@ -280,6 +285,9 @@ export type HostInvokePayloadMap = {
     balance: number;
   };
   "desktop:rewards-updated": undefined;
+  "desktop:pick-attachments": {
+    kind: DesktopAttachmentPickerKind;
+  };
   "desktop:browser-control": DesktopBrowserControl;
   "shell:open-external": {
     url: string;
@@ -615,6 +623,9 @@ export type HostInvokeResultMap = {
   };
   "desktop:rewards-updated": {
     ok: boolean;
+  };
+  "desktop:pick-attachments": {
+    attachments: DesktopStagedAttachment[];
   };
   "desktop:browser-control": DesktopBrowserControlResult;
   "shell:open-external": {

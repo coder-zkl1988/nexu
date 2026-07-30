@@ -13,7 +13,9 @@ import {
 } from "./canvas-store";
 import { useCanvasUiPrefs } from "./canvas-ui-prefs";
 import { ConfigNodeContent } from "./config-node";
+import { PhoneNodeContent } from "./phone-node";
 import { TeamStepNodeContent } from "./team-step-node";
+import { XhsNodeContent } from "./xhs-node";
 
 // ── shouldStoreNaturalSize ─────────────────────────────────────────
 
@@ -155,6 +157,14 @@ function NodeContent({ node }: { node: CanvasNode }): ReactNode {
   // (the RESULT node carries the task, not the config node).
   if (node.type === "config") {
     return <ConfigNodeContent node={node} />;
+  }
+
+  if (node.type === "xhs") {
+    return <XhsNodeContent node={node} />;
+  }
+
+  if (node.type === "phone") {
+    return <PhoneNodeContent node={node} />;
   }
 
   // Group nodes are inert containers. This early branch is LOAD-BEARING: the

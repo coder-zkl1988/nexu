@@ -4,19 +4,25 @@ import { useSyncExternalStore } from "react";
  * Client-side source of truth for an XHS batch-publish session.
  *
  * The A2UI message that renders the batch table only SEEDS this store; from
- * then on the inline table and the sidebar editor both read/write the same
- * store (keyed by batchId), so an edit in the sidebar reflects in the table
- * row instantly and a publish updates the row status — no matter which view
- * triggered it.
+ * then on the inline table and expanded editor both read/write the same store
+ * (keyed by batchId), so an edit reflects in the table row instantly and a
+ * publish updates the row status no matter which view triggered it.
  */
 
-export type RowStatus = "idle" | "pushing" | "publishing" | "success" | "error";
+export type RowStatus =
+  | "idle"
+  | "waiting"
+  | "pushing"
+  | "publishing"
+  | "success"
+  | "unknown"
+  | "error";
 
 export interface XHSPost {
   id: string;
   title: string;
   content: string;
-  images: string[]; // data URLs
+  images: string[]; // data URLs or browser-loadable URLs
   hashtags: string[];
   deviceId: string;
   status: RowStatus;

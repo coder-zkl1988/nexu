@@ -7,6 +7,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import { getOpenclawSkillsDir } from "../../shared/desktop-paths";
 import { buildChildProcessProxyEnv } from "../../shared/proxy-config";
@@ -24,6 +25,47 @@ import type { RuntimeUnitManifest } from "./types";
 function ensureDir(path: string): string {
   mkdirSync(path, { recursive: true });
   return path;
+}
+
+export function resolveOfficeCliBinary(
+  electronRoot: string,
+  isPackaged: boolean,
+): string {
+  const binaryName =
+    process.platform === "win32" ? "officecli.exe" : "officecli";
+  if (isPackaged) {
+    return path.resolve(
+      electronRoot,
+      "runtime",
+      "tools",
+      "officecli",
+      binaryName,
+    );
+  }
+
+  const explicitPath = process.env.OFFICECLI_BIN?.trim();
+  if (explicitPath) return explicitPath;
+
+  const localBinary = path.resolve(homedir(), ".local", "bin", binaryName);
+  if (existsSync(localBinary)) return localBinary;
+  return binaryName;
+}
+
+export function buildOfficeCliProcessEnv(officeCliBinary: string): {
+  OFFICECLI_BIN: string;
+  PATH?: string;
+} {
+  if (!path.isAbsolute(officeCliBinary)) {
+    return { OFFICECLI_BIN: officeCliBinary };
+  }
+  const inheritedPath = process.env.PATH ?? "";
+  const toolPath = path.dirname(officeCliBinary);
+  return {
+    OFFICECLI_BIN: officeCliBinary,
+    PATH: inheritedPath
+      ? `${toolPath}${path.delimiter}${inheritedPath}`
+      : toolPath,
+  };
 }
 
 function extractPackagedOpenclawSidecar(input: {
@@ -390,6 +432,9 @@ export function createRuntimeUnitManifests(
     new URL(runtimeConfig.urls.openclawBase).port || 18789,
   );
   const skillNodePath = buildSkillNodePath(electronRoot, isPackaged);
+  const officeCliEnv = buildOfficeCliProcessEnv(
+    resolveOfficeCliBinary(electronRoot, isPackaged),
+  );
   const proxyEnv = buildChildProcessProxyEnv(runtimeConfig.proxy);
   const langfuseEnv = {
     ...(process.env.LANGFUSE_PUBLIC_KEY
@@ -441,6 +486,7 @@ export function createRuntimeUnitManifests(
     dependents: ["web"],
     env: {
       ...proxyEnv,
+      ...officeCliEnv,
       ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: isPackaged ? "production" : "development",
       PORT: String(runtimeConfig.ports.controller),
@@ -530,6 +576,7 @@ export function createRuntimeUnitManifests(
     autoStart: false,
     logFilePath: path.resolve(logsDir, "openclaw.log"),
     env: {
+      ...officeCliEnv,
       ...(openclawNodePath ? { NODE_PATH: openclawNodePath } : {}),
       OPENCLAW_CONFIG_PATH: path.resolve(openclawStateDir, "openclaw.json"),
       OPENCLAW_MDNS_HOSTNAME: openclawMdnsHostname,

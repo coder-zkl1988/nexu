@@ -77,6 +77,8 @@ const DEFAULT_TITLE: Record<CanvasNodeType, string> = {
   audio: "音频",
   "team-step": "步骤",
   config: "生成配置",
+  xhs: "小红书帖子",
+  phone: "手机预览",
   group: "组",
 };
 

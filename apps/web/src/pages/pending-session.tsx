@@ -309,7 +309,7 @@ export function PendingSessionPage() {
             bots={bots}
             selectedBot={selectedBot}
             onSelectBot={() => {}}
-            onSend={() => {}}
+            onSend={() => false}
             sending={false}
             waitingReply
             disabled

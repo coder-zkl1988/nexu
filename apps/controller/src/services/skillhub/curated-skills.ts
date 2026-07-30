@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import type { SkillDb } from "./skill-db.js";
 
 const LIBTV_VIDEO_SLUG = "libtv-video";
+const OFFICECLI_SLUG = "officecli";
 
 /**
  * Skills to install from ClawHub on first launch.
@@ -61,6 +62,7 @@ export const STATIC_SKILL_SLUGS: readonly string[] = [
   "qiaomu-mondo-poster-design",
   "tabby-image",
   "tabby-video",
+  "officecli",
 ] as const;
 
 /**
@@ -165,6 +167,58 @@ export function replaceLibtvVideoFromBundle(params: {
   mkdirSync(destDir, { recursive: true });
   cpSync(srcDir, destDir, { recursive: true });
   params.skillDb.recordInstall(LIBTV_VIDEO_SLUG, "managed");
+
+  return { installed: true, reason: existed ? "replaced" : "fresh-install" };
+}
+
+/**
+ * Keep a managed OfficeCLI install aligned with the binary shipped by the
+ * desktop app. Existing directories are replaced only when the ledger says
+ * the shared physical slug is owned exclusively by an installed managed
+ * record. This preserves custom, user, and untracked copies.
+ */
+export function replaceOfficeCliFromBundle(params: {
+  staticDir: string;
+  targetDir: string;
+  skillDb: SkillDb;
+}): {
+  installed: boolean;
+  reason:
+    | "bundle-missing"
+    | "fresh-install"
+    | "replaced"
+    | "ownership-conflict";
+} {
+  const srcDir = resolve(params.staticDir, OFFICECLI_SLUG);
+  if (!existsSync(srcDir)) {
+    return { installed: false, reason: "bundle-missing" };
+  }
+
+  const destDir = resolve(params.targetDir, OFFICECLI_SLUG);
+  const sharedRecords = params.skillDb
+    .getInstalledRecordsBySlug(OFFICECLI_SLUG)
+    .filter((record) => record.source !== "workspace");
+  if (
+    sharedRecords.some(
+      (record) => record.source !== "managed" || record.ownerHandle !== null,
+    )
+  ) {
+    return { installed: false, reason: "ownership-conflict" };
+  }
+  const existed = existsSync(destDir);
+  if (existed) {
+    const managedOwnsDirectory =
+      sharedRecords.length === 1 &&
+      sharedRecords[0]?.source === "managed" &&
+      sharedRecords[0].ownerHandle === null;
+    if (!managedOwnsDirectory) {
+      return { installed: false, reason: "ownership-conflict" };
+    }
+    rmSync(destDir, { recursive: true, force: true });
+  }
+  mkdirSync(destDir, { recursive: true });
+  cpSync(srcDir, destDir, { recursive: true });
+  params.skillDb.recordInstall(OFFICECLI_SLUG, "managed");
 
   return { installed: true, reason: existed ? "replaced" : "fresh-install" };
 }

@@ -571,6 +571,38 @@ describe("desktop runtime manifests", () => {
   });
 
   describe("createRuntimeUnitManifests", () => {
+    it("exposes the packaged OfficeCLI binary to controller and OpenClaw", () => {
+      const electronRoot = runtimePath(
+        "/Applications/Nexu.app/Contents/Resources",
+      );
+      const manifests = createRuntimeUnitManifests(
+        electronRoot,
+        runtimePath("/tmp/nexu-user-data"),
+        true,
+        createRuntimeConfig(),
+      );
+      const expectedBinary = runtimePath(
+        electronRoot,
+        "runtime",
+        "tools",
+        "officecli",
+        process.platform === "win32" ? "officecli.exe" : "officecli",
+      );
+      const controller = manifests.find(
+        (manifest) => manifest.id === "controller",
+      );
+      const openclaw = manifests.find((manifest) => manifest.id === "openclaw");
+
+      expect(
+        normalizePathForAssertion(controller?.env?.OFFICECLI_BIN ?? ""),
+      ).toBe(normalizePathForAssertion(expectedBinary));
+      expect(
+        normalizePathForAssertion(openclaw?.env?.OFFICECLI_BIN ?? ""),
+      ).toBe(normalizePathForAssertion(expectedBinary));
+      expect(controller?.env?.PATH).toContain("officecli");
+      expect(openclaw?.env?.PATH).toContain("officecli");
+    });
+
     it("resolves runtime roots for manifest assembly", () => {
       const roots = resolveRuntimeManifestsRoots({
         app: {

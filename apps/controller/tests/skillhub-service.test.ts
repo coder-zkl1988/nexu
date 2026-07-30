@@ -177,6 +177,10 @@ const mocks = vi.hoisted(() => {
     installed: false as boolean,
     reason: "bundle-missing" as "bundle-missing" | "fresh-install" | "replaced",
   }));
+  const mockReplaceOfficeCliFromBundle = vi.fn(() => ({
+    installed: false as boolean,
+    reason: "bundle-missing" as "bundle-missing" | "fresh-install" | "replaced",
+  }));
   return {
     mockSkillDbCreate,
     catalogManagerInstances,
@@ -187,6 +191,7 @@ const mocks = vi.hoisted(() => {
     MockSkillDirWatcher,
     mockCopyStaticSkills,
     mockReplaceLibtvVideoFromBundle,
+    mockReplaceOfficeCliFromBundle,
   };
 });
 
@@ -211,6 +216,7 @@ vi.mock("../src/services/skillhub/skill-dir-watcher.js", () => ({
 vi.mock("../src/services/skillhub/curated-skills.js", () => ({
   copyStaticSkills: mocks.mockCopyStaticSkills,
   replaceLibtvVideoFromBundle: mocks.mockReplaceLibtvVideoFromBundle,
+  replaceOfficeCliFromBundle: mocks.mockReplaceOfficeCliFromBundle,
 }));
 
 import { SkillhubService } from "../src/services/skillhub-service.js";
@@ -270,6 +276,7 @@ describe("SkillhubService", () => {
       copied: [],
       skipped: [],
     });
+    mocks.mockReplaceOfficeCliFromBundle.mockClear();
     vi.stubEnv("CI", "");
   });
 
@@ -535,6 +542,11 @@ describe("SkillhubService", () => {
       ["skill-a", "skill-b"],
       "managed",
     );
+    expect(mocks.mockReplaceOfficeCliFromBundle).toHaveBeenCalledWith({
+      staticDir,
+      targetDir: env.openclawSkillsDir,
+      skillDb: db,
+    });
   });
 
   it("start() does not copy static skills when staticSkillsDir is undefined", async () => {

@@ -1191,6 +1191,8 @@ const CanvasNodeView = memo(function CanvasNodeView({
   // border) and fills the node height.
   const fullBleed =
     node.type === "a2ui" ||
+    node.type === "xhs" ||
+    node.type === "phone" ||
     ((node.type === "image" || node.type === "video") &&
       Boolean(node.metadata.content));
 
@@ -1208,7 +1210,8 @@ const CanvasNodeView = memo(function CanvasNodeView({
   // Groups and team-step nodes take no upstream/downstream data — connecting
   // to/from them is a no-op wiring dead end, so don't show handles that
   // invite it.
-  const connectable = node.type !== "group" && node.type !== "team-step";
+  const connectable =
+    node.type !== "group" && node.type !== "team-step" && node.type !== "phone";
 
   // Batch group state
   const batchChildIds = node.metadata.batch?.childIds;
@@ -1352,7 +1355,11 @@ const CanvasNodeView = memo(function CanvasNodeView({
         </button>
       </div>
       <div
-        {...(node.type === "a2ui" ? { "data-canvas-no-drag": "true" } : {})}
+        {...(node.type === "a2ui" ||
+        node.type === "xhs" ||
+        node.type === "phone"
+          ? { "data-canvas-no-drag": "true" }
+          : {})}
         className={cn(
           "min-h-0 flex-1",
           fullBleed ? "overflow-hidden rounded-[22px]" : "overflow-y-auto p-3",

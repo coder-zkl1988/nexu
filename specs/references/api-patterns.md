@@ -107,6 +107,12 @@ After route or schema changes run `pnpm generate-types`, then update web call si
 
 Frontend code must use `apps/web/lib/api/` and should not call controller routes with raw `fetch` when an SDK function exists.
 
+## Local attachment paths
+
+Desktop attachment requests may carry an app-staged path instead of inline base64. Route schemas must cap item count and payload size, while service code must independently validate that the lexical and canonical paths stay inside `<OPENCLAW_STATE_DIR>/media/inbound/`. Reject symbolic links, directories where a file is expected, files where a directory is expected, and non-regular entries before moving content into the session workspace.
+
+Generated `MEDIA:` downloads follow the same rule under `<OPENCLAW_STATE_DIR>/media/`: validate both `path.resolve` and `realpath` containment before reading or caching a file. The web app consumes the generated SDK response contract and must not construct a raw controller fetch for these routes.
+
 ---
 
 ## File map

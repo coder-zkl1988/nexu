@@ -76,6 +76,10 @@ describe("curated skill slugs", () => {
     }
   });
 
+  it("includes OfficeCLI as a bundled static skill", () => {
+    expect(STATIC_SKILL_SLUGS).toContain("officecli");
+  });
+
   it("no duplicate static slugs", () => {
     const unique = new Set(STATIC_SKILL_SLUGS);
     expect(unique.size).toBe(STATIC_SKILL_SLUGS.length);

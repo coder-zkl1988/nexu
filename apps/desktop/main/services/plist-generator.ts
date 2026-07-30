@@ -33,6 +33,8 @@ export interface PlistEnv {
   gatewayToken?: string;
   /** System PATH for launchd environment */
   systemPath?: string;
+  /** Absolute path to the bundled OfficeCLI executable */
+  officeCliBinPath?: string;
   /** NODE_PATH for module resolution (TypeScript plugins need this) */
   nodeModulesPath?: string;
 
@@ -138,6 +140,23 @@ function renderComputerUseEnvEntries(env: PlistEnv): string {
         <string>${escapeXml(env.computerUseBinPath)}</string>`;
 }
 
+function renderOfficeCliEnvEntries(env: PlistEnv): string {
+  if (!env.officeCliBinPath) return "";
+  return `
+        <key>OFFICECLI_BIN</key>
+        <string>${escapeXml(env.officeCliBinPath)}</string>`;
+}
+
+function launchdPath(env: PlistEnv): string | undefined {
+  const officeCliDir = env.officeCliBinPath
+    ? path.dirname(env.officeCliBinPath)
+    : undefined;
+  const entries = [officeCliDir, env.systemPath].filter(
+    (entry): entry is string => Boolean(entry),
+  );
+  return entries.length > 0 ? entries.join(path.delimiter) : undefined;
+}
+
 /**
  * Generate plist XML for a service.
  */
@@ -157,6 +176,7 @@ function generateControllerPlist(label: string, env: PlistEnv): string {
   const logPath = path.join(env.logDir, "controller.log");
   const errorPath = path.join(env.logDir, "controller.error.log");
   const openclawLabel = SERVICE_LABELS.openclaw(env.isDev);
+  const effectivePath = launchdPath(env);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -209,9 +229,9 @@ function generateControllerPlist(label: string, env: PlistEnv): string {
         <key>OPENCLAW_ELECTRON_EXECUTABLE</key>
         <string>${escapeXml(env.nodePath)}</string>
         <key>OPENCLAW_EXTENSIONS_DIR</key>
-        <string>${escapeXml(env.openclawExtensionsDir)}</string>${renderComputerUseEnvEntries(
+        <string>${escapeXml(env.openclawExtensionsDir)}</string>${renderOfficeCliEnvEntries(
           env,
-        )}${
+        )}${renderComputerUseEnvEntries(env)}${
           env.localAutomationPreviewEnabled !== undefined
             ? `
         <key>NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED</key>
@@ -238,10 +258,10 @@ function generateControllerPlist(label: string, env: PlistEnv): string {
         <string>${escapeXml(env.gatewayToken)}</string>`
             : ""
         }${
-          env.systemPath
+          effectivePath
             ? `
         <key>PATH</key>
-        <string>${escapeXml(env.systemPath)}</string>`
+        <string>${escapeXml(effectivePath)}</string>`
             : ""
         }${
           env.posthogApiKey
@@ -310,6 +330,7 @@ function generateOpenclawPlist(label: string, env: PlistEnv): string {
   const logPath = path.join(env.logDir, "openclaw.log");
   const errorPath = path.join(env.logDir, "openclaw.error.log");
   const controllerLabel = SERVICE_LABELS.controller(env.isDev);
+  const effectivePath = launchdPath(env);
 
   // In dev mode, use --auth none to simplify local development
   const authArgs = env.isDev
@@ -354,7 +375,7 @@ function generateOpenclawPlist(label: string, env: PlistEnv): string {
         <key>OPENCLAW_SERVICE_MARKER</key>
         <string>launchd</string>
         <key>OPENCLAW_IMAGE_BACKEND</key>
-        <string>sips</string>${
+        <string>sips</string>${renderOfficeCliEnvEntries(env)}${
           env.gatewayToken
             ? `
         <key>OPENCLAW_GATEWAY_TOKEN</key>
@@ -383,10 +404,10 @@ function generateOpenclawPlist(label: string, env: PlistEnv): string {
         <string>${escapeXml(os.homedir())}</string>${renderProxyEnvEntries(
           env.proxyEnv,
         )}${renderCoverageEnvEntries(env)}${
-          env.systemPath
+          effectivePath
             ? `
         <key>PATH</key>
-        <string>${escapeXml(env.systemPath)}</string>`
+        <string>${escapeXml(effectivePath)}</string>`
             : ""
         }${
           env.nodeModulesPath

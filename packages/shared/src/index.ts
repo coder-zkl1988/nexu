@@ -36,5 +36,6 @@ export * from "./lifecycle/index.js";
 export * from "./net/index.js";
 export * from "./platform/index.js";
 export * from "./skill-version.js";
+export * from "./chat-attachments.js";
 export { ensure } from "./ensure/index.js";
 export * from "./schemas/device-control.js";

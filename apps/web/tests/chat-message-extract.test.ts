@@ -14,6 +14,32 @@ const INTERNAL_BLOCK = [
   "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
 ].join("\n");
 
+describe("file attachment extraction", () => {
+  it("preserves a controller download URL on file blocks", () => {
+    const extracted = extractMessage({
+      role: "assistant",
+      content: [
+        {
+          type: "file",
+          url: "/api/v1/media/state-file?path=%2Ftmp%2Freport.docx",
+          metadata: {
+            filename: "report.docx",
+            mimeType:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          },
+        },
+      ],
+    });
+
+    expect(extracted.fileCards).toEqual([
+      expect.objectContaining({
+        name: "report.docx",
+        url: "/api/v1/media/state-file?path=%2Ftmp%2Freport.docx",
+      }),
+    ]);
+  });
+});
+
 describe("OpenClaw internal-context stripping", () => {
   it("a user message that is only an internal-context block extracts to empty text", () => {
     const extracted = extractMessage({

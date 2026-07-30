@@ -65,6 +65,8 @@ export interface LaunchdBootstrapEnv {
   nexuHome?: string;
   /** Gateway auth token */
   gatewayToken?: string;
+  /** Absolute path to the bundled OfficeCLI executable */
+  officeCliBinPath?: string;
   /** Plist directory (default: ~/Library/LaunchAgents or repo-local for dev) */
   plistDir?: string;
   /** App version (used to detect reinstalls and prevent attaching to stale services) */
@@ -765,6 +767,7 @@ export async function bootstrapWithLaunchd(
     nexuHome: env.nexuHome,
     gatewayToken: env.gatewayToken,
     systemPath,
+    officeCliBinPath: env.officeCliBinPath,
     nodeModulesPath,
     webUrl: env.webUrl,
     openclawSkillsDir: env.openclawSkillsDir,

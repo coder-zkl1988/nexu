@@ -33,8 +33,21 @@
 
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  opendir,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
+import { CHAT_ATTACHMENT_LIMITS } from "@nexu/shared";
 
 import { logger } from "../lib/logger.js";
 
@@ -46,7 +59,7 @@ import { logger } from "../lib/logger.js";
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Hard cap on raw file size, matching the extractor. */
-const MAX_ATTACHMENT_BYTES = 5_000_000;
+const MAX_INLINE_ATTACHMENT_BYTES = CHAT_ATTACHMENT_LIMITS.maxInlineFileBytes;
 
 export interface SaveAttachmentInput {
   botId: string;
@@ -64,6 +77,21 @@ export interface SaveAttachmentResult {
   storedFilename: string;
   /** Size in bytes of the decoded, saved file. */
   sizeBytes: number;
+}
+
+export interface ImportedStagedAttachmentResult extends SaveAttachmentResult {
+  /** Original app-owned inbound path, used to restore a failed chat request. */
+  stagedPath: string;
+}
+
+export interface ImportStagedAttachmentInput {
+  botId: string;
+  sessionKey: string;
+  stagedPath: string;
+  filename?: string;
+  kind: "file" | "directory";
+  /** Remaining byte budget for this message. Checked before the move. */
+  maxBytes?: number;
 }
 
 export interface AttachmentStoreOptions {
@@ -160,6 +188,10 @@ export class AttachmentStore {
     return path.join(this.stateDir, "workspace");
   }
 
+  private inboundRoot(): string {
+    return path.join(this.stateDir, "media", "inbound");
+  }
+
   async saveAttachment(
     input: SaveAttachmentInput,
   ): Promise<SaveAttachmentResult> {
@@ -167,9 +199,9 @@ export class AttachmentStore {
     if (!buffer) {
       throw new Error("AttachmentStore: invalid base64 payload");
     }
-    if (buffer.byteLength > MAX_ATTACHMENT_BYTES) {
+    if (buffer.byteLength > MAX_INLINE_ATTACHMENT_BYTES) {
       throw new Error(
-        `AttachmentStore: attachment exceeds ${MAX_ATTACHMENT_BYTES}B limit (${buffer.byteLength}B)`,
+        `AttachmentStore: attachment exceeds ${MAX_INLINE_ATTACHMENT_BYTES}B inline limit (${buffer.byteLength}B)`,
       );
     }
 
@@ -190,10 +222,155 @@ export class AttachmentStore {
     };
   }
 
+  async importStagedAttachment(
+    input: ImportStagedAttachmentInput,
+  ): Promise<ImportedStagedAttachmentResult> {
+    const inboundRoot = this.inboundRoot();
+    const sourcePath = path.resolve(input.stagedPath);
+    const relativeSource = path.relative(inboundRoot, sourcePath);
+    if (
+      !relativeSource ||
+      relativeSource.startsWith(`..${path.sep}`) ||
+      relativeSource === ".." ||
+      path.isAbsolute(relativeSource)
+    ) {
+      throw new Error("AttachmentStore: staged path is outside inbound root");
+    }
+
+    const [lexicalSourceStat, realInboundRoot, realSourcePath] =
+      await Promise.all([
+        lstat(sourcePath),
+        realpath(inboundRoot),
+        realpath(sourcePath),
+      ]);
+    const realRelative = path.relative(realInboundRoot, realSourcePath);
+    if (
+      !realRelative ||
+      realRelative.startsWith(`..${path.sep}`) ||
+      realRelative === ".." ||
+      path.isAbsolute(realRelative)
+    ) {
+      throw new Error(
+        "AttachmentStore: staged path resolves outside inbound root",
+      );
+    }
+    if (lexicalSourceStat.isSymbolicLink()) {
+      throw new Error("AttachmentStore: symbolic links are not supported");
+    }
+
+    const sourceStat = await lstat(realSourcePath);
+    if (sourceStat.isSymbolicLink()) {
+      throw new Error("AttachmentStore: symbolic links are not supported");
+    }
+    if (input.kind === "directory" && !sourceStat.isDirectory()) {
+      throw new Error("AttachmentStore: staged directory is not a directory");
+    }
+    if (input.kind === "file" && !sourceStat.isFile()) {
+      throw new Error("AttachmentStore: staged file is not a file");
+    }
+
+    const maxBytes = Math.min(
+      CHAT_ATTACHMENT_LIMITS.maxTotalBytes,
+      input.maxBytes ?? CHAT_ATTACHMENT_LIMITS.maxTotalBytes,
+    );
+    if (maxBytes < 0) {
+      throw new Error("AttachmentStore: attachment byte budget is exhausted");
+    }
+
+    let sizeBytes = 0;
+    const pending = [realSourcePath];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      if (!current) continue;
+      const currentStat = await lstat(current);
+      if (currentStat.isSymbolicLink()) {
+        throw new Error(
+          "AttachmentStore: staged attachment contains a symbolic link",
+        );
+      }
+      if (currentStat.isFile()) {
+        if (currentStat.size > CHAT_ATTACHMENT_LIMITS.maxFileBytes) {
+          throw new Error(
+            "AttachmentStore: staged file exceeds the 100 MB limit",
+          );
+        }
+        sizeBytes += currentStat.size;
+        if (sizeBytes > maxBytes) {
+          throw new Error(
+            "AttachmentStore: staged attachment exceeds the remaining message byte budget",
+          );
+        }
+        continue;
+      }
+      if (!currentStat.isDirectory()) {
+        throw new Error(
+          "AttachmentStore: staged attachment contains an unsupported entry",
+        );
+      }
+      const directory = await opendir(current);
+      for await (const entry of directory) {
+        pending.push(path.join(current, entry.name));
+      }
+    }
+
+    const destinationDir = this.attachmentsDirFor(
+      input.botId,
+      input.sessionKey,
+    );
+    await mkdir(destinationDir, { recursive: true });
+    const safeName = sanitizeFilename(input.filename);
+    const storedFilename = `${randomUUID().slice(0, 8)}-${safeName}`;
+    const absolutePath = path.join(destinationDir, storedFilename);
+    await rename(realSourcePath, absolutePath);
+    await rmdir(path.dirname(realSourcePath)).catch(() => {
+      // Other files from the same picker batch may still be waiting to send.
+    });
+
+    return { absolutePath, storedFilename, sizeBytes, stagedPath: sourcePath };
+  }
+
+  /** Best-effort rollback for an imported attachment whose chat send failed. */
+  async restoreStagedAttachment(
+    imported: ImportedStagedAttachmentResult,
+  ): Promise<void> {
+    const stagedPath = path.resolve(imported.stagedPath);
+    const relativeStagedPath = path.relative(this.inboundRoot(), stagedPath);
+    try {
+      if (
+        !relativeStagedPath ||
+        relativeStagedPath.startsWith(`..${path.sep}`) ||
+        relativeStagedPath === ".." ||
+        path.isAbsolute(relativeStagedPath)
+      ) {
+        throw new Error("staged path is outside inbound root");
+      }
+
+      const stagedPathExists = await lstat(stagedPath).then(
+        () => true,
+        () => false,
+      );
+      if (stagedPathExists) {
+        throw new Error("staged path is already occupied");
+      }
+
+      await mkdir(path.dirname(stagedPath), { recursive: true });
+      await rename(imported.absolutePath, stagedPath);
+    } catch (error) {
+      logger.warn(
+        {
+          stagedPath,
+          importedPath: imported.absolutePath,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "attachment-store: failed to restore staged attachment",
+      );
+    }
+  }
+
   /**
-   * Walk `<stateDir>/agents/*\/attachments/` and delete any file older than
-   * the configured TTL.  Runs on controller startup and is safe to call
-   * concurrently with new saves — each `rm` is independent.
+   * Walk `<stateDir>/workspace/*\/attachments/` and delete any file or
+   * directory older than the configured TTL. Runs on controller startup and
+   * is safe to call concurrently with new saves — each `rm` is independent.
    *
    * Returns `{deleted, skipped}` counts for observability.
    */
@@ -225,22 +402,25 @@ export class AttachmentStore {
           withFileTypes: true,
         }).catch(() => [] as never[]);
         for (const entry of entries) {
-          if (!entry.isFile()) continue;
-          const filePath = path.join(sessionDir, entry.name);
+          if (!entry.isFile() && !entry.isDirectory()) continue;
+          const entryPath = path.join(sessionDir, entry.name);
           let mtimeMs: number;
           try {
-            mtimeMs = (await stat(filePath)).mtimeMs;
+            mtimeMs = (await stat(entryPath)).mtimeMs;
           } catch {
             continue;
           }
           if (mtimeMs < cutoff) {
             try {
-              await rm(filePath);
+              await rm(entryPath, {
+                recursive: entry.isDirectory(),
+                force: true,
+              });
               deleted += 1;
             } catch (err) {
               logger.warn(
                 {
-                  filePath,
+                  filePath: entryPath,
                   error: err instanceof Error ? err.message : String(err),
                 },
                 "attachment-store: cleanup delete failed",

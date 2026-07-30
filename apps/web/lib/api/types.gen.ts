@@ -2614,8 +2614,9 @@ export type PostApiV1ChatLocalStartData = {
                 size?: number;
             };
             attachments?: Array<{
-                type: 'image' | 'file';
-                content: string;
+                type: 'image' | 'file' | 'directory';
+                content?: string;
+                stagedPath?: string;
                 metadata?: {
                     mimeType?: string;
                     filename?: string;
@@ -2693,8 +2694,9 @@ export type PostApiV1ChatLocalData = {
                 size?: number;
             };
             attachments?: Array<{
-                type: 'image' | 'file';
-                content: string;
+                type: 'image' | 'file' | 'directory';
+                content?: string;
+                stagedPath?: string;
                 metadata?: {
                     mimeType?: string;
                     filename?: string;
@@ -7235,7 +7237,7 @@ export type GetApiV1CanvasMirrorResponses = {
         boardId: string;
         nodes: Array<{
             id: string;
-            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'xhs' | 'phone' | 'group');
             title: string;
             x: number;
             y: number;
@@ -7270,7 +7272,7 @@ export type PostApiV1CanvasMirrorData = {
         boardId: string;
         nodes: Array<{
             id: string;
-            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'xhs' | 'phone' | 'group');
             title: string;
             x: number;
             y: number;

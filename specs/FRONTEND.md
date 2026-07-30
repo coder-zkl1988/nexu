@@ -59,6 +59,12 @@ Session detail pages expose browser and canvas controls beside the conversation 
 
 The embedded browser supports up to eight tabs, navigation controls, generated-page auto-open, DOM element selection into the current chat input, and screenshot annotation into an image attachment. Arbitrary pages run in sandboxed Electron `WebContentsView` instances with Node integration disabled; the trusted application webview remains the only surface with the desktop preload bridge. In non-desktop web builds, the browser falls back to a sandboxed iframe without element selection or screenshot capture.
 
+Absolute HTTP(S) links in session Markdown open in the embedded browser. A link request never retargets a tab pinned by an active browser agent; in that case the URL falls back to the system browser. Explicit link navigation also wins over older generated-page artifacts so a stale preview cannot steal focus.
+
+The chat composer attachment menu separates images, files, and directories. Desktop selection copies authorized paths into the app-owned inbound staging directory and sends only staged paths across the local controller boundary; browser-only use falls back to bounded inline base64 attachments. Shared limits cover item count, per-file/image size, inline payload size, and total message size. Session history renders Office and other generated `MEDIA:` files as typed download cards.
+
+Xiaohongshu editors stay inline in the conversation. The canvas also exposes native Xiaohongshu and phone-preview nodes for AI copy generation, connected images, device selection, and publishing. A publish result with unknown phone status is non-terminal and must not be retried automatically, which avoids duplicate posts.
+
 Generated local pages are discovered from `index.html` / `index.htm` files under the active Bot workspace and served through the controller's constrained preview route. Preview file resolution must remain inside the selected project root after `realpath` resolution, including symlink checks.
 
 ## Channels

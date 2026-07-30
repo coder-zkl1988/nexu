@@ -122,6 +122,12 @@ The controller is bundled into the desktop distributable as a sidecar. The scrip
 du -sh node_modules/.pnpm/<pkg>@*/node_modules/<pkg>/
 ```
 
+### Bundled OfficeCLI and attachment staging
+
+Release preparation downloads the pinned OfficeCLI binary through `apps/desktop/scripts/prepare-officecli-runtime.mjs`, verifies its SHA-256 digest, and places the executable plus Apache-2.0 `LICENSE` and `NOTICE` under `.dist-runtime/tools/officecli/`. Packaged controller and OpenClaw processes receive the absolute path through `OFFICECLI_BIN`; both normal runtime manifests and macOS launchd plists prepend the binary directory to `PATH`.
+
+The desktop attachment picker copies user-approved images, files, or directories into `<OPENCLAW_STATE_DIR>/media/inbound/<batch>/`. The controller accepts only paths that remain inside this app-owned root after `realpath`, rejects symbolic links and unsupported entries, enforces the shared attachment budgets, and atomically moves accepted content into the session attachment workspace. Inbound batches expire after 24 hours; imported files and directories use the normal attachment TTL.
+
 ### Local HTTP and WebSocket boundary
 
 The packaged embedded web server and the controller are local control-plane endpoints, not public web APIs. Both must reject non-loopback Host values, non-loopback browser Origin values, and cross-site Fetch Metadata before forwarding API or WebSocket traffic. The embedded server must never reflect arbitrary origins with `Access-Control-Allow-Credentials: true`. Keep the controller guard on its direct port as well as the embedded proxy: binding to `127.0.0.1` and enabling CORS is not sufficient protection against DNS rebinding.

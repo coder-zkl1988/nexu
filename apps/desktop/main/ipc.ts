@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   app,
   crashReporter,
+  dialog,
   ipcMain,
   screen,
   shell,
@@ -26,6 +27,7 @@ import type { DesktopRuntimeConfig } from "../shared/runtime-config";
 import type { DesktopDiagnosticsReporter } from "./desktop-diagnostics";
 import { exportDiagnostics, uploadDiagnostics } from "./diagnostics-export";
 import type { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
+import { stageDesktopAttachmentPaths } from "./services/desktop-attachment-stager";
 import {
   getDesktopShellPreferences,
   updateDesktopShellPreferences,
@@ -683,6 +685,7 @@ export function registerIpcHandlers(
   diagnosticsReporter: DesktopDiagnosticsReporter | null,
   coldStartReady?: Promise<void>,
   onDeskpetActivity?: (mood: DesktopDeskpetMood) => void,
+  openclawStateDir?: string,
 ): () => void {
   ensureDesktopDevRendererLogTracking();
 
@@ -1214,6 +1217,42 @@ export function registerIpcHandlers(
             ok: true,
           };
 
+          return result;
+        }
+
+        case "desktop:pick-attachments": {
+          const typedPayload =
+            payload as HostInvokePayloadMap["desktop:pick-attachments"];
+          if (!openclawStateDir) {
+            throw new Error("Desktop attachment staging is unavailable.");
+          }
+          const isDirectory = typedPayload.kind === "directory";
+          const selection = await dialog.showOpenDialog({
+            title: isDirectory ? "选择目录" : "选择文件",
+            properties: isDirectory
+              ? ["openDirectory", "multiSelections"]
+              : ["openFile", "multiSelections"],
+            ...(typedPayload.kind === "image"
+              ? {
+                  filters: [
+                    {
+                      name: "Images",
+                      extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"],
+                    },
+                  ],
+                }
+              : {}),
+          });
+          const attachments = selection.canceled
+            ? []
+            : await stageDesktopAttachmentPaths({
+                openclawStateDir,
+                kind: typedPayload.kind,
+                sourcePaths: selection.filePaths,
+              });
+          const result: HostInvokeResultMap["desktop:pick-attachments"] = {
+            attachments,
+          };
           return result;
         }
 

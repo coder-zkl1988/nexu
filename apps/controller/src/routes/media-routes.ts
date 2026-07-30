@@ -18,7 +18,11 @@ import {
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
 import { logger } from "../lib/logger.js";
-import { mediaCacheDir, mediaCachePathFor } from "../lib/media-cache.js";
+import {
+  mediaCacheDir,
+  mediaCachePathFor,
+  resolveMediaFileWithinRoot,
+} from "../lib/media-cache.js";
 import {
   ImageGenerationFailedError,
   InvalidMediaReferenceError,
@@ -45,6 +49,15 @@ const MEDIA_EXTENSION_MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx":
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
 
 // ── prompt-cover generation ────────────────────────────────────────────────
@@ -419,11 +432,13 @@ export function registerMediaRoutes(
     if (!rawPath) {
       return c.text("Not found", 404);
     }
-    // Only files inside the OpenClaw state media directory are reachable.
+    // Only regular files whose canonical path stays inside the OpenClaw state
+    // media directory are reachable. This rejects symlink escapes as well as
+    // lexical path traversal.
     const mediaRoot = path.resolve(container.env.openclawStateDir, "media");
     const resolved = path.resolve(rawPath);
-    const relative = path.relative(mediaRoot, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    const resolution = await resolveMediaFileWithinRoot(mediaRoot, resolved);
+    if (resolution.status === "unsafe") {
       return c.text("Not found", 404);
     }
     const mime =
@@ -435,7 +450,10 @@ export function registerMediaRoutes(
         "Cache-Control": "private, max-age=3600",
       });
     try {
-      return serve(await readFile(resolved));
+      if (resolution.status === "file") {
+        return serve(await readFile(resolution.realPath));
+      }
+      throw new Error("source media file is missing");
     } catch {
       // Original was TTL-cleaned by OpenClaw — fall back to the durable
       // mirror captured at history-read time (see sessions-runtime).

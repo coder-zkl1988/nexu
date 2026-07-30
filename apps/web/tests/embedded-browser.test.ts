@@ -11,6 +11,7 @@ import {
   closeBrowserPanelForSessionNavigation,
   getBrowserPanelState,
   openBrowserPanel,
+  openUrlInBrowserPanel,
   releaseAgentBrowserPanelPin,
   resetBrowserPanelForTests,
 } from "../src/lib/browser/browser-panel-store";
@@ -22,6 +23,7 @@ import {
   isPreviewArtifactActive,
   normalizeBrowserUrl,
   pushBrowserHistory,
+  selectBrowserNavigationTarget,
   selectLatestPreviewArtifact,
   sortPreviewArtifacts,
 } from "../src/lib/browser/embedded-browser";
@@ -203,8 +205,65 @@ describe("embedded browser helpers", () => {
     expect(getBrowserPanelState()).toEqual({
       isOpen: false,
       sessionKey: null,
+      navigationRequest: null,
       openedByAgent: false,
     });
+  });
+
+  it("opens a session link with a fresh navigation request", () => {
+    resetBrowserPanelForTests();
+
+    expect(
+      openUrlInBrowserPanel(
+        "agent:bot:session-a",
+        "http://127.0.0.1:4173/index.html",
+      ),
+    ).toBe(true);
+    const first = getBrowserPanelState();
+    expect(first.openedByAgent).toBe(false);
+    expect(first.navigationRequest?.url).toBe(
+      "http://127.0.0.1:4173/index.html",
+    );
+
+    expect(
+      openUrlInBrowserPanel("agent:bot:session-a", "https://example.com/demo"),
+    ).toBe(true);
+    const second = getBrowserPanelState();
+    expect(second.navigationRequest?.id).toBeGreaterThan(
+      first.navigationRequest?.id ?? 0,
+    );
+    expect(second.openedByAgent).toBe(false);
+  });
+
+  it("does not retarget an agent-pinned panel", () => {
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    expect(
+      openUrlInBrowserPanel("agent:bot:session-a", "https://example.com/demo"),
+    ).toBe(false);
+    expect(getBrowserPanelState()).toEqual({
+      isOpen: true,
+      sessionKey: "agent:bot:session-a",
+      navigationRequest: null,
+      openedByAgent: true,
+    });
+  });
+
+  it("never chooses the current agent tab as a navigation replacement", () => {
+    const tabs = Array.from({ length: 8 }, (_, index) => ({
+      id: index === 0 ? "agent-tab" : `user-tab-${index}`,
+      url: `https://tab-${index}.test/`,
+    }));
+
+    expect(
+      selectBrowserNavigationTarget(
+        tabs,
+        "agent-tab",
+        "https://requested.test/",
+        "agent-tab",
+      ),
+    ).toEqual({ kind: "replace", tabId: "user-tab-1" });
   });
 
   it("keeps an agent's browser open across navigation", () => {

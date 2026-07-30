@@ -15,6 +15,7 @@ import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import {
   closeBrowserPanel,
   openBrowserPanel,
+  openUrlInBrowserPanel,
   useBrowserPanel,
 } from "@/lib/browser/browser-panel-store";
 import {
@@ -53,7 +54,12 @@ import {
   buildTranscriptItems,
   stripRenderedAssistantText,
 } from "@/lib/chat/chat-transcript-groups";
+import {
+  type MessageFileKind,
+  classifyMessageFile,
+} from "@/lib/chat/message-file-kind";
 import { invokeDesktopHost } from "@/lib/desktop-host";
+import { openExternalUrl } from "@/lib/desktop-links";
 import { normalizeChannel, track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,12 +69,23 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
+  Download,
+  File,
+  FileArchive,
+  FileAudio,
+  FileCode2,
   FileImage,
+  FileSpreadsheet,
   FileText,
+  FileType2,
+  FileVideo,
+  FolderOpen,
   Globe,
   Loader2,
+  type LucideIcon,
   MessageSquare,
   PanelRight,
+  Presentation,
   Shapes,
   Square,
   Terminal,
@@ -96,6 +113,24 @@ import {
 
 const BOT_AVATAR = "/images/claw-avatar.png";
 const USER_AVATAR = "/images/tabby-avatar.png";
+
+const MESSAGE_FILE_VISUALS: Record<
+  MessageFileKind,
+  { icon: LucideIcon; color: string }
+> = {
+  directory: { icon: FolderOpen, color: "text-amber-500" },
+  pdf: { icon: FileText, color: "text-red-500" },
+  word: { icon: FileType2, color: "text-blue-500" },
+  spreadsheet: { icon: FileSpreadsheet, color: "text-green-600" },
+  presentation: { icon: Presentation, color: "text-orange-500" },
+  image: { icon: FileImage, color: "text-purple-500" },
+  audio: { icon: FileAudio, color: "text-pink-500" },
+  video: { icon: FileVideo, color: "text-indigo-500" },
+  archive: { icon: FileArchive, color: "text-amber-600" },
+  code: { icon: FileCode2, color: "text-cyan-600" },
+  text: { icon: FileText, color: "text-text-muted" },
+  file: { icon: File, color: "text-text-muted" },
+};
 
 /**
  * Speak-reply button for assistant bubbles (OpenClaw >=2026.7.1 tts.speak).
@@ -245,16 +280,16 @@ function getLatestAssistantReplyTextFromMessages(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Complex editor components — their surfaces always open in the side panel. */
-const SIDEBAR_DOC_COMPONENT_TYPES = new Set(["MarkdownEditor", "XHSEditor"]);
+/** Complex document components whose surfaces always open in the side panel. */
+const SIDEBAR_DOC_COMPONENT_TYPES = new Set(["MarkdownEditor"]);
 
 /**
  * Decide where an A2UI surface renders.
  *
- * Side panel: only complex-interaction editor surfaces (MarkdownEditor /
- * XHSEditor).  Everything else — forms, images, video/audio, status cards —
- * renders inline in the conversation flow.  A `sidebar:` surfaceId prefix
- * remains an explicit override for "show this in the side panel".
+ * Side panel: only document editor surfaces (MarkdownEditor). Xiaohongshu
+ * editors intentionally stay in the conversation that produced them. Every
+ * other surface — forms, images, video/audio, status cards — also renders
+ * inline. A `sidebar:` surfaceId prefix remains an explicit override.
  */
 function isSidebarBoundSurface(
   surfaceId: string,
@@ -732,12 +767,14 @@ function ExecutionActivityGroup({
   active,
   showAvatar,
   liveText = "",
+  onOpenLink,
 }: {
   id: string;
   entries: TranscriptEntry<ChatMessageData>[];
   active: boolean;
   showAvatar: boolean;
   liveText?: string;
+  onOpenLink?: (url: string) => void;
 }) {
   const { t } = useTranslation();
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
@@ -850,7 +887,7 @@ function ExecutionActivityGroup({
                       : t("sessions.chat.processNote")}
                   </div>
                   <div className="text-text-secondary">
-                    <ChatMarkdown content={step.text} />
+                    <ChatMarkdown content={step.text} onOpenLink={onOpenLink} />
                     {step.streaming && (
                       <span className="inline-block h-3.5 w-1 animate-pulse bg-text-secondary align-text-bottom" />
                     )}
@@ -989,17 +1026,15 @@ function SidebarA2UIButton({
   );
 }
 
-function MessageFileCard({ name, mimeType, size }: FileCardInfo) {
+function MessageFileCard({ name, mimeType, size, url }: FileCardInfo) {
+  const { t } = useTranslation();
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  const isImage = mimeType.startsWith("image/");
-  return (
-    <div className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface-1 px-3 py-2 max-w-[240px]">
+  const { icon: FileTypeIcon, color: iconColor } =
+    MESSAGE_FILE_VISUALS[classifyMessageFile(name, mimeType)];
+  const content = (
+    <>
       <div className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-surface-2">
-        {isImage ? (
-          <FileImage size={14} className="text-purple-500" />
-        ) : (
-          <FileText size={14} className="text-text-muted" />
-        )}
+        <FileTypeIcon size={16} className={iconColor} />
       </div>
       <div className="min-w-0">
         <div className="text-[12px] text-text-primary truncate font-medium">
@@ -1010,7 +1045,22 @@ function MessageFileCard({ name, mimeType, size }: FileCardInfo) {
           {size !== undefined && ` · ${formatBytes(size)}`}
         </div>
       </div>
-    </div>
+      {url && <Download className="size-3.5 shrink-0 text-text-muted" />}
+    </>
+  );
+  const className =
+    "inline-flex items-center gap-2 rounded-xl border border-border bg-surface-1 px-3 py-2 max-w-[240px]";
+  return url ? (
+    <a
+      href={url}
+      download={name}
+      title={t("sessions.chat.downloadFile")}
+      className={`${className} transition-colors hover:bg-surface-2`}
+    >
+      {content}
+    </a>
+  ) : (
+    <div className={className}>{content}</div>
   );
 }
 
@@ -1028,6 +1078,7 @@ function ChatBubble({
   onOpenSidebar,
   showAvatar = true,
   presentation = "full",
+  onOpenLink,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
@@ -1037,6 +1088,7 @@ function ChatBubble({
   /** False for consecutive same-sender messages — renders an alignment spacer instead. */
   showAvatar?: boolean;
   presentation?: "full" | "artifacts-only";
+  onOpenLink?: (url: string) => void;
 }) {
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
@@ -1124,7 +1176,7 @@ function ChatBubble({
                 : "bg-surface-3 text-text-primary",
             )}
           >
-            <ChatMarkdown content={text} />
+            <ChatMarkdown content={text} onOpenLink={onOpenLink} />
           </div>
         )}
         {isBot && hasA2UI && a2uiMessages && (
@@ -1702,7 +1754,7 @@ export function SessionsPage() {
       attachments: PendingAttachment[],
       skillSlug: string | null,
     ) => {
-      if (!selectedBot || !id || !session?.sessionKey) return;
+      if (!selectedBot || !id || !session?.sessionKey) return false;
 
       // Intercept /new command
       const trimmed = text.trim().toLowerCase();
@@ -1719,12 +1771,13 @@ export function SessionsPage() {
           toast.success(
             t("sessions.chat.newSession", { defaultValue: "New conversation" }),
           );
+          return true;
         } catch {
           toast.error(
             t("sessions.chat.newSession", { defaultValue: "New conversation" }),
           );
+          return false;
         }
-        return;
       }
 
       const optimisticId = `pending-${Date.now()}`;
@@ -1743,7 +1796,10 @@ export function SessionsPage() {
       // Format message payload with attachment support (mirrors local-chat.tsx)
       const onlyImage = attachments[0];
       const isImageOnly =
-        attachments.length === 1 && onlyImage?.type === "image" && !text.trim();
+        attachments.length === 1 &&
+        onlyImage?.type === "image" &&
+        Boolean(onlyImage.content) &&
+        !text.trim();
       const msgContent = isImageOnly
         ? {
             type: "image" as const,
@@ -1759,6 +1815,7 @@ export function SessionsPage() {
                 ? attachments.map((a) => ({
                     type: a.type,
                     content: a.content,
+                    stagedPath: a.stagedPath,
                     metadata: {
                       mimeType: a.mimeType,
                       filename: a.filename,
@@ -1810,7 +1867,7 @@ export function SessionsPage() {
               defaultValue: "上一条消息还在处理中，请等当前任务完成后再发送。",
             }),
           );
-          return;
+          return false;
         }
         // Remember our run id so SSE final/aborted/error events from OTHER
         // runs in this session don't prematurely re-enable the composer.
@@ -1818,6 +1875,7 @@ export function SessionsPage() {
         await queryClient.invalidateQueries({
           queryKey: ["chat-history", id],
         });
+        return true;
       } catch {
         activeRunIdRef.current = null;
         deskpetReplyPendingRef.current = false;
@@ -1830,6 +1888,7 @@ export function SessionsPage() {
           mood: "error",
           durationMs: DESKPET_ERROR_DURATION_MS,
         });
+        return false;
       }
     },
     [selectedBot, id, session?.sessionKey, queryClient, t],
@@ -2221,6 +2280,21 @@ export function SessionsPage() {
   const browserHiddenWithContent =
     !browserSelected && latestPreviewArtifact !== null;
   const canvasHiddenWithContent = !canvasSelected && canvasNodes.length > 0;
+  const handleOpenChatLink = useCallback(
+    (url: string): void => {
+      const sessionKey = session?.sessionKey;
+      if (!sessionKey) {
+        void openExternalUrl(url);
+        return;
+      }
+      if (openUrlInBrowserPanel(sessionKey, url)) {
+        setPanelOpen(false);
+        return;
+      }
+      void openExternalUrl(url);
+    },
+    [session?.sessionKey],
+  );
 
   const sidebarSurfaceKey = sidebarPayloads.map((p) => p.surfaceId).join("|");
   const seenSidebarSurfacesRef = useRef<Set<string> | null>(null);
@@ -2568,6 +2642,7 @@ export function SessionsPage() {
                       onA2UIAction={onA2UIAction}
                       onCanvasOpApplied={onCanvasOpApplied}
                       onOpenSidebar={openSidebar}
+                      onOpenLink={handleOpenChatLink}
                     />,
                   ];
                 }
@@ -2588,6 +2663,7 @@ export function SessionsPage() {
                       onA2UIAction={onA2UIAction}
                       onCanvasOpApplied={onCanvasOpApplied}
                       onOpenSidebar={openSidebar}
+                      onOpenLink={handleOpenChatLink}
                     />
                   ));
 
@@ -2600,6 +2676,7 @@ export function SessionsPage() {
                     active={activityActive}
                     showAvatar={showAvatar}
                     liveText={activityActive ? visibleStreamingText : ""}
+                    onOpenLink={handleOpenChatLink}
                   />,
                   ...artifactBubbles,
                 ];
@@ -2611,6 +2688,7 @@ export function SessionsPage() {
                   active
                   showAvatar={!lastDisplayedIsAssistant}
                   liveText={visibleStreamingText}
+                  onOpenLink={handleOpenChatLink}
                 />
               )}
               <div ref={endRef} />
@@ -2626,9 +2704,7 @@ export function SessionsPage() {
             bots={bots}
             selectedBot={selectedBot}
             onSelectBot={() => {}}
-            onSend={(text, attachments, skillSlug) => {
-              void handleSend(text, attachments, skillSlug);
-            }}
+            onSend={handleSend}
             onTyping={handleDeskpetTyping}
             onCancel={handleCancel}
             sending={false}

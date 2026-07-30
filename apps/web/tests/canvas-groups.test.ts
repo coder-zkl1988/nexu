@@ -324,6 +324,8 @@ describe("mirror schema — group widening (mirror-only)", () => {
       "config",
       "a2ui",
       "team-step",
+      "xhs",
+      "phone",
     ]) {
       expect(
         canvasMirrorNodeSchema.safeParse({ ...baseNode, type }).success,

@@ -102,6 +102,29 @@ describe("generatePlist", () => {
     );
   });
 
+  it("exposes OfficeCLI and prepends its directory to PATH for both services", async () => {
+    const { generatePlist } = await import(
+      "../../apps/desktop/main/services/plist-generator"
+    );
+    const env = {
+      ...mockEnv,
+      systemPath: "/usr/local/bin:/usr/bin",
+      officeCliBinPath:
+        "/Applications/Tabby.app/Contents/Resources/runtime/tools/officecli/officecli",
+    };
+
+    for (const service of ["controller", "openclaw"] as const) {
+      const plist = generatePlist(service, env);
+      expect(plist).toContain("<key>OFFICECLI_BIN</key>");
+      expect(plist).toContain(
+        "<string>/Applications/Tabby.app/Contents/Resources/runtime/tools/officecli/officecli</string>",
+      );
+      expect(plist).toContain(
+        "<string>/Applications/Tabby.app/Contents/Resources/runtime/tools/officecli:/usr/local/bin:/usr/bin</string>",
+      );
+    }
+  });
+
   it("generates valid openclaw plist XML", async () => {
     const { generatePlist } = await import(
       "../../apps/desktop/main/services/plist-generator"

@@ -17,6 +17,7 @@ import {
 import {
   copyStaticSkills,
   replaceLibtvVideoFromBundle,
+  replaceOfficeCliFromBundle,
 } from "./skillhub/curated-skills.js";
 import { InstallQueue } from "./skillhub/install-queue.js";
 import { ensureNpmAvailable, runNpmInstall } from "./skillhub/npm-runner.js";
@@ -277,6 +278,14 @@ export class SkillhubService {
       // copyStaticSkills' first-install-only semantics would otherwise
       // never refresh it. See replaceLibtvVideoFromBundle for rationale.
       replaceLibtvVideoFromBundle({
+        staticDir: this.env.staticSkillsDir,
+        targetDir: this.env.openclawSkillsDir,
+        skillDb: this.db,
+      });
+
+      // Keep the bundled instructions in lock-step with the OfficeCLI binary
+      // shipped by this desktop build.
+      replaceOfficeCliFromBundle({
         staticDir: this.env.staticSkillsDir,
         targetDir: this.env.openclawSkillsDir,
         skillDb: this.db,

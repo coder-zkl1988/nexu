@@ -60,6 +60,7 @@ import {
   checkOpenclawExtractionNeeded,
   createRuntimeUnitManifests,
   extractOpenclawSidecarAsync,
+  resolveOfficeCliBinary,
 } from "./runtime/manifests";
 import {
   type PortAllocation,
@@ -1409,6 +1410,7 @@ async function runLaunchdColdStart(): Promise<void> {
     ? resolve(electronRoot, "static/platform-templates")
     : resolve(repoRoot, "apps/controller/static/platform-templates");
   const skillNodePath = buildSkillNodePath(electronRoot, app.isPackaged);
+  const officeCliBinPath = resolveOfficeCliBinary(electronRoot, app.isPackaged);
   const proxyEnv = buildChildProcessProxyEnv(runtimeConfig.proxy);
 
   const bootstrapStartedAt = Date.now();
@@ -1426,6 +1428,7 @@ async function runLaunchdColdStart(): Promise<void> {
     ...paths,
     openclawConfigPath,
     openclawStateDir,
+    officeCliBinPath,
     // Controller-specific env vars
     webUrl: runtimeConfig.urls.web,
     openclawSkillsDir,
@@ -2402,6 +2405,7 @@ app.whenReady().then(async () => {
     (mood) => {
       currentDeskpetMood = mood;
     },
+    runtimeRoots.openclawStateDir,
   );
   unsubscribeDeskpetRuntime = orchestrator.subscribe(handleDeskpetRuntimeEvent);
   // Provide orchestrator-mode quit fallback for app:quit IPC when launchd

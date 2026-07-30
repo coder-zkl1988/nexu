@@ -1,9 +1,15 @@
+import { readFile } from "node:fs/promises";
+import { CHAT_ATTACHMENT_LIMITS } from "@nexu/shared";
 import { logger } from "../lib/logger.js";
 import {
   type AttachmentExtractResult,
   extractAttachmentText,
 } from "./attachment-extractor.js";
-import type { AttachmentStore } from "./attachment-store.js";
+import type {
+  AttachmentStore,
+  ImportedStagedAttachmentResult,
+  SaveAttachmentResult,
+} from "./attachment-store.js";
 import type { OpenClawGatewayService } from "./openclaw-gateway-service.js";
 import {
   SessionBusyError,
@@ -37,6 +43,24 @@ const TEAM_LEAD_HINT =
   "启动后运行卡会自动展示给用户，只需一句话确认，不要复述计划。" +
   "通用、简单或闲聊类问题直接自己回答，不要派发。]";
 
+function persistedAttachmentKind(
+  filename: string | undefined,
+  isDirectory = false,
+): "office" | "pdf" | "directory" | "other" {
+  if (isDirectory) return "directory";
+  const normalized = filename?.trim().toLowerCase() ?? "";
+  if (/\.(?:docx|xlsx|pptx)$/u.test(normalized)) return "office";
+  if (normalized.endsWith(".pdf")) return "pdf";
+  return "other";
+}
+
+function decodedBase64Size(content: string): number {
+  const payload = content.includes(",")
+    ? (content.split(",").pop() ?? content)
+    : content;
+  return Buffer.byteLength(payload, "base64");
+}
+
 export interface LocalChatMessageMetadata {
   width?: number;
   height?: number;
@@ -53,8 +77,9 @@ export interface LocalChatAttachment {
    * name="…" …>preview</file>` blocks; the agent can then reach for the
    * OpenClaw `pdf` tool (sub-agent) if it needs content beyond the preview.
    */
-  type: "image" | "file";
-  content: string;
+  type: "image" | "file" | "directory";
+  content?: string;
+  stagedPath?: string;
   metadata?: {
     mimeType?: string;
     filename?: string;
@@ -191,6 +216,11 @@ export class ChatService {
     effectiveSessionKey: string,
   ): Promise<LocalChatMessageOutput> {
     const incomingAttachments = message.attachments ?? [];
+    if (incomingAttachments.length > CHAT_ATTACHMENT_LIMITS.maxCount) {
+      throw new Error(
+        `You can attach up to ${CHAT_ATTACHMENT_LIMITS.maxCount} items at once`,
+      );
+    }
     const imageAttachments: LocalChatAttachment[] = [];
     const fileAttachments: LocalChatAttachment[] = [];
     for (const att of incomingAttachments) {
@@ -198,140 +228,268 @@ export class ChatService {
       else fileAttachments.push(att);
     }
 
+    const gatewayImageAttachments: Array<{
+      type: "image";
+      content: string;
+      metadata?: LocalChatAttachment["metadata"];
+    }> = [];
+
     const fileResults: AttachmentExtractResult[] = [];
-    let anyFilePersisted = false;
-    if (fileAttachments.length > 0) {
-      // Persist first so we have a `path` to embed in the `<file>` block.
-      // Extraction runs concurrently once each file is on disk.
-      const perFile = await Promise.all(
-        fileAttachments.map(async (att) => {
+    let persistedFileCount = 0;
+    let attachmentBytes = 0;
+    const persistedKinds = new Set<"office" | "pdf" | "directory" | "other">();
+    const importedStagedAttachments: ImportedStagedAttachmentResult[] = [];
+    let deliveryCommitted = false;
+
+    const assertWithinMessageBudget = (additionalBytes: number) => {
+      if (
+        attachmentBytes + additionalBytes >
+        CHAT_ATTACHMENT_LIMITS.maxTotalBytes
+      ) {
+        throw new Error("Attachments exceed the 500 MB total limit");
+      }
+    };
+
+    try {
+      for (const attachment of imageAttachments) {
+        if (attachment.content) {
+          const sizeBytes = decodedBase64Size(attachment.content);
+          if (sizeBytes > CHAT_ATTACHMENT_LIMITS.maxImageBytes) {
+            throw new Error("Image attachment exceeds the 25 MB limit");
+          }
+          assertWithinMessageBudget(sizeBytes);
+          attachmentBytes += sizeBytes;
+          gatewayImageAttachments.push({
+            type: "image",
+            content: attachment.content,
+            metadata: { ...attachment.metadata, size: sizeBytes },
+          });
+          continue;
+        }
+        if (!attachment.stagedPath) continue;
+        const saved = await this.attachmentStore.importStagedAttachment({
+          botId,
+          sessionKey: effectiveSessionKey,
+          stagedPath: attachment.stagedPath,
+          filename: attachment.metadata?.filename,
+          kind: "file",
+          maxBytes: Math.min(
+            CHAT_ATTACHMENT_LIMITS.maxImageBytes,
+            CHAT_ATTACHMENT_LIMITS.maxTotalBytes - attachmentBytes,
+          ),
+        });
+        importedStagedAttachments.push(saved);
+        assertWithinMessageBudget(saved.sizeBytes);
+        attachmentBytes += saved.sizeBytes;
+        gatewayImageAttachments.push({
+          type: "image",
+          content: (await readFile(saved.absolutePath)).toString("base64"),
+          metadata: {
+            ...attachment.metadata,
+            size: saved.sizeBytes,
+          },
+        });
+        persistedFileCount += 1;
+      }
+
+      if (fileAttachments.length > 0) {
+        // Persist first so we have a `path` to embed in the `<file>` block.
+        // Extraction runs concurrently once each file is on disk.
+        const extractionInputs: Array<
+          Parameters<typeof extractAttachmentText>[0]
+        > = [];
+        for (const attachment of fileAttachments) {
           let storedPath: string | undefined;
+          let storedSize = attachment.metadata?.size;
+          if (!attachment.stagedPath && attachment.content) {
+            assertWithinMessageBudget(decodedBase64Size(attachment.content));
+          }
           try {
-            const saved = await this.attachmentStore.saveAttachment({
-              botId,
-              sessionKey: effectiveSessionKey,
-              base64: att.content,
-              filename: att.metadata?.filename,
-              mimeType: att.metadata?.mimeType ?? "application/octet-stream",
-            });
+            let saved: SaveAttachmentResult;
+            if (attachment.stagedPath) {
+              const imported =
+                await this.attachmentStore.importStagedAttachment({
+                  botId,
+                  sessionKey: effectiveSessionKey,
+                  stagedPath: attachment.stagedPath,
+                  filename: attachment.metadata?.filename,
+                  kind: attachment.type === "directory" ? "directory" : "file",
+                  maxBytes:
+                    CHAT_ATTACHMENT_LIMITS.maxTotalBytes - attachmentBytes,
+                });
+              importedStagedAttachments.push(imported);
+              saved = imported;
+            } else {
+              saved = await this.attachmentStore.saveAttachment({
+                botId,
+                sessionKey: effectiveSessionKey,
+                base64: attachment.content ?? "",
+                filename: attachment.metadata?.filename,
+                mimeType:
+                  attachment.metadata?.mimeType ?? "application/octet-stream",
+              });
+            }
+            assertWithinMessageBudget(saved.sizeBytes);
+            attachmentBytes += saved.sizeBytes;
             storedPath = saved.absolutePath;
-            anyFilePersisted = true;
-          } catch (err) {
+            storedSize = saved.sizeBytes;
+            persistedFileCount += 1;
+            persistedKinds.add(
+              persistedAttachmentKind(
+                attachment.metadata?.filename,
+                attachment.type === "directory",
+              ),
+            );
+          } catch (error) {
+            if (attachment.stagedPath) throw error;
             logger.warn(
               {
-                filename: att.metadata?.filename,
-                error: err instanceof Error ? err.message : String(err),
+                filename: attachment.metadata?.filename,
+                error: error instanceof Error ? error.message : String(error),
               },
               "chat.local: attachment persistence failed; falling back to preview-only",
             );
           }
-          return extractAttachmentText({
-            content: att.content,
-            mimeType: att.metadata?.mimeType ?? "application/octet-stream",
-            filename: att.metadata?.filename,
-            size: att.metadata?.size,
+          extractionInputs.push({
+            content: attachment.content,
+            mimeType:
+              attachment.metadata?.mimeType ?? "application/octet-stream",
+            filename: attachment.metadata?.filename,
+            size: storedSize,
             mode: "preview",
             storedPath,
+            kind: attachment.type === "directory" ? "directory" : "file",
           });
-        }),
-      );
-      fileResults.push(...perFile);
-    }
+        }
+        const perFile = await Promise.all(
+          extractionInputs.map((input) => extractAttachmentText(input)),
+        );
+        fileResults.push(...perFile);
+      }
 
-    const appendedBlocks: string[] = [];
-    for (const result of fileResults) {
-      if (result.ok) {
-        appendedBlocks.push(result.block);
-      } else {
-        appendedBlocks.push(result.fallbackMarker);
-        logger.warn(
-          {
-            filename: result.filename,
-            mimeType: result.mimeType,
-            size: result.size,
-            reason: result.reason,
-            detail: result.message,
-          },
-          "chat.local: file attachment extraction skipped",
+      const appendedBlocks: string[] = [];
+      for (const result of fileResults) {
+        if (result.ok) {
+          appendedBlocks.push(result.block);
+        } else {
+          appendedBlocks.push(result.fallbackMarker);
+          logger.warn(
+            {
+              filename: result.filename,
+              mimeType: result.mimeType,
+              size: result.size,
+              reason: result.reason,
+              detail: result.message,
+            },
+            "chat.local: file attachment extraction skipped",
+          );
+        }
+      }
+
+      if (persistedKinds.has("office")) {
+        appendedBlocks.push(
+          "[Tool hint: Office attachments above include a `path` attribute. " +
+            "Use the `officecli` skill with `$OFFICECLI_BIN` to read, edit, " +
+            "validate, and render DOCX/XLSX/PPTX files. Preserve the source and " +
+            "write final deliverables under `$OPENCLAW_STATE_DIR/media/officecli/`.]",
         );
       }
-    }
+      if (persistedKinds.has("pdf")) {
+        appendedBlocks.push(
+          "[Tool hint: PDF attachments above include a `path` attribute. " +
+            "Use the `pdf` tool (pdf, pdfs, pages, prompt) with that path to " +
+            "read specific pages or analyze the full document when the preview " +
+            "is insufficient.]",
+        );
+      }
+      if (persistedKinds.has("other")) {
+        appendedBlocks.push(
+          "[Tool hint: Other file attachments above include a `path` attribute. " +
+            "Use an appropriate local file tool with that path rather than " +
+            "guessing from the filename.]",
+        );
+      }
+      if (persistedKinds.has("directory")) {
+        appendedBlocks.push(
+          "[Tool hint: Directory attachments above include a `path` attribute. " +
+            "Inspect only the files needed for the task and preserve the directory structure in generated outputs.]",
+        );
+      }
 
-    // Tool-use hint: tell the agent it can dispatch the `pdf` sub-agent
-    // against the embedded `path` attributes instead of staying confined
-    // to the inline preview text.  Only added when we actually persisted
-    // at least one file — otherwise the hint would point at nothing.
-    if (anyFilePersisted) {
-      appendedBlocks.push(
-        "[Tool hint: the <file> blocks above include a `path` attribute. " +
-          "Use the `pdf` tool (pdf, pdfs, pages, prompt) with that path to " +
-          "read specific pages or analyze the full document when the preview " +
-          "is insufficient.]",
+      const bodyContent =
+        appendedBlocks.length === 0
+          ? message.content
+          : [message.content, ...appendedBlocks].filter(Boolean).join("\n\n");
+
+      // Skill directive injection: OpenClaw's chat.send has no skill param
+      // (additionalProperties:false), so the only per-message activation path
+      // is the message text itself.  Prepend a directive the model reliably
+      // resolves to the matching skills/<slug>/SKILL.md (verified empirically).
+      const skillSlug = message.skillSlug?.trim();
+      // Expert auto-routing nudge (in-chat auto-route, P4): remind the model it can
+      // route a specialist request to a domain expert. Skipped for explicit skill
+      // requests and for A2UI action round-trips (e.g. install_expert confirms),
+      // which must reach the model verbatim.
+      const isA2uiAction = bodyContent.includes('"a2ui_action"');
+      let messageContent = bodyContent;
+      if (skillSlug) {
+        messageContent = `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`;
+      } else if (!isA2uiAction) {
+        const hint = this.isTeamLead(botId)
+          ? TEAM_LEAD_HINT
+          : EXPERT_ROUTING_HINT;
+        messageContent = `${hint}\n\n${bodyContent}`;
+      }
+
+      logger.info(
+        {
+          route: "chat.sendLocalMessage",
+          botId,
+          effectiveSessionKey,
+          messageType: message.type,
+          imageAttachments: gatewayImageAttachments.length,
+          fileAttachments: fileAttachments.length,
+          filePersisted: persistedFileCount,
+        },
+        "sending local chat via main session",
       );
-    }
 
-    const bodyContent =
-      appendedBlocks.length === 0
-        ? message.content
-        : [message.content, ...appendedBlocks].filter(Boolean).join("\n\n");
-
-    // Skill directive injection: OpenClaw's chat.send has no skill param
-    // (additionalProperties:false), so the only per-message activation path
-    // is the message text itself.  Prepend a directive the model reliably
-    // resolves to the matching skills/<slug>/SKILL.md (verified empirically).
-    const skillSlug = message.skillSlug?.trim();
-    // Expert auto-routing nudge (in-chat auto-route, P4): remind the model it can
-    // route a specialist request to a domain expert. Skipped for explicit skill
-    // requests and for A2UI action round-trips (e.g. install_expert confirms),
-    // which must reach the model verbatim.
-    const isA2uiAction = bodyContent.includes('"a2ui_action"');
-    let messageContent = bodyContent;
-    if (skillSlug) {
-      messageContent = `[请使用「${skillSlug}」技能完成本次请求]\n\n${bodyContent}`;
-    } else if (!isA2uiAction) {
-      const hint = this.isTeamLead(botId)
-        ? TEAM_LEAD_HINT
-        : EXPERT_ROUTING_HINT;
-      messageContent = `${hint}\n\n${bodyContent}`;
-    }
-
-    logger.info(
-      {
-        route: "chat.sendLocalMessage",
+      // Send via Gateway using chat.send — queues message to agent main session.
+      // Throws on failure; the route handler will propagate a 500 to the client.
+      const result = await this.sendToMainSession({
         botId,
-        effectiveSessionKey,
+        sessionKey: effectiveSessionKey,
+        message: messageContent,
         messageType: message.type,
-        imageAttachments: imageAttachments.length,
-        fileAttachments: fileAttachments.length,
-        filePersisted: fileResults.filter((r) => r.ok).length,
-      },
-      "sending local chat via main session",
-    );
+        metadata: message.metadata,
+        attachments: gatewayImageAttachments,
+      });
 
-    // Send via Gateway using chat.send — queues message to agent main session.
-    // Throws on failure; the route handler will propagate a 500 to the client.
-    const result = await this.sendToMainSession({
-      botId,
-      sessionKey: effectiveSessionKey,
-      message: messageContent,
-      messageType: message.type,
-      metadata: message.metadata,
-      attachments: imageAttachments.map((att) => ({
-        type: "image" as const,
-        content: att.content,
-        metadata: att.metadata,
-      })),
-    });
-
-    return {
-      id: result.messageId ?? `local_${Date.now()}`,
-      runId: result.runId ?? null,
-      role: "assistant",
-      type: message.type,
-      content: result.content ?? null,
-      timestamp: Date.now(),
-      createdAt: new Date().toISOString(),
-    };
+      const output: LocalChatMessageOutput = {
+        id: result.messageId ?? `local_${Date.now()}`,
+        runId: result.runId ?? null,
+        role: "assistant",
+        type: message.type,
+        content: result.content ?? null,
+        timestamp: Date.now(),
+        createdAt: new Date().toISOString(),
+      };
+      deliveryCommitted = true;
+      return output;
+    } finally {
+      if (!deliveryCommitted) {
+        for (
+          let index = importedStagedAttachments.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          const imported = importedStagedAttachments[index];
+          if (imported) {
+            await this.attachmentStore.restoreStagedAttachment(imported);
+          }
+        }
+      }
+    }
   }
 
   private async sendToMainSession(

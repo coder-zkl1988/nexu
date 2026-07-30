@@ -26,10 +26,12 @@ import {
   Map as MapIcon,
   Maximize2,
   Music2,
+  NotebookPen,
   Palette,
   Pencil,
   Redo2,
   SlidersHorizontal,
+  Smartphone,
   Square,
   Trash2,
   Type,
@@ -293,6 +295,41 @@ export function CanvasToolbar({
             onTipLeave={hideTip}
           >
             <SlidersHorizontal size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="小红书"
+            onClick={() =>
+              addNode({
+                type: "xhs",
+                title: "小红书帖子",
+                metadata: {
+                  xhs: {
+                    title: "",
+                    content: "",
+                    images: [],
+                    hashtags: [],
+                  },
+                },
+              })
+            }
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <NotebookPen size={ICON} />
+          </ToolButton>
+          <ToolButton
+            label="手机"
+            onClick={() =>
+              addNode({
+                type: "phone",
+                title: "手机预览",
+                metadata: { phone: {} },
+              })
+            }
+            onTipEnter={showTip}
+            onTipLeave={hideTip}
+          >
+            <Smartphone size={ICON} />
           </ToolButton>
           <ToolButton
             label="组"

@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 export interface BrowserPanelState {
   isOpen: boolean;
   sessionKey: string | null;
+  navigationRequest: BrowserNavigationRequest | null;
   /**
    * The agent opened this panel and is working in it.
    *
@@ -14,13 +15,21 @@ export interface BrowserPanelState {
   openedByAgent: boolean;
 }
 
+export interface BrowserNavigationRequest {
+  id: number;
+  url: string;
+  requestedAt: number;
+}
+
 const CLOSED_STATE: BrowserPanelState = {
   isOpen: false,
   sessionKey: null,
+  navigationRequest: null,
   openedByAgent: false,
 };
 
 let state = CLOSED_STATE;
+let nextNavigationRequestId = 0;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -37,8 +46,44 @@ export function getBrowserPanelState(): BrowserPanelState {
 }
 
 export function openBrowserPanel(sessionKey: string, byAgent = false): void {
-  state = { isOpen: true, sessionKey, openedByAgent: byAgent };
+  state = {
+    isOpen: true,
+    sessionKey,
+    navigationRequest:
+      state.sessionKey === sessionKey ? state.navigationRequest : null,
+    openedByAgent: byAgent,
+  };
   emit();
+}
+
+/**
+ * Opens a user-requested URL without taking ownership away from an agent that
+ * is already working in the browser panel.
+ *
+ * Switching tabs also takes the agent's page out of the placed browser view,
+ * so no pinned panel can be retargeted safely. Callers can use the false return
+ * value to fall back to the system browser.
+ */
+export function openUrlInBrowserPanel(
+  sessionKey: string,
+  url: string,
+): boolean {
+  if (state.openedByAgent) return false;
+
+  nextNavigationRequestId += 1;
+  state = {
+    isOpen: true,
+    sessionKey,
+    navigationRequest: {
+      id: nextNavigationRequestId,
+      url,
+      requestedAt: Date.now(),
+    },
+    openedByAgent:
+      state.sessionKey === sessionKey ? state.openedByAgent : false,
+  };
+  emit();
+  return true;
 }
 
 export function closeBrowserPanel(): void {
@@ -84,5 +129,6 @@ export function useBrowserPanel(): BrowserPanelState {
 
 export function resetBrowserPanelForTests(): void {
   state = CLOSED_STATE;
+  nextNavigationRequestId = 0;
   emit();
 }

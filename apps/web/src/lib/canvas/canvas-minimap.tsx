@@ -54,6 +54,10 @@ function nodeRectClass(type: string): string {
       return "bg-slate-400/70";
     case "team-step":
       return "bg-rose-400/70";
+    case "xhs":
+      return "bg-red-400/70";
+    case "phone":
+      return "bg-cyan-400/70";
     default:
       return "bg-slate-400/70";
   }
