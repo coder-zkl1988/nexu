@@ -227,6 +227,35 @@ describe("deskpet interaction contract", () => {
     expect(sessions).not.toContain("if (pendingReplyText) {");
   });
 
+  it("preserves deskpet reply state while steer hands off to its replacement run", () => {
+    const abortedStart = sessions.indexOf("onAborted: (aborted) => {");
+    const errorStart = sessions.indexOf("onError: (error) => {", abortedStart);
+    const abortedHandler = sessions.slice(abortedStart, errorStart);
+    const handoffStart = abortedHandler.indexOf("consumePreviousRunAbort");
+    const errorMoodStart = abortedHandler.indexOf('mood: "error"');
+    const steerStart = sessions.indexOf("const handleSteer = useCallback(");
+    const steerEnd = sessions.indexOf(
+      "const handleDeskpetTyping = useCallback(",
+      steerStart,
+    );
+    const steerHandler = sessions.slice(steerStart, steerEnd);
+
+    expect(abortedStart).toBeGreaterThan(-1);
+    expect(errorStart).toBeGreaterThan(abortedStart);
+    expect(handoffStart).toBeGreaterThan(-1);
+    expect(errorMoodStart).toBeGreaterThan(handoffStart);
+    expect(abortedHandler.slice(handoffStart, errorMoodStart)).toContain(
+      "return;",
+    );
+    expect(steerHandler).toContain(
+      "activeRunIdRef.current = handoff.replacementRunTerminated",
+    );
+    expect(steerHandler).toContain(": replacementRunId;");
+    expect(steerHandler).toContain(
+      "if (handoff.replacementRunTerminated) return;",
+    );
+  });
+
   it("uses explicit new-chat activity events", () => {
     expect(localChat).toContain("onTyping={handleDeskpetTyping}");
     expect(localChat).toContain('mood: "working"');

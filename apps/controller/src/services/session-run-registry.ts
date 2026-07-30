@@ -36,20 +36,64 @@ export function isSessionLockedError(err: unknown): boolean {
  * it is treated as stale and new sends are allowed again.
  *
  * Pure crash-safety valve: OpenClaw emits `final`/`aborted`/`error` for normal
- * turns, which clears the entry immediately; this only uncorks a session whose
- * terminal event never arrived (renderer/gateway crash). Deliberately generous
- * so it never falsely rejects a legitimately long turn (multi-device work can
- * run for several minutes).
+ * turns, which clears the entry immediately. Non-terminal events refresh the
+ * lease, so this only uncorks a session that stays completely silent for an
+ * hour after its terminal event was lost.
  */
-const RUN_STALE_MS = 10 * 60_000;
+const RUN_STALE_MS = 60 * 60_000;
+
+type ActiveSession = {
+  startedAt: number;
+  lastObservedAt: number;
+  runIds: Set<string>;
+  terminalRunIds: Set<string>;
+  pendingStarts: number;
+};
 
 export class SessionRunRegistry {
-  /** sessionKey → epoch ms when the active turn was first observed. */
-  private readonly active = new Map<string, number>();
+  /** Session-scoped main request identities, including queued guidance. */
+  private readonly active = new Map<string, ActiveSession>();
+  /** BTW side-run ids whose events must not alter main-session busy state. */
+  private readonly sideRunIds = new Set<string>();
 
   /** Mark a turn as started for `sessionKey` (called when `chat.send` is issued). */
-  markStarted(sessionKey: string): void {
-    this.active.set(sessionKey, Date.now());
+  markStarted(sessionKey: string, runId: string | null = null): void {
+    const now = Date.now();
+    const activeSession = this.active.get(sessionKey) ?? {
+      startedAt: now,
+      lastObservedAt: now,
+      runIds: new Set<string>(),
+      terminalRunIds: new Set<string>(),
+      pendingStarts: 0,
+    };
+    if (runId) activeSession.runIds.add(runId);
+    else activeSession.pendingStarts += 1;
+    activeSession.lastObservedAt = now;
+    this.active.set(sessionKey, activeSession);
+  }
+
+  /** Attach the gateway-assigned id without reviving an already-finished run. */
+  attachRunId(sessionKey: string, runId: string): void {
+    const activeSession = this.active.get(sessionKey);
+    if (!activeSession) return;
+    activeSession.pendingStarts = Math.max(0, activeSession.pendingStarts - 1);
+    if (!activeSession.terminalRunIds.delete(runId)) {
+      activeSession.runIds.add(runId);
+    }
+    activeSession.lastObservedAt = Date.now();
+    if (activeSession.pendingStarts === 0 && activeSession.runIds.size === 0) {
+      this.active.delete(sessionKey);
+    }
+  }
+
+  /** Release one optimistic send reservation after chat.send fails. */
+  releasePendingStart(sessionKey: string): void {
+    const activeSession = this.active.get(sessionKey);
+    if (!activeSession) return;
+    activeSession.pendingStarts = Math.max(0, activeSession.pendingStarts - 1);
+    if (activeSession.pendingStarts === 0 && activeSession.runIds.size === 0) {
+      this.active.delete(sessionKey);
+    }
   }
 
   /** Clear the active turn for `sessionKey`. */
@@ -60,13 +104,26 @@ export class SessionRunRegistry {
   /** Clear runs whose terminal events were lost with the gateway connection. */
   handleGatewayDisconnect(): void {
     this.active.clear();
+    this.sideRunIds.clear();
+  }
+
+  markSideRun(runId: string): void {
+    this.sideRunIds.add(runId);
+  }
+
+  handleChatSideResult(payload: unknown): void {
+    if (!payload || typeof payload !== "object") return;
+    const { kind, runId } = payload as { kind?: unknown; runId?: unknown };
+    if (kind === "btw" && typeof runId === "string") {
+      this.markSideRun(runId);
+    }
   }
 
   /** Whether a non-stale turn is currently active for `sessionKey`. */
   isBusy(sessionKey: string): boolean {
-    const startedAt = this.active.get(sessionKey);
-    if (startedAt === undefined) return false;
-    if (Date.now() - startedAt > RUN_STALE_MS) {
+    const activeSession = this.active.get(sessionKey);
+    if (!activeSession) return false;
+    if (Date.now() - activeSession.lastObservedAt > RUN_STALE_MS) {
       this.active.delete(sessionKey);
       return false;
     }
@@ -75,24 +132,70 @@ export class SessionRunRegistry {
 
   /**
    * Consume an OpenClaw `chat` lifecycle event. Terminal states
-   * (`final`/`aborted`/`error`) clear the session's active turn; any other state
-   * (e.g. `delta`) marks the session active if it is not already tracked, so a
-   * run that only surfaces via events — a background or automation turn we did
-   * not initiate — still gates concurrent webchat sends.
+   * (`final`/`aborted`/`error`) remove only their own request id. Any other
+   * state observes that request as active. Multiple client request ids may
+   * overlap while OpenClaw steers or serializes queued guidance, even though
+   * only one physical agent run writes the session at a time.
    *
    * Payload shape follows OpenClaw's ChatEventSchema:
    *   { runId, sessionKey, seq, state: "delta"|"final"|"aborted"|"error", ... }
    */
   handleChatEvent(payload: unknown): void {
     if (!payload || typeof payload !== "object") return;
-    const { sessionKey, state } = payload as {
+    const { runId, sessionKey, state } = payload as {
+      runId?: unknown;
       sessionKey?: unknown;
       state?: unknown;
     };
     if (typeof sessionKey !== "string" || typeof state !== "string") return;
-    if (state === "final" || state === "aborted" || state === "error") {
-      this.markFinished(sessionKey);
-    } else if (!this.active.has(sessionKey)) {
+    const eventRunId =
+      typeof runId === "string" && runId.trim() ? runId.trim() : null;
+    const isTerminal =
+      state === "final" || state === "aborted" || state === "error";
+
+    if (eventRunId && this.sideRunIds.has(eventRunId)) {
+      if (isTerminal) this.sideRunIds.delete(eventRunId);
+      return;
+    }
+
+    if (isTerminal) {
+      if (!eventRunId) {
+        this.markFinished(sessionKey);
+        return;
+      }
+      const activeSession = this.active.get(sessionKey);
+      if (!activeSession) return;
+      if (
+        !activeSession.runIds.delete(eventRunId) &&
+        activeSession.pendingStarts > 0
+      ) {
+        activeSession.terminalRunIds.add(eventRunId);
+      }
+      activeSession.lastObservedAt = Date.now();
+      if (
+        activeSession.pendingStarts === 0 &&
+        activeSession.runIds.size === 0
+      ) {
+        this.active.delete(sessionKey);
+      }
+      return;
+    }
+
+    if (eventRunId) {
+      const activeSession = this.active.get(sessionKey);
+      if (!activeSession) {
+        this.markStarted(sessionKey, eventRunId);
+        return;
+      }
+      activeSession.runIds.add(eventRunId);
+      activeSession.lastObservedAt = Date.now();
+      return;
+    }
+
+    const activeSession = this.active.get(sessionKey);
+    if (activeSession) {
+      activeSession.lastObservedAt = Date.now();
+    } else {
       this.markStarted(sessionKey);
     }
   }

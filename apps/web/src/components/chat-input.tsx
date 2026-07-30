@@ -13,8 +13,10 @@ interface ChatInputProps {
   placeholder?: string;
   disabled?: boolean;
   sending?: boolean;
+  actionLoading?: boolean;
   waitingReply?: boolean;
   canSend?: boolean;
+  subtlePlaceholder?: boolean;
   leftActions?: ReactNode;
   rightActions?: ReactNode;
   inputRef?: Ref<HTMLTextAreaElement>;
@@ -30,8 +32,10 @@ export function ChatInput({
   placeholder = "Ask Tabby",
   disabled = false,
   sending = false,
+  actionLoading = false,
   waitingReply = false,
   canSend,
+  subtlePlaceholder = false,
   leftActions,
   rightActions,
   inputRef,
@@ -64,17 +68,30 @@ export function ChatInput({
             placeholder={placeholder}
             disabled={disabled || sending}
             rows={1}
-            className="w-full resize-none bg-transparent text-[var(--color-tabby-foreground)] placeholder:text-[var(--color-tabby-muted)] outline-none min-h-[40px] text-sm disabled:cursor-not-allowed"
+            className={cn(
+              "w-full resize-none bg-transparent text-[var(--color-tabby-foreground)] outline-none min-h-[40px] text-sm disabled:cursor-not-allowed",
+              subtlePlaceholder
+                ? "placeholder:text-text-tertiary"
+                : "placeholder:text-[var(--color-tabby-muted)]",
+            )}
           />
         </div>
         <div className="flex items-center justify-between px-2 pb-2">
           <div className="flex items-center gap-0.5">{leftActions}</div>
-          <div className="flex items-center gap-4">
+          <div
+            className={cn(
+              "flex items-center",
+              waitingReply ? "gap-2" : "gap-4",
+            )}
+          >
             {rightActions}
             {waitingReply && onCancel ? (
               <button
                 type="button"
                 onClick={onCancel}
+                data-chat-action="stop"
+                aria-label={t("sessions.chat.stopCurrentTask")}
+                title={t("sessions.chat.stopCurrentTask")}
                 className="w-9 h-9 flex items-center justify-center rounded-full transition-colors bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
               >
                 <Square className="w-4 h-4 fill-current" />
@@ -83,15 +100,18 @@ export function ChatInput({
               <button
                 type="button"
                 onClick={onSend}
-                disabled={!effectiveCanSend}
+                disabled={!effectiveCanSend || actionLoading}
+                data-chat-action="send"
+                aria-label={t("sessions.chat.sendRunMessage")}
+                title={t("sessions.chat.sendRunMessage")}
                 className={cn(
                   "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
-                  effectiveCanSend
+                  effectiveCanSend && !actionLoading
                     ? "bg-[var(--color-tabby-orange)] hover:bg-[var(--color-tabby-orange-hover)] text-white"
                     : "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-muted)] cursor-not-allowed",
                 )}
               >
-                {sending ? (
+                {sending || actionLoading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
                   <SendHorizonal className="w-5 h-5" />
@@ -107,10 +127,14 @@ export function ChatInput({
 
 export function ChatInputAttachButton({
   onClick,
-  title = "Attach file",
+  disabled = false,
+  label,
+  title = label ?? "Attach file",
   active = false,
 }: {
   onClick: () => void;
+  disabled?: boolean;
+  label?: string;
   title?: string;
   active?: boolean;
 }) {
@@ -118,11 +142,13 @@ export function ChatInputAttachButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      data-chat-attachment="true"
       title={title}
-      aria-label={title}
+      aria-label={label ?? title}
       aria-expanded={active}
       className={cn(
-        "flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)]",
+        "flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
         active &&
           "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-foreground)]",
       )}

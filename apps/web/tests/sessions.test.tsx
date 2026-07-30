@@ -53,6 +53,18 @@ vi.mock("react-i18next", () => ({
       if (key === "sessions.chat.replyLabel") {
         return "Localized Reply";
       }
+      if (key === "sessions.chat.runMessagePlaceholder") {
+        return "Continue typing to guide the task or ask about progress";
+      }
+      if (key === "sessions.chat.runToolsUnavailable") {
+        return "Available after the current task finishes";
+      }
+      if (key === "sessions.chat.sendRunMessage") {
+        return "Send";
+      }
+      if (key === "sessions.chat.stopCurrentTask") {
+        return "Stop current task";
+      }
       if (key in OPEN_IN_CHANNEL_LABELS) {
         return OPEN_IN_CHANNEL_LABELS[key];
       }
@@ -71,9 +83,12 @@ vi.mock("../lib/api/sdk.gen", () => ({
   getApiV1SessionsByIdMessages: vi.fn(async () => ({
     data: undefined,
   })),
+  getApiV1Bots: vi.fn(async () => ({ data: { bots: [] } })),
+  getApiV1BotsByBotId: vi.fn(async () => ({ data: undefined })),
+  getApiV1ChatRunStatus: vi.fn(async () => ({ data: { busy: false } })),
 }));
 
-function renderSessionsPage(): string {
+function renderSessionsPage(options?: { busy?: boolean }): string {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -92,6 +107,9 @@ function renderSessionsPage(): string {
     metadata: {
       isGroup: false,
     },
+    ...(options?.busy
+      ? { botId: "bot-1", sessionKey: "agent:bot-1:main" }
+      : {}),
   });
   queryClient.setQueryData(["chat-history", "sess-1"], {
     messages: [
@@ -124,6 +142,17 @@ function renderSessionsPage(): string {
       },
     ],
   });
+  if (options?.busy) {
+    queryClient.setQueryData(["chat-run-status", "sess-1"], { busy: true });
+    queryClient.setQueryData(["bot", "bot-1"], {
+      id: "bot-1",
+      name: "Provider expert",
+      slug: "provider-expert",
+      status: "active",
+      modelId: "openai/gpt-5.6",
+    });
+    queryClient.setQueryData(["bots"], { bots: [] });
+  }
 
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
@@ -149,6 +178,32 @@ describe("SessionsPage", () => {
     expect(markup).not.toContain("[message_id:");
     expect(markup).toContain("google-calendar");
     expect(markup).toContain("Open in Slack");
+  });
+
+  it("keeps one natural composer available while the session is busy", () => {
+    const markup = renderSessionsPage({ busy: true });
+
+    expect(markup).toContain(
+      "Continue typing to guide the task or ask about progress",
+    );
+    expect(markup).toContain("placeholder:text-text-tertiary");
+    expect(markup).toContain('data-chat-action="stop"');
+    expect(markup).toContain('aria-label="Stop current task"');
+    expect(markup).toContain('data-run-message-mode="auto"');
+    expect(markup).toContain('data-run-message-mode="side-question"');
+    expect(markup).toContain('data-run-message-mode="steer"');
+    expect(markup).toMatch(
+      /<button[^>]*(?:data-run-message-mode="auto"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-run-message-mode="auto")/,
+    );
+    expect(markup).not.toContain('data-chat-attachment="true"');
+    expect(markup).not.toContain('data-chat-skill="true"');
+    expect(markup).toContain('data-chat-agent="true"');
+    expect(markup).toContain('data-chat-model="true"');
+    expect(markup).toContain("Provider expert");
+    expect(markup).toContain("openai/gpt-5.6");
+    expect(markup).not.toContain('data-chat-action="send"');
+    expect(markup).not.toContain("Stop and redirect");
+    expect(markup).not.toContain("Side question");
   });
 
   it("renders assistant tool activity as a compact execution group", () => {

@@ -67,6 +67,40 @@ Xiaohongshu editors stay inline in the conversation. The canvas also exposes nat
 
 Generated local pages are discovered from `index.html` / `index.htm` files under the active Bot workspace and served through the controller's constrained preview route. Preview file resolution must remain inside the selected project root after `realpath` resolution, including symlink checks.
 
+## Long-running sessions
+
+The session detail composer remains usable while the session is busy, but it
+does not submit a second normal turn because concurrent main-session turns can
+corrupt OpenClaw's active transcript. Busy messages are classified before send:
+
+- The busy composer exposes `Auto`, `Quick question`, and `Adjust task` modes.
+  An explicit mode is authoritative and bypasses intent classification. Quick
+  answers render in a separate panel, do not enter the main conversation
+  context, and dismiss automatically eight seconds after completion.
+- Exact stop requests abort the active run. While the busy composer is empty,
+  its single action button stops the run; typing replaces it with the send
+  action so stop and send are never shown together.
+- The busy composer replaces attachment and Skill controls with a stable
+  segmented intent control because BTW/Steer accept text only; the current bot
+  and model remain visible as read-only context.
+- High-confidence adjustment messages use OpenClaw's `sessions.steer` RPC.
+  OpenClaw stops the active run, waits for it to release the session, and then
+  starts a replacement run with the updated guidance. This avoids concurrent
+  session writers while preserving the existing conversation context.
+  In Auto mode, `/btw`, `/side`, `/steer`, and `/tell` remain explicit intent
+  selectors and exact stop commands remain local. Other natural-language input
+  uses the Controller's isolated model classifier so routing is not tied to a
+  Chinese/English keyword list. Low-confidence results ask the user to choose;
+  classifier timeout or failure safely falls back to the isolated BTW lane.
+- Controller busy state tracks both the interrupted request and its replacement
+  until their terminal events arrive. BTW side-run ids remain isolated. The
+  frontend timeout fallback only clears local waiting state after the controller
+  reports that no main request is active.
+- When Steer interrupts a run, Controller history projection removes OpenClaw's
+  duplicate gateway abort snapshot and marks the preserved provider output as
+  aborted. The frontend keeps that incomplete output inside the activity group
+  instead of presenting it as a completed assistant reply.
+
 ## Channels
 
 Channel management lives at `/workspace/channels` ([`apps/web/src/pages/channels.tsx`](../apps/web/src/pages/channels.tsx)). Slack and Discord remain single-instance per workspace; Feishu and WeChat support multi-instance connections.

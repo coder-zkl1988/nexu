@@ -1439,9 +1439,13 @@ function AddCustomProviderDetail({
             <SelectTrigger id="custom-provider-template" className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="border-border bg-surface-0 text-text-primary">
               {customTemplates.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
+                <SelectItem
+                  key={item.id}
+                  value={item.id}
+                  className="text-text-secondary focus:bg-surface-2 focus:text-text-primary data-[highlighted]:bg-surface-2 data-[highlighted]:text-text-primary data-[state=checked]:bg-surface-2 data-[state=checked]:text-text-primary"
+                >
                   {getCustomProviderTemplateLabel(
                     item.id as CustomProviderTemplateId,
                     t,

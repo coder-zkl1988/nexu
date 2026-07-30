@@ -189,13 +189,17 @@ export class ChatService {
     // below releases it if this turn never actually got going.
     this.runRegistry.markStarted(effectiveSessionKey);
     try {
-      return await this.deliverLocalMessage(
+      const result = await this.deliverLocalMessage(
         botId,
         message,
         effectiveSessionKey,
       );
+      if (result.runId) {
+        this.runRegistry.attachRunId(effectiveSessionKey, result.runId);
+      }
+      return result;
     } catch (err) {
-      this.runRegistry.markFinished(effectiveSessionKey);
+      this.runRegistry.releasePendingStart(effectiveSessionKey);
       if (isSessionLockedError(err)) {
         // Backstop: our tracker missed an in-flight run (e.g. a background /
         // automation turn) and OpenClaw rejected with the raw lock error.

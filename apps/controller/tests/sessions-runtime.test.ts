@@ -2074,6 +2074,71 @@ describe("SessionsRuntime", () => {
     expect(result.messages).toHaveLength(2);
   });
 
+  it("deduplicates sessions.steer abort snapshots and marks the partial output", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "steer-abort.jsonl", [
+      {
+        type: "message",
+        id: "assistant-tool",
+        timestamp: "2026-07-28T09:37:40.000Z",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Preparing the repository scan." },
+            { type: "toolCall", id: "call-1", name: "exec" },
+          ],
+        },
+      },
+      {
+        type: "message",
+        id: "abort-snapshot",
+        timestamp: "2026-07-28T09:37:53.654Z",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Preparing the repository scan.The repository boundary is confirmed.",
+            },
+          ],
+          provider: "openclaw",
+          model: "gateway-injected",
+          openclawAbort: { aborted: true, runId: "run-original" },
+        },
+      },
+      {
+        type: "leaf",
+        id: "abort-leaf",
+      },
+      {
+        type: "message",
+        id: "provider-aborted",
+        timestamp: "2026-07-28T09:37:53.739Z",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "The repository boundary is confirmed." },
+          ],
+          provider: "custom-openai",
+          model: "test-model",
+          stopReason: "aborted",
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("steer-abort.jsonl");
+
+    expect(result.messages.map(({ id }) => id)).toEqual([
+      "assistant-tool",
+      "provider-aborted",
+    ]);
+    expect(result.messages[1]).toMatchObject({
+      id: "provider-aborted",
+      aborted: true,
+    });
+  });
+
   it("hides only the poll line when the agent uses a heartbeat to send a proactive message", async () => {
     rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
     const runtime = createWebchatRuntime(rootDir);
