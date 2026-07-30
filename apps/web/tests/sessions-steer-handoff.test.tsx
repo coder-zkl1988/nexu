@@ -1,0 +1,307 @@
+// @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { A2UISidebarProvider } from "../src/lib/a2ui/a2ui-sidebar-context";
+import { SessionsPage } from "../src/pages/sessions";
+
+// jsdom doesn't implement layout, so Element.scrollIntoView is absent.
+Element.prototype.scrollIntoView = vi.fn();
+
+// This reproduces the exact regression reported in review on PR #13
+// (coder-zkl1988/tabby): OpenClaw's sessions.steer synchronously aborts the
+// old run and broadcasts its `aborted` BEFORE the replacement run's id is
+// known. Before the fix, that expected abort was indistinguishable from a
+// real failure: it cleared `waitingForReply`, told the desktop pet "error",
+// and — because the pending-reply flag was already cleared — the
+// replacement run's later `final` was silently dropped instead of reporting
+// success. See apps/web/src/lib/chat/steer-run-handoff.ts.
+
+vi.mock("@/lib/tracking", () => ({
+  track: vi.fn(),
+  normalizeChannel: (channel: unknown) => channel,
+}));
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, unknown>) => {
+      const labels: Record<string, string> = {
+        "sessions.chat.runMessagePlaceholder":
+          "Continue typing to guide the task or ask about progress",
+        "sessions.chat.sendRunMessage": "Send",
+        "sessions.chat.stopCurrentTask": "Stop current task",
+        "sessions.chat.runToolsUnavailable":
+          "Available after the current task finishes",
+      };
+      if (key in labels) return labels[key];
+      if (values?.count != null) return `${String(values.count)} ${key}`;
+      return key;
+    },
+  }),
+}));
+
+const invokeDesktopHost = vi.fn();
+vi.mock("@/lib/desktop-host", () => ({
+  invokeDesktopHost: (...args: unknown[]) => invokeDesktopHost(...args),
+}));
+
+type CapturedStreamHandlers = {
+  onDelta?: (delta: {
+    runId: string;
+    seq: number;
+    deltaText: string;
+    replace: boolean;
+  }) => void;
+  onFinal?: (final: {
+    runId: string;
+    seq: number;
+    message: unknown;
+    stopReason: string;
+  }) => void;
+  onAborted?: (aborted: { runId: string; seq: number }) => void;
+  onError?: (error: {
+    runId: string;
+    seq: number;
+    errorMessage: string;
+    errorKind: string;
+  }) => void;
+  onSideResult?: (result: unknown) => void;
+  onConnected?: () => void;
+};
+
+let capturedStreamHandlers: CapturedStreamHandlers | null = null;
+vi.mock("@/lib/api/event-source", () => ({
+  createLocalStreamSSEClient: (opts: CapturedStreamHandlers) => {
+    capturedStreamHandlers = opts;
+    return { connect: vi.fn(), disconnect: vi.fn() };
+  },
+}));
+
+const postApiV1ChatLocal = vi.fn();
+const postApiV1ChatSteer = vi.fn();
+vi.mock("../lib/api/sdk.gen", () => ({
+  getApiV1SessionsById: vi.fn(async () => ({
+    data: {
+      id: "sess-steer",
+      botId: "bot-1",
+      sessionKey: "agent:bot-1:main",
+      title: "Steer handoff test",
+      channelType: "web",
+      messageCount: 1,
+      lastMessageAt: "2026-07-28T00:00:00.000Z",
+      metadata: {},
+    },
+  })),
+  getApiV1SessionsByIdMessages: vi.fn(async () => ({
+    data: {
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "keep working on the quarterly report",
+          timestamp: Date.parse("2026-07-28T00:00:00.000Z"),
+          createdAt: "2026-07-28T00:00:00.000Z",
+        },
+      ],
+    },
+  })),
+  getApiV1Channels: vi.fn(async () => ({ data: { channels: [] } })),
+  getApiV1Bots: vi.fn(async () => ({ data: { bots: [] } })),
+  getApiV1BotsByBotId: vi.fn(async () => ({
+    data: {
+      id: "bot-1",
+      name: "Report bot",
+      slug: "report-bot",
+      status: "active",
+      modelId: "openai/gpt-5.6",
+    },
+  })),
+  getApiV1ChatRunStatus: vi.fn(async () => ({ data: { busy: false } })),
+  getApiV1Artifacts: vi.fn(async () => ({ data: { artifacts: [] } })),
+  postApiV1ChatLocal: (...args: unknown[]) => postApiV1ChatLocal(...args),
+  postApiV1ChatSteer: (...args: unknown[]) => postApiV1ChatSteer(...args),
+  postApiV1ChatCancel: vi.fn(async () => ({ data: undefined })),
+  postApiV1ChatIntent: vi.fn(async () => ({ data: undefined })),
+  postApiV1ChatSideQuestion: vi.fn(async () => ({ data: undefined })),
+  postApiV1SessionsByIdReset: vi.fn(async () => ({ data: undefined })),
+  postApiV1TtsSpeak: vi.fn(async () => ({ data: undefined })),
+}));
+
+function renderSession() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+    },
+  });
+
+  queryClient.setQueryData(["session-meta", "sess-steer"], {
+    id: "sess-steer",
+    botId: "bot-1",
+    sessionKey: "agent:bot-1:main",
+    title: "Steer handoff test",
+    channelType: "web",
+    messageCount: 1,
+    lastMessageAt: "2026-07-28T00:00:00.000Z",
+    metadata: {},
+  });
+  queryClient.setQueryData(["chat-history", "sess-steer"], {
+    messages: [
+      {
+        id: "msg-1",
+        role: "user",
+        content: "keep working on the quarterly report",
+        timestamp: Date.parse("2026-07-28T00:00:00.000Z"),
+        createdAt: "2026-07-28T00:00:00.000Z",
+      },
+    ],
+  });
+  queryClient.setQueryData(["bot", "bot-1"], {
+    id: "bot-1",
+    name: "Report bot",
+    slug: "report-bot",
+    status: "active",
+    modelId: "openai/gpt-5.6",
+  });
+  queryClient.setQueryData(["bots"], { bots: [] });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <A2UISidebarProvider>
+        <MemoryRouter initialEntries={["/workspace/sessions/sess-steer"]}>
+          <Routes>
+            <Route path="/workspace/sessions/:id" element={<SessionsPage />} />
+          </Routes>
+        </MemoryRouter>
+      </A2UISidebarProvider>
+    </QueryClientProvider>,
+  );
+}
+
+function moodsInvoked(): string[] {
+  return invokeDesktopHost.mock.calls
+    .map(([, payload]) => (payload as { mood?: string })?.mood)
+    .filter((mood): mood is string => Boolean(mood));
+}
+
+describe("SessionsPage steer handoff (integration)", () => {
+  beforeEach(() => {
+    capturedStreamHandlers = null;
+    invokeDesktopHost.mockReset();
+    postApiV1ChatLocal.mockReset();
+    postApiV1ChatSteer.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("survives old-run-aborted -> replacement-accepted -> replacement-final without dropping waitingForReply or signaling desktop-pet error, and still reports success", async () => {
+    postApiV1ChatLocal.mockResolvedValue({
+      data: { message: { id: "msg-2", runId: "old-run" } },
+    });
+    let resolveSteer!: (value: {
+      data: { accepted: boolean; runId: string };
+    }) => void;
+    postApiV1ChatSteer.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSteer = resolve;
+        }),
+    );
+
+    renderSession();
+
+    const textarea = await screen.findByRole("textbox");
+
+    // 1) Start the original long-running task from this session, exactly
+    //    like a normal chat send — this is what puts waitingForReply and
+    //    deskpetReplyPendingRef into the "a reply is pending" state that the
+    //    reported bug corrupted.
+    await act(async () => {
+      fireEvent.change(textarea, {
+        target: { value: "please write the quarterly report" },
+      });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postApiV1ChatLocal).toHaveBeenCalledTimes(1);
+    expect(capturedStreamHandlers?.onAborted).toBeTypeOf("function");
+    expect(
+      screen.getByPlaceholderText(
+        "Continue typing to guide the task or ask about progress",
+      ),
+    ).toBeTruthy();
+
+    // 2) Steer the active run. The HTTP request is left pending on purpose —
+    //    OpenClaw's sessions.steer aborts the old run synchronously and
+    //    broadcasts it before the replacement run id is returned to us.
+    await act(async () => {
+      fireEvent.change(textarea, {
+        target: { value: "/steer focus on Q3 numbers only" },
+      });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(postApiV1ChatSteer).toHaveBeenCalledTimes(1);
+
+    // 3) The old run's expected `aborted` races ahead of the steer response.
+    await act(async () => {
+      capturedStreamHandlers?.onAborted?.({ runId: "old-run", seq: 1 });
+    });
+
+    // The false-alarm abort must never be reported as a desktop-pet error,
+    // and the composer must still show it's waiting on a reply.
+    expect(moodsInvoked()).not.toContain("error");
+    expect(
+      screen.getByPlaceholderText(
+        "Continue typing to guide the task or ask about progress",
+      ),
+    ).toBeTruthy();
+
+    // 4) The steer HTTP response now resolves, handing activeRunIdRef over
+    //    to the replacement run.
+    await act(async () => {
+      resolveSteer({ data: { accepted: true, runId: "replacement-run" } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(moodsInvoked()).not.toContain("error");
+
+    // 5) The replacement run finishes for real.
+    await act(async () => {
+      capturedStreamHandlers?.onFinal?.({
+        runId: "replacement-run",
+        seq: 2,
+        message: { role: "assistant", content: "Q3 numbers only, done." },
+        stopReason: "stop",
+      });
+    });
+
+    // The user must see success, not the silently-dropped final the bug
+    // caused: no error mood was ever reported, and the desktop pet did
+    // receive the "success" signal for the replacement run.
+    expect(moodsInvoked()).not.toContain("error");
+    expect(moodsInvoked()).toContain("success");
+
+    // waitingForReply must be cleared now that the *replacement* run's real
+    // final arrived — the composer returns to its normal (non-run-message)
+    // state instead of staying stuck "waiting" forever.
+    expect(
+      screen.queryByPlaceholderText(
+        "Continue typing to guide the task or ask about progress",
+      ),
+    ).toBeNull();
+  });
+});
