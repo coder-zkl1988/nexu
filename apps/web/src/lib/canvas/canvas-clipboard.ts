@@ -30,6 +30,8 @@ const COPYABLE_TYPES = new Set<CanvasNode["type"]>([
   "video",
   "audio",
   "config",
+  "xhs",
+  "phone",
   "group",
 ]);
 

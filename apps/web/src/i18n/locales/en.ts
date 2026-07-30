@@ -492,6 +492,32 @@ const en = {
   "settings.general.languageHint": "Choose your interface language",
   "settings.section.desktop": "Application behavior",
   "settings.section.data": "Data & Privacy",
+  "automation.title": "Devices & automation",
+  "automation.loading": "Reading local capabilities...",
+  "automation.loadFailed": "Unable to read local automation settings",
+  "automation.retry": "Try again",
+  "automation.retrying": "Retrying...",
+  "automation.updateFailed": "Unable to update local automation settings",
+  "automation.updated": "Local automation settings updated",
+  "automation.browser.title": "Browser control",
+  "automation.computer.title": "Computer Use",
+  "automation.computer.ready": "Computer control is ready",
+  "automation.computer.installed": "Computer control is available",
+  "automation.computer.permissionRequired": "System permission is required",
+  "automation.computer.backendUnavailable": "Computer control is not running",
+  "automation.computer.statusUnknown":
+    "Unable to confirm the computer control status",
+  "automation.computer.requiresMacOS13":
+    "Computer control requires macOS 13 or later",
+  "automation.computer.permissionAccessibility": "Accessibility",
+  "automation.computer.permissionScreenRecording": "Screen Recording",
+  "automation.computer.permissionHint":
+    "macOS adds \u201cCua Driver\u201d to the permission list for you \u2014 just switch it on in the settings pane that opens. You do not need to add it by hand.",
+  "automation.computer.requestPermissions": "Grant system permissions",
+  "automation.computer.permissionRequestFailed":
+    "Unable to request the system permission",
+  "automation.computer.unavailable":
+    "Computer control is not included in this build",
   "settings.desktop.launchAtLogin": "Launch at startup",
   "settings.desktop.launchAtLoginHint":
     "Automatically open Tabby when your computer starts.",
@@ -843,6 +869,7 @@ const en = {
     'Failed to install dependencies for "{{slug}}". Check the controller logs for details.',
   "skills.installFailed": 'Failed to install "{{slug}}": {{error}}',
   "skills.installRequestFailed": "Could not start the install: {{error}}",
+  "skills.updateRequestFailed": "Could not start the update: {{error}}",
   "skills.uninstallRequestFailed": "Could not uninstall the skill: {{error}}",
   "skills.import": "Import",
   "skills.importSkill": "Import Skill",
@@ -879,6 +906,7 @@ const en = {
   "skills.sortDownloads": "Downloads",
   "skills.sortStars": "Stars",
   "skills.sortNewest": "Newest",
+  "skills.sortBy": "Sort skills",
   "skills.refreshCatalog": "Refresh catalog",
   "skills.lastUpdated": "Last updated: {{time}} · {{count}} skills",
   "skills.tagAll": "All",
@@ -894,13 +922,21 @@ const en = {
   "skills.hoursAgo": "{{count}}h ago",
   "skills.daysAgo": "{{count}}d ago",
   "skills.installAction": "Install",
+  "skills.publisherConflict": "Another publisher is installed",
+  "skills.updateAction": "Update",
+  "skills.updateAvailable": "v{{current}} to v{{latest}}",
   "skills.uninstallAction": "Uninstall",
   "skills.installingAction": "Installing…",
+  "skills.updatingAction": "Updating…",
   "skills.uninstallingAction": "Uninstalling…",
   "skills.agentSkills": "Agent Skills",
 
   // ── Skill Detail Page ──
   "skillDetail.backToSkills": "Back to Skills",
+  "skillDetail.update": "Update",
+  "skillDetail.updating": "Updating…",
+  "skillDetail.updateAvailable":
+    "Update available: v{{current}} to v{{latest}}",
   "skillDetail.notFound": "Skill not found",
   "skillDetail.notFoundDesc": "This skill does not exist or has been removed.",
   "skillDetail.quickInfo": "Quick Info",
@@ -969,6 +1005,7 @@ const en = {
   "sessions.chat.collapseToolDetails": "Collapse task details",
   "sessions.chat.interactivePanel": "Interactive panel",
   "sessions.chat.openPanel": "Open",
+  "sessions.chat.downloadFile": "Download file",
   "sessions.chat.thinking": "Thinking...",
   "sessions.chat.newSession": "New conversation",
   "sessions.chat.runMessagePlaceholder":
@@ -1532,6 +1569,15 @@ const en = {
   "localChat.inputPlaceholder":
     "Ask Tabby… (Enter to send, Shift+Enter for newline)",
   "localChat.attachFile": "Attach image or file",
+  "localChat.attachImage": "Images",
+  "localChat.attachFiles": "Files",
+  "localChat.attachDirectory": "Folder",
+  "localChat.attachmentCountLimit": "You can attach up to {{count}} files",
+  "localChat.attachmentTooLarge":
+    "{{name}} exceeds the {{size}} per-file limit",
+  "localChat.attachmentStageFailed": "Failed to stage attachment",
+  "localChat.attachmentTotalLimit":
+    "Attachments cannot exceed {{size}} in total",
   "localChat.removeAttachment": "Remove",
   "localChat.clearSkill": "Clear selected skill",
   "localChat.startChat": "Chat with {{name}}",

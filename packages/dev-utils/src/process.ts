@@ -146,6 +146,61 @@ export function isProcessRunning(pid: number): boolean {
   }
 }
 
+async function waitForProcessGone(
+  pid: number,
+  timeoutMs: number,
+  pollMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessRunning(pid)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return !isProcessRunning(pid);
+}
+
+/**
+ * Stops a process and verifies it is gone, escalating to SIGKILL.
+ *
+ * `terminateProcess` is fire-and-forget: it delivers SIGTERM and returns
+ * without waiting. Callers that clean up state right after — removing a dev
+ * lock, say — then record the process as stopped while it is still running.
+ * The survivor keeps its port, `status` reports `stopped`, and every launcher
+ * decision built on that status is wrong until someone kills the orphan by
+ * hand. Verified death, not signal delivery, is the postcondition here.
+ */
+export async function ensureProcessStopped(
+  pid: number,
+  options: { termTimeoutMs?: number; killTimeoutMs?: number } = {},
+): Promise<void> {
+  const { termTimeoutMs = 5_000, killTimeoutMs = 2_000 } = options;
+  const pollMs = 100;
+
+  if (!isProcessRunning(pid)) {
+    return;
+  }
+  await terminateProcess(pid);
+  if (await waitForProcessGone(pid, termTimeoutMs, pollMs)) {
+    return;
+  }
+
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Exited between the check and the signal.
+    }
+  }
+  if (await waitForProcessGone(pid, killTimeoutMs, pollMs)) {
+    return;
+  }
+  throw new Error(`process ${pid} is still running after SIGKILL`);
+}
+
 export async function waitForProcessStart(
   child: ChildProcess,
   processName: string,

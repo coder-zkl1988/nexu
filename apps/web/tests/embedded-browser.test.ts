@@ -6,9 +6,13 @@ import {
   getAnnotationTextInputPosition,
 } from "../src/lib/browser/browser-annotation-editor";
 import {
+  closeBrowserPanel,
+  closeBrowserPanelForRouting,
   closeBrowserPanelForSessionNavigation,
   getBrowserPanelState,
   openBrowserPanel,
+  openUrlInBrowserPanel,
+  releaseAgentBrowserPanelPin,
   resetBrowserPanelForTests,
 } from "../src/lib/browser/browser-panel-store";
 import {
@@ -19,6 +23,7 @@ import {
   isPreviewArtifactActive,
   normalizeBrowserUrl,
   pushBrowserHistory,
+  selectBrowserNavigationTarget,
   selectLatestPreviewArtifact,
   sortPreviewArtifacts,
 } from "../src/lib/browser/embedded-browser";
@@ -200,7 +205,105 @@ describe("embedded browser helpers", () => {
     expect(getBrowserPanelState()).toEqual({
       isOpen: false,
       sessionKey: null,
+      navigationRequest: null,
+      openedByAgent: false,
     });
+  });
+
+  it("opens a session link with a fresh navigation request", () => {
+    resetBrowserPanelForTests();
+
+    expect(
+      openUrlInBrowserPanel(
+        "agent:bot:session-a",
+        "http://127.0.0.1:4173/index.html",
+      ),
+    ).toBe(true);
+    const first = getBrowserPanelState();
+    expect(first.openedByAgent).toBe(false);
+    expect(first.navigationRequest?.url).toBe(
+      "http://127.0.0.1:4173/index.html",
+    );
+
+    expect(
+      openUrlInBrowserPanel("agent:bot:session-a", "https://example.com/demo"),
+    ).toBe(true);
+    const second = getBrowserPanelState();
+    expect(second.navigationRequest?.id).toBeGreaterThan(
+      first.navigationRequest?.id ?? 0,
+    );
+    expect(second.openedByAgent).toBe(false);
+  });
+
+  it("does not retarget an agent-pinned panel", () => {
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    expect(
+      openUrlInBrowserPanel("agent:bot:session-a", "https://example.com/demo"),
+    ).toBe(false);
+    expect(getBrowserPanelState()).toEqual({
+      isOpen: true,
+      sessionKey: "agent:bot:session-a",
+      navigationRequest: null,
+      openedByAgent: true,
+    });
+  });
+
+  it("never chooses the current agent tab as a navigation replacement", () => {
+    const tabs = Array.from({ length: 8 }, (_, index) => ({
+      id: index === 0 ? "agent-tab" : `user-tab-${index}`,
+      url: `https://tab-${index}.test/`,
+    }));
+
+    expect(
+      selectBrowserNavigationTarget(
+        tabs,
+        "agent-tab",
+        "https://requested.test/",
+        "agent-tab",
+      ),
+    ).toEqual({ kind: "replace", tabId: "user-tab-1" });
+  });
+
+  it("keeps an agent's browser open across navigation", () => {
+    // The panel is what places the browser view, so closing it mid-task does
+    // not just hide the work — it stops the agent's clicks from landing.
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(false);
+    expect(closeBrowserPanelForRouting()).toBe(false);
+    expect(getBrowserPanelState().isOpen).toBe(true);
+
+    // An explicit close still ends it.
+    closeBrowserPanel();
+    expect(getBrowserPanelState().isOpen).toBe(false);
+  });
+
+  it("releases the agent pin when the run ends, keeping the panel open", () => {
+    // The pin protects an agent mid-task; once the run is over it has no
+    // purpose. The panel stays up — the user may be reading the result — but
+    // goes back to closing on navigation like any other workbench.
+    resetBrowserPanelForTests();
+    openBrowserPanel("agent:bot:session-a", true);
+
+    releaseAgentBrowserPanelPin();
+
+    expect(getBrowserPanelState().isOpen).toBe(true);
+    expect(getBrowserPanelState().openedByAgent).toBe(false);
+    expect(
+      closeBrowserPanelForSessionNavigation(
+        "/workspace/sessions/session-a",
+        "/workspace/sessions/session-b",
+      ),
+    ).toBe(true);
+    expect(getBrowserPanelState().isOpen).toBe(false);
   });
 
   it("builds a visible arrow head at the annotation endpoint", () => {

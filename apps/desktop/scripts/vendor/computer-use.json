@@ -1,0 +1,35 @@
+{
+  "mac": {
+    "backend": "cua-driver",
+    "version": "0.12.6",
+    "release": "https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.12.6",
+    "license": "MIT",
+    "licenseUrl": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.12.6/LICENSE.md",
+    "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "file": "cua-driver-rs-0.12.6-darwin-universal.tar.gz",
+    "sha256": "c86d6a9ccb074e6e3bc17292adc31b9c76933c646cb2b52a7d8813429a5a6e6f",
+    "appBundle": "CuaDriver.app",
+    "bundleId": "com.trycua.driver",
+    "teamId": "YCK386LBJ7"
+  },
+  "win-arm64": {
+    "backend": "cua-driver",
+    "version": "0.12.6",
+    "release": "https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.12.6",
+    "license": "MIT",
+    "licenseUrl": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.12.6/LICENSE.md",
+    "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "file": "cua-driver-rs-0.12.6-windows-arm64-binary.zip",
+    "sha256": "f8df8f5394a85dea8bd3764030d89ef73c040398f14e4a19d2ce7fd0e7fb7db3"
+  },
+  "win-x64": {
+    "backend": "cua-driver",
+    "version": "0.12.6",
+    "release": "https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.12.6",
+    "license": "MIT",
+    "licenseUrl": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.12.6/LICENSE.md",
+    "licenseSha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "file": "cua-driver-rs-0.12.6-windows-x86_64-binary.zip",
+    "sha256": "d18a0ca02314c6dc7dfdfbb20aac8f52c7b1547308f182546a9252a991d4d0dd"
+  }
+}

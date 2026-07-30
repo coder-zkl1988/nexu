@@ -7,19 +7,65 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import { getOpenclawSkillsDir } from "../../shared/desktop-paths";
 import { buildChildProcessProxyEnv } from "../../shared/proxy-config";
 import type { DesktopRuntimeConfig } from "../../shared/runtime-config";
 import { getWorkspaceRoot } from "../../shared/workspace-paths";
-import { resolveRuntimeManifestsRoots } from "../platforms/shared/runtime-roots";
+import {
+  expandHomePath,
+  resolveRuntimeManifestsRoots,
+} from "../platforms/shared/runtime-roots";
 import { createAsyncArchiveSidecarMaterializer } from "../platforms/shared/sidecar-materializer";
 import { resolveWindowsPackagedOpenclawSidecarRoot } from "../platforms/win/slimclaw-runtime-locator";
+import { prepareComputerUseSidecar } from "./computer-use-sidecar";
 import type { RuntimeUnitManifest } from "./types";
 
 function ensureDir(path: string): string {
   mkdirSync(path, { recursive: true });
   return path;
+}
+
+export function resolveOfficeCliBinary(
+  electronRoot: string,
+  isPackaged: boolean,
+): string {
+  const binaryName =
+    process.platform === "win32" ? "officecli.exe" : "officecli";
+  if (isPackaged) {
+    return path.resolve(
+      electronRoot,
+      "runtime",
+      "tools",
+      "officecli",
+      binaryName,
+    );
+  }
+
+  const explicitPath = process.env.OFFICECLI_BIN?.trim();
+  if (explicitPath) return explicitPath;
+
+  const localBinary = path.resolve(homedir(), ".local", "bin", binaryName);
+  if (existsSync(localBinary)) return localBinary;
+  return binaryName;
+}
+
+export function buildOfficeCliProcessEnv(officeCliBinary: string): {
+  OFFICECLI_BIN: string;
+  PATH?: string;
+} {
+  if (!path.isAbsolute(officeCliBinary)) {
+    return { OFFICECLI_BIN: officeCliBinary };
+  }
+  const inheritedPath = process.env.PATH ?? "";
+  const toolPath = path.dirname(officeCliBinary);
+  return {
+    OFFICECLI_BIN: officeCliBinary,
+    PATH: inheritedPath
+      ? `${toolPath}${path.delimiter}${inheritedPath}`
+      : toolPath,
+  };
 }
 
 function extractPackagedOpenclawSidecar(input: {
@@ -373,11 +419,22 @@ export function createRuntimeUnitManifests(
     "bin",
     process.platform === "win32" ? "openclaw.cmd" : "openclaw",
   );
+  const computerUse = prepareComputerUseSidecar({
+    sourceRoot: path.resolve(runtimeSidecarBaseRoot, "computer-use"),
+    runtimeRoot: path.resolve(
+      expandHomePath(runtimeConfig.paths.nexuHome),
+      "runtime",
+    ),
+    isPackaged,
+  });
   const openclawNodePath = buildOpenclawNodePath(openclawSidecarRoot);
   const openclawPort = Number(
     new URL(runtimeConfig.urls.openclawBase).port || 18789,
   );
   const skillNodePath = buildSkillNodePath(electronRoot, isPackaged);
+  const officeCliEnv = buildOfficeCliProcessEnv(
+    resolveOfficeCliBinary(electronRoot, isPackaged),
+  );
   const proxyEnv = buildChildProcessProxyEnv(runtimeConfig.proxy);
   const langfuseEnv = {
     ...(process.env.LANGFUSE_PUBLIC_KEY
@@ -429,6 +486,7 @@ export function createRuntimeUnitManifests(
     dependents: ["web"],
     env: {
       ...proxyEnv,
+      ...officeCliEnv,
       ELECTRON_RUN_AS_NODE: "1",
       NODE_ENV: isPackaged ? "production" : "development",
       PORT: String(runtimeConfig.ports.controller),
@@ -456,6 +514,15 @@ export function createRuntimeUnitManifests(
       EXPERTHUB_STATIC_EXPERTS_DIR: experthubStaticExpertsDir,
       PLATFORM_TEMPLATES_DIR: platformTemplatesDir,
       OPENCLAW_BIN: effectiveOpenclawBinPath,
+      ...(!isPackaged || runtimeConfig.localAutomationPreviewEnabled
+        ? {
+            NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: "true",
+          }
+        : {}),
+      ...(computerUse.backend
+        ? { COMPUTER_USE_BACKEND: computerUse.backend }
+        : {}),
+      ...(computerUse.binPath ? { COMPUTER_USE_BIN: computerUse.binPath } : {}),
       // Always run OpenClaw through the Electron node runner (ELECTRON_RUN_AS_NODE).
       // OpenClaw >=2026.7.1 hard-requires Node >=24.15; the dev-desktop GUI PATH may
       // resolve an older system `node`, while the Electron runner is version-pinned.
@@ -509,6 +576,7 @@ export function createRuntimeUnitManifests(
     autoStart: false,
     logFilePath: path.resolve(logsDir, "openclaw.log"),
     env: {
+      ...officeCliEnv,
       ...(openclawNodePath ? { NODE_PATH: openclawNodePath } : {}),
       OPENCLAW_CONFIG_PATH: path.resolve(openclawStateDir, "openclaw.json"),
       OPENCLAW_MDNS_HOSTNAME: openclawMdnsHostname,

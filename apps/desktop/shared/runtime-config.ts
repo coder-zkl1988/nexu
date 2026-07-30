@@ -26,6 +26,7 @@ type BuildConfig = {
   NEXU_DESKTOP_BUILD_COMMIT?: string;
   NEXU_DESKTOP_BUILD_TIME?: string;
   NEXU_DESKTOP_UPDATE_CHANNEL?: UpdateChannelName;
+  NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED?: string;
   POSTHOG_API_KEY?: string;
   POSTHOG_HOST?: string;
   LANGFUSE_PUBLIC_KEY?: string;
@@ -90,6 +91,10 @@ function loadBuildConfig(resourcesPath?: string): BuildConfig {
       ),
       NEXU_DESKTOP_UPDATE_CHANNEL: readUpdateChannel(
         readBuildConfigString(record, "NEXU_DESKTOP_UPDATE_CHANNEL"),
+      ),
+      NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: readBuildConfigString(
+        record,
+        "NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED",
       ),
       POSTHOG_API_KEY: readBuildConfigString(record, "POSTHOG_API_KEY"),
       POSTHOG_HOST: readBuildConfigString(record, "POSTHOG_HOST"),
@@ -189,6 +194,7 @@ function parseEnvBoolean(value: string | undefined): boolean | null {
 
 export type DesktopRuntimeConfig = {
   runtimeMode: "internal" | "external";
+  localAutomationPreviewEnabled: boolean;
   buildInfo: DesktopBuildInfo;
   proxy: ProxyPolicy;
   updates: {
@@ -256,6 +262,11 @@ export function getDesktopRuntimeConfig(
     readUpdateChannel(env.NEXU_DESKTOP_UPDATE_CHANNEL) ??
     buildConfig.NEXU_DESKTOP_UPDATE_CHANNEL ??
     "stable";
+  const localAutomationPreviewEnabled =
+    parseEnvBoolean(
+      env.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED ??
+        buildConfig.NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED,
+    ) ?? false;
   const fallbackPackageVersion =
     readPackagedAppVersion(defaults?.resourcesPath) ??
     readDesktopPackageVersion();
@@ -284,6 +295,7 @@ export function getDesktopRuntimeConfig(
 
   return {
     runtimeMode,
+    localAutomationPreviewEnabled,
     buildInfo: {
       version:
         defaults?.appVersion ??

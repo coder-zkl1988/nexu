@@ -10,43 +10,42 @@ import { resolve } from "node:path";
 import type { SkillDb } from "./skill-db.js";
 
 const LIBTV_VIDEO_SLUG = "libtv-video";
+const OFFICECLI_SLUG = "officecli";
 
 /**
  * Skills to install from ClawHub on first launch.
+ *
+ * Publisher identity is pinned so unattended startup installs never select a
+ * same-slug package by popularity or search order.
  */
-export const CURATED_SKILL_SLUGS: readonly string[] = [
-  // Security & tools
-  "1password",
-  "healthcheck",
-  "skill-vetter",
-  // Coding & GitHub
-  "github",
-  // Search & information
-  "multi-search-engine",
-  "xiaohongshu-mcp",
-  "weather",
-  // Communication & calendar
-  "imap-smtp-email",
-  "calendar",
-  // Notes & content
-  "apple-notes",
+export const CURATED_SKILLS: ReadonlyArray<{
+  slug: string;
+  ownerHandle: string;
+}> = [
+  { slug: "1password", ownerHandle: "steipete" },
+  { slug: "healthcheck", ownerHandle: "stellarhold170nt" },
+  { slug: "skill-vetter", ownerHandle: "spclaudehome" },
+  { slug: "github", ownerHandle: "steipete" },
+  { slug: "multi-search-engine", ownerHandle: "gpyangyoujun" },
+  { slug: "weather", ownerHandle: "steipete" },
+  { slug: "imap-smtp-email", ownerHandle: "gzlicanyi" },
+  { slug: "calendar", ownerHandle: "ndcccccc" },
+  { slug: "apple-notes", ownerHandle: "steipete" },
   // NOTE: "humanize-ai-text" was removed — ClawHub flagged it as malware and
   // blocks installation, which made every packaged-app boot retry the install.
-  // File & system
-  "file-organizer-skill",
-  "video-frames",
-  "session-logs",
-  // Skill management
-  "skill-creator",
-  // Skill discovery
-  "find-skill",
-  // Search & content (ClawHub)
-  "wechat-article-search",
-  // Image generation (ClawHub)
-  "liblib-ai-gen",
-  // Audio & music
-  "listenhub-ai",
+  { slug: "file-organizer-skill", ownerHandle: "1999azzar" },
+  { slug: "video-frames", ownerHandle: "steipete" },
+  { slug: "session-logs", ownerHandle: "guogang1024" },
+  { slug: "skill-creator", ownerHandle: "chindden" },
+  { slug: "find-skill", ownerHandle: "breckengan" },
+  { slug: "wechat-article-search", ownerHandle: "wuchubuzai2018" },
+  { slug: "liblib-ai-gen", ownerHandle: "xtaq" },
+  { slug: "listenhub-ai", ownerHandle: "kkaticld" },
 ] as const;
+
+export const CURATED_SKILL_SLUGS: readonly string[] = CURATED_SKILLS.map(
+  ({ slug }) => slug,
+);
 
 /**
  * Skills shipped as static files in the app bundle (apps/desktop/static/bundled-skills/).
@@ -63,6 +62,7 @@ export const STATIC_SKILL_SLUGS: readonly string[] = [
   "qiaomu-mondo-poster-design",
   "tabby-image",
   "tabby-video",
+  "officecli",
 ] as const;
 
 /**
@@ -167,6 +167,58 @@ export function replaceLibtvVideoFromBundle(params: {
   mkdirSync(destDir, { recursive: true });
   cpSync(srcDir, destDir, { recursive: true });
   params.skillDb.recordInstall(LIBTV_VIDEO_SLUG, "managed");
+
+  return { installed: true, reason: existed ? "replaced" : "fresh-install" };
+}
+
+/**
+ * Keep a managed OfficeCLI install aligned with the binary shipped by the
+ * desktop app. Existing directories are replaced only when the ledger says
+ * the shared physical slug is owned exclusively by an installed managed
+ * record. This preserves custom, user, and untracked copies.
+ */
+export function replaceOfficeCliFromBundle(params: {
+  staticDir: string;
+  targetDir: string;
+  skillDb: SkillDb;
+}): {
+  installed: boolean;
+  reason:
+    | "bundle-missing"
+    | "fresh-install"
+    | "replaced"
+    | "ownership-conflict";
+} {
+  const srcDir = resolve(params.staticDir, OFFICECLI_SLUG);
+  if (!existsSync(srcDir)) {
+    return { installed: false, reason: "bundle-missing" };
+  }
+
+  const destDir = resolve(params.targetDir, OFFICECLI_SLUG);
+  const sharedRecords = params.skillDb
+    .getInstalledRecordsBySlug(OFFICECLI_SLUG)
+    .filter((record) => record.source !== "workspace");
+  if (
+    sharedRecords.some(
+      (record) => record.source !== "managed" || record.ownerHandle !== null,
+    )
+  ) {
+    return { installed: false, reason: "ownership-conflict" };
+  }
+  const existed = existsSync(destDir);
+  if (existed) {
+    const managedOwnsDirectory =
+      sharedRecords.length === 1 &&
+      sharedRecords[0]?.source === "managed" &&
+      sharedRecords[0].ownerHandle === null;
+    if (!managedOwnsDirectory) {
+      return { installed: false, reason: "ownership-conflict" };
+    }
+    rmSync(destDir, { recursive: true, force: true });
+  }
+  mkdirSync(destDir, { recursive: true });
+  cpSync(srcDir, destDir, { recursive: true });
+  params.skillDb.recordInstall(OFFICECLI_SLUG, "managed");
 
   return { installed: true, reason: existed ? "replaced" : "fresh-install" };
 }

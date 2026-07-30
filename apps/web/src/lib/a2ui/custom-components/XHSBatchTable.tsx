@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
-import { XHS_EDITOR_NODE_SIZE, useA2UISidebar } from "../a2ui-sidebar-context";
+import { A2UIRenderer } from "../a2ui-renderer";
 import type { A2UIComponent, A2UIMessage } from "../a2ui-types";
 import type { CustomComponentProps } from "./registry";
 import {
@@ -14,6 +15,7 @@ import {
 } from "./xhs-batch-store";
 import {
   type XHSPublishResultItem,
+  XhsPublishStatusUnknownError,
   publishXhsPost,
   reportXhsPublishResults,
 } from "./xhs-publish";
@@ -36,34 +38,24 @@ interface XHSBatchData {
 
 const STATUS_LABEL: Record<RowStatus, string> = {
   idle: "待发布",
+  waiting: "等待设备",
   pushing: "推图中",
   publishing: "发布中",
   success: "已发布",
+  unknown: "待确认",
   error: "失败",
 };
 const STATUS_COLOR: Record<RowStatus, string> = {
   idle: "var(--color-text-tertiary, #999)",
+  waiting: "#185FA5",
   pushing: "#185FA5",
   publishing: "#185FA5",
   success: "#0F6E56",
+  unknown: "#8A5A00",
   error: "#A32D2D",
 };
 
-/** Grid layout for fanning every post out as its own XHSEditor canvas node. */
-const FANOUT_COLS = 3;
-const FANOUT_NODE = XHS_EDITOR_NODE_SIZE;
-const FANOUT_GAP = 24;
-function fanoutPosition(index: number): { x: number; y: number } {
-  const col = index % FANOUT_COLS;
-  const row = Math.floor(index / FANOUT_COLS);
-  return {
-    x: 32 + col * (FANOUT_NODE.width + FANOUT_GAP),
-    y: 32 + row * (FANOUT_NODE.height + FANOUT_GAP),
-  };
-}
-
-/** Build the A2UI surface that renders one post's XHSEditor in the side panel,
- * bound to the store via batchId/postId so edits sync back to this table. */
+/** Build an inline XHSEditor surface bound to this batch's shared store. */
 function buildEditorSurface(
   surfaceId: string,
   batchId: string,
@@ -96,12 +88,13 @@ function buildEditorSurface(
 export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
   const data = comp as unknown as XHSBatchData;
   const batchId = data.batchId ?? "default";
-  const { openWith } = useA2UISidebar();
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
 
   const { data: devicesData } = useQuery({
     queryKey: ["devices"],
     queryFn: async () => {
-      const { data: d } = await getApiV1Devices();
+      const { data: d, error } = await getApiV1Devices();
+      if (error || !d) throw new Error("设备列表加载失败");
       return d;
     },
     refetchInterval: 10_000,
@@ -137,35 +130,10 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
     });
   }, [devices, posts, batchId]);
 
-  const openEditor = (post: XHSPost) => {
-    const surfaceId = `sidebar:xhs-editor-${batchId}-${post.id}`;
-    openWith(
-      surfaceId,
-      buildEditorSurface(surfaceId, batchId, post),
-      onAction ?? (() => {}),
-      {
-        size: XHS_EDITOR_NODE_SIZE,
-      },
-    );
-  };
+  const expandedPost = posts.find((post) => post.id === expandedPostId) ?? null;
 
-  // Fan out every post as its own XHSEditor canvas node (grid layout). Each
-  // node is bound to this batch via batchId/postId, so edits sync back to the
-  // table rows; re-clicking refreshes existing nodes in place (upsert).
-  const openAllInCanvas = () => {
-    posts.forEach((post, i) => {
-      const surfaceId = `sidebar:xhs-editor-${batchId}-${post.id}`;
-      openWith(
-        surfaceId,
-        buildEditorSurface(surfaceId, batchId, post),
-        onAction ?? (() => {}),
-        {
-          title: post.title || `帖子 ${i + 1}`,
-          position: fanoutPosition(i),
-          size: FANOUT_NODE,
-        },
-      );
-    });
+  const toggleEditor = (post: XHSPost) => {
+    setExpandedPostId((current) => (current === post.id ? null : post.id));
   };
 
   const publishOne = async (post: XHSPost): Promise<XHSPublishResultItem> => {
@@ -190,6 +158,16 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : "发布失败";
+      if (err instanceof XhsPublishStatusUnknownError) {
+        setRowStatus(batchId, post.id, "unknown", message);
+        return {
+          postId: post.id,
+          title: post.title,
+          deviceId: post.deviceId,
+          status: "unknown",
+          message,
+        };
+      }
       setRowStatus(batchId, post.id, "error", message);
       return {
         postId: post.id,
@@ -211,6 +189,8 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
     for (const post of posts) {
       if (
         post.status === "success" ||
+        post.status === "unknown" ||
+        post.status === "waiting" ||
         post.status === "pushing" ||
         post.status === "publishing"
       ) {
@@ -237,7 +217,9 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
       [...byDevice.values()].map(async (group) => {
         const results: XHSPublishResultItem[] = [];
         for (const post of group) {
-          results.push(await publishOne(post));
+          const result = await publishOne(post);
+          results.push(result);
+          if (result.status === "unknown") break;
         }
         return results;
       }),
@@ -250,7 +232,13 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
   };
 
   const batchPublishing = posts.some(
-    (post) => post.status === "pushing" || post.status === "publishing",
+    (post) =>
+      post.status === "waiting" ||
+      post.status === "pushing" ||
+      post.status === "publishing",
+  );
+  const hasPublishablePosts = posts.some(
+    (post) => post.status === "idle" || post.status === "error",
   );
 
   return (
@@ -279,27 +267,12 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             type="button"
-            onClick={openAllInCanvas}
-            disabled={posts.length === 0}
-            style={{
-              padding: "5px 14px",
-              borderRadius: 6,
-              border: "0.5px solid var(--color-border)",
-              background: "var(--color-surface-1, #fff)",
-              color: "var(--color-text-secondary, #666)",
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            在画布中编辑
-          </button>
-          <button
-            type="button"
             onClick={() => {
               void publishAll();
             }}
-            disabled={posts.length === 0 || batchPublishing}
+            disabled={
+              posts.length === 0 || batchPublishing || !hasPublishablePosts
+            }
             style={{
               padding: "5px 14px",
               borderRadius: 6,
@@ -324,17 +297,18 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
             // biome-ignore lint/a11y/useSemanticElements: row contains a <select>, so it cannot be a <button> element; role+keydown gives equivalent semantics
             role="button"
             tabIndex={0}
-            onClick={() => openEditor(post)}
+            onClick={() => toggleEditor(post)}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                openEditor(post);
+                toggleEditor(post);
               }
             }}
             style={{
               display: "grid",
-              gridTemplateColumns: "44px 1fr 1.4fr 1fr auto",
+              gridTemplateColumns:
+                "44px minmax(0, 1fr) minmax(0, 1.4fr) minmax(90px, 1fr) auto 18px",
               gap: 10,
               alignItems: "center",
               width: "100%",
@@ -371,6 +345,7 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
               )}
             </div>
             <span
+              title={post.errorMessage}
               style={{
                 fontSize: 13,
                 fontWeight: 500,
@@ -434,9 +409,55 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
             >
               {STATUS_LABEL[post.status]}
             </span>
+            {expandedPostId === post.id ? (
+              <ChevronUp size={15} aria-hidden="true" />
+            ) : (
+              <ChevronDown size={15} aria-hidden="true" />
+            )}
           </div>
         ))}
       </div>
+
+      {expandedPost ? (
+        <div
+          style={{
+            position: "relative",
+            borderTop: "0.5px solid var(--color-border)",
+            minHeight: 520,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="收起编辑器"
+            onClick={() => setExpandedPostId(null)}
+            style={{
+              position: "absolute",
+              zIndex: 2,
+              top: 10,
+              right: 12,
+              width: 28,
+              height: 28,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: 7,
+              border: "0.5px solid var(--color-border)",
+              color: "var(--color-text-secondary)",
+              background: "var(--color-surface-1)",
+              cursor: "pointer",
+            }}
+          >
+            <X size={14} />
+          </button>
+          <A2UIRenderer
+            messages={buildEditorSurface(
+              `xhs-editor-inline-${batchId}-${expandedPost.id}`,
+              batchId,
+              expandedPost,
+            )}
+            onAction={onAction}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

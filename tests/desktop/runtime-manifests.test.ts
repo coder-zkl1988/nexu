@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +28,8 @@ vi.mock("node:util", async (importOriginal) => {
 });
 
 vi.mock("node:fs", () => ({
+  chmodSync: vi.fn(),
+  cpSync: vi.fn(),
   createWriteStream: vi.fn(() => ({
     write: (
       _chunk: unknown,
@@ -48,13 +51,18 @@ vi.mock("node:fs", () => ({
     (target: string) => fsState.stampContents.get(target) ?? "",
   ),
   statSync: vi.fn(() => ({ size: 123, mtimeMs: 456 })),
+  renameSync: vi.fn(),
+  rmSync: vi.fn(),
   writeFileSync: vi.fn((target: string, contents: string) => {
     fsState.paths.add(target);
     fsState.stampContents.set(target, contents);
   }),
 }));
 
-import { resolveRuntimeManifestsRoots } from "../../apps/desktop/main/platforms/shared/runtime-roots";
+import {
+  expandHomePath,
+  resolveRuntimeManifestsRoots,
+} from "../../apps/desktop/main/platforms/shared/runtime-roots";
 import {
   buildSkillNodePath,
   createRuntimeUnitManifests,
@@ -87,6 +95,7 @@ function createRuntimeConfig(): DesktopRuntimeConfig {
       commit: null,
       builtAt: null,
     },
+    localAutomationPreviewEnabled: false,
     proxy: readProxyPolicy({
       HTTP_PROXY: "http://proxy.example.com:8080",
       HTTPS_PROXY: "http://secure-proxy.example.com:8443",
@@ -131,6 +140,7 @@ function createRuntimeConfig(): DesktopRuntimeConfig {
 
 describe("desktop runtime manifests", () => {
   const originalPlatform = process.platform;
+  const originalHome = process.env.HOME;
 
   beforeEach(() => {
     fsState.paths.clear();
@@ -140,6 +150,17 @@ describe("desktop runtime manifests", () => {
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: originalPlatform });
+    if (originalHome === undefined) {
+      Reflect.deleteProperty(process.env, "HOME");
+    } else {
+      process.env.HOME = originalHome;
+    }
+  });
+
+  it("expands Nexu home without relying on a HOME environment variable", () => {
+    Reflect.deleteProperty(process.env, "HOME");
+
+    expect(expandHomePath("~/.nexu")).toBe(path.join(homedir(), ".nexu"));
   });
 
   describe("buildSkillNodePath", () => {
@@ -182,6 +203,36 @@ describe("desktop runtime manifests", () => {
           "/opt/custom/node_modules",
         ].join(path.delimiter),
       );
+    });
+  });
+
+  it("injects an absolute platform Computer Use sidecar path", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    const manifests = createRuntimeUnitManifests(
+      "/repo/apps/desktop",
+      "/tmp/user-data",
+      false,
+      createRuntimeConfig(),
+    );
+    const controller = manifests.find(
+      (manifest) => manifest.id === "controller",
+    );
+
+    expect(controller?.env).toMatchObject({
+      COMPUTER_USE_BACKEND: "cua-driver",
+      // Built with path.join so the expectation carries the host's separators:
+      // stubbing process.platform does not change node:path's behaviour.
+      COMPUTER_USE_BIN: expect.stringContaining(
+        path.join(
+          ".tmp",
+          "sidecars",
+          "computer-use",
+          "CuaDriver.app",
+          "Contents",
+          "MacOS",
+          "cua-driver",
+        ),
+      ),
     });
   });
 
@@ -520,6 +571,38 @@ describe("desktop runtime manifests", () => {
   });
 
   describe("createRuntimeUnitManifests", () => {
+    it("exposes the packaged OfficeCLI binary to controller and OpenClaw", () => {
+      const electronRoot = runtimePath(
+        "/Applications/Nexu.app/Contents/Resources",
+      );
+      const manifests = createRuntimeUnitManifests(
+        electronRoot,
+        runtimePath("/tmp/nexu-user-data"),
+        true,
+        createRuntimeConfig(),
+      );
+      const expectedBinary = runtimePath(
+        electronRoot,
+        "runtime",
+        "tools",
+        "officecli",
+        process.platform === "win32" ? "officecli.exe" : "officecli",
+      );
+      const controller = manifests.find(
+        (manifest) => manifest.id === "controller",
+      );
+      const openclaw = manifests.find((manifest) => manifest.id === "openclaw");
+
+      expect(
+        normalizePathForAssertion(controller?.env?.OFFICECLI_BIN ?? ""),
+      ).toBe(normalizePathForAssertion(expectedBinary));
+      expect(
+        normalizePathForAssertion(openclaw?.env?.OFFICECLI_BIN ?? ""),
+      ).toBe(normalizePathForAssertion(expectedBinary));
+      expect(controller?.env?.PATH).toContain("officecli");
+      expect(openclaw?.env?.PATH).toContain("officecli");
+    });
+
     it("resolves runtime roots for manifest assembly", () => {
       const roots = resolveRuntimeManifestsRoots({
         app: {

@@ -2683,8 +2683,9 @@ export type PostApiV1ChatLocalStartData = {
                 size?: number;
             };
             attachments?: Array<{
-                type: 'image' | 'file';
-                content: string;
+                type: 'image' | 'file' | 'directory';
+                content?: string;
+                stagedPath?: string;
                 metadata?: {
                     mimeType?: string;
                     filename?: string;
@@ -2762,8 +2763,9 @@ export type PostApiV1ChatLocalData = {
                 size?: number;
             };
             attachments?: Array<{
-                type: 'image' | 'file';
-                content: string;
+                type: 'image' | 'file' | 'directory';
+                content?: string;
+                stagedPath?: string;
                 metadata?: {
                     mimeType?: string;
                     filename?: string;
@@ -4340,6 +4342,8 @@ export type GetApiV1SkillhubCatalogResponses = {
      */
     200: {
         skills: Array<{
+            identity?: string;
+            ownerHandle?: string;
             slug: string;
             name: string;
             description: string;
@@ -4352,6 +4356,8 @@ export type GetApiV1SkillhubCatalogResponses = {
         installedSlugs: Array<string>;
         installedSkills: Array<{
             slug: string;
+            ownerHandle: string;
+            version: string;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             name: string;
             description: string;
@@ -4366,6 +4372,7 @@ export type GetApiV1SkillhubCatalogResponses = {
         };
         queue: Array<{
             slug: string;
+            ownerHandle: string;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
             position: number;
@@ -4379,16 +4386,154 @@ export type GetApiV1SkillhubCatalogResponses = {
 
 export type GetApiV1SkillhubCatalogResponse = GetApiV1SkillhubCatalogResponses[keyof GetApiV1SkillhubCatalogResponses];
 
+export type GetApiV1SkillhubStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/skillhub/status';
+};
+
+export type GetApiV1SkillhubStatusResponses = {
+    /**
+     * Installed skills and install queue status
+     */
+    200: {
+        installedSlugs: Array<string>;
+        installedSkills: Array<{
+            slug: string;
+            ownerHandle: string;
+            version: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            name: string;
+            description: string;
+            installedAt: string;
+            agentId: string;
+            agentName: string;
+        }>;
+        queue: Array<{
+            slug: string;
+            ownerHandle: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
+            position: number;
+            error: string;
+            errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
+            retries: number;
+            enqueuedAt: string;
+        }>;
+    };
+};
+
+export type GetApiV1SkillhubStatusResponse = GetApiV1SkillhubStatusResponses[keyof GetApiV1SkillhubStatusResponses];
+
+export type GetApiV1SkillhubCatalogPageData = {
+    body?: never;
+    path?: never;
+    query?: {
+        q?: string;
+        category?: string;
+        cursor?: string;
+        limit?: number;
+        sort?: 'downloads' | 'updated' | 'stars';
+    };
+    url: '/api/v1/skillhub/catalog-page';
+};
+
+export type GetApiV1SkillhubCatalogPageErrors = {
+    /**
+     * Catalog revision changed during pagination
+     */
+    409: {
+        error: string;
+        code: 'catalog_revision_changed';
+    };
+};
+
+export type GetApiV1SkillhubCatalogPageError = GetApiV1SkillhubCatalogPageErrors[keyof GetApiV1SkillhubCatalogPageErrors];
+
+export type GetApiV1SkillhubCatalogPageResponses = {
+    /**
+     * Paginated SkillHub catalog
+     */
+    200: {
+        skills: Array<{
+            identity?: string;
+            ownerHandle?: string;
+            slug: string;
+            name: string;
+            description: string;
+            downloads: number;
+            stars: number;
+            tags: Array<string>;
+            version: string;
+            updatedAt: string;
+        }>;
+        installedSlugs: Array<string>;
+        installedSkills: Array<{
+            slug: string;
+            ownerHandle: string;
+            version: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            name: string;
+            description: string;
+            installedAt: string;
+            agentId: string;
+            agentName: string;
+        }>;
+        meta: {
+            version: string;
+            updatedAt: string;
+            skillCount: number;
+        };
+        queue: Array<{
+            slug: string;
+            ownerHandle: string;
+            source: 'managed' | 'custom' | 'workspace' | 'user';
+            status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
+            position: number;
+            error: string;
+            errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
+            retries: number;
+            enqueuedAt: string;
+        }>;
+        nextCursor: string;
+        total: number;
+        facets: Array<{
+            tag: string;
+            count: number;
+        }>;
+    };
+};
+
+export type GetApiV1SkillhubCatalogPageResponse = GetApiV1SkillhubCatalogPageResponses[keyof GetApiV1SkillhubCatalogPageResponses];
+
 export type PostApiV1SkillhubInstallData = {
     body?: {
         slug: string;
-        source?: 'managed' | 'custom' | 'workspace' | 'user';
-        agentId?: string;
+        ownerHandle?: string;
+        version?: string;
+        update?: boolean;
     };
     path?: never;
     query?: never;
     url: '/api/v1/skillhub/install';
 };
+
+export type PostApiV1SkillhubInstallErrors = {
+    /**
+     * Install conflict or update not allowed
+     */
+    409: {
+        ok: boolean;
+        queued?: boolean;
+        slug?: string;
+        status?: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
+        position?: number;
+        error?: string;
+    };
+};
+
+export type PostApiV1SkillhubInstallError = PostApiV1SkillhubInstallErrors[keyof PostApiV1SkillhubInstallErrors];
 
 export type PostApiV1SkillhubInstallResponses = {
     /**
@@ -4478,6 +4623,7 @@ export type GetApiV1SkillhubSkillsBySlugData = {
     query?: {
         source?: 'managed' | 'custom' | 'workspace' | 'user';
         agentId?: string;
+        ownerHandle?: string;
     };
     url: '/api/v1/skillhub/skills/{slug}';
 };
@@ -4498,6 +4644,7 @@ export type GetApiV1SkillhubSkillsBySlugResponses = {
      * Skill detail
      */
     200: {
+        ownerHandle?: string;
         slug: string;
         name: string;
         description: string;
@@ -4505,6 +4652,8 @@ export type GetApiV1SkillhubSkillsBySlugResponses = {
         stars: number;
         tags: Array<string>;
         version: string;
+        installedVersion: string;
+        updateEligible: boolean;
         updatedAt: string;
         installed: boolean;
         installedSource: 'managed' | 'custom' | 'workspace' | 'user';
@@ -4587,6 +4736,11 @@ export type GetApiV1ExperthubCatalogResponses = {
             avatarDataUrl?: string;
             description?: string;
             configuredSkills?: Array<string>;
+            configuredSkillRefs?: Array<{
+                slug: string;
+                ownerHandle?: string;
+                version?: string;
+            }>;
         }>;
         meta: {
             version: string;
@@ -4654,6 +4808,11 @@ export type PostApiV1ExperthubUninstallResponse = PostApiV1ExperthubUninstallRes
 export type PutApiV1ExperthubExpertsBySlugSkillsData = {
     body?: {
         skills: Array<string>;
+        skillRefs?: Array<{
+            slug: string;
+            ownerHandle?: string;
+            version?: string;
+        }>;
     };
     path: {
         slug: string;
@@ -4680,6 +4839,11 @@ export type PutApiV1ExperthubExpertsBySlugSkillsResponses = {
     200: {
         ok: true;
         configuredSkills: Array<string>;
+        configuredSkillRefs: Array<{
+            slug: string;
+            ownerHandle?: string;
+            version?: string;
+        }>;
     };
 };
 
@@ -4760,6 +4924,11 @@ export type PostApiV1ExperthubCustomData = {
         modelId: string;
         description?: string;
         skills?: Array<string>;
+        skillRefs?: Array<{
+            slug: string;
+            ownerHandle?: string;
+            version?: string;
+        }>;
         existingSlug?: string;
         workspaceFiles?: {
             'AGENTS.md'?: string;
@@ -5905,6 +6074,27 @@ export type GetApiV1RuntimeConfigResponses = {
             rpcPort?: number;
             localIp?: string;
         };
+        localAutomation: {
+            browser?: {
+                enabled?: boolean;
+            };
+            computerUse?: {
+                enabled?: boolean;
+            };
+        };
+        localAutomationStatus: {
+            previewEnabled: boolean;
+            computerUseAvailable: boolean;
+            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | null;
+            computerUseBinaryPath: string | null;
+            computerUseBackend: 'cua-driver' | null;
+            computerUsePermissionState: 'ready' | 'permission-required' | 'unavailable' | 'unknown' | 'disabled';
+            computerUsePermissions: Array<{
+                name: string;
+                granted: boolean;
+                required: boolean;
+            }>;
+        };
     };
 };
 
@@ -5943,6 +6133,58 @@ export type PutApiV1RuntimeConfigResponses = {
 };
 
 export type PutApiV1RuntimeConfigResponse = PutApiV1RuntimeConfigResponses[keyof PutApiV1RuntimeConfigResponses];
+
+export type PatchApiV1RuntimeConfigLocalAutomationData = {
+    body?: {
+        browser?: {
+            enabled: boolean;
+        };
+        computerUse?: {
+            enabled: boolean;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation';
+};
+
+export type PatchApiV1RuntimeConfigLocalAutomationResponses = {
+    /**
+     * Updated local automation settings
+     */
+    200: {
+        localAutomation: {
+            browser?: {
+                enabled?: boolean;
+            };
+            computerUse?: {
+                enabled?: boolean;
+            };
+        };
+    };
+};
+
+export type PatchApiV1RuntimeConfigLocalAutomationResponse = PatchApiV1RuntimeConfigLocalAutomationResponses[keyof PatchApiV1RuntimeConfigLocalAutomationResponses];
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsData = {
+    body?: {
+        [key: string]: unknown;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime-config/local-automation/computer-use/permissions';
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses = {
+    /**
+     * Requested the platform grants Computer Use needs
+     */
+    200: {
+        requested: true;
+    };
+};
+
+export type PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponse = PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses[keyof PostApiV1RuntimeConfigLocalAutomationComputerUsePermissionsResponses];
 
 export type PatchApiV1RuntimeConfigDeviceControlData = {
     body?: {
@@ -7066,7 +7308,7 @@ export type GetApiV1CanvasMirrorResponses = {
         boardId: string;
         nodes: Array<{
             id: string;
-            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'xhs' | 'phone' | 'group');
             title: string;
             x: number;
             y: number;
@@ -7101,7 +7343,7 @@ export type PostApiV1CanvasMirrorData = {
         boardId: string;
         nodes: Array<{
             id: string;
-            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'group');
+            type: ('text' | 'image' | 'video' | 'audio' | 'config') | ('a2ui' | 'team-step' | 'xhs' | 'phone' | 'group');
             title: string;
             x: number;
             y: number;
@@ -7142,6 +7384,187 @@ export type PostApiV1CanvasMirrorResponses = {
 };
 
 export type PostApiV1CanvasMirrorResponse = PostApiV1CanvasMirrorResponses[keyof PostApiV1CanvasMirrorResponses];
+
+export type GetApiV1BrowserAgentStreamData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/stream';
+};
+
+export type GetApiV1BrowserAgentStreamResponses = {
+    /**
+     * SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)
+     */
+    200: string;
+};
+
+export type GetApiV1BrowserAgentStreamResponse = GetApiV1BrowserAgentStreamResponses[keyof GetApiV1BrowserAgentStreamResponses];
+
+export type PostApiV1BrowserAgentActData = {
+    body?: {
+        sessionKey: string;
+        command: {
+            action: 'open';
+            url: string;
+        } | {
+            action: 'snapshot';
+        } | {
+            action: 'click';
+            ref: string;
+        } | {
+            action: 'type';
+            ref: string;
+            text: string;
+            submit?: boolean;
+        } | {
+            action: 'scroll';
+            deltaY: number;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/act';
+};
+
+export type PostApiV1BrowserAgentActErrors = {
+    /**
+     * Not a local desktop session
+     */
+    403: {
+        message: string;
+    };
+    /**
+     * No desktop browser panel is listening
+     */
+    503: {
+        message: string;
+    };
+    /**
+     * The desktop browser panel did not answer in time
+     */
+    504: {
+        message: string;
+    };
+};
+
+export type PostApiV1BrowserAgentActError = PostApiV1BrowserAgentActErrors[keyof PostApiV1BrowserAgentActErrors];
+
+export type PostApiV1BrowserAgentActResponses = {
+    /**
+     * Command executed by the desktop browser panel
+     */
+    200: {
+        ok: true;
+        snapshot: {
+            url: string;
+            title: string;
+            truncated: boolean;
+            nodes: Array<{
+                ref: string;
+                role: string;
+                name: string;
+                value?: string;
+                disabled?: boolean;
+                depth: number;
+            }>;
+        };
+    } | {
+        ok: true;
+        observation: {
+            url: string;
+            title: string;
+            element?: {
+                ref: string;
+                role: string;
+                name: string;
+                value?: string;
+                disabled?: boolean;
+                depth: number;
+            };
+            navigated: boolean;
+        };
+    } | {
+        ok: false;
+        error: string;
+    };
+};
+
+export type PostApiV1BrowserAgentActResponse = PostApiV1BrowserAgentActResponses[keyof PostApiV1BrowserAgentActResponses];
+
+export type PostApiV1BrowserAgentRunEndedData = {
+    body?: {
+        sessionKey: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/run-ended';
+};
+
+export type PostApiV1BrowserAgentRunEndedResponses = {
+    /**
+     * Run-end signal forwarded to the desktop
+     */
+    200: {
+        accepted: boolean;
+    };
+};
+
+export type PostApiV1BrowserAgentRunEndedResponse = PostApiV1BrowserAgentRunEndedResponses[keyof PostApiV1BrowserAgentRunEndedResponses];
+
+export type PostApiV1BrowserAgentResultData = {
+    body?: {
+        requestId: string;
+        outcome: {
+            ok: true;
+            snapshot: {
+                url: string;
+                title: string;
+                truncated: boolean;
+                nodes: Array<{
+                    ref: string;
+                    role: string;
+                    name: string;
+                    value?: string;
+                    disabled?: boolean;
+                    depth: number;
+                }>;
+            };
+        } | {
+            ok: true;
+            observation: {
+                url: string;
+                title: string;
+                element?: {
+                    ref: string;
+                    role: string;
+                    name: string;
+                    value?: string;
+                    disabled?: boolean;
+                    depth: number;
+                };
+                navigated: boolean;
+            };
+        } | {
+            ok: false;
+            error: string;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/browser/agent/result';
+};
+
+export type PostApiV1BrowserAgentResultResponses = {
+    /**
+     * Result recorded
+     */
+    200: {
+        accepted: boolean;
+    };
+};
+
+export type PostApiV1BrowserAgentResultResponse = PostApiV1BrowserAgentResultResponses[keyof PostApiV1BrowserAgentResultResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

@@ -16,8 +16,80 @@
 
 import { createHash } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
-import { access, copyFile, mkdir } from "node:fs/promises";
+import {
+  access,
+  copyFile,
+  lstat,
+  mkdir,
+  realpath,
+  stat,
+} from "node:fs/promises";
 import path from "node:path";
+
+export type MediaFileResolution =
+  | { status: "file"; originalPath: string; realPath: string }
+  | { status: "missing" | "unsafe"; originalPath: string };
+
+function isPathInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+/**
+ * Resolve an existing regular file beneath OpenClaw's media root. Both the
+ * lexical path and canonical path are checked so a symlink inside media cannot
+ * expose or cache files outside the app-owned tree.
+ */
+export async function resolveMediaFileWithinRoot(
+  mediaRoot: string,
+  candidatePath: string,
+): Promise<MediaFileResolution> {
+  const root = path.resolve(mediaRoot);
+  const originalPath = path.resolve(candidatePath);
+  if (!isPathInside(root, originalPath)) {
+    return { status: "unsafe", originalPath };
+  }
+
+  try {
+    if ((await lstat(originalPath)).isSymbolicLink()) {
+      return { status: "unsafe", originalPath };
+    }
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      status: code === "ENOENT" ? "missing" : "unsafe",
+      originalPath,
+    };
+  }
+
+  let realRoot: string;
+  let realPath: string;
+  try {
+    [realRoot, realPath] = await Promise.all([
+      realpath(root),
+      realpath(originalPath),
+    ]);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      status: code === "ENOENT" ? "missing" : "unsafe",
+      originalPath,
+    };
+  }
+
+  if (!isPathInside(realRoot, realPath)) {
+    return { status: "unsafe", originalPath };
+  }
+  const fileStat = await stat(realPath).catch(() => null);
+  if (!fileStat?.isFile()) {
+    return { status: "unsafe", originalPath };
+  }
+  return { status: "file", originalPath, realPath };
+}
 
 /** Directory under the controller home where transcript media is mirrored. */
 export function mediaCacheDir(nexuHomeDir: string): string {
@@ -44,16 +116,25 @@ export function mediaCachePathFor(
 export async function ensureMediaCached(
   cacheDir: string,
   absolutePath: string,
+  mediaRoot?: string,
 ): Promise<void> {
+  const resolution = mediaRoot
+    ? await resolveMediaFileWithinRoot(mediaRoot, absolutePath)
+    : ({
+        status: "file",
+        originalPath: path.resolve(absolutePath),
+        realPath: path.resolve(absolutePath),
+      } as const);
+  if (resolution.status !== "file") return;
   try {
-    await access(absolutePath, fsConstants.R_OK);
+    await access(resolution.realPath, fsConstants.R_OK);
   } catch {
     return; // source already TTL-cleaned — nothing to mirror
   }
-  const target = mediaCachePathFor(cacheDir, absolutePath);
+  const target = mediaCachePathFor(cacheDir, resolution.originalPath);
   await mkdir(cacheDir, { recursive: true });
   try {
-    await copyFile(absolutePath, target, fsConstants.COPYFILE_EXCL);
+    await copyFile(resolution.realPath, target, fsConstants.COPYFILE_EXCL);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     // EEXIST: already mirrored.  ENOENT: source deleted between the access

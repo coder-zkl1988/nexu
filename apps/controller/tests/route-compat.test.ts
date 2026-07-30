@@ -23,6 +23,7 @@ import { ChannelFallbackService } from "../src/services/channel-fallback-service
 import { ChannelService } from "../src/services/channel-service.js";
 import { DesktopLocalService } from "../src/services/desktop-local-service.js";
 import { IntegrationService } from "../src/services/integration-service.js";
+import { LocalAutomationService } from "../src/services/local-automation-service.js";
 import { LocalUserService } from "../src/services/local-user-service.js";
 import { ModelProviderService } from "../src/services/model-provider-service.js";
 import { OpenClawAuthService } from "../src/services/openclaw-auth-service.js";
@@ -195,6 +196,12 @@ async function createTestContainer(
     runtimeModelStateService,
     modelProviderService,
     integrationService: new IntegrationService(configStore),
+    localAutomationService: new LocalAutomationService(
+      env,
+      configStore,
+      openclawSyncService,
+      openclawProcess,
+    ),
     localUserService: new LocalUserService(configStore),
     desktopLocalService: new DesktopLocalService(
       configStore,
@@ -241,6 +248,85 @@ describe("controller route compatibility", () => {
     expect(meResponse.status).toBe(200);
     const me = (await meResponse.json()) as { email: string };
     expect(me.email).toBe("desktop@nexu.local");
+  });
+
+  it("rejects cross-site compatible automation POSTs without JSON", async () => {
+    const app = createApp(container);
+    const paths = [
+      "/api/v1/runtime-config/local-automation/computer-use/permissions",
+    ];
+
+    for (const requestPath of paths) {
+      const response = await app.request(requestPath, { method: "POST" });
+      expect(response.status).toBe(415);
+    }
+  });
+
+  it("rejects DNS rebinding hosts before local automation handlers", async () => {
+    const permissionsSpy = vi
+      .spyOn(container.localAutomationService, "requestComputerUsePermissions")
+      .mockResolvedValue();
+    const app = createApp(container);
+
+    const response = await app.request(
+      "http://evil.example/api/v1/runtime-config/local-automation/computer-use/permissions",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "evil.example",
+          origin: "http://evil.example",
+        },
+        body: "{}",
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    expect(await response.text()).toBe("Forbidden");
+    expect(permissionsSpy).not.toHaveBeenCalled();
+  });
+
+  it("admits the desktop shell's boot probe of the ready endpoint", async () => {
+    // The file:// shell polls readiness with an opaque origin and cross-site
+    // fetch metadata — exactly what the global guard rejects. Measured on CI:
+    // gating it left the packaged app on the boot screen through every health
+    // attempt while the endpoint answered ready:true to plain probes, because
+    // the packaged web sidecar proxies the shell's headers here verbatim.
+    const app = createApp(container);
+
+    const probe = await app.request(
+      "http://127.0.0.1:50800/api/internal/desktop/ready",
+      {
+        headers: {
+          host: "127.0.0.1:50800",
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+        },
+      },
+    );
+    // Not 403 is the assertion; the handler's own status is its business.
+    expect(probe.status).not.toBe(403);
+
+    // The exception is path-exact, method-exact, and never overrides the
+    // loopback-host requirement.
+    const evilHost = await app.request(
+      "http://evil.example/api/internal/desktop/ready",
+      { headers: { host: "evil.example" } },
+    );
+    expect(evilHost.status).toBe(403);
+    const post = await app.request(
+      "http://127.0.0.1:50800/api/internal/desktop/ready",
+      {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:50800",
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+        },
+      },
+    );
+    expect(post.status).toBe(403);
   });
 
   it("supports channel connect, integration connect, session lifecycle, and runtime config routes", async () => {

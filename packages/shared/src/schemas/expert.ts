@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+export const skillReferenceSchema = z.object({
+  slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,127}$/),
+  ownerHandle: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9._-]{0,127}$/)
+    .optional(),
+  version: z
+    .string()
+    .regex(/^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$/)
+    .optional(),
+});
+
 export const expertManifestSchema = z.object({
   schemaVersion: z.literal(1),
   slug: z
@@ -42,6 +54,7 @@ export const installedExpertSchema = z.object({
   avatarDataUrl: z.string().optional(),
   description: z.string().optional(),
   configuredSkills: z.array(z.string()).optional(),
+  configuredSkillRefs: z.array(skillReferenceSchema).optional(),
 });
 
 export const experthubCatalogResponseSchema = z.object({
@@ -72,6 +85,7 @@ export const createCustomExpertRequestSchema = z.object({
   modelId: z.string().min(1),
   description: z.string().max(280).optional(),
   skills: z.array(z.string()).default([]),
+  skillRefs: z.array(skillReferenceSchema).optional(),
   existingSlug: z.string().optional(),
   workspaceFiles: z
     .object({
@@ -90,6 +104,7 @@ export const createCustomExpertResponseSchema = z.object({
 });
 
 export type ExpertManifest = z.infer<typeof expertManifestSchema>;
+export type SkillReference = z.infer<typeof skillReferenceSchema>;
 export type MinimalExpert = z.infer<typeof minimalExpertSchema>;
 export type InstalledExpert = z.infer<typeof installedExpertSchema>;
 export type ExperthubCatalogResponse = z.infer<

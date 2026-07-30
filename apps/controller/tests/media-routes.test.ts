@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
@@ -79,6 +79,75 @@ describe("media route error mapping", () => {
       body: JSON.stringify({ prompt: "cat" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("state media file route", () => {
+  async function buildStateFileApp() {
+    const root = await mkdtemp(join(tmpdir(), "nexu-state-media-"));
+    const openclawStateDir = join(root, "state");
+    const nexuHomeDir = join(root, "home");
+    const app = new OpenAPIHono<ControllerBindings>();
+    registerMediaRoutes(app, {
+      mediaGenerationService: {},
+      env: { openclawStateDir, nexuHomeDir },
+    } as unknown as ControllerContainer);
+    return { app, root, openclawStateDir };
+  }
+
+  it("serves generated Office files with the correct MIME type", async () => {
+    const { app, openclawStateDir } = await buildStateFileApp();
+    const officePath = join(
+      openclawStateDir,
+      "media",
+      "officecli",
+      "report.docx",
+    );
+    await mkdir(join(openclawStateDir, "media", "officecli"), {
+      recursive: true,
+    });
+    await writeFile(officePath, "docx-bytes");
+
+    const response = await app.request(
+      `/api/v1/media/state-file?path=${encodeURIComponent(officePath)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    expect(await response.text()).toBe("docx-bytes");
+  });
+
+  it("rejects a symlink inside media that resolves outside the media root", async () => {
+    const { app, root, openclawStateDir } = await buildStateFileApp();
+    const outsidePath = join(root, "private.txt");
+    const linkPath = join(openclawStateDir, "media", "linked.txt");
+    await mkdir(join(openclawStateDir, "media"), { recursive: true });
+    await writeFile(outsidePath, "private");
+    await symlink(outsidePath, linkPath);
+
+    const response = await app.request(
+      `/api/v1/media/state-file?path=${encodeURIComponent(linkPath)}`,
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("rejects a symlink even when its target remains inside the media root", async () => {
+    const { app, openclawStateDir } = await buildStateFileApp();
+    const mediaRoot = join(openclawStateDir, "media");
+    const targetPath = join(mediaRoot, "target.txt");
+    const linkPath = join(mediaRoot, "linked.txt");
+    await mkdir(mediaRoot, { recursive: true });
+    await writeFile(targetPath, "private");
+    await symlink(targetPath, linkPath);
+
+    const response = await app.request(
+      `/api/v1/media/state-file?path=${encodeURIComponent(linkPath)}`,
+    );
+
+    expect(response.status).toBe(404);
   });
 });
 

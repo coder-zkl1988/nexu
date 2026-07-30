@@ -222,6 +222,7 @@ function makeRuntimePorts(overrides?: Record<string, unknown>) {
     webPort: 50810,
     nexuHome: "/tmp/nexu-home",
     isDev: true,
+    localAutomationPreviewEnabled: true,
     ...overrides,
   });
 }
@@ -645,6 +646,7 @@ describe("Launchd Startup Scenarios", () => {
     expect(written.controllerPort).toBe(50800);
     expect(written.openclawPort).toBe(18789);
     expect(written.electronPid).toBe(process.pid);
+    expect(written.localAutomationPreviewEnabled).toBe(true);
   });
 
   // -----------------------------------------------------------------------
@@ -902,6 +904,46 @@ describe("Launchd Startup Scenarios", () => {
     expect(mockLaunchdManager.bootoutAndWaitForExit).toHaveBeenCalled();
     expect(mockLaunchdManager.installService).toHaveBeenCalledTimes(2);
   }, 15000);
+
+  it("Scenario 19b: Preview capability downgrade refuses attach", async () => {
+    const fsMock = await import("node:fs/promises");
+    const ports = makeRuntimePorts({
+      isDev: false,
+      appVersion: "1.0.0",
+      openclawStateDir: "/tmp/state",
+      userDataPath: "/tmp/user-data",
+      buildSource: "stable",
+      localAutomationPreviewEnabled: true,
+    });
+    (fsMock.readFile as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error("ENOENT"))
+      .mockRejectedValueOnce(new Error("ENOENT"))
+      .mockResolvedValueOnce(ports)
+      .mockResolvedValueOnce(ports);
+
+    mockLaunchdManager.getServiceStatus.mockResolvedValue(
+      mockRunningService({ NEXU_HOME: "/tmp/nexu-home", PORT: "50800" }),
+    );
+
+    const { bootstrapWithLaunchd } = await import(
+      "../../apps/desktop/main/services/launchd-bootstrap"
+    );
+
+    const result = await bootstrapWithLaunchd(
+      makeBootstrapEnv({
+        isDev: false,
+        appVersion: "1.0.0",
+        openclawStateDir: "/tmp/state",
+        userDataPath: "/tmp/user-data",
+        buildSource: "stable",
+        localAutomationPreviewEnabled: "false",
+      }) as never,
+    );
+
+    expect(result.isAttach).toBe(false);
+    expect(mockLaunchdManager.bootoutAndWaitForExit).toHaveBeenCalled();
+    expect(mockLaunchdManager.installService).toHaveBeenCalledTimes(2);
+  });
 
   // -----------------------------------------------------------------------
   // Scenario 20: Partial attach — only controller running

@@ -57,3 +57,19 @@ export function invokeDesktopHost(channel: string, payload: unknown): void {
       }
     });
 }
+
+export async function requestDesktopHost<TResult>(
+  channel: string,
+  payload: unknown,
+): Promise<TResult | undefined> {
+  if (typeof window === "undefined") return undefined;
+  const candidate = (window as Window & { nexuHost?: unknown }).nexuHost;
+  if (!candidate || typeof candidate !== "object") return undefined;
+  const invoke = Reflect.get(candidate as Record<string, unknown>, "invoke");
+  if (typeof invoke !== "function") return undefined;
+  const invokeHost = invoke as (
+    channel: string,
+    payload: unknown,
+  ) => Promise<TResult>;
+  return invokeHost.call(candidate, channel, payload);
+}

@@ -55,6 +55,76 @@ describe("generatePlist", () => {
     expect(plist).toContain("<key>KeepAlive</key>");
   });
 
+  it("injects the materialized Computer Use sidecar only into controller", async () => {
+    const { generatePlist } = await import(
+      "../../apps/desktop/main/services/plist-generator"
+    );
+    const env = {
+      ...mockEnv,
+      computerUseBackend: "peekaboo" as const,
+      computerUseBinPath:
+        "/Users/testuser/.nexu/runtime/computer-use/peekaboo-a&b/peekaboo",
+    };
+
+    const controllerPlist = generatePlist("controller", env);
+    const openclawPlist = generatePlist("openclaw", env);
+
+    expect(controllerPlist).toContain("<key>COMPUTER_USE_BACKEND</key>");
+    expect(controllerPlist).toContain("<string>peekaboo</string>");
+    expect(controllerPlist).toContain(
+      "/computer-use/peekaboo-a&amp;b/peekaboo",
+    );
+    expect(openclawPlist).not.toContain("COMPUTER_USE_BACKEND");
+    expect(openclawPlist).not.toContain("COMPUTER_USE_BIN");
+  });
+
+  it("injects an explicit local automation preview opt-in only into controller", async () => {
+    const { generatePlist } = await import(
+      "../../apps/desktop/main/services/plist-generator"
+    );
+    const env = {
+      ...mockEnv,
+      localAutomationPreviewEnabled: "true",
+    };
+
+    const controllerPlist = generatePlist("controller", env);
+    const openclawPlist = generatePlist("openclaw", env);
+
+    expect(controllerPlist).toContain(
+      "<key>NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED</key>",
+    );
+    expect(controllerPlist).toContain("<string>true</string>");
+    expect(openclawPlist).not.toContain(
+      "NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED",
+    );
+    expect(generatePlist("controller", mockEnv)).not.toContain(
+      "NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED",
+    );
+  });
+
+  it("exposes OfficeCLI and prepends its directory to PATH for both services", async () => {
+    const { generatePlist } = await import(
+      "../../apps/desktop/main/services/plist-generator"
+    );
+    const env = {
+      ...mockEnv,
+      systemPath: "/usr/local/bin:/usr/bin",
+      officeCliBinPath:
+        "/Applications/Tabby.app/Contents/Resources/runtime/tools/officecli/officecli",
+    };
+
+    for (const service of ["controller", "openclaw"] as const) {
+      const plist = generatePlist(service, env);
+      expect(plist).toContain("<key>OFFICECLI_BIN</key>");
+      expect(plist).toContain(
+        "<string>/Applications/Tabby.app/Contents/Resources/runtime/tools/officecli/officecli</string>",
+      );
+      expect(plist).toContain(
+        "<string>/Applications/Tabby.app/Contents/Resources/runtime/tools/officecli:/usr/local/bin:/usr/bin</string>",
+      );
+    }
+  });
+
   it("generates valid openclaw plist XML", async () => {
     const { generatePlist } = await import(
       "../../apps/desktop/main/services/plist-generator"

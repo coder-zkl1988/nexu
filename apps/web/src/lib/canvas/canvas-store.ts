@@ -33,7 +33,22 @@ export type CanvasNodeType =
   | "audio"
   | "team-step"
   | "config"
+  | "xhs"
+  | "phone"
   | "group";
+
+export type CanvasXhsPost = {
+  title: string;
+  content: string;
+  images: string[];
+  hashtags: string[];
+  theme?: string;
+  deviceId?: string;
+};
+
+export type CanvasPhonePreview = {
+  deviceId?: string;
+};
 
 export type CanvasNodeMetadata = {
   /** a2ui: surfaceId into the runtime payload map. */
@@ -83,6 +98,10 @@ export type CanvasNodeMetadata = {
     /** composer: base prompt prepended to the upstream prompt */
     composedPrompt?: string;
   };
+  /** xhs: canvas-native Xiaohongshu post editor state. */
+  xhs?: CanvasXhsPost;
+  /** phone: selected connected device for the live preview shell. */
+  phone?: CanvasPhonePreview;
   /** batch group: root carries childIds+expanded; children carry rootId. */
   batch?: { childIds?: string[]; expanded?: boolean; rootId?: string };
   /**
@@ -209,6 +228,8 @@ export const NODE_DEFAULT_SIZES: Record<
   audio: { width: 340, height: 120 },
   "team-step": { width: 300, height: 200 },
   config: { width: 320, height: 240 },
+  xhs: { width: 440, height: 640 },
+  phone: { width: 300, height: 560 },
   group: { width: 760, height: 480 },
 };
 

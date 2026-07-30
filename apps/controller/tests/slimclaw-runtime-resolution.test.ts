@@ -129,4 +129,24 @@ describe("openclaw runtime resolution", () => {
       extraEnv: { ELECTRON_RUN_AS_NODE: "1" },
     });
   });
+
+  it("uses an explicit Node runner instead of executing a Windows cmd shim", () => {
+    vi.stubEnv(
+      "OPENCLAW_ELECTRON_EXECUTABLE",
+      "C:/Program Files/nodejs/node.exe",
+    );
+    const env = createEnv({
+      openclawBin: "/runtime/bin/openclaw.cmd",
+      openclawBuiltinExtensionsDir: "/runtime/node_modules/openclaw/extensions",
+    });
+
+    const spec = getOpenClawCommandSpec(env);
+
+    expect(spec).toMatchObject({
+      command: "C:/Program Files/nodejs/node.exe",
+      argsPrefix: [path.resolve("/runtime/node_modules/openclaw/openclaw.mjs")],
+      extraEnv: { ELECTRON_RUN_AS_NODE: "1" },
+    });
+    expect(spec.command).not.toBe(env.openclawBin);
+  });
 });

@@ -4,6 +4,7 @@ import {
   createNodeOptions,
   ensureDirectory,
   ensureParentDirectory,
+  ensureProcessStopped,
   getListeningPortPid,
   isProcessRunning,
   readDevLock,
@@ -11,7 +12,6 @@ import {
   repoRootPath,
   resolveTsxPaths,
   spawnHiddenProcess,
-  terminateProcess,
   waitForProcessStart,
 } from "@nexu/dev-utils";
 import { ensure } from "@nexu/shared";
@@ -504,10 +504,15 @@ export async function stopOpenclawDevProcess(): Promise<OpenclawDevSnapshot> {
     pidsToTerminate.add(await getOpenclawPortPid());
   } catch {}
 
+  // Every pid's death is verified, not assumed: this used to fire SIGTERM and
+  // remove the lock regardless, and a process that survived the signal became
+  // an orphan the launcher then reported as `stopped` — while it kept holding
+  // the gateway port.
   for (const pid of pidsToTerminate) {
-    await terminateProcess(pid);
+    await ensureProcessStopped(pid);
   }
 
+  // Reached only once every tracked pid is gone, so `stopped` stays truthful.
   await removeDevLock(openclawDevLockPath);
 
   return snapshot;
@@ -569,24 +574,35 @@ export async function getCurrentOpenclawDevSnapshot(): Promise<OpenclawDevSnapsh
     };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      // No lock. Before calling that `stopped`, check the port: a healthy
+      // listener is an externally managed openclaw the launcher attaches to,
+      // but an unhealthy one is an orphan a lost stop left behind — reporting
+      // it as cleanly stopped hides it from the launcher. Reported as `stale`,
+      // the stop path kills the orphan and heals.
+      let listenerPid: number | undefined;
       try {
-        const listenerPid = await getOpenclawPortPid();
+        listenerPid = await getOpenclawPortPid();
+      } catch {}
 
+      if (listenerPid) {
         const readyProbe = await getStableOpenclawReadyStatus();
 
-        if (!readyProbe.ok) {
-          throw new Error(
-            `openclaw health endpoint is not ready (${readyProbe.reason})`,
-          );
+        if (readyProbe.ok) {
+          return {
+            service: "openclaw",
+            status: "running",
+            pid: listenerPid,
+            listenerPid,
+          };
         }
 
         return {
           service: "openclaw",
-          status: "running",
-          pid: listenerPid,
+          status: "stale",
           listenerPid,
+          staleReason: `no dev lock, but a process is still listening on the openclaw port (${readyProbe.reason})`,
         };
-      } catch {}
+      }
 
       return {
         service: "openclaw",

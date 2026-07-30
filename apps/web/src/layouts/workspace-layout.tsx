@@ -2,7 +2,7 @@ import { BudgetWarningBanner } from "@/components/budget-warning-banner";
 import { PlatformIcon } from "@/components/platform-icons";
 import { useAutoUpdate } from "@/hooks/use-auto-update";
 import { useCloudConnect } from "@/hooks/use-cloud-connect";
-import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import { useCommunitySkillStatus } from "@/hooks/use-community-catalog";
 import {
   getBudgetBannerRouteVariant,
   useDesktopBudgetGuard,
@@ -16,6 +16,7 @@ import {
 import { authClient } from "@/lib/auth-client";
 import {
   closeBrowserPanel,
+  closeBrowserPanelForRouting,
   closeBrowserPanelForSessionNavigation,
   useBrowserPanel,
 } from "@/lib/browser/browser-panel-store";
@@ -481,6 +482,8 @@ function WorkspaceLayoutContent() {
   const { isOpen: canvasSidebarOpen, close: closeCanvasSidebar } =
     useA2UISidebar();
   const browserPanel = useBrowserPanel();
+  // Listens from the layout, not the panel: the agent's first command is
+  // usually the one that opens the panel.
   const rightSidebarOpen = canvasSidebarOpen || browserPanel.isOpen;
   const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("nexu_right_sidebar_width");
@@ -635,7 +638,7 @@ function WorkspaceLayoutContent() {
 
     if (!isSessionRoute && rightSidebarOpen) {
       closeCanvasSidebar();
-      closeBrowserPanel();
+      closeBrowserPanelForRouting();
       return;
     }
 
@@ -645,7 +648,7 @@ function WorkspaceLayoutContent() {
     );
   }, [isSessionRoute, location.pathname, rightSidebarOpen, closeCanvasSidebar]);
   const { data: session } = authClient.useSession();
-  const { data: skillsData } = useCommunitySkills();
+  const { data: skillsData } = useCommunitySkillStatus();
   const {
     data: desktopCloudStatus,
     isLoading: cloudStatusLoading,
@@ -1938,6 +1941,7 @@ function WorkspaceLayoutContent() {
             <EmbeddedBrowser
               key={browserPanel.sessionKey}
               sessionKey={browserPanel.sessionKey}
+              navigationRequest={browserPanel.navigationRequest}
               maximized={rightSidebarMaximized}
               onToggleMaximize={toggleRightSidebarMaximize}
               onClose={closeBrowserPanel}

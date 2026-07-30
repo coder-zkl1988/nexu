@@ -1,6 +1,13 @@
 import { SkillList } from "@/components/experts/skill-selector";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
-import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import {
+  createSkillReference,
+  getSkillReferenceKey,
+  includeRequiredSkillReferences,
+  installedSkillMatchesReference,
+  skillReferenceMatchesSkill,
+  useExpertSkillCatalog,
+} from "@/hooks/use-expert-skill-catalog";
 import {
   useExpertDetail,
   useExperthubCatalog,
@@ -10,6 +17,7 @@ import {
 } from "@/hooks/use-experthub-catalog";
 import { getTagLabel } from "@/lib/skill-translations";
 import { cn } from "@/lib/utils";
+import type { SkillReference } from "@nexu/shared";
 import {
   ArrowLeft,
   Bot,
@@ -64,42 +72,55 @@ export default function ExpertDetailPage() {
 
   // Skill editing state
   const [editingSkills, setEditingSkills] = useState(false);
-  const { data: skillsData } = useCommunitySkills();
+  const [skillTab, setSkillTab] = useState<"yours" | "explore">("explore");
+  const [skillSearch, setSkillSearch] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const {
+    allSkills,
+    displaySkills,
+    installedSkills,
+    topTags,
+    isLoading: isSkillCatalogLoading,
+    hasNextPage: hasNextSkillPage,
+    isFetchingNextPage: isFetchingNextSkillPage,
+    fetchNextPage: fetchNextSkillPage,
+  } = useExpertSkillCatalog({
+    tab: skillTab,
+    search: skillSearch,
+    category: activeTag,
+  });
   const updateSkillsMutation = useUpdateExpertSkills();
-  const allSkills = skillsData?.skills ?? [];
-  const communityInstalledSlugs = useMemo(
-    () => new Set(skillsData?.installedSlugs ?? []),
-    [skillsData?.installedSlugs],
-  );
 
   // Current configured skills from ledger
   const ledgerEntry = slug
     ? catalogQuery.data?.installedExperts?.find((e) => e.slug === slug)
     : null;
   const currentConfiguredSkills: string[] = ledgerEntry?.configuredSkills ?? [];
+  const currentConfiguredSkillRefs: SkillReference[] =
+    ledgerEntry?.configuredSkillRefs ??
+    currentConfiguredSkills.map((skillSlug) => ({ slug: skillSlug }));
   const requiredSkills: string[] = data?.requiredSkills ?? [];
   const requiredSkillsSet = useMemo(
     () => new Set(requiredSkills),
     [requiredSkills],
   );
+  const effectiveConfiguredSkillRefs = includeRequiredSkillReferences(
+    requiredSkills,
+    currentConfiguredSkillRefs,
+  );
 
   // When entering edit mode, initialize from current configured skills (if any)
   // or fall back to required skills
-  const [editedSkills, setEditedSkills] = useState<string[]>([]);
-  const editedSkillsSet = useMemo(() => new Set(editedSkills), [editedSkills]);
+  const [editedSkillRefs, setEditedSkillRefs] = useState<SkillReference[]>([]);
 
   function enterEditMode() {
-    setEditedSkills(
-      currentConfiguredSkills.length > 0
-        ? [...currentConfiguredSkills]
-        : [...requiredSkills],
-    );
+    setEditedSkillRefs([...effectiveConfiguredSkillRefs]);
     setEditingSkills(true);
   }
 
   function cancelEdit() {
     setEditingSkills(false);
-    setEditedSkills([]);
+    setEditedSkillRefs([]);
     setSkillSearch("");
     setActiveTag(null);
   }
@@ -107,7 +128,11 @@ export default function ExpertDetailPage() {
   async function saveSkills() {
     if (!slug) return;
     try {
-      await updateSkillsMutation.mutateAsync({ slug, skills: editedSkills });
+      await updateSkillsMutation.mutateAsync({
+        slug,
+        skills: editedSkillRefs.map((reference) => reference.slug),
+        skillRefs: editedSkillRefs,
+      });
       setEditingSkills(false);
       toast.success(
         t("experts.detail.skills_saved", { defaultValue: "Skills updated" }),
@@ -123,95 +148,24 @@ export default function ExpertDetailPage() {
     }
   }
 
-  function toggleSkill(skillSlug: string) {
-    if (requiredSkillsSet.has(skillSlug)) return;
-    setEditedSkills((prev) =>
-      prev.includes(skillSlug)
-        ? prev.filter((s) => s !== skillSlug)
-        : [...prev, skillSlug],
+  function toggleSkill(skill: (typeof displaySkills)[number]) {
+    if (requiredSkillsSet.has(skill.slug)) return;
+    setEditedSkillRefs((previous) =>
+      previous.some((reference) => skillReferenceMatchesSkill(reference, skill))
+        ? previous.filter((reference) => reference.slug !== skill.slug)
+        : [...previous, createSkillReference(skill)],
     );
   }
-
-  // Skill filtering state
-  const [skillTab, setSkillTab] = useState<"yours" | "explore">("explore");
-  const [skillSearch, setSkillSearch] = useState("");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
-
-  const installedSkillsList = useMemo(() => {
-    return (skillsData?.installedSkills ?? []).map((is) => {
-      const catalogEntry = allSkills.find((s) => s.slug === is.slug);
-      return (
-        catalogEntry ?? {
-          slug: is.slug,
-          name: is.name || is.slug,
-          description: is.description || "",
-          downloads: 0,
-          stars: 0,
-          tags: [] as string[],
-          version: "",
-          updatedAt: "",
-        }
-      );
-    });
-  }, [skillsData?.installedSkills, allSkills]);
 
   const skillNameMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of allSkills) {
-      if (s.name && s.name !== s.slug) map.set(s.slug, s.name);
-    }
-    for (const s of skillsData?.installedSkills ?? []) {
-      if (s.name && !map.has(s.slug)) map.set(s.slug, s.name);
-    }
-    return map;
-  }, [allSkills, skillsData?.installedSkills]);
-
-  const exploreSkills = useMemo(
-    () => [...allSkills].filter((s) => !communityInstalledSlugs.has(s.slug)),
-    [allSkills, communityInstalledSlugs],
-  );
-
-  const displaySkills =
-    skillTab === "explore"
-      ? (() => {
-          let list = [...exploreSkills];
-          if (activeTag) list = list.filter((s) => s.tags.includes(activeTag));
-          if (skillSearch.trim()) {
-            const q = skillSearch.toLowerCase();
-            list = list.filter((s) =>
-              [s.slug, s.name, s.description]
-                .join("\n")
-                .toLowerCase()
-                .includes(q),
-            );
-          }
-          return list;
-        })()
-      : (() => {
-          let list = [...installedSkillsList];
-          if (skillSearch.trim()) {
-            const q = skillSearch.toLowerCase();
-            list = list.filter((s) =>
-              [s.slug, s.name, s.description]
-                .join("\n")
-                .toLowerCase()
-                .includes(q),
-            );
-          }
-          return list;
-        })();
-
-  const topTags = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of allSkills) {
-      for (const tag of s.tags) {
-        counts[tag] = (counts[tag] ?? 0) + 1;
+      if (s.name && s.name !== s.slug) {
+        map.set(getSkillReferenceKey(createSkillReference(s)), s.name);
+        if (!map.has(s.slug)) map.set(s.slug, s.name);
       }
     }
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
-      .map(([tag, count]) => ({ tag, count }));
+    return map;
   }, [allSkills]);
 
   function handleBack() {
@@ -599,12 +553,17 @@ export default function ExpertDetailPage() {
                       )}
                       <div className="max-h-[300px] flex flex-col">
                         <SkillList
-                          skills={allSkills}
                           displaySkills={displaySkills}
-                          selectedSkillsSet={editedSkillsSet}
-                          installedSlugs={communityInstalledSlugs}
+                          selectedSkillRefs={editedSkillRefs}
+                          installedSkills={installedSkills}
                           lockedSkills={requiredSkillsSet}
                           onToggleSkill={toggleSkill}
+                          isLoading={isSkillCatalogLoading}
+                          hasNextPage={hasNextSkillPage}
+                          isFetchingNextPage={isFetchingNextSkillPage}
+                          onLoadMore={() => {
+                            void fetchNextSkillPage();
+                          }}
                           emptyLabel={t("skills.loadingCatalog")}
                           noResultsLabel={t("skills.noMatchingSkills")}
                         />
@@ -618,18 +577,21 @@ export default function ExpertDetailPage() {
                     </div>
                   ) : (
                     <div className="rounded-lg bg-surface-1 border border-border p-3 space-y-1">
-                      {[
-                        ...new Set([
-                          ...requiredSkills,
-                          ...currentConfiguredSkills,
-                        ]),
-                      ].map((skillSlug) => {
-                        const isRequired = requiredSkillsSet.has(skillSlug);
-                        const isSkillInstalled =
-                          communityInstalledSlugs.has(skillSlug);
+                      {effectiveConfiguredSkillRefs.map((skillReference) => {
+                        const skillKey = getSkillReferenceKey(skillReference);
+                        const isRequired = requiredSkillsSet.has(
+                          skillReference.slug,
+                        );
+                        const isSkillInstalled = installedSkills.some(
+                          (installedSkill) =>
+                            installedSkillMatchesReference(
+                              installedSkill,
+                              skillReference,
+                            ),
+                        );
                         return (
                           <div
-                            key={skillSlug}
+                            key={skillKey}
                             className="flex items-center gap-2 text-[12px] text-text-muted font-mono"
                           >
                             {isRequired ? (
@@ -642,7 +604,8 @@ export default function ExpertDetailPage() {
                                 isSkillInstalled ? "text-text-primary" : ""
                               }
                             >
-                              {skillNameMap.get(skillSlug) || skillSlug}
+                              {skillNameMap.get(skillKey) ||
+                                skillReference.slug}
                             </span>
                             {isSkillInstalled && (
                               <span className="text-[10px] text-green-500 font-medium shrink-0">

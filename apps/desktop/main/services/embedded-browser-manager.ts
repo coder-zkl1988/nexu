@@ -3,6 +3,14 @@ import type {
   DesktopBrowserControl,
   DesktopBrowserControlResult,
 } from "../../shared/host";
+import {
+  BrowserRefTable,
+  captureSnapshot,
+  clickRef,
+  detachDebugger,
+  scrollBy,
+  typeIntoRef,
+} from "./embedded-browser-cdp";
 
 type ManagedTab = {
   owner: BrowserWindow;
@@ -10,9 +18,20 @@ type ManagedTab = {
   navigationId: number;
   pendingUrl: string | null;
   pendingLoad: Promise<void> | null;
+  refs: BrowserRefTable;
 };
 
+const DEFAULT_SNAPSHOT_NODES = 400;
+
 const TAB_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * The tab the agent drives. Fixed rather than generated so the panel can adopt
+ * it by id after a remount: the renderer's tab ids live in React state, which
+ * a collapsed panel throws away, while this tab outlives it in the main
+ * process.
+ */
+export const AGENT_TAB_ID = "agent";
 
 function isSafeBrowserUrl(value: string): boolean {
   try {
@@ -54,6 +73,26 @@ function clampBounds(
       1,
       Math.min(Math.round(bounds.height), content.height - y),
     ),
+  };
+}
+
+/**
+ * A layout viewport for a tab the panel has not placed yet.
+ *
+ * Only ever applied while the view is hidden: a page still has to lay out at a
+ * plausible size for a snapshot to describe what the user will eventually see.
+ * The main process must not put the view *on screen* itself — with no address
+ * bar, tabs or header it reads as a raw page pasted over the app, with no way
+ * to navigate or dismiss it. Showing the view is the panel's job.
+ */
+function offscreenLayoutBounds(owner: BrowserWindow): Electron.Rectangle {
+  const content = owner.getContentBounds();
+  const width = Math.max(1, Math.round(content.width * 0.45));
+  return {
+    x: Math.max(0, content.width - width),
+    y: 0,
+    width,
+    height: Math.max(1, content.height),
   };
 }
 
@@ -127,6 +166,54 @@ const elementPickerScript = `new Promise((resolve) => {
 
 export class EmbeddedBrowserManager {
   private readonly tabs = new Map<string, ManagedTab>();
+  /**
+   * Windows whose panel is currently hosting the agent tab.
+   *
+   * Synthesized clicks are only reliable in a view the panel has placed:
+   * measured, the first click into a view the manager positioned itself is
+   * swallowed, while every click into a panel-hosted view lands. So mutating
+   * commands wait for this rather than acting into a view that will silently
+   * ignore them.
+   */
+  private readonly panelHosted = new Set<number>();
+  private readonly panelWaiters = new Map<number, Set<() => void>>();
+
+  isAgentTabPanelHosted(owner: BrowserWindow): boolean {
+    return this.panelHosted.has(owner.id);
+  }
+
+  /** Resolves true once the panel places the agent tab, false on timeout. */
+  waitForAgentTabPanel(
+    owner: BrowserWindow,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    if (this.isAgentTabPanelHosted(owner)) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const waiters = this.panelWaiters.get(owner.id) ?? new Set();
+      const settle = (): void => {
+        clearTimeout(timer);
+        waiters.delete(settle);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        waiters.delete(settle);
+        resolve(false);
+      }, timeoutMs);
+      waiters.add(settle);
+      this.panelWaiters.set(owner.id, waiters);
+    });
+  }
+
+  private markPanelHosted(owner: BrowserWindow, hosted: boolean): void {
+    if (!hosted) {
+      this.panelHosted.delete(owner.id);
+      return;
+    }
+    this.panelHosted.add(owner.id);
+    const waiters = this.panelWaiters.get(owner.id);
+    if (!waiters) return;
+    for (const waiter of [...waiters]) waiter();
+  }
 
   private key(owner: BrowserWindow, tabId: string): string {
     if (!TAB_ID_PATTERN.test(tabId)) throw new Error("Invalid browser tab id.");
@@ -149,12 +236,17 @@ export class EmbeddedBrowserManager {
     view.setBackgroundColor("#ffffff");
     view.setVisible(false);
     owner.contentView.addChildView(view);
+    // Give the tab a real layout viewport before anything shows it, so a
+    // snapshot taken straight after `navigate` measures the page at the size
+    // it will actually be seen at.
+    view.setBounds(offscreenLayoutBounds(owner));
     const tab: ManagedTab = {
       owner,
       view,
       navigationId: 0,
       pendingUrl: null,
       pendingLoad: null,
+      refs: new BrowserRefTable(),
     };
     this.tabs.set(key, tab);
 
@@ -165,6 +257,11 @@ export class EmbeddedBrowserManager {
     });
     view.webContents.on("will-navigate", (event, url) => {
       if (!isSafeBrowserUrl(url)) event.preventDefault();
+    });
+    // Refs point at DOM nodes of the page that produced them. Surviving a
+    // navigation would let a click land on whatever now occupies that id.
+    view.webContents.on("did-start-navigation", (_event, _url, isInPlace) => {
+      if (!isInPlace) tab.refs.reset();
     });
     owner.once("closed", () => this.disposeOwner(owner));
     return tab;
@@ -195,21 +292,34 @@ export class EmbeddedBrowserManager {
   private disposeOwner(owner: BrowserWindow): void {
     for (const [key, tab] of this.tabs) {
       if (tab.owner !== owner) continue;
+      detachDebugger(tab.view.webContents);
       owner.contentView.removeChildView(tab.view);
       if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
       this.tabs.delete(key);
     }
   }
 
-  async control(
+  control(
     sender: Electron.WebContents,
     input: DesktopBrowserControl,
   ): Promise<DesktopBrowserControlResult> {
-    const owner = resolveOwnerWindow(sender);
+    return this.controlWindow(resolveOwnerWindow(sender), input);
+  }
+
+  /** Creates the agent's tab if needed, without putting it on screen. */
+  ensureAgentTab(owner: BrowserWindow): void {
+    this.ensureTab(owner, AGENT_TAB_ID);
+  }
+
+  async controlWindow(
+    owner: BrowserWindow,
+    input: DesktopBrowserControl,
+  ): Promise<DesktopBrowserControlResult> {
     if (input.action === "hide" || input.action === "dispose") {
       for (const tab of this.tabs.values()) {
         if (tab.owner === owner) tab.view.setVisible(false);
       }
+      this.markPanelHosted(owner, false);
       if (input.action === "dispose") this.disposeOwner(owner);
       return { kind: "ok" };
     }
@@ -234,6 +344,7 @@ export class EmbeddedBrowserManager {
           candidate.view.setVisible(candidate === tab);
       }
       tab.view.setBounds(clampBounds(owner, input.bounds));
+      this.markPanelHosted(owner, input.tabId === AGENT_TAB_ID);
       await this.loadTab(tab, input.url);
       return { kind: "ok" };
     }
@@ -271,6 +382,33 @@ export class EmbeddedBrowserManager {
         { kind: "selection" }
       >["selection"];
       return { kind: "selection", selection };
+    }
+
+    if (input.action === "snapshot") {
+      const snapshot = await captureSnapshot(
+        tab.view.webContents,
+        tab.refs,
+        Math.min(Math.max(input.maxNodes ?? DEFAULT_SNAPSHOT_NODES, 1), 1000),
+      );
+      return { kind: "snapshot", ...snapshot };
+    }
+    if (input.action === "click-ref") {
+      await clickRef(tab.view.webContents, tab.refs, input.ref);
+      return { kind: "ok" };
+    }
+    if (input.action === "type-ref") {
+      await typeIntoRef(
+        tab.view.webContents,
+        tab.refs,
+        input.ref,
+        input.text,
+        input.submit ?? false,
+      );
+      return { kind: "ok" };
+    }
+    if (input.action === "scroll") {
+      await scrollBy(tab.view.webContents, input.deltaY);
+      return { kind: "ok" };
     }
 
     const image = await tab.view.webContents.capturePage();

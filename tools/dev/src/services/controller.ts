@@ -1,13 +1,13 @@
 import {
   createNodeOptions,
   ensureParentDirectory,
+  ensureProcessStopped,
   getListeningPortPid,
   readDevLock,
   removeDevLock,
   repoRootPath,
   resolveTsxPaths,
   spawnHiddenProcess,
-  terminateProcess,
   waitFor,
   waitForListeningPortPid,
   waitForProcessStart,
@@ -15,6 +15,7 @@ import {
 } from "@nexu/dev-utils";
 import { ensure } from "@nexu/shared";
 
+import { ensureComputerUseDevSidecarPrepared } from "../shared/computer-use-sidecar.js";
 import {
   createControllerInjectedEnv,
   getToolsDevRuntimeConfig,
@@ -184,7 +185,7 @@ async function waitForControllerHealth(supervisorPid: number): Promise<void> {
 async function cleanupStaleControllerPort(): Promise<void> {
   try {
     const workerPid = await getControllerPortPid();
-    await terminateProcess(workerPid);
+    await ensureProcessStopped(workerPid);
     await waitFor(
       async () => {
         try {
@@ -199,7 +200,7 @@ async function cleanupStaleControllerPort(): Promise<void> {
         attempts: 20,
         delayMs: 250,
       },
-    ).catch(() => terminateProcess(workerPid));
+    );
   } catch {}
 }
 
@@ -245,6 +246,13 @@ export async function startControllerDevProcess(options: {
   sessionId: string;
 }): Promise<ControllerDevSnapshot> {
   await ensureOpenclawReadyForController();
+  const computerUseSidecar = await ensureComputerUseDevSidecarPrepared();
+  if (computerUseSidecar.status !== "unsupported") {
+    logger.info("[preflight] Computer Use sidecar ready", {
+      status: computerUseSidecar.status,
+      binaryPath: computerUseSidecar.binaryPath,
+    });
+  }
 
   const existingSnapshot = await getCurrentControllerDevSnapshot();
 
@@ -319,7 +327,7 @@ export async function startControllerDevProcess(options: {
     };
   } catch (error) {
     await removeDevLock(controllerDevLockPath).catch(() => undefined);
-    await terminateProcess(supervisorPid).catch(() => undefined);
+    await ensureProcessStopped(supervisorPid).catch(() => undefined);
 
     throw error;
   }
@@ -333,14 +341,29 @@ export async function stopControllerDevProcess(): Promise<ControllerDevSnapshot>
   );
 
   if (snapshot.pid) {
-    await terminateProcess(snapshot.pid);
+    await ensureProcessStopped(snapshot.pid);
   }
-
+  // The snapshot's workerPid was read off the port while the worker still
+  // listened. Kill it by that pid, not only by asking the port again: a
+  // gracefully dying worker closes its listener first and then drains
+  // connections, so the port lookup below can come up empty while the
+  // process lives on — measured as a zombie that kept pinging the desktop's
+  // agent-browser stream long after its successor owned the port.
+  if (snapshot.workerPid) {
+    await ensureProcessStopped(snapshot.workerPid);
+  }
+  // Whatever holds the port now. Its death is verified, not assumed: this
+  // used to fire SIGTERM and remove the lock regardless, and a worker that
+  // survived the signal became an orphan the launcher then reported as
+  // `stopped` — while it kept serving `/health` on the port.
   try {
     const workerPid = await getControllerPortPid();
-    await terminateProcess(workerPid);
-  } catch {}
+    await ensureProcessStopped(workerPid);
+  } catch {
+    // Nothing is listening — the worker is already gone.
+  }
 
+  // Reached only once nothing holds the port, so `stopped` stays truthful.
   await removeDevLock(controllerDevLockPath);
 
   return snapshot;
@@ -422,6 +445,25 @@ export async function getCurrentControllerDevSnapshot(): Promise<ControllerDevSn
     };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      // No lock. Before calling that `stopped`, check the port: a stop that
+      // lost its worker leaves a live controller behind, and reporting it as
+      // cleanly stopped strands the user — the desktop preflight refuses to
+      // start against a controller that is in fact answering `/health`.
+      // Reported as `stale`, the start/stop paths kill the orphan and heal.
+      let orphanPid: number | undefined;
+      try {
+        orphanPid = await getControllerPortPid();
+      } catch {}
+      if (orphanPid) {
+        return {
+          service: "controller",
+          status: "stale",
+          workerPid: orphanPid,
+          staleReason:
+            "no dev lock, but a process is still listening on the controller port",
+        };
+      }
+
       return {
         service: "controller",
         status: "stopped",

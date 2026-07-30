@@ -33,6 +33,9 @@ describe("bootstrapController", () => {
         managesProcess: vi.fn().mockReturnValue(false),
         noteControlledRestartExpected: vi.fn(),
       },
+      localAutomationService: {
+        prepare: vi.fn().mockResolvedValue(undefined),
+      },
       openclawSyncService: {
         ensureRuntimeModelPlugin: vi.fn().mockResolvedValue(undefined),
         syncAllImmediate,

@@ -106,6 +106,34 @@ describe("buildCanvasMirror", () => {
     expect(empty?.hasContent).toBe(false);
   });
 
+  it("reports canvas-native XHS and phone node content", () => {
+    addNode({
+      type: "xhs",
+      title: "post",
+      metadata: {
+        xhs: {
+          title: "周末散步",
+          content: "正文",
+          images: [],
+          hashtags: ["生活"],
+        },
+      },
+    });
+    addNode({
+      type: "phone",
+      title: "phone",
+      metadata: { phone: { deviceId: "device-1" } },
+    });
+
+    const mirror = buildCanvasMirror();
+    expect(mirror.nodes.find((node) => node.type === "xhs")?.hasContent).toBe(
+      true,
+    );
+    expect(mirror.nodes.find((node) => node.type === "phone")?.hasContent).toBe(
+      true,
+    );
+  });
+
   it("boardId comes from the active board (defaults to sidebar)", () => {
     expect(buildCanvasMirror().boardId).toBe("sidebar");
   });

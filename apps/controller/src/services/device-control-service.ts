@@ -22,6 +22,15 @@ type RpcResponse<T> =
 
 const DEFAULT_RPC_TIMEOUT_MS = 10_000;
 const DEFAULT_LIST_TIMEOUT_MS = 5_000;
+const MIN_DEVICE_TASK_HARD_TIMEOUT_MS = 30 * 60_000;
+const MAX_DEVICE_TASK_HARD_TIMEOUT_MS = 24 * 60 * 60_000;
+
+function deviceTaskHardTimeoutMs(idleTimeoutMs: number): number {
+  return Math.min(
+    MAX_DEVICE_TASK_HARD_TIMEOUT_MS,
+    Math.max(MIN_DEVICE_TASK_HARD_TIMEOUT_MS, idleTimeoutMs * 6),
+  );
+}
 
 export class DeviceControlRpcError extends Error {
   constructor(
@@ -203,7 +212,10 @@ export class DeviceControlService {
     const result = await this.rpc<TaskResult>(
       "device.execute_task",
       { deviceId, task: body.task, timeoutMs: taskTimeout },
-      taskTimeout + 5_000,
+      // The plugin treats timeoutMs as an idle timeout and re-arms it on every
+      // phone progress heartbeat. Keep a much larger independent ceiling so a
+      // wedged RPC cannot leave the request and publishing UI pending forever.
+      deviceTaskHardTimeoutMs(taskTimeout),
     );
     try {
       await this.taskHistoryStore.append({

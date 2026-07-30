@@ -52,6 +52,7 @@ import {
 } from "./ipc";
 import { getDesktopRuntimePlatformAdapter } from "./platforms";
 import { resolveLaunchdPaths } from "./platforms/mac/launchd-paths";
+import { expandHomePath } from "./platforms/shared/runtime-roots";
 import type { PrepareForUpdateInstallArgs } from "./platforms/types";
 import { RuntimeOrchestrator } from "./runtime/daemon-supervisor";
 import {
@@ -59,6 +60,7 @@ import {
   checkOpenclawExtractionNeeded,
   createRuntimeUnitManifests,
   extractOpenclawSidecarAsync,
+  resolveOfficeCliBinary,
 } from "./runtime/manifests";
 import {
   type PortAllocation,
@@ -80,6 +82,7 @@ import {
   runTeardownAndExit,
   teardownLaunchdServices,
 } from "./services";
+import { AgentBrowserRelay } from "./services/agent-browser-relay";
 import {
   type DesktopShellPreferences,
   applyDesktopShellPreferencesOnStartup,
@@ -92,6 +95,7 @@ import {
   startDesktopDevInspectServer,
   stopDesktopDevInspectServer,
 } from "./services/dev-inspect-server";
+import { AGENT_TAB_ID } from "./services/embedded-browser-manager";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
 import {
@@ -102,7 +106,7 @@ import {
 import { flushV8CoverageIfEnabled } from "./services/v8-coverage";
 import { readPendingWindowsUserDataMigration } from "./services/windows-user-data-migration";
 import { SleepGuard, type SleepGuardLogEntry } from "./sleep-guard";
-import { ComponentUpdater } from "./updater/component-updater";
+import { ComponentUpdater, R2_BASE_URL } from "./updater/component-updater";
 import { StartupHealthCheck } from "./updater/rollback";
 import { UpdateManager } from "./updater/update-manager";
 import {
@@ -449,6 +453,7 @@ if (sentryDsn && readCrashReportsConsent()) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let agentBrowserRelay: AgentBrowserRelay | null = null;
 let deskpetWindow: BrowserWindow | null = null;
 let deskpetSize: DesktopDeskpetSize = "medium";
 let deskpetAlwaysOnTop = true;
@@ -528,10 +533,11 @@ function isRunningUnderRosetta(): boolean {
  * channel + feed URL into build-config.json, not live env vars.
  */
 async function resolveLatestArm64DownloadUrl(): Promise<string> {
-  const R2_BASE = "https://desktop-releases.nexu.io";
   const channel = runtimeConfig.updates.channel ?? "stable";
+  const r2Origin = new URL(R2_BASE_URL).origin;
+  const fallbackDmgUrl = `${r2Origin}/releases/tabby-latest-mac-arm64.dmg`;
 
-  let baseUrl = `${R2_BASE}/${channel}/arm64`;
+  let baseUrl = `${R2_BASE_URL}/${channel}/arm64`;
   const feedOverride = runtimeConfig.urls.updateFeed;
   if (feedOverride) {
     try {
@@ -549,13 +555,23 @@ async function resolveLatestArm64DownloadUrl(): Promise<string> {
   try {
     const res = await fetch(ymlUrl, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      // electron-builder latest-mac.yml lists both .zip (for delta updates)
-      // and .dmg under `files:`. We want the dmg.
-      const match = (await res.text()).match(/url:\s*(\S+\.dmg)/);
-      if (match?.[1]) return `${baseUrl}/${match[1]}`;
+      const manifest = await res.text();
+      const dmgMatch = manifest.match(/url:\s*(\S+\.dmg)/);
+      if (dmgMatch?.[1]) {
+        return new URL(dmgMatch[1], `${baseUrl}/`).toString();
+      }
+
+      // Tabby's update feed intentionally publishes only the ZIP used by
+      // electron-updater. Its matching manual-install DMG is versioned under
+      // /releases/ on the same R2 origin.
+      const zipMatch = manifest.match(/url:\s*(\S+\.zip)/);
+      if (zipMatch?.[1] && new URL(baseUrl).origin === r2Origin) {
+        const dmgName = zipMatch[1].replace(/\.zip$/, ".dmg");
+        return new URL(dmgName, `${r2Origin}/releases/`).toString();
+      }
     }
   } catch {}
-  return ymlUrl;
+  return fallbackDmgUrl;
 }
 
 /**
@@ -674,6 +690,8 @@ async function gracefulShutdown(reason: string): Promise<void> {
 
   try {
     sleepGuard?.dispose(reason);
+    agentBrowserRelay?.stop();
+    agentBrowserRelay = null;
     unsubscribeIpc?.();
     unsubscribeIpc = null;
     unsubscribeDeskpetRuntime?.();
@@ -1182,6 +1200,40 @@ function getMainWindowId(): number | null {
   return mainWindow?.webContents.id ?? null;
 }
 
+function startAgentBrowserRelay(): void {
+  if (agentBrowserRelay) return;
+  agentBrowserRelay = new AgentBrowserRelay({
+    controllerBaseUrl: runtimeConfig.urls.controllerBase,
+    getWindow: () => mainWindow,
+    onOpen: (url) => {
+      // The browser view is already loading; the panel is how the user gets to
+      // watch it, so raise it in the window that owns the view.
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (!mainWindow.isVisible()) mainWindow.show();
+      sendHostDesktopCommand({
+        type: "browser:agent-opened",
+        tabId: AGENT_TAB_ID,
+        url,
+      });
+    },
+    onRunEnded: (sessionKey) => {
+      sendHostDesktopCommand({ type: "browser:agent-run-ended", sessionKey });
+    },
+    onLog: (message) => {
+      console.error(`[agent-browser] ${message}`);
+      writeDesktopMainLog({
+        source: "agent-browser",
+        stream: "stderr",
+        kind: "lifecycle",
+        message,
+        logFilePath: getDesktopLogFilePath("agent-browser.log"),
+        windowId: getMainWindowId(),
+      });
+    },
+  });
+  agentBrowserRelay.start();
+}
+
 function logColdStart(message: string): void {
   writeDesktopMainLog({
     source: "cold-start",
@@ -1305,10 +1357,7 @@ async function runLaunchdColdStart(): Promise<void> {
   sendSetupProgress("launchd_bootstrap");
 
   const isDev = !app.isPackaged;
-  const nexuHome = runtimeConfig.paths.nexuHome.replace(
-    /^~/,
-    process.env.HOME ?? "",
-  );
+  const nexuHome = expandHomePath(runtimeConfig.paths.nexuHome);
   const runtimeRoots = runtimePlatformAdapter.capabilities.resolveRuntimeRoots({
     app,
     electronRoot,
@@ -1361,6 +1410,7 @@ async function runLaunchdColdStart(): Promise<void> {
     ? resolve(electronRoot, "static/platform-templates")
     : resolve(repoRoot, "apps/controller/static/platform-templates");
   const skillNodePath = buildSkillNodePath(electronRoot, app.isPackaged);
+  const officeCliBinPath = resolveOfficeCliBinary(electronRoot, app.isPackaged);
   const proxyEnv = buildChildProcessProxyEnv(runtimeConfig.proxy);
 
   const bootstrapStartedAt = Date.now();
@@ -1378,6 +1428,7 @@ async function runLaunchdColdStart(): Promise<void> {
     ...paths,
     openclawConfigPath,
     openclawStateDir,
+    officeCliBinPath,
     // Controller-specific env vars
     webUrl: runtimeConfig.urls.web,
     openclawSkillsDir,
@@ -1386,6 +1437,8 @@ async function runLaunchdColdStart(): Promise<void> {
     platformTemplatesDir,
     openclawBinPath,
     openclawExtensionsDir,
+    localAutomationPreviewEnabled:
+      isDev || runtimeConfig.localAutomationPreviewEnabled ? "true" : undefined,
     skillNodePath,
     openclawTmpDir,
     proxyEnv,
@@ -2352,6 +2405,7 @@ app.whenReady().then(async () => {
     (mood) => {
       currentDeskpetMood = mood;
     },
+    runtimeRoots.openclawStateDir,
   );
   unsubscribeDeskpetRuntime = orchestrator.subscribe(handleDeskpetRuntimeEvent);
   // Provide orchestrator-mode quit fallback for app:quit IPC when launchd
@@ -2447,6 +2501,7 @@ app.whenReady().then(async () => {
         await runDesktopColdStart();
       }
       await refreshProxyDiagnostics();
+      startAgentBrowserRelay();
       healthCheck.recordSuccess();
     } catch (error) {
       await refreshProxyDiagnostics().catch(() => undefined);

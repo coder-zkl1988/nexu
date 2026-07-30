@@ -72,6 +72,35 @@ describe("XHS publish result round-trip", () => {
     );
   });
 
+  it("reports an unknown phone outcome as non-terminal without counting it as failure", () => {
+    const onAction = vi.fn();
+
+    reportXhsPublishResults(onAction, {
+      source: "batch",
+      batchId: "batch-unknown",
+      results: [
+        {
+          postId: "post-1",
+          title: "仍在手机端执行",
+          deviceId: "device-1",
+          status: "unknown",
+          message: "手机任务长时间未返回进度，发布结果待确认",
+        },
+      ],
+    });
+
+    expect(onAction).toHaveBeenCalledWith(
+      "xhs_publish_result",
+      expect.objectContaining({
+        terminal: false,
+        successCount: 0,
+        errorCount: 0,
+        unknownCount: 1,
+        requiresUserInput: false,
+      }),
+    );
+  });
+
   it("does nothing when a detached canvas node has no chat action handler", () => {
     expect(() =>
       reportXhsPublishResults(undefined, {

@@ -60,8 +60,13 @@ vi.mock("node:child_process", () => ({
 }));
 
 vi.mock("node:fs", () => ({
+  chmodSync: vi.fn(),
+  cpSync: vi.fn(),
   existsSync: vi.fn(() => true),
+  mkdirSync: vi.fn(),
   readFileSync: vi.fn(() => ""),
+  renameSync: vi.fn(),
+  rmSync: vi.fn(),
   writeFileSync: vi.fn(),
 }));
 
@@ -269,6 +274,23 @@ describe("resolveLaunchdPaths — packaged mode details", () => {
     expect(normalizePath(paths.controllerCwd)).toContain(
       ".nexu/runtime/controller-sidecar",
     );
+    expect(paths.computerUseBackend).toBe("cua-driver");
+    expect(paths.computerUseBinPath).toBeNull();
+  });
+
+  it("materializes Computer Use through the active macOS path resolver", async () => {
+    const { resolveLaunchdPaths } = await import(
+      "../../apps/desktop/main/platforms/mac/launchd-paths"
+    );
+
+    const paths = await resolveLaunchdPaths(
+      true,
+      "/App.app/Contents/Resources",
+      "1.0.0",
+    );
+
+    expect(paths.computerUseBackend).toBe("cua-driver");
+    expect(paths.computerUseBinPath).toBeNull();
   });
 
   it("resolves openclaw path from sidecar extraction", async () => {

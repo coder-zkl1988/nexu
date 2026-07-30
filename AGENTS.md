@@ -151,6 +151,7 @@ On startup, `bootstrapWithLaunchd()` reads `runtime-ports.json` to decide whethe
 - `buildSource` — refuse attach across packaged/dev/beta builds
 - `openclawStateDir` — refuse attach across different state directories
 - `NEXU_HOME` — refuse attach across different home directories
+- `localAutomationPreviewEnabled` — refuse attach when the effective Preview capability changes; missing legacy metadata is a conservative mismatch
 
 If any identity field mismatches, stale services are auto-booted-out and a fresh cold start is performed (transparent to the user, ~2-3s slower).
 
@@ -349,6 +350,7 @@ This note should track:
 - Fresh local-dev cold start: `pnpm install` -> `pnpm --filter @nexu/shared build` -> optional `copy tools/dev/.env.example tools/dev/.env` (Windows) or `cp tools/dev/.env.example tools/dev/.env` (POSIX) -> `pnpm dev start`
 - Daily local-dev flow: `pnpm dev start` -> `pnpm dev logs <service>` / `pnpm dev status <service>` when needed -> `pnpm dev restart` for a clean recycle -> `pnpm dev stop`
 - Desktop inspect quick checks: `pnpm dev inspect screenshot`, `pnpm dev inspect eval "document.title"`, `pnpm dev inspect dom --max-html-length 1200`, `pnpm dev inspect logs --limit 20`
+- Agent browser control now survives a controller restart (the relay reconnects within seconds). If browser tools still answer `no desktop browser panel is listening`, check `pnpm dev status controller` — a `stale` status names the problem and `pnpm dev restart controller` heals it, including zombie/orphan controller processes. The relay's connect/end/fail trail is in `<userData>/logs/agent-browser.log`; the root-cause history is in `specs/design-docs/2026-07-27-computer-browser-control.md`.
 - Desktop proxy env vars: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` (desktop normalizes mixed-case inputs, always merges `localhost,127.0.0.1,::1` into `NO_PROXY`, and propagates uppercase values to child processes)
 - OpenClaw managed skills dir (expected default): `~/.openclaw/skills/`
 - Slack smoke probe setup: install Chrome Canary, set `PROBE_SLACK_URL`, run `pnpm probe:slack prepare`, then manually log into Slack in Canary before `pnpm probe:slack run`
@@ -361,7 +363,7 @@ This note should track:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **tabby** (16861 symbols, 35892 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **tabby** (17098 symbols, 36533 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 

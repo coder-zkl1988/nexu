@@ -1,6 +1,6 @@
 {
   "name": "@nexu/desktop",
-  "version": "0.6.4",
+  "version": "0.6.6",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -12,7 +12,9 @@
     "build": "vite build",
     "start:electron": "node -e \"console.error('Use pnpm dev start desktop from the nexu project root after starting openclaw/controller/web as needed.'); process.exit(1)\"",
     "prepare:controller-sidecar": "node ./scripts/prepare-controller-sidecar.mjs",
+    "prepare:officecli-runtime": "node ./scripts/prepare-officecli-runtime.mjs",
     "prepare:openclaw-sidecar": "node ./scripts/prepare-openclaw-sidecar.mjs",
+    "prepare:computer-use-sidecar": "node ./scripts/prepare-computer-use-sidecar.mjs",
     "prepare:runtime-sidecars": "node ./scripts/prepare-runtime-sidecars.mjs",
     "prepare:web-sidecar": "node ./scripts/prepare-web-sidecar.mjs",
     "package:sidecars": "node ./scripts/prepare-runtime-sidecars.mjs --release",
@@ -154,6 +156,7 @@
       "artifactName": "tabby-${version}-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "signIgnore": ["runtime/computer-use/CuaDriver\\.app"],
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "extendInfo": {

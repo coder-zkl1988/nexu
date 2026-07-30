@@ -15,6 +15,7 @@ import {
 } from "node:http";
 import * as path from "node:path";
 import { Readable, pipeline } from "node:stream";
+import { isTrustedLocalRequest as isTrustedLocalRequestMetadata } from "@nexu/shared";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -32,6 +33,30 @@ const MIME_TYPES: Record<string, string> = {
   ".ttf": "font/ttf",
   ".eot": "application/vnd.ms-fontobject",
 };
+
+// The renderer and the proxied API share one loopback origin here, so this
+// server pins itself to `same-origin`. The shared implementation is the same
+// one the controller port uses; only the origin policy differs.
+function isTrustedLocalRequest(req: IncomingMessage): boolean {
+  if (!req.headers.host) return false;
+  return isTrustedLocalRequestMetadata(
+    {
+      requestUrl: req.url,
+      host: req.headers.host,
+      origin: req.headers.origin,
+      secFetchSite: req.headers["sec-fetch-site"],
+    },
+    "same-origin",
+  );
+}
+
+function rejectUntrustedRequest(res: ServerResponse): void {
+  res.writeHead(403, {
+    "Content-Type": "text/plain; charset=utf-8",
+    "Content-Length": Buffer.byteLength("Forbidden"),
+  });
+  res.end("Forbidden");
+}
 
 async function fileExists(filePath: string): Promise<boolean> {
   try {
@@ -65,10 +90,20 @@ async function proxyToController(
       body = await collectBody(req);
     }
 
-    // Forward headers, filtering out host
+    // Forward headers, filtering out host and browser trust metadata. The
+    // trust decision for this hop was already made at this server's edge gate
+    // (same-origin policy, stricter than the controller's own); the forwarded
+    // request is server-to-server on loopback. Passing Origin/Sec-Fetch-*
+    // through makes the controller's global guard re-judge the *original*
+    // browser context — measured: the file:// shell's boot probe cleared the
+    // edge gate here and then died 403 at the controller, leaving the packaged
+    // app on the boot screen with every unit healthy, exactly as before the
+    // edge gate learned to admit it.
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      if (key.toLowerCase() === "host") continue;
+      const name = key.toLowerCase();
+      if (name === "host" || name === "origin" || name.startsWith("sec-fetch-"))
+        continue;
       if (typeof value === "string") {
         headers[key] = value;
       } else if (Array.isArray(value)) {
@@ -146,23 +181,36 @@ export function startEmbeddedWebServer(
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+      const isApiRequest =
+        url.pathname.startsWith("/api") ||
+        url.pathname.startsWith("/v1") ||
+        url.pathname === "/openapi.json";
 
-      // Allow cross-origin requests from vite dev server in dev mode
-      const origin = req.headers.origin;
-      if (origin) {
-        res.setHeader("Access-Control-Allow-Origin", origin);
-        res.setHeader(
-          "Access-Control-Allow-Methods",
-          "GET, POST, PUT, DELETE, OPTIONS",
+      // The desktop shell renders from file://, so its boot probe of the ready
+      // endpoint arrives as a cross-site GET with an opaque origin — the exact
+      // shape the trust gate rejects. It is also the one request that has to
+      // succeed before anything same-origin exists to send it: the shell only
+      // mounts the web surface once this answers, so gating it left the
+      // packaged app permanently on the boot screen with every unit healthy.
+      // GET-only and disclosure-free (readiness state, no secrets), with the
+      // loopback-host requirement still applied below.
+      const isBootReadyProbe =
+        req.method === "GET" &&
+        url.pathname === "/api/internal/desktop/ready" &&
+        isTrustedLocalRequestMetadata(
+          { requestUrl: req.url, host: req.headers.host ?? "" },
+          "same-origin",
         );
-        res.setHeader(
-          "Access-Control-Allow-Headers",
-          "Content-Type, Authorization",
-        );
-        res.setHeader("Access-Control-Allow-Credentials", "true");
+
+      // The embedded renderer and API share one loopback origin. Reject browser
+      // requests from every other origin instead of exposing the unauthenticated
+      // local controller through reflective CORS or DNS rebinding.
+      if (isApiRequest && !isBootReadyProbe && !isTrustedLocalRequest(req)) {
+        rejectUntrustedRequest(res);
+        return;
       }
       if (req.method === "OPTIONS") {
-        res.writeHead(204);
+        res.writeHead(isApiRequest ? 204 : 405);
         res.end();
         return;
       }
@@ -192,11 +240,7 @@ export function startEmbeddedWebServer(
       }
 
       // API proxy -> Controller (including /openapi.json)
-      if (
-        url.pathname.startsWith("/api") ||
-        url.pathname.startsWith("/v1") ||
-        url.pathname === "/openapi.json"
-      ) {
+      if (isApiRequest) {
         return proxyToController(req, res, controllerUrl);
       }
 
@@ -251,6 +295,12 @@ export function startEmbeddedWebServer(
       const reqUrl = req.url ?? "/";
       if (!(reqUrl.startsWith("/api") || reqUrl.startsWith("/v1"))) {
         clientSocket.destroy();
+        return;
+      }
+      if (!isTrustedLocalRequest(req)) {
+        clientSocket.end(
+          "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+        );
         return;
       }
 

@@ -1299,6 +1299,31 @@ async function verifyRuntime(context) {
     console.error(line);
   }
 
+  // Self-probe the ready chain the desktop shell depends on, in both shapes:
+  // plain (server-to-server) and browser-shaped (what the file:// shell
+  // actually sends). The missing-webview failure has now presented three
+  // times with byte-identical snapshots and a different root cause each
+  // round; without the probes' live verdicts the next diagnosis is guesswork
+  // against logs that do not record HTTP outcomes.
+  console.error("\n--- ready-chain self-probe ---");
+  for (const [label, headers] of [
+    ["plain", undefined],
+    ["shell-shaped", { Origin: "null", "Sec-Fetch-Site": "cross-site" }],
+  ]) {
+    try {
+      const response = await fetch(context.readinessUrls.web, {
+        headers,
+        signal: AbortSignal.timeout(5_000),
+      });
+      const body = await response.text();
+      console.error(`${label}: HTTP ${response.status} ${body.slice(0, 200)}`);
+    } catch (error) {
+      console.error(
+        `${label}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   const diagnosticsIssues = collectDiagnosticsIssues(diagnostics, 20);
   if (diagnosticsIssues.length > 0) {
     console.error("\n--- structured diagnostics recent events ---");
@@ -1323,6 +1348,33 @@ async function verifyRuntime(context) {
     for (const issue of readableIssues) {
       console.error(issue);
     }
+  }
+
+  // The packaged app's own stdout/stderr — Electron errors and renderer
+  // console output land here and nowhere else in this report. A raw tail is
+  // useless: mirrored runtime-unit health logs flood it at several lines per
+  // second, so filter the mirror noise out and keep what only this stream has.
+  const packagedAppLog = resolve(
+    process.env.NEXU_DESKTOP_CHECK_CAPTURE_DIR ?? ".tmp/desktop-ci-test",
+    "packaged-app.log",
+  );
+  try {
+    const appLog = await readFile(packagedAppLog, "utf8");
+    const interesting = appLog
+      .split("\n")
+      .filter(
+        (line) =>
+          line.trim() !== "" &&
+          !line.includes('"runtime_app_log"') &&
+          !line.includes("openclaw_ws_request") &&
+          !line.includes('"msg":"openclaw'),
+      )
+      .slice(-60)
+      .join("\n");
+    console.error(`\n--- ${packagedAppLog} (filtered tail) ---`);
+    console.error(interesting);
+  } catch {
+    // Dev mode or the log was never written; nothing to show.
   }
 
   process.exitCode = 1;

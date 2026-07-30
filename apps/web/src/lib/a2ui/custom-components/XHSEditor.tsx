@@ -1,10 +1,17 @@
 import { isImeComposing } from "@/lib/keyboard";
 import { useQuery } from "@tanstack/react-query";
+import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
 import type { CustomComponentProps } from "./registry";
 import { setRowStatus, updatePost } from "./xhs-batch-store";
-import { publishXhsPost, reportXhsPublishResults } from "./xhs-publish";
+import { XHSImageGenerationDialog } from "./xhs-image-generation-dialog";
+import {
+  type XHSPublishResultItem,
+  XhsPublishStatusUnknownError,
+  publishXhsPost,
+  reportXhsPublishResults,
+} from "./xhs-publish";
 
 interface XHSEditorProps extends CustomComponentProps {}
 
@@ -26,6 +33,7 @@ type PublishStatus =
   | { state: "idle" }
   | { state: "publishing"; step: string }
   | { state: "success" }
+  | { state: "unknown"; message: string }
   | { state: "error"; message: string };
 
 export function XHSEditor({ comp, onAction }: XHSEditorProps) {
@@ -48,6 +56,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const [newTag, setNewTag] = useState("");
   const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
   const [publish, setPublish] = useState<PublishStatus>({ state: "idle" });
+  const [imageGenerationOpen, setImageGenerationOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,7 +79,8 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const { data: devicesData } = useQuery({
     queryKey: ["devices"],
     queryFn: async () => {
-      const { data: d } = await getApiV1Devices();
+      const { data: d, error } = await getApiV1Devices();
+      if (error || !d) throw new Error("设备列表加载失败");
       return d;
     },
     refetchInterval: 10_000,
@@ -105,6 +115,10 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
     setImages((prev) => prev.filter((url) => url !== imgUrl));
   };
 
+  const addGeneratedImages = (urls: string[]) => {
+    setImages((previous) => [...new Set([...previous, ...urls])]);
+  };
+
   // Add hashtag
   const addHashtag = () => {
     const tag = newTag.trim().replace(/^#/, "");
@@ -119,7 +133,10 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
     setHashtags((prev) => prev.filter((t) => t !== tag));
   };
 
-  const reportResult = (status: "success" | "error", message?: string) => {
+  const reportResult = (
+    status: XHSPublishResultItem["status"],
+    message?: string,
+  ) => {
     reportXhsPublishResults(onAction, {
       source: "editor",
       batchId,
@@ -128,8 +145,8 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   };
 
   // Publish via the shared helper (push images + dispatch task). The action
-  // round-trip happens only AFTER the phone returns a terminal result, so the
-  // bot can report or ask a follow-up without executing the publish twice.
+  // round-trip reports success/failure or an explicit unknown outcome, so the
+  // bot can respond without executing the publish twice.
   const handlePublish = async () => {
     if (!deviceId) {
       const message = "请先选择一台在线设备";
@@ -144,9 +161,11 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
         setPublish({
           state: "publishing",
           step:
-            phase === "pushing"
-              ? "正在推送图片到手机相册…"
-              : "正在发送发布任务到手机…",
+            phase === "waiting"
+              ? "正在等待设备完成当前任务…"
+              : phase === "pushing"
+                ? "正在推送图片到手机相册…"
+                : "正在发送发布任务到手机…",
         });
       });
       if (bound && batchId && postId) setRowStatus(batchId, postId, "success");
@@ -154,6 +173,13 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
       reportResult("success", "手机端已完成发布");
     } catch (err) {
       const message = err instanceof Error ? err.message : "发布失败";
+      if (err instanceof XhsPublishStatusUnknownError) {
+        if (bound && batchId && postId)
+          setRowStatus(batchId, postId, "unknown", message);
+        setPublish({ state: "unknown", message });
+        reportResult("unknown", message);
+        return;
+      }
       if (bound && batchId && postId)
         setRowStatus(batchId, postId, "error", message);
       setPublish({ state: "error", message });
@@ -209,7 +235,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
 
       {/* Content region — flex column so the post-content textarea can grow to
           fill the remaining editor height; footer (device + publish) stays
-          pinned to the bottom of the sidebar. */}
+          pinned to the bottom of the editor. */}
       <div
         style={{
           flex: 1,
@@ -302,6 +328,28 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
                 <path d="M12 5v14M5 12h14" />
               </svg>
               添加图片
+            </button>
+            <button
+              type="button"
+              onClick={() => setImageGenerationOpen(true)}
+              title="AI 生成图片"
+              style={{
+                aspectRatio: "1",
+                borderRadius: 8,
+                border: "1px solid #f2b8c4",
+                background: "#fff4f6",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 3,
+                color: "#bb0028",
+                fontSize: 11,
+              }}
+            >
+              <Sparkles size={18} aria-hidden="true" />
+              AI 生图
             </button>
             <input
               ref={fileInputRef}
@@ -558,16 +606,25 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
             color:
               publish.state === "error"
                 ? "#bb0028"
-                : publish.state === "success"
-                  ? "#00a365"
-                  : "#666",
+                : publish.state === "unknown"
+                  ? "#8A5A00"
+                  : publish.state === "success"
+                    ? "#00a365"
+                    : "#666",
           }}
         >
           {publish.state === "publishing" && publish.step}
           {publish.state === "success" && "✅ 手机端已完成发布"}
+          {publish.state === "unknown" && `发布结果待确认：${publish.message}`}
           {publish.state === "error" && `⚠️ ${publish.message}`}
         </div>
       )}
+
+      <XHSImageGenerationDialog
+        open={imageGenerationOpen}
+        onOpenChange={setImageGenerationOpen}
+        onGenerated={addGeneratedImages}
+      />
     </div>
   );
 }

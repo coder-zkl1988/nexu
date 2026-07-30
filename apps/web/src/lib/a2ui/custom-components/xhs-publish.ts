@@ -1,4 +1,5 @@
 import {
+  getApiV1DevicesByDeviceId,
   postApiV1DevicesByDeviceIdMedia,
   postApiV1DevicesByDeviceIdTasks,
 } from "../../../../lib/api/sdk.gen";
@@ -6,7 +7,7 @@ import {
 export interface XHSPublishPost {
   title: string;
   content: string;
-  images: string[]; // data URLs
+  images: string[]; // data URLs or browser-loadable URLs
   hashtags: string[];
 }
 
@@ -14,11 +15,19 @@ export interface XHSPublishResultItem {
   postId?: string;
   title: string;
   deviceId: string;
-  status: "success" | "error";
+  status: "success" | "error" | "unknown";
   message?: string;
 }
 
 export type XHSPublishResultSource = "editor" | "batch";
+export type XHSPublishPhase = "waiting" | "pushing" | "publishing";
+
+export class XhsPublishStatusUnknownError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "XhsPublishStatusUnknownError";
+  }
+}
 
 type XHSPublishActionHandler = (
   name: string,
@@ -32,9 +41,9 @@ function resultNeedsUserInput(result: XHSPublishResultItem): boolean {
 
 /**
  * Report a user-triggered publish result back to the originating chat agent.
- * The component already executed the phone task, so this is a terminal result
- * event rather than another publish request. Keep the payload small: post body
- * and base64 images must never be copied into the chat transcript.
+ * The component already dispatched the phone task, so this reports the outcome
+ * rather than issuing another publish request. Keep the payload small: post
+ * body and base64 images must never be copied into the chat transcript.
  */
 export function reportXhsPublishResults(
   onAction: XHSPublishActionHandler | undefined,
@@ -49,26 +58,115 @@ export function reportXhsPublishResults(
   const successCount = input.results.filter(
     (result) => result.status === "success",
   ).length;
-  const errorCount = input.results.length - successCount;
+  const unknownCount = input.results.filter(
+    (result) => result.status === "unknown",
+  ).length;
+  const errorCount = input.results.length - successCount - unknownCount;
   const requiresUserInput = input.results.some(resultNeedsUserInput);
 
   onAction("xhs_publish_result", {
     source: input.source,
     batchId: input.batchId,
-    terminal: true,
+    terminal: unknownCount === 0,
     successCount,
     errorCount,
+    unknownCount,
     requiresUserInput,
     results: input.results,
     agentInstruction:
-      "这是桌面组件已执行完成的手机端结果，不要自动重复发布。请向用户汇报结果；若 requiresUserInput 为 true，请根据失败消息向用户提问并等待答复。",
+      unknownCount > 0
+        ? "部分手机任务仍可能在执行，结果尚未确认。不要自动重复发布，避免产生重复帖子；请向用户说明待确认状态。"
+        : "这是桌面组件已执行完成的手机端结果，不要自动重复发布。请向用户汇报结果；若 requiresUserInput 为 true，请根据失败消息向用户提问并等待答复。",
   });
+}
+
+const DEVICE_IDLE_POLL_INTERVAL_MS = 2_000;
+const DEVICE_IDLE_WAIT_TIMEOUT_MS = 10 * 60_000;
+const XHS_TASK_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+function readApiErrorMessage(error: unknown, fallback: string): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return fallback;
+}
+
+function isDeviceBusyMessage(message: string): boolean {
+  return /TASK_ALREADY_RUNNING|device .* is busy|设备.*忙/i.test(message);
+}
+
+async function waitForDeviceIdle(
+  deviceId: string,
+  onPhase?: (phase: XHSPublishPhase) => void,
+): Promise<void> {
+  const deadline = Date.now() + DEVICE_IDLE_WAIT_TIMEOUT_MS;
+  while (true) {
+    const { data, error } = await getApiV1DevicesByDeviceId({
+      path: { deviceId },
+    });
+    if (error || !data) {
+      throw new Error(readApiErrorMessage(error, "无法读取设备状态"));
+    }
+    if (data.status === "idle") return;
+    if (data.status === "error") {
+      throw new Error("设备状态异常，请检查手机端后重试");
+    }
+    if (Date.now() >= deadline) {
+      throw new Error("设备持续忙碌，本篇尚未开始发布");
+    }
+    onPhase?.("waiting");
+    await new Promise((resolve) =>
+      setTimeout(resolve, DEVICE_IDLE_POLL_INTERVAL_MS),
+    );
+  }
 }
 
 /** "image/png" → "png" for a stable gallery filename extension. */
 function extForMime(mimeType: string): string {
   const sub = mimeType.split("/")[1] ?? "png";
   return sub === "jpeg" ? "jpg" : sub;
+}
+
+/** Resolve a generated/connected image URL to the data URL required by the
+ * device media-push API. Local uploads are already data URLs and pass through. */
+async function imageSourceToDataUrl(source: string): Promise<string> {
+  if (source.startsWith("data:")) return source;
+
+  return new Promise<string>((resolve, reject) => {
+    const image = new Image();
+    if (typeof window !== "undefined") {
+      try {
+        const url = new URL(source, window.location.href);
+        if (url.origin !== window.location.origin)
+          image.crossOrigin = "anonymous";
+      } catch {
+        // Let the browser resolve non-standard but renderable sources.
+      }
+    }
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context || canvas.width === 0 || canvas.height === 0) {
+        reject(new Error("图片读取失败"));
+        return;
+      }
+      try {
+        context.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } catch {
+        reject(new Error("图片无法转换，请重新上传本地图片"));
+      }
+    };
+    image.onerror = () => reject(new Error("图片加载失败，请检查图片来源"));
+    image.src = source;
+  });
 }
 
 /**
@@ -166,11 +264,16 @@ const NOT_READY_RETRY_DELAY_MS = 4_000;
 export async function publishXhsPost(
   deviceId: string,
   post: XHSPublishPost,
-  onPhase?: (phase: "pushing" | "publishing") => void,
+  onPhase?: (phase: XHSPublishPhase) => void,
 ): Promise<void> {
+  await waitForDeviceIdle(deviceId, onPhase);
+
   if (post.images.length > 0) {
     onPhase?.("pushing");
-    const payload = post.images.map((dataUrl, i) => {
+    const resolvedImages = await Promise.all(
+      post.images.map(imageSourceToDataUrl),
+    );
+    const payload = resolvedImages.map((dataUrl, i) => {
       const mimeType =
         dataUrl.match(/^data:([^;]+);base64,/)?.[1] ?? "image/png";
       const base64 = dataUrl.includes(",")
@@ -197,17 +300,36 @@ export async function publishXhsPost(
   onPhase?.("publishing");
   const task = buildXhsPublishTask(post);
   const dispatch = async () => {
-    const { data } = await postApiV1DevicesByDeviceIdTasks({
+    const { data, error, response } = await postApiV1DevicesByDeviceIdTasks({
       path: { deviceId },
       body: {
         task,
         allowedApps: ["com.xingin.xhs"],
+        timeout: XHS_TASK_IDLE_TIMEOUT_MS,
       },
     });
+    if (error) {
+      const message = readApiErrorMessage(error, "发布请求失败");
+      if (response.status === 504) {
+        throw new XhsPublishStatusUnknownError(
+          "手机任务长时间未返回进度，发布结果待确认",
+        );
+      }
+      throw new Error(message);
+    }
     return data?.result;
   };
 
-  let result = await dispatch();
+  let result: Awaited<ReturnType<typeof dispatch>>;
+  try {
+    result = await dispatch();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isDeviceBusyMessage(message)) throw error;
+    await waitForDeviceIdle(deviceId, onPhase);
+    onPhase?.("publishing");
+    result = await dispatch();
+  }
   // The phone may have just (re)connected with its accessibility service not yet
   // bound — a transient state. Retry the dispatch once after a short wait before
   // giving up.
@@ -219,7 +341,9 @@ export async function publishXhsPost(
   }
 
   if (!result) {
-    throw new Error("设备未返回任务结果，发布状态未知");
+    throw new XhsPublishStatusUnknownError(
+      "设备未返回任务结果，发布状态待确认",
+    );
   }
   if (!result.success) {
     throw new Error(

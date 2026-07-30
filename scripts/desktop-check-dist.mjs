@@ -150,6 +150,35 @@ async function resolvePackagedExecutable() {
   return defaultMacExecutable;
 }
 
+async function assertPackagedPortsFree() {
+  if (process.env.NEXU_DESKTOP_CHECK_SKIP_PORT_PREFLIGHT === "1") return;
+  const { connect } = await import("node:net");
+  // The packaged app binds fixed ports. If something else already holds them
+  // — a dev stack of another checkout, say — every later health probe hits
+  // that foreign process and this check "verifies" a server that is not the
+  // packaged app at all. That exact false pass hid a packaged-only regression
+  // behind hours of green local runs.
+  for (const port of [50800, 50810, 18789]) {
+    const occupied = await new Promise((resolveProbe) => {
+      const socket = connect({ host: "127.0.0.1", port, timeout: 500 });
+      socket.once("connect", () => {
+        socket.destroy();
+        resolveProbe(true);
+      });
+      socket.once("error", () => resolveProbe(false));
+      socket.once("timeout", () => {
+        socket.destroy();
+        resolveProbe(false);
+      });
+    });
+    if (occupied) {
+      throw new Error(
+        `Port ${port} is already in use — the packaged app's health would be probed against a foreign process. Stop whatever holds it (check: lsof -nP -iTCP:${port}) or set NEXU_DESKTOP_CHECK_SKIP_PORT_PREFLIGHT=1 if this is intentional.`,
+      );
+    }
+  }
+}
+
 async function main() {
   const paths = getDefaultPaths();
   const packagedExecutable = await resolvePackagedExecutable();
@@ -157,6 +186,8 @@ async function main() {
   if (!(await fileExists(packagedExecutable))) {
     throw new Error(`Packaged executable is missing: ${packagedExecutable}`);
   }
+
+  await assertPackagedPortsFree();
 
   const pidPath = resolvePath(`${captureDir}/packaged-app.pid`);
   const packagedLogPath = resolvePath(`${captureDir}/packaged-app.log`);

@@ -2452,4 +2452,44 @@ describe("SessionsRuntime", () => {
     expect(realMeta.messageCount).toBe(0);
     expect(realMeta.lastMessageAt).toBeNull();
   });
+
+  it("turns an Office MEDIA marker into a downloadable file block", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    const generatedPath = path.join(
+      rootDir,
+      "media",
+      "officecli",
+      "report.docx",
+    );
+    await mkdir(path.dirname(generatedPath), { recursive: true });
+    await writeFile(generatedPath, "fake-docx", "utf8");
+    await writeWebchatSession(rootDir, "office-media.jsonl", [
+      {
+        type: "message",
+        id: "msg-office-media",
+        timestamp: new Date().toISOString(),
+        message: {
+          role: "assistant",
+          content: `报告已完成。\n\nMEDIA: ${generatedPath}`,
+        },
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("office-media.jsonl");
+    const url = `/api/v1/media/state-file?path=${encodeURIComponent(generatedPath)}`;
+    expect(result.messages[0]?.content).toStrictEqual([
+      { type: "text", text: "报告已完成。" },
+      {
+        type: "file",
+        url,
+        metadata: {
+          filename: "report.docx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          url,
+        },
+      },
+    ]);
+  });
 });

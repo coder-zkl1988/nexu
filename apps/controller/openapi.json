@@ -8131,12 +8131,17 @@
                               "type": "string",
                               "enum": [
                                 "image",
-                                "file"
+                                "file",
+                                "directory"
                               ]
                             },
                             "content": {
                               "type": "string",
                               "maxLength": 10000000
+                            },
+                            "stagedPath": {
+                              "type": "string",
+                              "maxLength": 4096
                             },
                             "metadata": {
                               "type": "object",
@@ -8148,16 +8153,18 @@
                                   "type": "string"
                                 },
                                 "size": {
-                                  "type": "number"
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 500000000
                                 }
                               }
                             }
                           },
                           "required": [
-                            "type",
-                            "content"
+                            "type"
                           ]
-                        }
+                        },
+                        "maxItems": 200
                       },
                       "skillSlug": {
                         "type": "string"
@@ -8386,12 +8393,17 @@
                               "type": "string",
                               "enum": [
                                 "image",
-                                "file"
+                                "file",
+                                "directory"
                               ]
                             },
                             "content": {
                               "type": "string",
                               "maxLength": 10000000
+                            },
+                            "stagedPath": {
+                              "type": "string",
+                              "maxLength": 4096
                             },
                             "metadata": {
                               "type": "object",
@@ -8403,16 +8415,18 @@
                                   "type": "string"
                                 },
                                 "size": {
-                                  "type": "number"
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 500000000
                                 }
                               }
                             }
                           },
                           "required": [
-                            "type",
-                            "content"
+                            "type"
                           ]
-                        }
+                        },
+                        "maxItems": 200
                       },
                       "skillSlug": {
                         "type": "string"
@@ -13013,6 +13027,12 @@
                       "items": {
                         "type": "object",
                         "properties": {
+                          "identity": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string"
+                          },
                           "slug": {
                             "type": "string"
                           },
@@ -13067,6 +13087,14 @@
                           "slug": {
                             "type": "string"
                           },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "version": {
+                            "type": "string",
+                            "nullable": true
+                          },
                           "source": {
                             "type": "string",
                             "enum": [
@@ -13097,6 +13125,8 @@
                         },
                         "required": [
                           "slug",
+                          "ownerHandle",
+                          "version",
                           "source",
                           "name",
                           "description",
@@ -13133,6 +13163,10 @@
                         "properties": {
                           "slug": {
                             "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
                           },
                           "source": {
                             "type": "string",
@@ -13180,6 +13214,7 @@
                         },
                         "required": [
                           "slug",
+                          "ownerHandle",
                           "source",
                           "status",
                           "position",
@@ -13205,6 +13240,502 @@
         }
       }
     },
+    "/api/v1/skillhub/status": {
+      "get": {
+        "tags": [
+          "SkillHub"
+        ],
+        "responses": {
+          "200": {
+            "description": "Installed skills and install queue status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "installedSlugs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "installedSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "version": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "installedAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentName": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "version",
+                          "source",
+                          "name",
+                          "description",
+                          "installedAt",
+                          "agentId",
+                          "agentName"
+                        ]
+                      }
+                    },
+                    "queue": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "downloading",
+                              "installing-deps",
+                              "done",
+                              "failed"
+                            ]
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "error": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "errorCode": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "skill_not_found",
+                              "rate_limit",
+                              "npm_missing",
+                              "deps_install_failed",
+                              "unknown"
+                            ]
+                          },
+                          "retries": {
+                            "type": "number"
+                          },
+                          "enqueuedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "source",
+                          "status",
+                          "position",
+                          "error",
+                          "errorCode",
+                          "retries",
+                          "enqueuedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "installedSlugs",
+                    "installedSkills",
+                    "queue"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skillhub/catalog-page": {
+      "get": {
+        "tags": [
+          "SkillHub"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "required": false,
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 48
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "downloads",
+                "updated",
+                "stars"
+              ],
+              "default": "downloads"
+            },
+            "required": false,
+            "name": "sort",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated SkillHub catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "identity": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "downloads": {
+                            "type": "number"
+                          },
+                          "stars": {
+                            "type": "number"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "name",
+                          "description",
+                          "downloads",
+                          "stars",
+                          "tags",
+                          "version",
+                          "updatedAt"
+                        ]
+                      }
+                    },
+                    "installedSlugs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "installedSkills": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "version": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "installedAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "agentName": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "version",
+                          "source",
+                          "name",
+                          "description",
+                          "installedAt",
+                          "agentId",
+                          "agentName"
+                        ]
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "skillCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "updatedAt",
+                        "skillCount"
+                      ]
+                    },
+                    "queue": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "managed",
+                              "custom",
+                              "workspace",
+                              "user"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "downloading",
+                              "installing-deps",
+                              "done",
+                              "failed"
+                            ]
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "error": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "errorCode": {
+                            "type": "string",
+                            "nullable": true,
+                            "enum": [
+                              "skill_not_found",
+                              "rate_limit",
+                              "npm_missing",
+                              "deps_install_failed",
+                              "unknown"
+                            ]
+                          },
+                          "retries": {
+                            "type": "number"
+                          },
+                          "enqueuedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "slug",
+                          "ownerHandle",
+                          "source",
+                          "status",
+                          "position",
+                          "error",
+                          "errorCode",
+                          "retries",
+                          "enqueuedAt"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "facets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tag": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "tag",
+                          "count"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "skills",
+                    "installedSlugs",
+                    "installedSkills",
+                    "meta",
+                    "queue",
+                    "nextCursor",
+                    "total",
+                    "facets"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Catalog revision changed during pagination",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "catalog_revision_changed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "code"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/skillhub/install": {
       "post": {
         "tags": [
@@ -13220,18 +13751,17 @@
                     "type": "string",
                     "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
                   },
-                  "source": {
+                  "ownerHandle": {
                     "type": "string",
-                    "enum": [
-                      "managed",
-                      "custom",
-                      "workspace",
-                      "user"
-                    ]
+                    "pattern": "^@?[a-z0-9][a-z0-9._-]{0,127}$"
                   },
-                  "agentId": {
+                  "version": {
                     "type": "string",
-                    "nullable": true
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "update": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -13244,6 +13774,46 @@
         "responses": {
           "200": {
             "description": "Install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "queued": {
+                      "type": "boolean"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "downloading",
+                        "installing-deps",
+                        "done",
+                        "failed"
+                      ]
+                    },
+                    "position": {
+                      "type": "number"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Install conflict or update not allowed",
             "content": {
               "application/json": {
                 "schema": {
@@ -13465,6 +14035,15 @@
             "required": false,
             "name": "agentId",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^@?[a-z0-9][a-z0-9._-]{0,127}$"
+            },
+            "required": false,
+            "name": "ownerHandle",
+            "in": "query"
           }
         ],
         "responses": {
@@ -13475,6 +14054,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "ownerHandle": {
+                      "type": "string"
+                    },
                     "slug": {
                       "type": "string"
                     },
@@ -13498,6 +14080,13 @@
                     },
                     "version": {
                       "type": "string"
+                    },
+                    "installedVersion": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "updateEligible": {
+                      "type": "boolean"
                     },
                     "updatedAt": {
                       "type": "string"
@@ -13541,6 +14130,8 @@
                     "stars",
                     "tags",
                     "version",
+                    "installedVersion",
+                    "updateEligible",
                     "updatedAt",
                     "installed",
                     "installedSource",
@@ -13781,6 +14372,29 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "configuredSkillRefs": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "slug": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                                },
+                                "ownerHandle": {
+                                  "type": "string",
+                                  "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                                },
+                                "version": {
+                                  "type": "string",
+                                  "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                                }
+                              },
+                              "required": [
+                                "slug"
+                              ]
+                            }
                           }
                         },
                         "required": [
@@ -13972,6 +14586,29 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "skillRefs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slug": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                        },
+                        "ownerHandle": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                        }
+                      },
+                      "required": [
+                        "slug"
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -14000,11 +14637,35 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "configuredSkillRefs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "slug": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                          },
+                          "ownerHandle": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                          },
+                          "version": {
+                            "type": "string",
+                            "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                          }
+                        },
+                        "required": [
+                          "slug"
+                        ]
+                      }
                     }
                   },
                   "required": [
                     "ok",
-                    "configuredSkills"
+                    "configuredSkills",
+                    "configuredSkillRefs"
                   ]
                 }
               }
@@ -14249,6 +14910,29 @@
                       "type": "string"
                     },
                     "default": []
+                  },
+                  "skillRefs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "slug": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9-]{0,127}$"
+                        },
+                        "ownerHandle": {
+                          "type": "string",
+                          "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+                        },
+                        "version": {
+                          "type": "string",
+                          "pattern": "^[0-9A-Za-z][0-9A-Za-z.+_-]{0,99}$"
+                        }
+                      },
+                      "required": [
+                        "slug"
+                      ]
+                    }
                   },
                   "existingSlug": {
                     "type": "string"
@@ -17720,11 +18404,121 @@
                           "type": "string"
                         }
                       }
+                    },
+                    "localAutomation": {
+                      "type": "object",
+                      "properties": {
+                        "browser": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        },
+                        "computerUse": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        }
+                      }
+                    },
+                    "localAutomationStatus": {
+                      "type": "object",
+                      "properties": {
+                        "previewEnabled": {
+                          "type": "boolean"
+                        },
+                        "computerUseAvailable": {
+                          "type": "boolean"
+                        },
+                        "computerUseUnavailableReason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "missing-sidecar",
+                            "unsupported-os",
+                            null
+                          ]
+                        },
+                        "computerUseBinaryPath": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "computerUseBackend": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "enum": [
+                            "cua-driver",
+                            null
+                          ]
+                        },
+                        "computerUsePermissionState": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "permission-required",
+                            "unavailable",
+                            "unknown",
+                            "disabled"
+                          ]
+                        },
+                        "computerUsePermissions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "granted": {
+                                "type": "boolean"
+                              },
+                              "required": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "granted",
+                              "required"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "previewEnabled",
+                        "computerUseAvailable",
+                        "computerUseUnavailableReason",
+                        "computerUseBinaryPath",
+                        "computerUseBackend",
+                        "computerUsePermissionState",
+                        "computerUsePermissions"
+                      ]
                     }
                   },
                   "required": [
                     "runtime",
-                    "deviceControl"
+                    "deviceControl",
+                    "localAutomation",
+                    "localAutomationStatus"
                   ]
                 }
               }
@@ -17847,6 +18641,132 @@
                   },
                   "required": [
                     "runtime"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation": {
+      "patch": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "browser": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  },
+                  "computerUse": {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "enabled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated local automation settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "localAutomation": {
+                      "type": "object",
+                      "properties": {
+                        "browser": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        },
+                        "computerUse": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean",
+                              "default": false
+                            }
+                          },
+                          "default": {
+                            "enabled": false
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "localAutomation"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime-config/local-automation/computer-use/permissions": {
+      "post": {
+        "tags": [
+          "Runtime Config"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Requested the platform grants Computer Use needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requested": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "requested"
                   ]
                 }
               }
@@ -21012,6 +21932,8 @@
                               "enum": [
                                 "a2ui",
                                 "team-step",
+                                "xhs",
+                                "phone",
                                 "group"
                               ]
                             }
@@ -21222,6 +22144,8 @@
                                 "enum": [
                                   "a2ui",
                                   "team-step",
+                                  "xhs",
+                                  "phone",
                                   "group"
                                 ]
                               }
@@ -21361,6 +22285,603 @@
                     "connections",
                     "viewport",
                     "selectedNodeIds"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/stream": {
+      "get": {
+        "tags": [
+          "Browser"
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of agent browser commands (`command`), run-end signals (`run-ended`), and keepalives (`ping`)",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/act": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string"
+                  },
+                  "command": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "open"
+                            ]
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "url"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "snapshot"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "action"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "click"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "ref"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "type"
+                            ]
+                          },
+                          "ref": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "submit": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "ref",
+                          "text"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "scroll"
+                            ]
+                          },
+                          "deltaY": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "deltaY"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionKey",
+                  "command"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Command executed by the desktop browser panel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "snapshot": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "truncated": {
+                              "type": "boolean"
+                            },
+                            "nodes": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "ref": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  },
+                                  "disabled": {
+                                    "type": "boolean"
+                                  },
+                                  "depth": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "ref",
+                                  "role",
+                                  "name",
+                                  "depth"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "url",
+                            "title",
+                            "truncated",
+                            "nodes"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "snapshot"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "observation": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "element": {
+                              "type": "object",
+                              "properties": {
+                                "ref": {
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "disabled": {
+                                  "type": "boolean"
+                                },
+                                "depth": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "ref",
+                                "role",
+                                "name",
+                                "depth"
+                              ]
+                            },
+                            "navigated": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "url",
+                            "title",
+                            "navigated"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "observation"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "ok",
+                        "error"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a local desktop session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No desktop browser panel is listening",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "The desktop browser panel did not answer in time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/run-ended": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sessionKey"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Run-end signal forwarded to the desktop",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "accepted"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/browser/agent/result": {
+      "post": {
+        "tags": [
+          "Browser"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestId": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          },
+                          "snapshot": {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "truncated": {
+                                "type": "boolean"
+                              },
+                              "nodes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "ref": {
+                                      "type": "string"
+                                    },
+                                    "role": {
+                                      "type": "string"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "disabled": {
+                                      "type": "boolean"
+                                    },
+                                    "depth": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "ref",
+                                    "role",
+                                    "name",
+                                    "depth"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "url",
+                              "title",
+                              "truncated",
+                              "nodes"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "ok",
+                          "snapshot"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean",
+                            "enum": [
+                              true
+                            ]
+                          },
+                          "observation": {
+                            "type": "object",
+                            "properties": {
+                              "url": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "element": {
+                                "type": "object",
+                                "properties": {
+                                  "ref": {
+                                    "type": "string"
+                                  },
+                                  "role": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "type": "string"
+                                  },
+                                  "disabled": {
+                                    "type": "boolean"
+                                  },
+                                  "depth": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "ref",
+                                  "role",
+                                  "name",
+                                  "depth"
+                                ]
+                              },
+                              "navigated": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "url",
+                              "title",
+                              "navigated"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "ok",
+                          "observation"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean",
+                            "enum": [
+                              false
+                            ]
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "ok",
+                          "error"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "requestId",
+                  "outcome"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "accepted"
                   ]
                 }
               }

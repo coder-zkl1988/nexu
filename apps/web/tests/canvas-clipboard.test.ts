@@ -265,6 +265,44 @@ describe("config node copyable", () => {
   });
 });
 
+describe("XHS and phone nodes copyable", () => {
+  it("pasting preserves native post and selected-device metadata", () => {
+    const xhs = addNode({
+      type: "xhs",
+      title: "小红书帖子",
+      metadata: {
+        xhs: {
+          title: "周末散步",
+          content: "正文",
+          images: ["data:image/png;base64,COVER"],
+          hashtags: ["生活"],
+        },
+      },
+    });
+    const phone = addNode({
+      type: "phone",
+      title: "手机预览",
+      metadata: { phone: { deviceId: "device-1" } },
+    });
+    selectNodes([xhs.id, phone.id]);
+
+    expect(copySelection()).toBe(2);
+    expect(pasteClipboard()).toBe(2);
+
+    const pastedXhs = getCanvasState().nodes.find(
+      (node) => node.type === "xhs" && node.id !== xhs.id,
+    );
+    const pastedPhone = getCanvasState().nodes.find(
+      (node) => node.type === "phone" && node.id !== phone.id,
+    );
+    expect(pastedXhs?.metadata.xhs?.title).toBe("周末散步");
+    expect(pastedXhs?.metadata.xhs?.images).toEqual([
+      "data:image/png;base64,COVER",
+    ]);
+    expect(pastedPhone?.metadata.phone?.deviceId).toBe("device-1");
+  });
+});
+
 describe("duplicateNodes", () => {
   it("e. duplicateNodes creates offset copies and does NOT modify persistent clipboard", () => {
     expect(clipboardHasContent()).toBe(false);

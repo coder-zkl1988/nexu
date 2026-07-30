@@ -55,7 +55,11 @@ Never hand-write types that duplicate a schema. Use `z.infer<typeof schema>`.
 
 **Desktop/local config generation:** Controller reads `~/.nexu/config.json` → compiles OpenClaw config JSON (agents, channels, bindings, models) → writes `OPENCLAW_CONFIG_PATH` and managed skills/templates → OpenClaw hot-reloads.
 
-**Desktop runtime boot:** Electron desktop starts the controller sidecar, waits for controller readiness/auth bootstrap, starts the web sidecar, and delegates OpenClaw process management to `apps/controller`.
+**Desktop runtime boot:** Electron desktop starts the controller sidecar, waits for controller readiness/auth bootstrap, starts the web sidecar, and delegates OpenClaw process management to `apps/controller`. Release preparation vendors a checksummed platform Computer Use distribution into `runtime/computer-use/` and a checksummed OfficeCLI distribution into `runtime/tools/officecli/`; controller/OpenClaw manifests and launchd plists expose the latter through `OFFICECLI_BIN`. Packaged startup atomically materializes Computer Use under `NEXU_HOME/runtime/computer-use/` so daemons never lock the replaceable `.app` bundle. Third-party runtime payloads retain their required license and notice files.
+
+**Local chat attachments:** The desktop picker stages authorized images, files, and directories under `OPENCLAW_STATE_DIR/media/inbound/`. The controller enforces shared count/size limits, canonical-path and symlink checks, then moves accepted content into the session attachment workspace. Office documents advertise the bundled `officecli` skill to OpenClaw; generated files emitted through `MEDIA:` are mirrored for durable session-history downloads.
+
+**Local automation:** `localAutomation` in the Nexu config defaults both capabilities off. Browser control compiles OpenClaw's extension-backed `chrome` profile so agents operate only user-shared tabs in the real signed-in Chrome. Computer Use compiles a filtered MCP server: signed/notarized Peekaboo on macOS 15+ and CUA on Windows. The controller serializes bootstrap, setting changes, pairing, permission requests, rollback, and shutdown so a completed disable cannot leave a daemon running. Windows CUA is bound to the controller by parent-liveness stdin, while macOS reports Screen Recording, Accessibility, and Event Synthesizing state and lets the signed Peekaboo process request each permission. Production builds fail closed unless `NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED=true`; the compiler never grants wildcard command ownership, and `nexu-toolcall-guard` rejects Browser, Computer Use, `exec`, `process`, `nodes`, `gateway`, and `cron` tools outside a desktop local chat session. Both the embedded web proxy and the controller's direct HTTP/WebSocket entry reject non-loopback Host/Origin traffic to prevent credentialed CORS and DNS-rebinding access to the local control plane.
 
 **Proxy policy:** Desktop bootstrap computes one normalized proxy policy from `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`, applies it to Electron networking, propagates the normalized uppercase env into controller/web/OpenClaw child processes, and always merges loopback bypass entries (`localhost`, `127.0.0.1`, `::1`).
 
@@ -67,7 +71,7 @@ Never hand-write types that duplicate a schema. Use `z.infer<typeof schema>`.
 
 **Feishu events:** Feishu uses a long-lived runtime connection driven by the controller-compiled OpenClaw config.
 
-**Skill catalog:** Skills are file-based. The controller scans `nexu-skills/skills/` for `SKILL.md` frontmatter and serves install/uninstall/catalog flows. The local runtime watches the managed skills directory for hot-reload.
+**Skill catalog:** `tabby.picaso.studio` mirrors the complete ClawHub catalog into Cloudflare D1 every Monday and Thursday, three to four days apart. The controller reads its cursor-based public API for catalog/search/facets and keeps install, update, uninstall, and ledger state local; desktop clients never run a scheduled full-catalog sync. Repo-local skills remain file-based, and the local runtime watches the managed skills directory for hot-reload.
 
 ## Persistence
 

@@ -1,0 +1,27 @@
+{
+  "id": "nexu-browser",
+  "name": "Nexu Embedded Browser",
+  "description": "Registers browser_open / browser_snapshot / browser_click / browser_type / browser_scroll so the chat agent can drive the browser panel embedded in the Nexu desktop app.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "controllerUrl": {
+        "type": "string",
+        "description": "Base URL of the Nexu controller (loopback) that relays commands to the desktop browser panel."
+      }
+    }
+  },
+  "contracts": {
+    "tools": [
+      "browser_open",
+      "browser_snapshot",
+      "browser_click",
+      "browser_type",
+      "browser_scroll"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  }
+}

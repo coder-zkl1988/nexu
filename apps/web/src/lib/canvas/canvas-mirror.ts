@@ -19,10 +19,26 @@ import { postApiV1CanvasMirror } from "../../../lib/api/sdk.gen";
 import { getCanvasAssets } from "./canvas-assets";
 import { isHiddenBatchChild } from "./canvas-batch";
 import { getCanvasBoards } from "./canvas-boards";
-import { getCanvasState } from "./canvas-store";
+import { type CanvasNode, getCanvasState } from "./canvas-store";
 
 /** Trailing debounce for the change-driven pusher (covers drag bursts). */
 const PUSH_DEBOUNCE_MS = 800;
+
+function nodeHasContent(node: CanvasNode): boolean {
+  if (node.metadata.content) return true;
+  if (node.type === "xhs") {
+    const post = node.metadata.xhs;
+    return Boolean(
+      post &&
+        (post.title ||
+          post.content ||
+          post.images.length > 0 ||
+          post.hashtags.length > 0),
+    );
+  }
+  if (node.type === "phone") return Boolean(node.metadata.phone?.deviceId);
+  return false;
+}
 
 /**
  * Build the compact mirror from the live store + active board.
@@ -45,7 +61,7 @@ export function buildCanvasMirror(): CanvasMirror {
       y: node.position.y,
       w: node.size.width,
       h: node.size.height,
-      hasContent: Boolean(node.metadata.content),
+      hasContent: nodeHasContent(node),
     }));
 
   return {
@@ -92,7 +108,14 @@ let warnedOnce = false;
  */
 export async function pushCanvasMirror(): Promise<void> {
   try {
-    await postApiV1CanvasMirror({ body: buildCanvasMirror() });
+    // The source schema already accepts all runtime-only node kinds. Keep the
+    // compatibility assertion at the generated-client boundary so a lagging
+    // checked-in SDK does not narrow XHS/phone nodes out of the live payload.
+    await postApiV1CanvasMirror({
+      body: buildCanvasMirror() as NonNullable<
+        NonNullable<Parameters<typeof postApiV1CanvasMirror>[0]>["body"]
+      >,
+    });
   } catch (error) {
     if (!warnedOnce) {
       warnedOnce = true;

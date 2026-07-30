@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import type { OpenClawConfig } from "@nexu/shared";
 import { openclawConfigSchema } from "@nexu/shared";
@@ -369,6 +370,52 @@ const WORKBOARD_WORKER_TOOLS = [
   "workboard_block",
 ];
 
+// Embedded-browser tools, registered by the nexu-browser runtime plugin. These
+// are Nexu's own — they drive the browser panel inside the desktop app, not the
+// user's Chrome. Exported so tests can assert this stays in sync with the
+// independent allowlist inside static/runtime-plugins/nexu-toolcall-guard,
+// which is what stops an external channel from reaching them.
+export const EMBEDDED_BROWSER_TOOLS = [
+  "browser_click",
+  "browser_open",
+  "browser_scroll",
+  "browser_snapshot",
+  "browser_type",
+];
+// Exported so tests can assert this stays in sync with the independent
+// allowlist inside static/runtime-plugins/nexu-toolcall-guard. The two lists
+// are enforced at different layers (MCP tool filter vs. before_tool_call gate)
+// and drift between them is either a silent capability gap or a dead entry.
+export const CUA_TOOL_FILTER = [
+  "check_permissions",
+  "get_accessibility_tree",
+  "get_cursor_position",
+  "get_desktop_state",
+  "get_screen_size",
+  "get_session_state",
+  "get_window_state",
+  "list_apps",
+  "list_windows",
+  "click",
+  "double_click",
+  "right_click",
+  "drag",
+  "move_cursor",
+  "scroll",
+  "type_text",
+  "press_key",
+  "hotkey",
+  "set_value",
+  "launch_app",
+  "start_session",
+  "end_session",
+  "escalate_session",
+];
+
+function isLocalAutomationPreviewEnabled(env: ControllerEnv): boolean {
+  return env.localAutomationPreviewEnabled === true;
+}
+
 function compileAgentList(
   config: NexuConfig,
   env: ControllerEnv,
@@ -376,6 +423,9 @@ function compileAgentList(
   installedSkillSlugs?: readonly string[],
   workspaceSkillsByAgent?: ReadonlyMap<string, readonly string[]>,
 ): OpenClawConfig["agents"]["list"] {
+  const browserEnabled =
+    isLocalAutomationPreviewEnabled(env) &&
+    config.localAutomation?.browser.enabled === true;
   const sharedSlugs = [...(installedSkillSlugs ?? [])].sort((left, right) =>
     left.localeCompare(right),
   );
@@ -411,7 +461,11 @@ function compileAgentList(
           : undefined,
         ...(merged.length > 0 ? { skills: merged } : {}),
         tools: {
-          alsoAllow: [...SUBAGENT_DELEGATION_TOOLS, ...WORKBOARD_WORKER_TOOLS],
+          alsoAllow: [
+            ...SUBAGENT_DELEGATION_TOOLS,
+            ...WORKBOARD_WORKER_TOOLS,
+            ...(browserEnabled ? EMBEDDED_BROWSER_TOOLS : []),
+          ],
         },
         subagents: { allowAgents: ["*"] },
       };
@@ -461,6 +515,7 @@ function compilePlugins(
     "find-expert",
     "nexu-team",
     "nexu-canvas",
+    "nexu-browser",
     ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
   ];
 
@@ -569,6 +624,22 @@ function compilePlugins(
           controllerUrl: `http://127.0.0.1:${env.port}`,
         },
       },
+      "nexu-browser": {
+        enabled: true,
+        config: {
+          // Same loopback pattern: every tool POSTs the command here and the
+          // controller relays it to the desktop browser panel.
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+        },
+        hooks: {
+          // OpenClaw gates `agent_end` behind this flag for non-bundled
+          // plugins; without it the hook is silently blocked at registration.
+          // The plugin uses agent_end only for ctx.sessionKey — the run-ended
+          // signal that lets the desktop release the browser panel's agent
+          // pin. It does not read the conversation messages the flag exposes.
+          allowConversationAccess: true,
+        },
+      },
       "nexu-toolcall-guard": {
         enabled: true,
         hooks: {
@@ -626,6 +697,14 @@ export function compileOpenClawConfig(
   const utilityModelId = config.runtime.utilityModelId
     ? resolveModelId(config, env, config.runtime.utilityModelId, oauthState)
     : null;
+  const computerUseEnabled =
+    isLocalAutomationPreviewEnabled(env) &&
+    config.localAutomation?.computerUse.enabled === true &&
+    env.computerUseBackend !== null &&
+    env.computerUsePlatformSupported !== false &&
+    env.computerUseBin !== null &&
+    path.isAbsolute(env.computerUseBin) &&
+    existsSync(env.computerUseBin);
 
   const openClawConfig: OpenClawConfig = {
     ...(disableMdnsDiscovery
@@ -642,6 +721,40 @@ export function compileOpenClawConfig(
     // that times out on restricted networks (e.g. China) and stalls startup.
     // The OpenClaw version is managed by slimclaw + the desktop auto-updater.
     update: { checkOnStart: false },
+    ...(computerUseEnabled
+      ? {
+          mcp: {
+            servers: {
+              "cua-driver": {
+                enabled: true,
+                transport: "stdio",
+                // The MCP process is a thin client of the daemon; the daemon
+                // owns the platform grants, so this may run from the plain
+                // executable path.
+                command: env.computerUseBin,
+                // No --socket: the driver must use its own default,
+                // which is the only one `permissions status` discovers.
+                args: ["mcp", "--embedded"],
+                env: {
+                  CUA_DRIVER_EMBEDDED: "1",
+                  CUA_DRIVER_HOST_BUNDLE_ID: "io.tabby.desktop",
+                  CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
+                  CUA_DRIVER_TELEMETRY_HOME: path.join(
+                    env.nexuHomeDir,
+                    "runtime",
+                    "cua-driver",
+                  ),
+                },
+                connectionTimeoutMs: 10_000,
+                requestTimeoutMs: 60_000,
+                toolFilter: {
+                  include: CUA_TOOL_FILTER,
+                },
+              },
+            },
+          },
+        }
+      : {}),
     gateway: {
       port: env.openclawGatewayPort,
       mode: "local",
@@ -661,8 +774,15 @@ export function compileOpenClawConfig(
               root: resolveControlUiRoot(env.openclawBuiltinExtensionsDir),
             }
           : {}),
-        allowedOrigins: [env.webUrl],
-        dangerouslyAllowHostHeaderOriginFallback: true,
+        allowedOrigins: [
+          env.webUrl,
+          `http://127.0.0.1:${env.openclawGatewayPort}`,
+          `http://localhost:${env.openclawGatewayPort}`,
+        ],
+        // Host-header origin fallback lets any page that can reach the port
+        // pass the origin check, which defeats the allowlist under DNS
+        // rebinding. List the real loopback origins instead.
+        dangerouslyAllowHostHeaderOriginFallback: false,
       },
       http: {
         endpoints: {
@@ -719,8 +839,14 @@ export function compileOpenClawConfig(
       ),
     },
     tools: {
+      // Host shell execution is only available inside an explicitly enabled
+      // sandbox. Outside one it is denied outright rather than left as an
+      // implicit, unaudited way to drive the user's machine.
+      ...(process.env.SANDBOX_ENABLED === "true"
+        ? {}
+        : { deny: ["exec", "process"] }),
       exec: {
-        security: "full",
+        security: process.env.SANDBOX_ENABLED === "true" ? "full" : "deny",
         ask: "off",
         host: process.env.SANDBOX_ENABLED === "true" ? "sandbox" : "gateway",
       },
@@ -783,9 +909,12 @@ export function compileOpenClawConfig(
     commands: {
       native: "auto",
       nativeSkills: "auto",
-      restart: true,
+      restart: false,
       ownerDisplay: "raw",
-      ownerAllowFrom: ["*"],
+      // OpenClaw 2026.7.1 treats a wildcard command owner as "every sender is
+      // an owner", which exposes the owner-only `nodes`, `gateway`, and `cron`
+      // tools to any channel. Do not reintroduce it on the strength of the
+      // docs' claim that a wildcard alone is insufficient for ownership.
     },
     diagnostics: {
       enabled: true,

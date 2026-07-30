@@ -1,11 +1,17 @@
 import { SkillList } from "@/components/experts/skill-selector";
 import { ModelPickerDropdown } from "@/components/model-picker-dropdown";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
-import { useCommunitySkills } from "@/hooks/use-community-catalog";
+import {
+  createInstalledSkillReference,
+  createSkillReference,
+  skillReferenceMatchesSkill,
+  useExpertSkillCatalog,
+} from "@/hooks/use-expert-skill-catalog";
 import { useExperthubCatalog } from "@/hooks/use-experthub-catalog";
 import { getExpertPreset } from "@/lib/expert-presets";
 import { getTagLabel } from "@/lib/skill-translations";
 import { cn } from "@/lib/utils";
+import type { SkillReference } from "@nexu/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -341,10 +347,8 @@ export function ExpertCustomPage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const selectedSkillsSet = useMemo(
-    () => new Set(selectedSkills),
-    [selectedSkills],
+  const [selectedSkillRefs, setSelectedSkillRefs] = useState<SkillReference[]>(
+    [],
   );
 
   const [agentsMd, setAgentsMd] = useState(() =>
@@ -454,13 +458,19 @@ export function ExpertCustomPage() {
     provider: string;
   }>;
 
-  const { data: skillsData } = useCommunitySkills();
-  const allSkills = skillsData?.skills ?? [];
-  const installedSlugs = useMemo(
-    () => new Set(skillsData?.installedSlugs ?? []),
-    [skillsData?.installedSlugs],
-  );
-  const installedSkills = skillsData?.installedSkills ?? [];
+  const {
+    displaySkills,
+    installedSkills,
+    topTags,
+    isLoading: isSkillCatalogLoading,
+    hasNextPage: hasNextSkillPage,
+    isFetchingNextPage: isFetchingNextSkillPage,
+    fetchNextPage: fetchNextSkillPage,
+  } = useExpertSkillCatalog({
+    tab: skillTab,
+    search: skillSearch,
+    category: activeTag,
+  });
 
   const { data: catalogData } = useExperthubCatalog();
   const ledgerBotId = useMemo(() => {
@@ -557,80 +567,18 @@ export function ExpertCustomPage() {
   }, [editManifest, isEditing, editSlug]);
 
   // Restore selected skills when the bot ID is resolved during editing.
-  // Watch the raw skills query data (stable reference) rather than the derived
-  // installedSkills array to avoid re-render loops from a fresh [] on each
-  // render while the query is still loading.
   const skillsRestoredRef = useRef<string | null>(null);
   useEffect(() => {
     if (!isEditing || !ledgerBotId) return;
     if (skillsRestoredRef.current === ledgerBotId) return;
-    const botSkills = (skillsData?.installedSkills ?? [])
+    const botSkills = installedSkills
       .filter((s) => s.agentId === ledgerBotId)
-      .map((s) => s.slug);
+      .map(createInstalledSkillReference);
     if (botSkills.length > 0) {
-      setSelectedSkills(botSkills);
+      setSelectedSkillRefs(botSkills);
       skillsRestoredRef.current = ledgerBotId;
     }
-  }, [isEditing, ledgerBotId, skillsData]);
-
-  const exploreSkills = useMemo(
-    () => [...allSkills].filter((s) => !installedSlugs.has(s.slug)),
-    [allSkills, installedSlugs],
-  );
-
-  const yoursSkills = useMemo(() => {
-    return installedSkills.map((is) => {
-      const catalogEntry = allSkills.find((s) => s.slug === is.slug);
-      return (
-        catalogEntry ?? {
-          slug: is.slug,
-          name: is.name || is.slug,
-          description: is.description || "",
-          downloads: 0,
-          stars: 0,
-          tags: [] as string[],
-          version: "",
-          updatedAt: "",
-        }
-      );
-    });
-  }, [installedSkills, allSkills]);
-
-  const topTags = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of allSkills) {
-      for (const tag of s.tags) {
-        counts[tag] = (counts[tag] ?? 0) + 1;
-      }
-    }
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
-      .map(([tag, count]) => ({ tag, count }));
-  }, [allSkills]);
-
-  const filteredExploreSkills = useMemo(() => {
-    let list = [...exploreSkills];
-    if (activeTag) list = list.filter((s) => s.tags.includes(activeTag));
-    if (skillSearch.trim()) {
-      const q = skillSearch.toLowerCase();
-      list = list.filter((s) =>
-        [s.slug, s.name, s.description].join("\n").toLowerCase().includes(q),
-      );
-    }
-    return list;
-  }, [exploreSkills, activeTag, skillSearch]);
-
-  const filteredYoursSkills = useMemo(() => {
-    let list = [...yoursSkills];
-    if (skillSearch.trim()) {
-      const q = skillSearch.toLowerCase();
-      list = list.filter((s) =>
-        [s.slug, s.name, s.description].join("\n").toLowerCase().includes(q),
-      );
-    }
-    return list;
-  }, [yoursSkills, skillSearch]);
+  }, [installedSkills, isEditing, ledgerBotId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -646,7 +594,8 @@ export function ExpertCustomPage() {
           avatarDataUrl: avatarUrl ?? undefined,
           modelId: selectedModel,
           description: description || undefined,
-          skills: selectedSkills,
+          skills: selectedSkillRefs.map((reference) => reference.slug),
+          skillRefs: selectedSkillRefs,
           existingSlug: editSlug ?? undefined,
           workspaceFiles,
         },
@@ -658,12 +607,10 @@ export function ExpertCustomPage() {
       void queryClient.invalidateQueries({
         queryKey: ["experthub", "catalog"],
       });
+      void queryClient.invalidateQueries({ queryKey: ["skillhub", "status"] });
       navigate("/workspace/experts");
     },
   });
-
-  const displaySkills =
-    skillTab === "explore" ? filteredExploreSkills : filteredYoursSkills;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -861,26 +808,35 @@ export function ExpertCustomPage() {
                   </div>
                 )}
                 <SkillList
-                  skills={allSkills}
                   displaySkills={displaySkills}
-                  selectedSkillsSet={selectedSkillsSet}
-                  installedSlugs={installedSlugs}
-                  onToggleSkill={(slug) =>
-                    setSelectedSkills((prev) =>
-                      prev.includes(slug)
-                        ? prev.filter((s) => s !== slug)
-                        : [...prev, slug],
+                  selectedSkillRefs={selectedSkillRefs}
+                  installedSkills={installedSkills}
+                  onToggleSkill={(skill) =>
+                    setSelectedSkillRefs((previous) =>
+                      previous.some((reference) =>
+                        skillReferenceMatchesSkill(reference, skill),
+                      )
+                        ? previous.filter(
+                            (reference) => reference.slug !== skill.slug,
+                          )
+                        : [...previous, createSkillReference(skill)],
                     )
                   }
+                  isLoading={isSkillCatalogLoading}
+                  hasNextPage={hasNextSkillPage}
+                  isFetchingNextPage={isFetchingNextSkillPage}
+                  onLoadMore={() => {
+                    void fetchNextSkillPage();
+                  }}
                   emptyLabel={t("skills.loadingCatalog")}
                   noResultsLabel={t("skills.noMatchingSkills")}
                 />
               </div>
-              {selectedSkills.length > 0 && (
+              {selectedSkillRefs.length > 0 && (
                 <p className="text-[11px] text-text-muted mt-1.5 shrink-0">
                   {t("experts.custom.skills_selected", {
                     defaultValue: "已选择 {{count}} 个技能",
-                    count: selectedSkills.length,
+                    count: selectedSkillRefs.length,
                   })}
                 </p>
               )}

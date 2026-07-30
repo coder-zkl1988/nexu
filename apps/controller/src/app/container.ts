@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import type { SkillReference } from "@nexu/shared";
 import { logger } from "../lib/logger.js";
 import { startChannelHealthWatchdog } from "../runtime/channel-health-watchdog.js";
 import { ControlPlaneHealthService } from "../runtime/control-plane-health.js";
@@ -22,6 +23,7 @@ import {
   createRuntimeState,
 } from "../runtime/state.js";
 import { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js";
+import { AgentBrowserBridge } from "../services/agent-browser-bridge.js";
 import { AgentService } from "../services/agent-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
@@ -45,6 +47,7 @@ import {
 import { ensureExpertPersonaFolds } from "../services/experthub/persona-fold-migration.js";
 import { GithubStarVerificationService } from "../services/github-star-verification-service.js";
 import { IntegrationService } from "../services/integration-service.js";
+import { LocalAutomationService } from "../services/local-automation-service.js";
 import { LocalUserService } from "../services/local-user-service.js";
 import { MediaGenerationService } from "../services/media-generation-service.js";
 import { ModelProviderService } from "../services/model-provider-service.js";
@@ -92,6 +95,7 @@ export interface ControllerContainer {
   runtimeModelStateService: RuntimeModelStateService;
   modelProviderService: ModelProviderService;
   integrationService: IntegrationService;
+  localAutomationService: LocalAutomationService;
   localUserService: LocalUserService;
   desktopLocalService: DesktopLocalService;
   analyticsService: AnalyticsService;
@@ -115,13 +119,19 @@ export interface ControllerContainer {
     modelId: string;
     description?: string;
     skills: string[];
+    skillRefs?: SkillReference[];
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) => Promise<{ ok: true; botId: string; slug: string }>;
   updateExpertSkillsFn: (args: {
     slug: string;
     skills: string[];
-  }) => Promise<{ ok: true; configuredSkills: string[] }>;
+    skillRefs?: SkillReference[];
+  }) => Promise<{
+    ok: true;
+    configuredSkills: string[];
+    configuredSkillRefs: SkillReference[];
+  }>;
   openclawSyncService: OpenClawSyncService;
   openclawAuthService: OpenClawAuthService;
   quotaFallbackService: QuotaFallbackService;
@@ -131,6 +141,7 @@ export interface ControllerContainer {
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
   deviceNameStore: DeviceNameStore;
+  agentBrowserBridge: AgentBrowserBridge;
   wsClient: OpenClawWsClient;
   gatewayService: OpenClawGatewayService;
   sessionRunRegistry: SessionRunRegistry;
@@ -228,6 +239,12 @@ export async function createContainer(): Promise<ControllerContainer> {
     teamLedgerStore,
   );
   syncService = openclawSyncService;
+  const localAutomationService = new LocalAutomationService(
+    env,
+    configStore,
+    openclawSyncService,
+    openclawProcess,
+  );
   const cronGateway = new OpenClawCronGateway(wsClient, env);
   const scheduleService = new ScheduleService(
     configStore,
@@ -520,10 +537,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         },
         skillhub: {
           install: async (input) => {
-            return skillhubService.installWorkspaceSkill(
-              input.slug,
-              input.agentId,
-            );
+            return skillhubService.installWorkspaceSkill(input, input.agentId);
           },
         },
         sync: openclawSyncService,
@@ -572,10 +586,12 @@ export async function createContainer(): Promise<ControllerContainer> {
     skillhub: {
       install: async (input: {
         slug: string;
+        ownerHandle?: string;
+        version?: string;
         agentId: string;
         source: "workspace";
       }) => {
-        return skillhubService.installWorkspaceSkill(input.slug, input.agentId);
+        return skillhubService.installWorkspaceSkill(input, input.agentId);
       },
     },
     sync: openclawSyncService,
@@ -605,6 +621,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     modelId: string;
     description?: string;
     skills: string[];
+    skillRefs?: SkillReference[];
     existingSlug?: string;
     workspaceFiles: Record<string, string>;
   }) =>
@@ -639,10 +656,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         },
         skillhub: {
           install: async (input) => {
-            return skillhubService.installWorkspaceSkill(
-              input.slug,
-              input.agentId,
-            );
+            return skillhubService.installWorkspaceSkill(input, input.agentId);
           },
         },
         sync: openclawSyncService,
@@ -659,10 +673,15 @@ export async function createContainer(): Promise<ControllerContainer> {
       },
     });
 
-  const updateExpertSkillsFn = (args: { slug: string; skills: string[] }) =>
+  const updateExpertSkillsFn = (args: {
+    slug: string;
+    skills: string[];
+    skillRefs?: SkillReference[];
+  }) =>
     updateExpertSkills({
       slug: args.slug,
       skills: args.skills,
+      ...(args.skillRefs ? { skillRefs: args.skillRefs } : {}),
       deps: {
         catalog: {
           resolveExpert: (slug) => experthubCatalogManager.resolveExpert(slug),
@@ -671,10 +690,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         },
         skillhub: {
           install: async (input) => {
-            return skillhubService.installWorkspaceSkill(
-              input.slug,
-              input.agentId,
-            );
+            return skillhubService.installWorkspaceSkill(input, input.agentId);
           },
           uninstall: async (input) => {
             const result = await skillhubService.uninstallSkill({
@@ -738,6 +754,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     runtimeModelStateService,
     modelProviderService,
     integrationService: new IntegrationService(configStore),
+    localAutomationService,
     localUserService: new LocalUserService(configStore),
     desktopLocalService: new DesktopLocalService(
       configStore,
@@ -767,6 +784,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     devicePollingService,
     deviceTaskHistoryStore,
     deviceNameStore: new DeviceNameStore(env.deviceNamesPath),
+    agentBrowserBridge: new AgentBrowserBridge(),
     wsClient,
     gatewayService,
     sessionRunRegistry,

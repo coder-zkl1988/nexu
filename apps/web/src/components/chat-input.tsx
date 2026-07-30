@@ -129,10 +129,14 @@ export function ChatInputAttachButton({
   onClick,
   disabled = false,
   label,
+  title = label ?? "Attach file",
+  active = false,
 }: {
   onClick: () => void;
   disabled?: boolean;
   label?: string;
+  title?: string;
+  active?: boolean;
 }) {
   return (
     <button
@@ -140,9 +144,14 @@ export function ChatInputAttachButton({
       onClick={onClick}
       disabled={disabled}
       data-chat-attachment="true"
-      aria-label={label}
-      title={label}
-      className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+      title={title}
+      aria-label={label ?? title}
+      aria-expanded={active}
+      className={cn(
+        "flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent",
+        active &&
+          "bg-[var(--color-tabby-canvas)] text-[var(--color-tabby-foreground)]",
+      )}
     >
       <Plus className="w-5 h-5" />
     </button>

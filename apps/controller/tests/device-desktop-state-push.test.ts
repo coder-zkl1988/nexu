@@ -76,6 +76,48 @@ describe("DeviceControlService.pushVlmCredential", () => {
   });
 });
 
+describe("DeviceControlService.executeTask", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        result: { taskId: "task-1", success: true },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses a generous hard ceiling above the heartbeat-driven idle timeout", async () => {
+    const service = makeService(async () => CREDENTIAL);
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+
+    await service.executeTask("device-1", {
+      task: "发布一篇小红书图文笔记",
+      timeout: 120_000,
+    });
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(request.signal).toBeInstanceOf(AbortSignal);
+    expect(timeoutSpy).toHaveBeenCalledWith(30 * 60_000);
+    expect(JSON.parse(request.body as string)).toEqual({
+      method: "device.execute_task",
+      params: {
+        deviceId: "device-1",
+        task: "发布一篇小红书图文笔记",
+        timeoutMs: 120_000,
+      },
+    });
+    timeoutSpy.mockRestore();
+  });
+});
+
 describe("DevicePollingService desktop-state reconcile", () => {
   beforeEach(() => {
     vi.useFakeTimers();

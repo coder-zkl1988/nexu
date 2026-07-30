@@ -20,7 +20,33 @@ const DESKPET_REPLYING_DURATION_MS = 8000;
 const DESKPET_SUCCESS_DURATION_MS = 5000;
 const DESKPET_ERROR_DURATION_MS = 4200;
 
-type PendingStatus = "starting" | "streaming" | "error";
+export type PendingStatus = "starting" | "streaming" | "error";
+export type PendingStreamLifecycle = "active" | "succeeded" | "failed";
+export type PendingStreamEvent =
+  | "delta"
+  | "final"
+  | "error"
+  | "aborted"
+  | "session_lookup_failed";
+
+export function transitionPendingStream(
+  lifecycle: PendingStreamLifecycle,
+  event: PendingStreamEvent,
+): { accepted: boolean; lifecycle: PendingStreamLifecycle } {
+  if (lifecycle !== "active") return { accepted: false, lifecycle };
+  if (event === "final") return { accepted: true, lifecycle: "succeeded" };
+  if (event === "error" || event === "aborted") {
+    return { accepted: true, lifecycle: "failed" };
+  }
+  return { accepted: true, lifecycle };
+}
+
+export function shouldShowPendingStreamingText(
+  status: PendingStatus,
+  streamingText: string,
+): boolean {
+  return status !== "error" && streamingText.length > 0;
+}
 
 export function PendingSessionPage() {
   const { t } = useTranslation();
@@ -39,6 +65,7 @@ export function PendingSessionPage() {
   const resolvedRef = useRef(false);
   const replyCompletedRef = useRef(false);
   const latestStreamingTextRef = useRef("");
+  const streamLifecycleRef = useRef<PendingStreamLifecycle>("active");
 
   const { data: botsData } = useQuery({
     queryKey: ["bots"],
@@ -100,9 +127,31 @@ export function PendingSessionPage() {
     let cancelled = false;
     resolvedRef.current = false;
     replyCompletedRef.current = false;
+    streamLifecycleRef.current = "active";
     setStatus("starting");
     setStreamingText("");
     latestStreamingTextRef.current = "";
+    const acceptStreamEvent = (event: PendingStreamEvent): boolean => {
+      const transition = transitionPendingStream(
+        streamLifecycleRef.current,
+        event,
+      );
+      streamLifecycleRef.current = transition.lifecycle;
+      return transition.accepted;
+    };
+    const markReplyFailed = (
+      event: "error" | "aborted" | "session_lookup_failed",
+    ) => {
+      if (cancelled || resolvedRef.current || !acceptStreamEvent(event)) return;
+      replyCompletedRef.current = false;
+      latestStreamingTextRef.current = "";
+      setStreamingText("");
+      setStatus("error");
+      invokeDesktopHost("desktop:deskpet-activity", {
+        mood: "error",
+        durationMs: DESKPET_ERROR_DURATION_MS,
+      });
+    };
     invokeDesktopHost("desktop:deskpet-activity", {
       mood: "lobster-replying",
       durationMs: DESKPET_REPLYING_DURATION_MS,
@@ -119,24 +168,14 @@ export function PendingSessionPage() {
       .then((session) => {
         if (cancelled || !session?.id) {
           if (!cancelled && !resolvedRef.current) {
-            setStatus("error");
-            invokeDesktopHost("desktop:deskpet-activity", {
-              mood: "error",
-              durationMs: DESKPET_ERROR_DURATION_MS,
-            });
+            markReplyFailed("session_lookup_failed");
           }
           return;
         }
         navigateToSession(session.id);
       })
       .catch(() => {
-        if (!cancelled && !resolvedRef.current) {
-          setStatus("error");
-          invokeDesktopHost("desktop:deskpet-activity", {
-            mood: "error",
-            durationMs: DESKPET_ERROR_DURATION_MS,
-          });
-        }
+        markReplyFailed("session_lookup_failed");
       });
 
     const client = createLocalStreamSSEClient({
@@ -144,6 +183,7 @@ export function PendingSessionPage() {
       sessionKey: params.sessionKey,
       runId: params.runId,
       onDelta: (delta) => {
+        if (!acceptStreamEvent("delta")) return;
         setStatus("streaming");
         setStreamingText((prev) => {
           const next = delta.replace ? delta.deltaText : prev + delta.deltaText;
@@ -156,6 +196,7 @@ export function PendingSessionPage() {
         });
       },
       onFinal: () => {
+        if (!acceptStreamEvent("final")) return;
         replyCompletedRef.current = true;
         invokeDesktopHost("desktop:deskpet-activity", {
           mood: "success",
@@ -165,18 +206,10 @@ export function PendingSessionPage() {
         void resolveSessionOnce();
       },
       onAborted: () => {
-        setStatus("error");
-        invokeDesktopHost("desktop:deskpet-activity", {
-          mood: "error",
-          durationMs: DESKPET_ERROR_DURATION_MS,
-        });
+        markReplyFailed("aborted");
       },
       onError: () => {
-        setStatus("error");
-        invokeDesktopHost("desktop:deskpet-activity", {
-          mood: "error",
-          durationMs: DESKPET_ERROR_DURATION_MS,
-        });
+        markReplyFailed("error");
       },
     });
     client.connect();
@@ -250,7 +283,7 @@ export function PendingSessionPage() {
             />
             <div className="flex max-w-[44rem] flex-col items-start gap-2">
               <div className="inline-flex max-w-full items-center gap-1.5 rounded-[20px] border border-border bg-surface-1 px-4 py-3 text-[13px] text-text-primary break-words shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                {streamingText ? (
+                {shouldShowPendingStreamingText(status, streamingText) ? (
                   <p className="whitespace-pre-wrap break-words text-text-secondary">
                     {streamingText}
                     <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-text-secondary align-text-bottom" />
@@ -276,7 +309,7 @@ export function PendingSessionPage() {
             bots={bots}
             selectedBot={selectedBot}
             onSelectBot={() => {}}
-            onSend={() => {}}
+            onSend={() => false}
             sending={false}
             waitingReply
             disabled

@@ -22,6 +22,7 @@
  * structured attachments array as before.
  */
 
+import { readFile } from "node:fs/promises";
 import { logger } from "../lib/logger.js";
 
 // Mirror of OpenClaw's `extractFileContentFromSource` size cap (5 MB raw).
@@ -117,7 +118,7 @@ function escapeFileBlockContent(text: string): string {
 
 export interface AttachmentExtractInput {
   /** Pure base64 content (no `data:` prefix). */
-  content: string;
+  content?: string;
   mimeType: string;
   filename?: string;
   size?: number;
@@ -137,6 +138,7 @@ export interface AttachmentExtractInput {
    * that OpenClaw's `pdf` / media tools can resolve.
    */
   storedPath?: string;
+  kind?: "file" | "directory";
 }
 
 export interface AttachmentExtractSuccess {
@@ -182,6 +184,37 @@ function buildFallbackMarker(
   return `[附件: ${filename}${sizeLabel}]`;
 }
 
+function isOfficeFilename(filename: string): boolean {
+  return /\.(?:docx|xlsx|pptx)$/iu.test(filename);
+}
+
+function buildStoredFileReference(input: {
+  filename: string;
+  mimeType: string;
+  size?: number;
+  storedPath?: string;
+  kind?: "file" | "directory";
+}): string {
+  if (!input.storedPath) {
+    return buildFallbackMarker(input.filename, input.size);
+  }
+
+  if (input.kind === "directory") {
+    const sizeAttr = input.size != null ? ` size="${input.size}"` : "";
+    return `<directory name="${xmlEscapeAttr(input.filename)}"${sizeAttr} path="${xmlEscapeAttr(input.storedPath)}">
+Directory stored on disk. Inspect files under the path attribute as needed.
+</directory>`;
+  }
+
+  const instruction = isOfficeFilename(input.filename)
+    ? "Office document stored on disk. Use the officecli skill and the path attribute to inspect or edit it."
+    : "Binary file stored on disk. Use an appropriate file tool with the path attribute to inspect it.";
+  return buildFileBlock({
+    ...input,
+    text: instruction,
+  });
+}
+
 function buildFileBlock(input: {
   filename: string;
   mimeType: string;
@@ -213,6 +246,14 @@ async function decodeBase64(content: string): Promise<Buffer | null> {
   } catch {
     return null;
   }
+}
+
+async function loadAttachmentBuffer(
+  input: AttachmentExtractInput,
+): Promise<Buffer | null> {
+  if (input.content) return decodeBase64(input.content);
+  if (!input.storedPath) return null;
+  return readFile(input.storedPath).catch(() => null);
 }
 
 async function extractPdfText(
@@ -252,10 +293,27 @@ export async function extractAttachmentText(
   const filename = input.filename?.trim() || "file";
   const mimeType = input.mimeType || "application/octet-stream";
   const size = input.size;
-  const fallbackMarker = buildFallbackMarker(filename, size);
+  const fallbackMarker = buildStoredFileReference({
+    filename,
+    mimeType,
+    size,
+    storedPath: input.storedPath,
+    kind: input.kind,
+  });
   const mode = input.mode ?? "preview";
   const textBudget =
     mode === "preview" ? MAX_PREVIEW_TEXT_CHARS : MAX_EXTRACTED_TEXT_CHARS;
+
+  if (input.kind === "directory") {
+    return {
+      ok: true,
+      filename,
+      mimeType,
+      size,
+      text: "Directory stored on disk.",
+      block: fallbackMarker,
+    };
+  }
 
   if (size != null && size > MAX_FILE_BYTES) {
     return {
@@ -269,7 +327,7 @@ export async function extractAttachmentText(
     };
   }
 
-  const buffer = await decodeBase64(input.content);
+  const buffer = await loadAttachmentBuffer(input);
   if (!buffer) {
     return {
       ok: false,
