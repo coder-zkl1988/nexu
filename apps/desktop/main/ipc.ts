@@ -691,6 +691,9 @@ export function registerIpcHandlers(
 
   const unsubscribeOrchestrator = orchestrator.subscribe((runtimeEvent) => {
     for (const window of BrowserWindow.getAllWindows()) {
+      // A window can still be listed here while tearing down, and sending to
+      // its destroyed webContents throws the same "Object has been destroyed".
+      if (window.isDestroyed()) continue;
       window.webContents.send("host:runtime-event", runtimeEvent);
     }
   });

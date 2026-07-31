@@ -1943,7 +1943,13 @@ function createMainWindow(): BrowserWindow {
     window.setVibrancy("sidebar");
   }
 
+  // Electron keeps dispatching webContents events while a window tears down,
+  // and every listener below reads `window` / `window.webContents`. Touching
+  // either after destruction throws "Object has been destroyed", which is fatal
+  // in the main process — for work that is only diagnostic or cosmetic. Bail
+  // once the window is gone instead.
   window.webContents.on("console-message", (details) => {
+    if (window.isDestroyed()) return;
     logRendererEvent({
       source: `renderer:${details.level}`,
       stream: details.level === "error" ? "stderr" : "stdout",
@@ -1956,6 +1962,7 @@ function createMainWindow(): BrowserWindow {
   window.webContents.on(
     "did-fail-load",
     (_event, errorCode, errorDescription, validatedUrl) => {
+      if (window.isDestroyed()) return;
       diagnosticsReporter?.recordStartupProbe({
         source: "main",
         stage: "main:renderer-did-fail-load",
@@ -1978,6 +1985,7 @@ function createMainWindow(): BrowserWindow {
   );
 
   window.webContents.on("did-finish-load", () => {
+    if (window.isDestroyed()) return;
     diagnosticsReporter?.recordStartupProbe({
       source: "main",
       stage: "main:renderer-did-finish-load",
@@ -1997,6 +2005,7 @@ function createMainWindow(): BrowserWindow {
   });
 
   window.webContents.on("render-process-gone", (_event, details) => {
+    if (window.isDestroyed()) return;
     diagnosticsReporter?.recordStartupProbe({
       source: "main",
       stage: "main:renderer-process-gone",
@@ -2168,13 +2177,17 @@ function createDeskpetWindow(): BrowserWindow {
   window.setIgnoreMouseEvents(true, { forward: true });
   positionDeskpetWindow(window);
 
+  // Same teardown race as the main window: the deskpet is opened and closed far
+  // more often, so its listeners are the likelier ones to fire post-destroy.
   window.webContents.on("context-menu", () => {
+    if (window.isDestroyed()) return;
     showDeskpetContextMenu();
   });
 
   window.webContents.on(
     "console-message",
     (_event, level, message, line, sourceId) => {
+      if (window.isDestroyed()) return;
       const levelLabel =
         ["verbose", "info", "warning", "error"][level] ?? String(level);
       logRendererEvent({
@@ -2193,6 +2206,7 @@ function createDeskpetWindow(): BrowserWindow {
   });
 
   window.webContents.on("did-finish-load", () => {
+    if (window.isDestroyed()) return;
     window.setBackgroundColor(TRANSPARENT_WINDOW_BACKGROUND_COLOR);
   });
 
