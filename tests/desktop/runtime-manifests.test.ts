@@ -572,6 +572,7 @@ describe("desktop runtime manifests", () => {
 
   describe("createRuntimeUnitManifests", () => {
     it("exposes the packaged OfficeCLI binary to controller and OpenClaw", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
       const electronRoot = runtimePath(
         "/Applications/Nexu.app/Contents/Resources",
       );
@@ -586,7 +587,7 @@ describe("desktop runtime manifests", () => {
         "runtime",
         "tools",
         "officecli",
-        process.platform === "win32" ? "officecli.exe" : "officecli",
+        "officecli",
       );
       const controller = manifests.find(
         (manifest) => manifest.id === "controller",

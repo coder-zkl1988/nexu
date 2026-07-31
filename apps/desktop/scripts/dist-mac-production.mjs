@@ -13,6 +13,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
   writeAppUpdateYml,
@@ -286,6 +287,36 @@ async function copyAppBundleForDmg(appPath, dmgRoot) {
   }
 }
 
+async function createDmgWithRetry(dmgRoot, dmgPath) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    await rm(dmgPath, { force: true }).catch(() => {});
+    try {
+      await run("hdiutil", [
+        "create",
+        "-srcfolder",
+        dmgRoot,
+        "-ov",
+        "-format",
+        "ULFO",
+        "-volname",
+        productName,
+        dmgPath,
+      ]);
+      return;
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      const retryDelayMs = attempt * 5_000;
+      console.warn(
+        `    hdiutil failed (attempt ${attempt}/${maxAttempts}); retrying in ${retryDelayMs / 1_000}s`,
+      );
+      await delay(retryDelayMs);
+    }
+  }
+}
+
 async function main() {
   console.log("========================================");
   console.log(" Tabby macOS Production Build");
@@ -520,17 +551,7 @@ async function main() {
       await mkdir(dmgRoot, { recursive: true });
       await copyAppBundleForDmg(appPath, dmgRoot);
       await symlink("/Applications", resolve(dmgRoot, "Applications"));
-      await run("hdiutil", [
-        "create",
-        "-srcfolder",
-        dmgRoot,
-        "-ov",
-        "-format",
-        "ULFO",
-        "-volname",
-        productName,
-        dmgPath,
-      ]);
+      await createDmgWithRetry(dmgRoot, dmgPath);
     } finally {
       await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
     }

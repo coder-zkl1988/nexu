@@ -154,7 +154,9 @@ function launchdPath(env: PlistEnv): string | undefined {
   const entries = [officeCliDir, env.systemPath].filter(
     (entry): entry is string => Boolean(entry),
   );
-  return entries.length > 0 ? entries.join(path.delimiter) : undefined;
+  // launchd always runs on macOS, so its PATH syntax must not depend on the
+  // host that happens to generate or test the plist.
+  return entries.length > 0 ? entries.join(":") : undefined;
 }
 
 /**
