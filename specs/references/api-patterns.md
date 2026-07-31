@@ -107,6 +107,31 @@ After route or schema changes run `pnpm generate-types`, then update web call si
 
 Frontend code must use `apps/web/lib/api/` and should not call controller routes with raw `fetch` when an SDK function exists.
 
+## Chat control routes
+
+Long-running chat controls use dedicated OpenAPI routes instead of the normal
+local-chat send path:
+
+- `POST /api/v1/chat/intent` classifies Auto-mode busy input on a fresh,
+  isolated subagent session. The Controller assigns the configured utility
+  model when present, never writes to the active session, aborts timed-out
+  classifier runs, archives the classifier session, and returns a
+  `side-question` fallback when classification fails.
+- `POST /api/v1/chat/steer` sends plain guidance through `sessions.steer`.
+  OpenClaw interrupts the active run, waits for it to release the session, then
+  starts a replacement run with the new guidance. Do not forward an explicit
+  `/steer` command or use plain `chat.send`: both can fall back to a concurrent
+  session writer when OpenClaw cannot see an embedded run blocked in a tool.
+- `POST /api/v1/chat/side-question` sends raw `/btw` through `chat.send` with
+  `deliver: false`, without expert-routing prompt injection and without
+  clearing the main session's busy state.
+Do not remove the ordinary local-chat busy guard. Steer guidance is a main
+replacement request and its lifecycle must remain tracked across primary-run
+handoff. Only BTW is a side run whose events cannot alter main-session busy
+state.
+`chat.side_result` must be correlated by `runId`, and SSE forwarding must also
+filter by `sessionKey`.
+
 ## Local attachment paths
 
 Desktop attachment requests may carry an app-staged path instead of inline base64. Route schemas must cap item count and payload size, while service code must independently validate that the lexical and canonical paths stay inside `<OPENCLAW_STATE_DIR>/media/inbound/`. Reject symbolic links, directories where a file is expected, files where a directory is expected, and non-regular entries before moving content into the session workspace.

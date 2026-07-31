@@ -9,6 +9,7 @@ type TestMessage = {
   id: string;
   role: "user" | "assistant";
   content: unknown;
+  aborted?: boolean;
 };
 
 function entry(msg: TestMessage) {
@@ -108,6 +109,31 @@ describe("buildTranscriptItems", () => {
 
     expect(items).toHaveLength(1);
     expect(items[0]?.kind).toBe("message");
+  });
+
+  it("keeps interrupted assistant output inside the activity group", () => {
+    const items = buildTranscriptItems([
+      entry({
+        id: "tool",
+        role: "assistant",
+        content: [{ type: "toolCall", id: "call-1", name: "exec" }],
+      }),
+      entry({
+        id: "interrupted-narration",
+        role: "assistant",
+        content: "The repository boundary is confirmed.",
+        aborted: true,
+      }),
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.kind).toBe("activity");
+    if (items[0]?.kind === "activity") {
+      expect(items[0].entries.map(({ msg }) => msg.id)).toEqual([
+        "tool",
+        "interrupted-narration",
+      ]);
+    }
   });
 
   it("drops a trailing assistant message duplicated by process narration", () => {

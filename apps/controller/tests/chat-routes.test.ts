@@ -9,10 +9,19 @@ function createChatRoutesApp({
   sendToMainSession,
   getSessionBySessionKey,
   sessionRunRegistry = new SessionRunRegistry(),
+  sendSideQuestion = vi.fn(async () => ({ runId: "side-run-1" })),
+  steerChatSession = vi.fn(async () => ({ runId: "steer-command-1" })),
+  classifyRunMessage = vi.fn(async () => ({
+    intent: "side-question" as const,
+    confidence: 0.9,
+  })),
 }: {
   sendToMainSession: ControllerContainer["gatewayService"]["sendToMainSession"];
   getSessionBySessionKey: ControllerContainer["sessionService"]["getSessionBySessionKey"];
   sessionRunRegistry?: SessionRunRegistry;
+  sendSideQuestion?: ControllerContainer["gatewayService"]["sendSideQuestion"];
+  steerChatSession?: ControllerContainer["gatewayService"]["steerChatSession"];
+  classifyRunMessage?: ControllerContainer["runMessageIntentService"]["classify"];
 }) {
   const app = new OpenAPIHono<ControllerBindings>();
   const eventHandlers = new Map<string, (payload: unknown) => void>();
@@ -23,6 +32,8 @@ function createChatRoutesApp({
     },
     gatewayService: {
       sendToMainSession,
+      sendSideQuestion,
+      steerChatSession,
     },
     attachmentStore: {},
     teamService: {
@@ -32,6 +43,9 @@ function createChatRoutesApp({
       getSessionBySessionKey,
     },
     sessionRunRegistry,
+    runMessageIntentService: {
+      classify: classifyRunMessage,
+    },
     wsClient: {
       on: (event: string, handler: (payload: unknown) => void) => {
         eventHandlers.set(event, handler);
@@ -56,6 +70,62 @@ function createChatRoutesApp({
 }
 
 describe("chat routes", () => {
+  it("classifies a busy-session message without touching the main session", async () => {
+    const classifyRunMessage = vi.fn(async () => ({
+      intent: "steer" as const,
+      confidence: 0.93,
+    }));
+    const sendToMainSession = vi.fn(async () => ({}));
+    const { app } = createChatRoutesApp({
+      sendToMainSession,
+      getSessionBySessionKey: vi.fn(async () => null),
+      classifyRunMessage,
+    });
+
+    const response = await app.request("/api/v1/chat/intent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        botId: "bot-1",
+        message: "Usa SQLite en lugar de Postgres",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      intent: "steer",
+      confidence: 0.93,
+      source: "model",
+    });
+    expect(classifyRunMessage).toHaveBeenCalledWith({
+      botId: "bot-1",
+      message: "Usa SQLite en lugar de Postgres",
+    });
+    expect(sendToMainSession).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a side question when intent classification fails", async () => {
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      classifyRunMessage: vi.fn(async () => {
+        throw new Error("utility lane timed out");
+      }),
+    });
+
+    const response = await app.request("/api/v1/chat/intent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ botId: "bot-1", message: "ambiguous" }),
+    });
+
+    expect(await response.json()).toEqual({
+      intent: "side-question",
+      confidence: 0,
+      source: "fallback",
+    });
+  });
+
   it("starts a local chat run without waiting for session discovery", async () => {
     const sendToMainSession = vi.fn(async () => ({
       runId: "run-1",
@@ -135,6 +205,115 @@ describe("chat routes", () => {
     });
     // The busy session must not be hit with a second concurrent turn.
     expect(sendToMainSession).not.toHaveBeenCalled();
+  });
+
+  it("accepts a side question while the main session is busy", async () => {
+    const sessionRunRegistry = new SessionRunRegistry();
+    const sendSideQuestion = vi.fn(async () => ({ runId: "side-run-9" }));
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      sessionRunRegistry,
+      sendSideQuestion,
+    });
+    sessionRunRegistry.markStarted("agent:bot-1:main");
+
+    const response = await app.request("/api/v1/chat/side-question", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        botId: "bot-1",
+        sessionKey: "agent:bot-1:main",
+        question: "当前已经完成了哪些步骤？",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      runId: "side-run-9",
+    });
+    expect(sendSideQuestion).toHaveBeenCalledWith(
+      "agent:bot-1:main",
+      "当前已经完成了哪些步骤？",
+    );
+    sessionRunRegistry.handleChatEvent({
+      runId: "side-run-9",
+      sessionKey: "agent:bot-1:main",
+      state: "final",
+    });
+    expect(sessionRunRegistry.isBusy("agent:bot-1:main")).toBe(true);
+  });
+
+  it("tracks queued guidance separately from the active request", async () => {
+    const sessionRunRegistry = new SessionRunRegistry();
+    const steerChatSession = vi.fn(async () => ({ runId: "steer-command-9" }));
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      sessionRunRegistry,
+      steerChatSession,
+    });
+    sessionRunRegistry.markStarted("agent:bot-1:main", "original-run-9");
+
+    const response = await app.request("/api/v1/chat/steer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        botId: "bot-1",
+        sessionKey: "agent:bot-1:main",
+        message: "停止扫描依赖，只总结已经发现的问题。",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      accepted: true,
+      runId: "steer-command-9",
+    });
+    expect(steerChatSession).toHaveBeenCalledWith(
+      "agent:bot-1:main",
+      "停止扫描依赖，只总结已经发现的问题。",
+    );
+    sessionRunRegistry.handleChatEvent({
+      runId: "original-run-9",
+      sessionKey: "agent:bot-1:main",
+      state: "final",
+    });
+    expect(sessionRunRegistry.isBusy("agent:bot-1:main")).toBe(true);
+
+    sessionRunRegistry.handleChatEvent({
+      runId: "steer-command-9",
+      sessionKey: "agent:bot-1:main",
+      state: "final",
+    });
+    expect(sessionRunRegistry.isBusy("agent:bot-1:main")).toBe(false);
+  });
+
+  it("does not leave the session busy when guidance submission fails", async () => {
+    const sessionRunRegistry = new SessionRunRegistry();
+    const steerChatSession = vi.fn(async () => {
+      throw new Error("gateway unavailable");
+    });
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      sessionRunRegistry,
+      steerChatSession,
+    });
+
+    const response = await app.request("/api/v1/chat/steer", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        botId: "bot-1",
+        sessionKey: "agent:bot-1:main",
+        message: "只总结已经发现的问题。",
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(sessionRunRegistry.isBusy("agent:bot-1:main")).toBe(false);
   });
 
   it("surfaces an unverified computer action as an SSE error", async () => {

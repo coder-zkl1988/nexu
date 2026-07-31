@@ -97,6 +97,13 @@ export interface SendChannelMessageResult {
   conversationId?: string;
 }
 
+export interface ChatControlResult {
+  runId?: string;
+  messageId?: string;
+  content?: unknown;
+  interruptedActiveRun?: boolean;
+}
+
 export interface LogoutChannelAccountResult {
   cleared?: boolean;
   loggedOut?: boolean;
@@ -257,6 +264,7 @@ export class OpenClawGatewayService {
     label?: string | null;
     category?: string | null;
     archived?: boolean;
+    model?: string | null;
   }): Promise<unknown> {
     return this.wsClient.request("sessions.patch", params);
   }
@@ -556,7 +564,7 @@ export class OpenClawGatewayService {
       mimeType?: string;
       filename?: string;
     }>;
-  }): Promise<{ messageId?: string; content?: unknown }> {
+  }): Promise<ChatControlResult> {
     const idempotencyKey = randomUUID();
 
     // Normalise caller attachments to a plain array (never undefined here).
@@ -621,6 +629,37 @@ export class OpenClawGatewayService {
       },
       // Give the agent up to 120 s to reply; the WS frame timeout is a bit
       // longer so the RPC itself doesn't time out before OpenClaw does.
+      { timeoutMs: 130_000 },
+    );
+  }
+
+  async sendSideQuestion(
+    sessionKey: string,
+    question: string,
+  ): Promise<ChatControlResult> {
+    return this.wsClient.request<ChatControlResult>(
+      "chat.send",
+      {
+        sessionKey,
+        message: `/btw ${question.trim()}`,
+        deliver: false,
+        idempotencyKey: randomUUID(),
+      },
+      { timeoutMs: 130_000 },
+    );
+  }
+
+  async steerChatSession(
+    sessionKey: string,
+    message: string,
+  ): Promise<ChatControlResult> {
+    return this.wsClient.request<ChatControlResult>(
+      "sessions.steer",
+      {
+        key: sessionKey,
+        message: message.trim(),
+        idempotencyKey: randomUUID(),
+      },
       { timeoutMs: 130_000 },
     );
   }

@@ -89,4 +89,48 @@ describe("OpenClawGatewayService", () => {
       }
     });
   });
+
+  it("sends side questions through OpenClaw's isolated BTW lane", async () => {
+    const request = vi.fn(async () => ({ runId: "side-run-1" }));
+    const service = new OpenClawGatewayService({ request } as never);
+
+    await expect(
+      service.sendSideQuestion("agent:bot-1:main", "what is still running?"),
+    ).resolves.toEqual({ runId: "side-run-1" });
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        sessionKey: "agent:bot-1:main",
+        message: "/btw what is still running?",
+        deliver: false,
+        idempotencyKey: expect.any(String),
+      }),
+      { timeoutMs: 130_000 },
+    );
+  });
+
+  it("replaces the active run through OpenClaw's sessions.steer RPC", async () => {
+    const request = vi.fn(async () => ({
+      runId: "steer-command-1",
+      interruptedActiveRun: true,
+    }));
+    const service = new OpenClawGatewayService({ request } as never);
+
+    await expect(
+      service.steerChatSession("agent:bot-1:main", "summarize findings now"),
+    ).resolves.toEqual({
+      runId: "steer-command-1",
+      interruptedActiveRun: true,
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "sessions.steer",
+      expect.objectContaining({
+        key: "agent:bot-1:main",
+        message: "summarize findings now",
+        idempotencyKey: expect.any(String),
+      }),
+      { timeoutMs: 130_000 },
+    );
+  });
 });

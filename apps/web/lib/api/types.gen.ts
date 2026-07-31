@@ -2598,6 +2598,75 @@ export type GetApiV1ChatSessionResponses = {
 
 export type GetApiV1ChatSessionResponse = GetApiV1ChatSessionResponses[keyof GetApiV1ChatSessionResponses];
 
+export type PostApiV1ChatIntentData = {
+    body?: {
+        botId: string;
+        message: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/intent';
+};
+
+export type PostApiV1ChatIntentResponses = {
+    /**
+     * Busy-session message intent classification
+     */
+    200: {
+        intent: 'side-question' | 'steer';
+        confidence: number;
+        source: 'model' | 'fallback';
+    };
+};
+
+export type PostApiV1ChatIntentResponse = PostApiV1ChatIntentResponses[keyof PostApiV1ChatIntentResponses];
+
+export type PostApiV1ChatSideQuestionData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        question: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/side-question';
+};
+
+export type PostApiV1ChatSideQuestionResponses = {
+    /**
+     * Side question accepted
+     */
+    200: {
+        accepted: boolean;
+        runId: string;
+    };
+};
+
+export type PostApiV1ChatSideQuestionResponse = PostApiV1ChatSideQuestionResponses[keyof PostApiV1ChatSideQuestionResponses];
+
+export type PostApiV1ChatSteerData = {
+    body?: {
+        botId: string;
+        sessionKey: string;
+        message: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/chat/steer';
+};
+
+export type PostApiV1ChatSteerResponses = {
+    /**
+     * Guidance accepted for the active run
+     */
+    200: {
+        accepted: boolean;
+        runId: string;
+    };
+};
+
+export type PostApiV1ChatSteerResponse = PostApiV1ChatSteerResponses[keyof PostApiV1ChatSteerResponses];
+
 export type PostApiV1ChatLocalStartData = {
     body?: {
         botId: string;
@@ -2824,6 +2893,7 @@ export type GetApiV1ChatHistoryResponses = {
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            aborted?: boolean;
             toolName?: string;
             toolCallId?: string;
         }>;
@@ -3111,6 +3181,7 @@ export type GetApiV1SessionsByIdMessagesResponses = {
             content?: unknown;
             timestamp: number;
             createdAt: string;
+            aborted?: boolean;
             toolName?: string;
             toolCallId?: string;
         }>;

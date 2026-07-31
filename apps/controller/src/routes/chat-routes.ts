@@ -76,6 +76,35 @@ const localChatSendBodySchema = z.object({
   message: localChatMessageInputSchema,
 });
 
+const localChatControlTargetSchema = z.object({
+  botId: z.string().min(1),
+  sessionKey: z.string().min(1),
+});
+
+const localChatSideQuestionBodySchema = localChatControlTargetSchema.extend({
+  question: z.string().trim().min(1).max(4000),
+});
+
+const localChatSteerBodySchema = localChatControlTargetSchema.extend({
+  message: z.string().trim().min(1).max(4000),
+});
+
+const localChatControlResponseSchema = z.object({
+  accepted: z.boolean(),
+  runId: z.string().nullable(),
+});
+
+const localChatIntentBodySchema = z.object({
+  botId: z.string().min(1),
+  message: z.string().trim().min(1).max(4000),
+});
+
+const localChatIntentResponseSchema = z.object({
+  intent: z.enum(["side-question", "steer"]),
+  confidence: z.number().min(0).max(1),
+  source: z.enum(["model", "fallback"]),
+});
+
 const localChatMessageOutputSchema = z.object({
   id: z.string(),
   runId: z.string().nullable().optional(),
@@ -154,6 +183,136 @@ export function registerChatRoutes(
         sessionKey,
       );
       return c.json({ session });
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/chat/intent",
+      tags: ["Chat"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: localChatIntentBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Busy-session message intent classification",
+          content: {
+            "application/json": { schema: localChatIntentResponseSchema },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { botId, message } = c.req.valid("json");
+      try {
+        const result = await container.runMessageIntentService.classify({
+          botId,
+          message,
+        });
+        return c.json({ ...result, source: "model" as const }, 200);
+      } catch (error) {
+        logger.warn(
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "run message intent classification failed; using side-question fallback",
+        );
+        return c.json(
+          {
+            intent: "side-question" as const,
+            confidence: 0,
+            source: "fallback" as const,
+          },
+          200,
+        );
+      }
+    },
+  );
+
+  // POST /api/v1/chat/side-question - Ask a context-isolated /btw question.
+  // This intentionally bypasses the normal session busy guard: OpenClaw runs
+  // BTW work on a side lane and does not write it into the main transcript.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/chat/side-question",
+      tags: ["Chat"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: localChatSideQuestionBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Side question accepted",
+          content: {
+            "application/json": { schema: localChatControlResponseSchema },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { question, sessionKey } = c.req.valid("json");
+      const result = await container.gatewayService.sendSideQuestion(
+        sessionKey,
+        question,
+      );
+      if (result.runId) {
+        container.sessionRunRegistry.markSideRun(result.runId);
+      }
+      return c.json({ accepted: true, runId: result.runId ?? null }, 200);
+    },
+  );
+
+  // POST /api/v1/chat/steer - Replace the active run with updated guidance.
+  // sessions.steer performs the abort/wait/start sequence inside OpenClaw, so
+  // the replacement never becomes a concurrent writer for the same session.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/chat/steer",
+      tags: ["Chat"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: localChatSteerBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Guidance accepted for the active run",
+          content: {
+            "application/json": { schema: localChatControlResponseSchema },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const { message, sessionKey } = c.req.valid("json");
+      container.sessionRunRegistry.markStarted(sessionKey);
+      try {
+        const result = await container.gatewayService.steerChatSession(
+          sessionKey,
+          message,
+        );
+        if (result.runId) {
+          container.sessionRunRegistry.attachRunId(sessionKey, result.runId);
+        } else {
+          container.sessionRunRegistry.releasePendingStart(sessionKey);
+        }
+        return c.json({ accepted: true, runId: result.runId ?? null }, 200);
+      } catch (error) {
+        container.sessionRunRegistry.releasePendingStart(sessionKey);
+        throw error;
+      }
     },
   );
 
@@ -488,6 +647,7 @@ export function registerChatRoutes(
                     content: z.unknown(),
                     timestamp: z.number().nullable(),
                     createdAt: z.string().nullable(),
+                    aborted: z.boolean().optional(),
                     toolName: z.string().optional(),
                     toolCallId: z.string().optional(),
                   }),
@@ -777,6 +937,7 @@ export function registerChatRoutes(
         const unsubSide = container.wsClient.onChatSideResult(
           (payload: unknown) => {
             const evt = payload as Record<string, unknown>;
+            if (evt.sessionKey !== sessionKey) return;
             if (runId && evt.runId !== runId) return;
             send("side_result", JSON.stringify(evt));
           },
