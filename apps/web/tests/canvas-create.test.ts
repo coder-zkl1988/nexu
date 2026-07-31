@@ -152,6 +152,25 @@ describe("createConnectedNode", () => {
     expect(created?.metadata.config).toEqual({ mode: "image" });
   });
 
+  it("creates XHS and phone nodes with usable default metadata", () => {
+    const source = addNode({ type: "text", title: "Src" });
+    const xhs = createConnectedNode(source.id, "xhs", { x: 0, y: 0 });
+    const phone = createConnectedNode(source.id, "phone", { x: 0, y: 0 });
+
+    expect(xhs).toMatchObject({
+      type: "xhs",
+      title: "小红书帖子",
+      metadata: {
+        xhs: { title: "", content: "", images: [], hashtags: [] },
+      },
+    });
+    expect(phone).toMatchObject({
+      type: "phone",
+      title: "手机预览",
+      metadata: { phone: {} },
+    });
+  });
+
   it("c. position math: new node left-edge midpoint lands at drop point", () => {
     const source = addNode({ type: "text", title: "Src" });
     const at = { x: 500, y: 200 };

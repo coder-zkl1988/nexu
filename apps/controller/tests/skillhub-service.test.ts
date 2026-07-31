@@ -181,6 +181,8 @@ const mocks = vi.hoisted(() => {
     installed: false as boolean,
     reason: "bundle-missing" as "bundle-missing" | "fresh-install" | "replaced",
   }));
+  const mockReplaceTabbyMediaSkillsFromBundle = vi.fn(() => []);
+  const mockRecoverManagedBundleRefreshTransactions = vi.fn();
   return {
     mockSkillDbCreate,
     catalogManagerInstances,
@@ -192,6 +194,8 @@ const mocks = vi.hoisted(() => {
     mockCopyStaticSkills,
     mockReplaceLibtvVideoFromBundle,
     mockReplaceOfficeCliFromBundle,
+    mockReplaceTabbyMediaSkillsFromBundle,
+    mockRecoverManagedBundleRefreshTransactions,
   };
 });
 
@@ -215,8 +219,12 @@ vi.mock("../src/services/skillhub/skill-dir-watcher.js", () => ({
 
 vi.mock("../src/services/skillhub/curated-skills.js", () => ({
   copyStaticSkills: mocks.mockCopyStaticSkills,
+  recoverManagedBundleRefreshTransactions:
+    mocks.mockRecoverManagedBundleRefreshTransactions,
   replaceLibtvVideoFromBundle: mocks.mockReplaceLibtvVideoFromBundle,
   replaceOfficeCliFromBundle: mocks.mockReplaceOfficeCliFromBundle,
+  replaceTabbyMediaSkillsFromBundle:
+    mocks.mockReplaceTabbyMediaSkillsFromBundle,
 }));
 
 import { SkillhubService } from "../src/services/skillhub-service.js";
@@ -277,6 +285,7 @@ describe("SkillhubService", () => {
       skipped: [],
     });
     mocks.mockReplaceOfficeCliFromBundle.mockClear();
+    mocks.mockReplaceTabbyMediaSkillsFromBundle.mockClear();
     vi.stubEnv("CI", "");
   });
 
@@ -450,6 +459,55 @@ describe("SkillhubService", () => {
     );
   });
 
+  it("bootstrap() recovers publisher ownership before bundled media refresh", async () => {
+    const env = createEnv(rootDir);
+    const staticDir = path.join(rootDir, "static-skills");
+    const skillDir = path.join(env.openclawSkillsDir, "tabby-video");
+    mkdirSync(path.join(skillDir, ".clawhub"), { recursive: true });
+    mkdirSync(staticDir, { recursive: true });
+    writeFileSync(path.join(skillDir, "SKILL.md"), "publisher copy\n");
+    writeFileSync(
+      path.join(skillDir, ".clawhub", "origin.json"),
+      JSON.stringify({
+        slug: "tabby-video",
+        ownerHandle: "publisher",
+        installedVersion: "2.0.0",
+      }),
+    );
+
+    const db = createMockSkillDb();
+    db.getAllInstalled.mockReturnValue([
+      {
+        slug: "tabby-video",
+        source: "managed",
+        status: "installed",
+        ownerHandle: null,
+        version: null,
+        installedAt: "2026-07-01T00:00:00.000Z",
+        uninstalledAt: null,
+        agentId: null,
+      },
+    ]);
+    const callOrder: string[] = [];
+    db.backfillInstalledManagedMetadata.mockImplementation(() => {
+      callOrder.push("ownership-backfill");
+      return true;
+    });
+    mocks.mockReplaceTabbyMediaSkillsFromBundle.mockImplementationOnce(() => {
+      callOrder.push("bundle-refresh");
+      return [];
+    });
+    mocks.mockSkillDbCreate.mockResolvedValueOnce(db);
+
+    const service = await SkillhubService.create({
+      ...env,
+      staticSkillsDir: staticDir,
+    });
+    service.bootstrap();
+
+    expect(callOrder).toEqual(["ownership-backfill", "bundle-refresh"]);
+  });
+
   it("start() backfills a legacy origin version without inventing an owner", async () => {
     const env = createEnv(rootDir);
     const skillDir = path.join(env.openclawSkillsDir, "weather");
@@ -547,6 +605,11 @@ describe("SkillhubService", () => {
       targetDir: env.openclawSkillsDir,
       skillDb: db,
     });
+    expect(mocks.mockReplaceTabbyMediaSkillsFromBundle).toHaveBeenCalledWith({
+      staticDir,
+      targetDir: env.openclawSkillsDir,
+      skillDb: db,
+    });
   });
 
   it("start() does not copy static skills when staticSkillsDir is undefined", async () => {
@@ -558,6 +621,7 @@ describe("SkillhubService", () => {
     service.start();
 
     expect(mocks.mockCopyStaticSkills).not.toHaveBeenCalled();
+    expect(mocks.mockReplaceTabbyMediaSkillsFromBundle).not.toHaveBeenCalled();
   });
 
   it("start() does not recordBulkInstall when no static skills were copied", async () => {
@@ -593,6 +657,11 @@ describe("SkillhubService", () => {
     watcher.syncNow.mockImplementation(() => {
       callOrder.push("syncNow");
     });
+    mocks.mockRecoverManagedBundleRefreshTransactions.mockImplementationOnce(
+      () => {
+        callOrder.push("recoverTransactions");
+      },
+    );
     catalog.getCuratedInstallRequests.mockImplementation(async () => {
       callOrder.push("getCuratedInstallRequests");
       return [];
@@ -600,7 +669,11 @@ describe("SkillhubService", () => {
 
     service.start();
 
-    expect(callOrder).toEqual(["syncNow", "getCuratedInstallRequests"]);
+    expect(callOrder).toEqual([
+      "recoverTransactions",
+      "syncNow",
+      "getCuratedInstallRequests",
+    ]);
   });
 
   it("start() enqueues owner-scoped curated install requests", async () => {

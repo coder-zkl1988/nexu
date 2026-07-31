@@ -28,6 +28,7 @@ import { AgentService } from "../services/agent-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
 import { AttachmentStore } from "../services/attachment-store.js";
+import { BundledTabbyMediaRunner } from "../services/bundled-tabby-media-runner.js";
 import { ChannelFallbackService } from "../services/channel-fallback-service.js";
 import { ChannelService } from "../services/channel-service.js";
 import { DesktopLocalService } from "../services/desktop-local-service.js";
@@ -420,6 +421,14 @@ export async function createContainer(): Promise<ControllerContainer> {
     readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
   });
 
+  const tabbyMediaRunner = env.staticSkillsDir
+    ? new BundledTabbyMediaRunner({
+        staticSkillsDir: env.staticSkillsDir,
+        openclawStateDir: env.openclawStateDir,
+        genId: () => randomUUID(),
+      })
+    : undefined;
+
   const mediaGenerationService = new MediaGenerationService({
     // Any active bot can run the utility lane; prefer the default agent
     // (first active bot, mirroring compileAgentList ordering).
@@ -436,6 +445,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
     openclawStateDir: env.openclawStateDir,
     genId: () => randomUUID(),
+    tabbyMediaRunner,
   });
 
   const teamWorkflowService = new TeamWorkflowService({

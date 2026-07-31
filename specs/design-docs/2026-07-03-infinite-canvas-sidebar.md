@@ -151,6 +151,15 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 
 **W3 前置移交**:`infinite-canvas.tsx` 已 1610 行——悬停工具栏动工前先做机械拆分(节点体 → `canvas-node-views/`)。
 
+## 10.1 2026-07-30 媒体生成协议更新
+
+- 默认 Tabby 图片和视频生成不再依赖 utility agent 猜测技能调用。controller 以固定脚本路径、`process.execPath` 和参数数组执行桌面内置 `tabby-image`/`tabby-video`，保留普通 agent 的 shell 权限边界。
+- 视频节点参数表单按 Agnes Video V2.0 调整为：`480p/720p/1080p`、`16:9/9:16/1:1/4:3/3:4`、`81/121/241/441` 帧预设及覆盖全部合法 `8n+1` 帧数的滑杆、`1-60` 帧率、可选推理步数、反向提示词和安全整数种子。界面展示帧数及按当前帧率计算的约时长。
+- API 与重试状态贯通 `numFrames`、`frameRate`、`numInferenceSteps`、`negativePrompt`、`seed`；历史 `durationSeconds` 在提交前按帧率迁移为不超过 `441` 且满足 `8n+1` 的帧数，不再出现界面时长与真实请求不一致。文档未定义的声音和水印选项不再出现在视频表单中，Tabby 模型会忽略旧画布遗留的这两个字段。
+- 媒体视频节点把模型、分辨率、比例、帧数、帧率、推理步数、反向提示词和种子保存在节点 metadata 中，切换选择或重新加载已持久化画布不会恢复默认值。非法旧帧数、帧率、推理步数、seed 和超长反向提示词会在生成计划中先规范化，不把必然失败的参数发送到 controller。
+- `tabby-video` 使用 `POST {relayBaseUrl}/videos` 创建任务；优先以 `video_id` 轮询中转站根路径 `/agnesapi`，只有旧 `task_id` 才轮询 `{relayBaseUrl}/videos/<id>`；完成地址读取 `metadata.url`。
+- 当前画布图片引用是本地文件路径，而 Agnes 图生视频要求公网 URL，因此本轮没有暴露图生视频/关键帧表单。后续需先建立受控上传与可访问 URL 转换，不能直接把本地路径发给中转站。
+
 ## 11. Wave 3 —— 图片编辑套件 + 悬停工具栏（2026-07-06 落地，SDD 流程）
 
 执行计划 Wave 3（拆分前置 + 3.1–3.7）七任务全部落地,16 个 commit,web 测试 286→**409**、controller 437→**448**。终审(opus)裁决 Ready:契约 1–7 全 Held、零 Critical/Important。

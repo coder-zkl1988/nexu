@@ -1,14 +1,28 @@
 # tabby-image 生图 Skill 方案
 
 **日期**: 2026-07-02
-**状态**: 设计中
+**状态**: 已实现（2026-07-30 更新协议与画布执行链）
 **负责人**: 待定
 
 ---
 
+## 0. 2026-07-30 实施更新（当前事实）
+
+以下内容覆盖本文早期设计中的请求体与执行方式：
+
+- `tabby-image` 是中转站暴露的 GPT-image-2 别名。请求使用 GPT Image generations 格式：`model`、`prompt`、`n: 1`、具体 `WIDTHxHEIGHT`，可选 `quality` 和 `background: "transparent"`；不发送 `response_format`。
+- `tabby-image-free` 是中转站暴露的 Agnes Image 别名。请求使用 `model`、`prompt`、`size`、可选 `ratio`，并通过 `extra_body.response_format: "url"` 请求 URL；不发送 `n` 或顶层 `response_format`。
+- 两个别名都只从本地 `models.providers.link.baseUrl` 组装 `/images/generations`，不得硬编码 OpenAI 或 Agnes 官方域名，也不得把中转别名替换成底层模型名。
+- 无限画布默认通过 controller 的 `BundledTabbyMediaRunner` 执行随桌面包发布的固定脚本。runner 使用 `process.execPath + execFile(args)`，不经过 shell，也不向普通 agent 开放 `exec/process` 权限。图片编辑、参考图和显式第三方模型仍走 utility-agent 回退链路。
+- `1K/2K/3K/4K` 对 GPT-image-2 会转换为满足 16 倍数、1:3 到 3:1 比例以及最大分辨率限制的具体宽高；对 Agnes 则保留原档位值。
+- controller 启动时只刷新 ledger 中由本地 `managed` 记录独占、并且具有 Nexu ownership marker、与当前 bundle 完全一致、或命中已发布旧版指纹的 `tabby-image`/`tabby-video`。用户、自定义、发布者拥有、未跟踪或已卸载的副本不会被覆盖或重新安装；刷新先写同级暂存目录，再切换目录，复制失败不会先删除旧技能。启动时会在 ledger 对账前恢复中断的目录切换，并忽略隐藏事务目录。
+- bundled runner 返回的结构化路径直接做 media-root containment 与文件存在性校验，不再把路径拼回文本后用正则解析，因此 macOS `Application Support` 等含空格目录可以正常返回给画布。
+
+本文后续章节保留最初设计背景；涉及统一 `{ model, prompt, n, size }` 请求体、仅首次复制和 agent-only 执行的描述均以本节为准。
+
 ## 1. 背景
 
-桌面端用户登录官方云账号后，会获得一个特殊模型 `tabby-image`（或 `tabby-image-free`，视账号档位而定）的访问权限——实际底层是 GPT-image-2，由 `tabbyapi.picaso.studio` 网关以标准 OpenAI 生图接口提供服务。这个模型已经在 `apps/web/src/lib/special-models.ts` 里被标记为特殊用途模型（对话模型选择器里灰显、不可选），但目前没有任何路径让 bot 实际调用它生图。
+桌面端用户登录官方云账号后，会获得特殊模型 `tabby-image` 和/或 `tabby-image-free` 的访问权限。前者使用 GPT-image-2 协议，后者使用 Agnes Image 协议；两者都通过账号配置的 Tabby 中转站访问。
 
 现状核查：
 

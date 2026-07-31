@@ -168,9 +168,8 @@ export function registerMediaRoutes(
     },
   );
 
-  // POST /api/v1/media/generate-video — UNAVAILABLE-first video generation.
-  // Ships before a video backend skill lands; when an official skill lands
-  // it lights up with zero code change (same contract pattern as image).
+  // POST /api/v1/media/generate-video — bundled Tabby adapter with a utility
+  // subagent fallback for explicitly selected third-party models.
   app.openapi(
     createRoute({
       method: "post",
@@ -207,6 +206,11 @@ export function registerMediaRoutes(
           resolution: input.resolution,
           model: input.model,
           aspectRatio: input.aspectRatio,
+          numFrames: input.numFrames,
+          frameRate: input.frameRate,
+          numInferenceSteps: input.numInferenceSteps,
+          negativePrompt: input.negativePrompt,
+          seed: input.seed,
           generateAudio: input.generateAudio,
           watermark: input.watermark,
         });

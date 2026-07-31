@@ -1,17 +1,15 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { logger } from "../lib/logger.js";
+import type { TabbyMediaRunner } from "./bundled-tabby-media-runner.js";
 
 /**
  * Prompt-to-image generation for the canvas workbench (design doc
  * 2026-07-03-infinite-canvas-sidebar.md, S7).
  *
- * There is no direct gateway image API — `image_generate` exists only as an
- * agent tool. So this reuses the proven §10.3 execution primitive: one
- * chat.send to a dedicated utility subagent lane instructing the agent to
- * call image_generate and reply with ONLY the generated file path, then the
- * controller polls the session index for completion and hands the file to
- * the existing /api/v1/media/state-file server.
+ * Tabby image/video models use trusted scripts bundled with the desktop app.
+ * Other providers and image-editing flows keep the utility-subagent fallback,
+ * which returns files through the existing /api/v1/media/state-file server.
  *
  * W2.5-2.6: extended with reference images, multi-count, video and audio
  * channels (UNAVAILABLE-first — channels ship before backend skills land).
@@ -47,6 +45,8 @@ export type MediaGenerationServiceDeps = {
   /** OpenClaw state dir — generated files must live under <stateDir>/media. */
   openclawStateDir: string;
   genId: () => string;
+  /** Trusted bundled scripts used by canvas media generation without agent shell access. */
+  tabbyMediaRunner?: TabbyMediaRunner;
 };
 
 export type MediaGenerationServiceOptions = {
@@ -63,11 +63,11 @@ export type MediaGenerationServiceOptions = {
 type MediaKind = "image" | "video" | "audio";
 
 const IMAGE_PATH_SRC =
-  "(\\/[^\\s\"'`]+\\/media\\/[^\\s\"'`]+\\.(?:png|jpe?g|webp|gif))";
+  "(\\/[^\\r\\n\"'`]+\\/media\\/[^\\r\\n\"'`]+\\.(?:png|jpe?g|webp|gif))";
 const VIDEO_PATH_SRC =
-  "(\\/[^\\s\"'`]+\\/media\\/[^\\s\"'`]+\\.(?:mp4|webm|mov|m4v))";
+  "(\\/[^\\r\\n\"'`]+\\/media\\/[^\\r\\n\"'`]+\\.(?:mp4|webm|mov|m4v))";
 const AUDIO_PATH_SRC =
-  "(\\/[^\\s\"'`]+\\/media\\/[^\\s\"'`]+\\.(?:mp3|wav|m4a|ogg|flac))";
+  "(\\/[^\\r\\n\"'`]+\\/media\\/[^\\r\\n\"'`]+\\.(?:mp3|wav|m4a|ogg|flac))";
 
 function regexForKind(kind: MediaKind): RegExp {
   switch (kind) {
@@ -179,6 +179,39 @@ export class MediaGenerationService {
     }
 
     const count = input.count ?? 1;
+    const tabbyMediaRunner = this.deps.tabbyMediaRunner;
+    const canUseBundledTabbyImage =
+      tabbyMediaRunner !== undefined &&
+      (input.model === undefined ||
+        input.model === "tabby-image" ||
+        input.model === "tabby-image-free") &&
+      (!input.referenceImages || input.referenceImages.length === 0) &&
+      input.sourceImage === undefined &&
+      input.maskDataUrl === undefined;
+    if (canUseBundledTabbyImage) {
+      try {
+        const paths = await tabbyMediaRunner.generateImage({
+          botId,
+          prompt: input.prompt,
+          count,
+          ...(input.model !== undefined ? { model: input.model } : {}),
+          ...(input.quality !== undefined ? { quality: input.quality } : {}),
+          ...(input.aspectRatio !== undefined
+            ? { aspectRatio: input.aspectRatio }
+            : {}),
+          ...(input.size !== undefined ? { size: input.size } : {}),
+          ...(input.transparentBackground !== undefined
+            ? { transparentBackground: input.transparentBackground }
+            : {}),
+          timeoutMs: this.timeoutMsByKind.image,
+        });
+        return this.validateAndBuildPaths(paths, mediaRoot, count, "image");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ImageGenerationFailedError(message);
+      }
+    }
+
     const sessionKey = `agent:${botId}:subagent:imagegen-${this.deps.genId()}`;
 
     const lines: string[] = [
@@ -484,9 +517,14 @@ export class MediaGenerationService {
   async generateVideo(input: {
     prompt: string;
     durationSeconds?: number;
-    resolution?: "720p" | "1080p";
+    resolution?: "480p" | "720p" | "1080p";
     model?: string;
     aspectRatio?: string;
+    numFrames?: number;
+    frameRate?: number;
+    numInferenceSteps?: number;
+    negativePrompt?: string;
+    seed?: number;
     generateAudio?: boolean;
     watermark?: boolean;
   }): Promise<GenerateMediaResult> {
@@ -495,6 +533,57 @@ export class MediaGenerationService {
       throw new ImageGenerationFailedError(
         "no active bot available to run video generation",
       );
+    }
+
+    const tabbyMediaRunner = this.deps.tabbyMediaRunner;
+    const canUseBundledTabbyVideo =
+      tabbyMediaRunner !== undefined &&
+      (input.model === undefined ||
+        input.model === "tabby-video" ||
+        input.model === "tabby-video-free") &&
+      input.generateAudio !== true &&
+      input.watermark !== true;
+    if (canUseBundledTabbyVideo) {
+      try {
+        const videoPath = await tabbyMediaRunner.generateVideo({
+          botId,
+          prompt: input.prompt,
+          ...(input.model !== undefined ? { model: input.model } : {}),
+          ...(input.numFrames === undefined &&
+          input.durationSeconds !== undefined
+            ? { durationSeconds: input.durationSeconds }
+            : {}),
+          ...(input.resolution !== undefined
+            ? { resolution: input.resolution }
+            : {}),
+          ...(input.aspectRatio !== undefined
+            ? { aspectRatio: input.aspectRatio }
+            : {}),
+          ...(input.numFrames !== undefined
+            ? { numFrames: input.numFrames }
+            : {}),
+          ...(input.frameRate !== undefined
+            ? { frameRate: input.frameRate }
+            : {}),
+          ...(input.numInferenceSteps !== undefined
+            ? { numInferenceSteps: input.numInferenceSteps }
+            : {}),
+          ...(input.negativePrompt !== undefined
+            ? { negativePrompt: input.negativePrompt }
+            : {}),
+          ...(input.seed !== undefined ? { seed: input.seed } : {}),
+          timeoutMs: this.timeoutMsByKind.video,
+        });
+        return this.validateAndBuildPaths(
+          [videoPath],
+          path.resolve(this.deps.openclawStateDir, "media"),
+          undefined,
+          "video",
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ImageGenerationFailedError(message);
+      }
     }
 
     const sessionKey = `agent:${botId}:subagent:videogen-${this.deps.genId()}`;
@@ -507,6 +596,21 @@ export class MediaGenerationService {
     }
     if (input.aspectRatio !== undefined) {
       hints.push(`Aspect ratio: ${input.aspectRatio}`);
+    }
+    if (input.numFrames !== undefined) {
+      hints.push(`Frames: ${input.numFrames}`);
+    }
+    if (input.frameRate !== undefined) {
+      hints.push(`Frame rate: ${input.frameRate} fps`);
+    }
+    if (input.numInferenceSteps !== undefined) {
+      hints.push(`Inference steps: ${input.numInferenceSteps}`);
+    }
+    if (input.negativePrompt !== undefined) {
+      hints.push(`Negative prompt: ${input.negativePrompt}`);
+    }
+    if (input.seed !== undefined) {
+      hints.push(`Seed: ${input.seed}`);
     }
     if (input.model !== undefined) {
       hints.push(`Preferred model: ${input.model}`);
@@ -693,6 +797,15 @@ export class MediaGenerationService {
     logLabel: string,
   ): Promise<GenerateMediaResult> {
     const candidates = extractMediaPaths(reply, kind);
+    return this.validateAndBuildPaths(candidates, mediaRoot, count, logLabel);
+  }
+
+  private async validateAndBuildPaths(
+    candidates: readonly string[],
+    mediaRoot: string,
+    count: number | undefined,
+    logLabel: string,
+  ): Promise<GenerateMediaResult> {
     const capped =
       count !== undefined ? candidates.slice(0, count) : candidates;
 

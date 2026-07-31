@@ -33,12 +33,22 @@ import { ParamPill, SettingsGroup } from "./param-pills";
 import {
   imageSettingsSummary,
   usableReferencePaths,
+  videoSettingsSummary,
 } from "./prompt-panel-utils";
 import { collectUpstream } from "./resource-references";
+import {
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_FRAME_PRESETS,
+  VIDEO_RESOLUTIONS,
+  isVideoAspectRatio,
+  isVideoResolution,
+  resolveCanvasVideoNumFrames,
+  resolveVideoFrameRate,
+  videoDurationSeconds,
+} from "./video-generation-params";
 
 const IMAGE_ASPECTS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const IMAGE_SIZES = ["1K", "2K", "4K"];
-const VIDEO_ASPECTS = ["16:9", "9:16", "1:1"];
 const AUDIO_FORMATS = ["mp3", "wav", "m4a", "ogg", "flac"] as const;
 const AUDIO_SPEEDS = ["0.5", "0.75", "1", "1.25", "1.5", "2"];
 
@@ -54,6 +64,18 @@ const MODES = [
 export function ConfigNodeContent({ node }: { node: CanvasNode }) {
   const cfg = node.metadata.config;
   const mode = cfg?.mode ?? "image";
+  const videoFrameRate = resolveVideoFrameRate(cfg?.frameRate);
+  const videoNumFrames = resolveCanvasVideoNumFrames({
+    numFrames: cfg?.numFrames,
+    durationSeconds: cfg?.durationSeconds,
+    frameRate: videoFrameRate,
+  });
+  const videoResolution = isVideoResolution(cfg?.resolution)
+    ? cfg.resolution
+    : undefined;
+  const videoAspectRatio = isVideoAspectRatio(cfg?.aspectRatio)
+    ? cfg.aspectRatio
+    : undefined;
   const models = useCanvasModelOptions(mode);
   const [composerOpen, setComposerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -102,7 +124,14 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
           size: cfg?.size ?? "",
           count: cfg?.count ?? 1,
         })
-      : "设置";
+      : mode === "video"
+        ? videoSettingsSummary({
+            numFrames: videoNumFrames,
+            frameRate: videoFrameRate,
+            resolution: videoResolution ?? "默认",
+            aspectRatio: videoAspectRatio ?? "",
+          })
+        : "设置";
 
   return (
     <div className="flex h-full w-full select-text flex-col gap-2.5 text-sm">
@@ -287,37 +316,109 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
 
           {mode === "video" && (
             <>
+              <SettingsGroup label="帧数 / 时长">
+                {VIDEO_FRAME_PRESETS.map((frames) => (
+                  <ParamPill
+                    key={frames}
+                    active={videoNumFrames === frames}
+                    onClick={() =>
+                      setParam({
+                        numFrames: frames,
+                        durationSeconds: undefined,
+                      })
+                    }
+                  >
+                    {frames}帧 · 约
+                    {videoDurationSeconds(frames, videoFrameRate)}秒
+                  </ParamPill>
+                ))}
+              </SettingsGroup>
               <div className="flex items-center gap-2 pb-2.5 text-xs">
                 <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
-                  时长(秒)
+                  推理步数
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={
+                    cfg?.numInferenceSteps !== undefined &&
+                    Number.isSafeInteger(cfg.numInferenceSteps) &&
+                    cfg.numInferenceSteps > 0
+                      ? cfg.numInferenceSteps
+                      : ""
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value.trim();
+                    const numInferenceSteps = Number(value);
+                    setParam({
+                      numInferenceSteps:
+                        value !== "" &&
+                        Number.isSafeInteger(numInferenceSteps) &&
+                        numInferenceSteps > 0
+                          ? numInferenceSteps
+                          : undefined,
+                    });
+                  }}
+                  placeholder="模型默认"
+                  className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2 pb-2.5 text-xs">
+                <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                  自定义帧数
+                </span>
+                <input
+                  type="range"
+                  min={1}
+                  max={441}
+                  step={8}
+                  value={videoNumFrames}
+                  onChange={(e) =>
+                    setParam({
+                      numFrames: Number(e.target.value),
+                      durationSeconds: undefined,
+                    })
+                  }
+                  className="min-w-0 flex-1 accent-[var(--color-accent)]"
+                />
+                <span className="w-16 shrink-0 text-right tabular-nums text-text-secondary">
+                  {videoNumFrames} 帧
+                </span>
+              </div>
+              <div className="flex items-center gap-2 pb-2.5 text-xs">
+                <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                  帧率
                 </span>
                 <input
                   type="number"
                   min={1}
                   max={60}
-                  value={cfg?.durationSeconds ?? ""}
+                  step="any"
+                  value={videoFrameRate}
                   onChange={(e) =>
                     setParam({
-                      durationSeconds: e.target.value
-                        ? Number(e.target.value)
-                        : undefined,
+                      frameRate: Math.min(
+                        60,
+                        Math.max(1, Number(e.target.value) || 1),
+                      ),
                     })
                   }
-                  placeholder="默认"
                   className="w-20 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
                 />
+                <span className="text-[11px] text-text-tertiary">fps</span>
               </div>
               <SettingsGroup label="分辨率">
                 <ParamPill
-                  active={!cfg?.resolution}
+                  active={videoResolution === undefined}
                   onClick={() => setParam({ resolution: undefined })}
                 >
                   默认
                 </ParamPill>
-                {(["720p", "1080p"] as const).map((r) => (
+                {VIDEO_RESOLUTIONS.map((r) => (
                   <ParamPill
                     key={r}
-                    active={cfg?.resolution === r}
+                    active={videoResolution === r}
                     onClick={() => setParam({ resolution: r })}
                   >
                     {r}
@@ -326,41 +427,62 @@ export function ConfigNodeContent({ node }: { node: CanvasNode }) {
               </SettingsGroup>
               <SettingsGroup label="宽高比">
                 <ParamPill
-                  active={!cfg?.aspectRatio}
+                  active={videoAspectRatio === undefined}
                   onClick={() => setParam({ aspectRatio: undefined })}
                 >
                   默认
                 </ParamPill>
-                {VIDEO_ASPECTS.map((a) => (
+                {VIDEO_ASPECT_RATIOS.map((a) => (
                   <ParamPill
                     key={a}
-                    active={cfg?.aspectRatio === a}
+                    active={videoAspectRatio === a}
                     onClick={() => setParam({ aspectRatio: a })}
                   >
                     {a}
                   </ParamPill>
                 ))}
               </SettingsGroup>
-              <SettingsGroup label="其他">
-                <ParamPill
-                  active={cfg?.generateAudio ?? false}
-                  onClick={() =>
+              <div className="flex items-center gap-2 pb-2.5 text-xs">
+                <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                  种子
+                </span>
+                <input
+                  type="number"
+                  value={
+                    cfg?.seed !== undefined && Number.isSafeInteger(cfg.seed)
+                      ? cfg.seed
+                      : ""
+                  }
+                  step={1}
+                  onChange={(e) => {
+                    const value = e.target.value.trim();
+                    const seed = Number(value);
                     setParam({
-                      generateAudio: cfg?.generateAudio ? undefined : true,
+                      seed:
+                        value !== "" && Number.isSafeInteger(seed)
+                          ? seed
+                          : undefined,
+                    });
+                  }}
+                  placeholder="随机"
+                  className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                />
+              </div>
+              <label className="block pb-0.5 text-[11px] font-medium text-text-tertiary">
+                反向提示词
+                <textarea
+                  value={(cfg?.negativePrompt ?? "").slice(0, 2_000)}
+                  onChange={(e) =>
+                    setParam({
+                      negativePrompt: e.target.value || undefined,
                     })
                   }
-                >
-                  生成声音
-                </ParamPill>
-                <ParamPill
-                  active={cfg?.watermark ?? false}
-                  onClick={() =>
-                    setParam({ watermark: cfg?.watermark ? undefined : true })
-                  }
-                >
-                  水印
-                </ParamPill>
-              </SettingsGroup>
+                  maxLength={2_000}
+                  placeholder="输入希望视频避免出现的内容"
+                  rows={2}
+                  className="mt-1.5 w-full resize-none rounded-lg border-0 bg-surface-2 px-2.5 py-2 text-xs font-normal text-text-primary outline-none placeholder:text-text-tertiary"
+                />
+              </label>
             </>
           )}
 

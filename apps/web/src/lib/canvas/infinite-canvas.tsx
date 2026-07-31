@@ -1,9 +1,11 @@
 import { cn } from "@/lib/utils";
 import {
   AudioLines,
+  BookOpenText,
   Clapperboard,
   ImagePlus,
   SlidersHorizontal,
+  Smartphone,
   Star,
   Type,
   X,
@@ -275,6 +277,8 @@ export const CONNECT_MENU_ITEMS = [
   { type: "video", label: "视频" },
   { type: "audio", label: "音频" },
   { type: "config", label: "配置" },
+  { type: "xhs", label: "小红书" },
+  { type: "phone", label: "手机" },
 ] as const satisfies ReadonlyArray<{
   type: Parameters<typeof createConnectedNode>[1];
   label: string;
@@ -294,6 +298,10 @@ function connectMenuIcon(
       return <AudioLines size={14} />;
     case "config":
       return <SlidersHorizontal size={14} />;
+    case "xhs":
+      return <BookOpenText size={14} />;
+    case "phone":
+      return <Smartphone size={14} />;
   }
 }
 
@@ -1210,8 +1218,7 @@ const CanvasNodeView = memo(function CanvasNodeView({
   // Groups and team-step nodes take no upstream/downstream data — connecting
   // to/from them is a no-op wiring dead end, so don't show handles that
   // invite it.
-  const connectable =
-    node.type !== "group" && node.type !== "team-step" && node.type !== "phone";
+  const connectable = node.type !== "group" && node.type !== "team-step";
 
   // Batch group state
   const batchChildIds = node.metadata.batch?.childIds;

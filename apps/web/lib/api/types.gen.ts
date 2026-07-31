@@ -6551,6 +6551,20 @@ export type PostApiV1DevicesByDeviceIdTasksData = {
         sessionId?: string;
         allowedActions?: Array<string>;
         allowedApps?: Array<string>;
+        taskPolicy?: {
+            operationClass?: string;
+            targetPackages?: Array<string>;
+            allowedAppRoles?: Array<'target_app' | 'official_store' | 'system_installer' | 'system_settings' | 'default_sms' | 'gallery' | 'file_picker' | 'browser' | 'system_dialog' | 'other'>;
+            installSourcePolicy?: 'official_store_only';
+            allowBrowserDownload?: boolean;
+            allowedActions?: Array<string>;
+            allowedApps?: Array<string>;
+            confirmationPolicy?: {
+                login?: 'required' | 'forbidden';
+                publish?: 'required' | 'forbidden';
+                payment?: 'forbidden';
+            };
+        };
         timeout?: number;
     };
     path: {
@@ -6992,9 +7006,14 @@ export type PostApiV1MediaGenerateVideoData = {
     body?: {
         prompt: string;
         durationSeconds?: number;
-        resolution?: '720p' | '1080p';
+        resolution?: '480p' | '720p' | '1080p';
         model?: string;
-        aspectRatio?: string;
+        aspectRatio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
+        numFrames?: number;
+        frameRate?: number;
+        numInferenceSteps?: number;
+        negativePrompt?: string;
+        seed?: number;
         generateAudio?: boolean;
         watermark?: boolean;
     };

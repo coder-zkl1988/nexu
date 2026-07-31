@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TabbyMediaRunner } from "../src/services/bundled-tabby-media-runner.js";
 import {
   ImageGenerationFailedError,
   InvalidMediaReferenceError,
@@ -59,6 +60,12 @@ describe("extractMediaPaths", () => {
     ]);
   });
 
+  it("preserves spaces in packaged macOS media paths", () => {
+    const reply =
+      "/Users/test/Library/Application Support/@nexu/desktop/runtime/openclaw/state/media/outbound/cat.png";
+    expect(extractMediaPaths(reply, "image")).toEqual([reply]);
+  });
+
   it("extractMediaPath is an alias for first image path", () => {
     const reply = "/state/media/gen/first.png\n/state/media/gen/second.png";
     expect(extractMediaPath(reply)).toBe("/state/media/gen/first.png");
@@ -71,7 +78,7 @@ describe("MediaGenerationService", () => {
   let readSessionEntry: ReturnType<typeof vi.fn>;
   let readAssistantReply: ReturnType<typeof vi.fn>;
 
-  function buildService() {
+  function buildService(tabbyMediaRunner?: TabbyMediaRunner) {
     return new MediaGenerationService(
       {
         pickUtilityBotId: async () => "bot-1",
@@ -80,6 +87,7 @@ describe("MediaGenerationService", () => {
         readAssistantReply,
         openclawStateDir: tmpDir,
         genId: () => "gen-1",
+        ...(tabbyMediaRunner ? { tabbyMediaRunner } : {}),
       },
       { pollIntervalMs: 1, timeoutMs: 300 },
     );
@@ -98,7 +106,7 @@ describe("MediaGenerationService", () => {
   }
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "media-gen-"));
+    tmpDir = mkdtempSync(join(tmpdir(), "media generation-"));
     sendChat = vi.fn(async () => ({ status: "started" }));
     readSessionEntry = vi.fn(async () => ({
       status: "done",
@@ -114,6 +122,48 @@ describe("MediaGenerationService", () => {
   // -----------------------------------------------------------------------
   // Existing generateImage tests (must keep passing)
   // -----------------------------------------------------------------------
+  it("uses the trusted Tabby runner for the default image model", async () => {
+    const out = makeMediaFile("outbound/bot-1/tabby-image/out.png");
+    const tabbyMediaRunner: TabbyMediaRunner = {
+      generateImage: vi.fn(async () => [out]),
+      generateVideo: vi.fn(async () => ""),
+    };
+
+    const result = await buildService(tabbyMediaRunner).generateImage({
+      prompt: "a cat",
+      model: "tabby-image-free",
+      aspectRatio: "9:16",
+      size: "2K",
+    });
+
+    expect(result.path).toBe(out);
+    expect(tabbyMediaRunner.generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botId: "bot-1",
+        model: "tabby-image-free",
+        aspectRatio: "9:16",
+        size: "2K",
+      }),
+    );
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
+  it("keeps third-party image models on the utility-agent fallback", async () => {
+    const out = makeMediaFile("tool-image-generation/out.png");
+    readAssistantReply.mockResolvedValue(out);
+    const tabbyMediaRunner: TabbyMediaRunner = {
+      generateImage: vi.fn(async () => [out]),
+      generateVideo: vi.fn(async () => ""),
+    };
+
+    await buildService(tabbyMediaRunner).generateImage({
+      prompt: "a cat",
+      model: "seedream-4",
+    });
+
+    expect(tabbyMediaRunner.generateImage).not.toHaveBeenCalled();
+    expect(sendChat).toHaveBeenCalledOnce();
+  });
   it("returns the servable url for a file inside the media dir", async () => {
     const mediaFile = join(tmpDir, "media", "tool-image-generation", "a.png");
     rmSync(join(tmpDir, "media"), { recursive: true, force: true });
@@ -294,6 +344,67 @@ describe("MediaGenerationService", () => {
   // -----------------------------------------------------------------------
   // generateVideo
   // -----------------------------------------------------------------------
+  it("uses the trusted Tabby runner with documented video parameters", async () => {
+    const out = makeMediaFile("outbound/bot-1/tabby-video/out.mp4");
+    const tabbyMediaRunner: TabbyMediaRunner = {
+      generateImage: vi.fn(async () => []),
+      generateVideo: vi.fn(async () => out),
+    };
+
+    const result = await buildService(tabbyMediaRunner).generateVideo({
+      prompt: "waves",
+      model: "tabby-video",
+      durationSeconds: 10,
+      resolution: "1080p",
+      aspectRatio: "16:9",
+      numFrames: 241,
+      frameRate: 30,
+      numInferenceSteps: 28,
+      negativePrompt: "text",
+      seed: 42,
+    });
+
+    expect(result.path).toBe(out);
+    expect(tabbyMediaRunner.generateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "tabby-video",
+        resolution: "1080p",
+        aspectRatio: "16:9",
+        numFrames: 241,
+        frameRate: 30,
+        numInferenceSteps: 28,
+        negativePrompt: "text",
+        seed: 42,
+      }),
+    );
+    expect(
+      vi.mocked(tabbyMediaRunner.generateVideo).mock.calls[0]?.[0],
+    ).not.toHaveProperty("durationSeconds");
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
+  it("does not silently drop unsupported audio or watermark requests", async () => {
+    const out = makeMediaFile("tool-video-generation/with-audio.mp4");
+    readAssistantReply.mockResolvedValue(out);
+    const tabbyMediaRunner: TabbyMediaRunner = {
+      generateImage: vi.fn(async () => []),
+      generateVideo: vi.fn(async () => out),
+    };
+
+    await buildService(tabbyMediaRunner).generateVideo({
+      prompt: "waves with sound",
+      generateAudio: true,
+      watermark: true,
+    });
+
+    expect(tabbyMediaRunner.generateVideo).not.toHaveBeenCalled();
+    expect(sendChat).toHaveBeenCalledOnce();
+    const message = (sendChat.mock.calls[0]?.[0] as { message: string })
+      .message;
+    expect(message).toContain("Also generate an audio track");
+    expect(message).toContain("Add a watermark");
+  });
+
   it("generateVideo UNAVAILABLE reply → error /not configured/", async () => {
     readAssistantReply.mockResolvedValue("UNAVAILABLE");
     await expect(

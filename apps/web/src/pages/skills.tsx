@@ -536,7 +536,8 @@ export function SkillsPage() {
     }
   }, [debouncedInput, searchQuery, setSearchParams]);
 
-  const debouncedQuery = useDebounce(searchQuery, 150);
+  // `searchQuery` is already debounced before it is written to the URL.
+  const debouncedQuery = searchQuery;
   const catalogQuery = useCommunitySkillPages({
     query: topTab === "explore" ? debouncedQuery.trim() : undefined,
     category: topTab === "explore" ? activeTag : null,

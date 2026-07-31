@@ -25,6 +25,7 @@ openapi-ts-error-*.log
 .vscode.composio/
 test-results/
 playwright-report/
+.playwright-cli/
 .worktrees/
 .ralph/
 *.p8

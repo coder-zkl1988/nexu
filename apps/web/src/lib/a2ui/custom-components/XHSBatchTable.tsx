@@ -78,6 +78,7 @@ function buildEditorSurface(
             deviceId: post.deviceId,
             batchId,
             postId: post.id,
+            pendingImageSlots: post.pendingImageSlots,
           } as unknown as A2UIComponent,
         ],
       },
@@ -423,7 +424,6 @@ export function XHSBatchTable({ comp, onAction }: CustomComponentProps) {
           style={{
             position: "relative",
             borderTop: "0.5px solid var(--color-border)",
-            minHeight: 520,
           }}
         >
           <button

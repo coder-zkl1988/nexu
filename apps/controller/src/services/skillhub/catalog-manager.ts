@@ -469,7 +469,14 @@ export class CatalogManager {
             : localMeta,
         };
       } catch (error) {
-        if (options.cursor && !options.cursor.startsWith("local:")) {
+        const canUseLocalFallback =
+          !options.cursor &&
+          !options.query &&
+          !options.category &&
+          !options.exactSlug &&
+          !options.ownerHandle &&
+          (options.sort === undefined || options.sort === "downloads");
+        if (!canUseLocalFallback) {
           throw error;
         }
         const message = error instanceof Error ? error.message : String(error);

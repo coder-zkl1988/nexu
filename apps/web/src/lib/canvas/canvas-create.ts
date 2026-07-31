@@ -13,7 +13,14 @@ import {
   getCanvasState,
 } from "./canvas-store";
 
-type CreatableType = "text" | "image" | "video" | "audio" | "config";
+type CreatableType =
+  | "text"
+  | "image"
+  | "video"
+  | "audio"
+  | "config"
+  | "xhs"
+  | "phone";
 
 const TYPE_TITLES: Record<CreatableType, string> = {
   text: "文本",
@@ -21,6 +28,8 @@ const TYPE_TITLES: Record<CreatableType, string> = {
   video: "视频",
   audio: "音频",
   config: "生成配置",
+  xhs: "小红书帖子",
+  phone: "手机预览",
 };
 
 /**
@@ -57,7 +66,15 @@ export function createConnectedNode(
     // Config nodes need a default mode so the UI has a valid state immediately.
     ...(type === "config"
       ? { metadata: { config: { mode: "image" as const } } }
-      : {}),
+      : type === "xhs"
+        ? {
+            metadata: {
+              xhs: { title: "", content: "", images: [], hashtags: [] },
+            },
+          }
+        : type === "phone"
+          ? { metadata: { phone: {} } }
+          : {}),
   });
 
   if (handleType === "source") {

@@ -191,7 +191,7 @@ describe("CatalogManager.getCatalog() workspace skills", () => {
     expect(workspace?.agentId).toBe("bot-1");
   });
 
-  it("falls back to a filtered, paginated local catalog", async () => {
+  it("only falls back to the local catalog for an unfiltered first page", async () => {
     writeFileSync(
       path.join(cacheDir, "catalog.json"),
       JSON.stringify([
@@ -233,17 +233,14 @@ describe("CatalogManager.getCatalog() workspace skills", () => {
       catalogApiUrl: "http://127.0.0.1:1/api/v1/skill-catalog",
     });
 
-    const first = await catalog.getCatalogPage({ query: "search", limit: 1 });
-    const second = await catalog.getCatalogPage({
-      query: "search",
-      cursor: first.nextCursor ?? undefined,
-      limit: 1,
-    });
+    await expect(
+      catalog.getCatalogPage({ query: "search", limit: 1 }),
+    ).rejects.toThrow();
 
-    expect(first.skills.map((skill) => skill.slug)).toEqual(["alpha"]);
-    expect(first.total).toBe(2);
-    expect(first.nextCursor).toBe("local:1");
-    expect(second.skills.map((skill) => skill.slug)).toEqual(["beta"]);
+    const fallback = await catalog.getCatalogPage({ limit: 1 });
+    expect(fallback.skills.map((skill) => skill.slug)).toEqual(["alpha"]);
+    expect(fallback.total).toBe(3);
+    expect(fallback.nextCursor).toBe("local:1");
   });
 
   it("preserves owner-scoped slugs returned by the server catalog", async () => {

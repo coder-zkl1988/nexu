@@ -76,6 +76,53 @@ describe("DeviceControlService.pushVlmCredential", () => {
   });
 });
 
+describe("DeviceControlService.isAvailable", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps concurrent health checks independent", async () => {
+    const service = makeService(async () => CREDENTIAL);
+    const resolvers: Array<(response: { ok: boolean }) => void> = [];
+    const signals: AbortSignal[] = [];
+    fetchMock.mockImplementation(
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise((resolve, reject) => {
+          const signal = init?.signal;
+          if (signal) {
+            signals.push(signal);
+            signal.addEventListener(
+              "abort",
+              () => reject(signal.reason ?? new Error("health check aborted")),
+              { once: true },
+            );
+          }
+          resolvers.push(resolve);
+        }),
+    );
+
+    const first = service.isAvailable();
+    await vi.waitFor(() => expect(resolvers).toHaveLength(1));
+    const second = service.isAvailable();
+    await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+
+    expect(signals).toHaveLength(2);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(signals[1]?.aborted).toBe(false);
+    resolvers[0]?.({ ok: true });
+    resolvers[1]?.({ ok: true });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+  });
+});
+
 describe("DeviceControlService.executeTask", () => {
   const fetchMock = vi.fn();
 
@@ -101,6 +148,16 @@ describe("DeviceControlService.executeTask", () => {
     await service.executeTask("device-1", {
       task: "发布一篇小红书图文笔记",
       timeout: 120_000,
+      maxSteps: 40,
+      guidance: "只发布本次桌面端确认的内容",
+      sessionId: "session-1",
+      allowedActions: ["CLICK", "TYPE"],
+      allowedApps: ["com.xingin.xhs"],
+      taskPolicy: {
+        operationClass: "content.publish",
+        targetPackages: ["com.xingin.xhs"],
+        allowedAppRoles: ["target_app", "gallery"],
+      },
     });
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
@@ -112,6 +169,16 @@ describe("DeviceControlService.executeTask", () => {
         deviceId: "device-1",
         task: "发布一篇小红书图文笔记",
         timeoutMs: 120_000,
+        maxSteps: 40,
+        guidance: "只发布本次桌面端确认的内容",
+        sessionId: "session-1",
+        allowedActions: ["CLICK", "TYPE"],
+        allowedApps: ["com.xingin.xhs"],
+        taskPolicy: {
+          operationClass: "content.publish",
+          targetPackages: ["com.xingin.xhs"],
+          allowedAppRoles: ["target_app", "gallery"],
+        },
       },
     });
     timeoutSpy.mockRestore();

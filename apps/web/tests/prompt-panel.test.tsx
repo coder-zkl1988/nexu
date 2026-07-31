@@ -130,7 +130,7 @@ describe("PromptPanel controls per mode", () => {
     // Params live behind the settings chip (reference paradigm) — the chip
     // shows the defaults summary; the popover itself is closed by default.
     expect(markup).toContain("data-canvas-image-settings-toggle");
-    expect(markup).toContain("5s · 720p · 默认");
+    expect(markup).toContain("121帧 · 5s · 720p · 16:9");
     expect(markup).not.toContain("data-canvas-image-settings-panel");
     expect(markup).toContain("描述要生成的视频内容");
     expect(markup).toContain("模型");
@@ -139,6 +139,27 @@ describe("PromptPanel controls per mode", () => {
     expect(markup).toContain("tabby-video");
     expect(markup).not.toContain("tabby-image");
     expect(markup).not.toContain("tabby-ultra");
+  });
+
+  it("video: restores persisted settings and legacy duration from the node", () => {
+    const node = addNode({
+      type: "video",
+      title: "视",
+      metadata: {
+        config: {
+          mode: "video",
+          durationSeconds: 10,
+          frameRate: 24,
+          resolution: "1080p",
+          aspectRatio: "9:16",
+          model: "tabby-video",
+        },
+      },
+    });
+    const markup = renderPanel(node);
+
+    expect(markup).toContain("241帧 · 10s · 1080p · 9:16");
+    expect(markup).toContain('<option value="tabby-video" selected="">');
   });
 
   it("audio: renders settings chip (defaults summary) + model picker", () => {
@@ -214,37 +235,47 @@ describe("buildImageGenOpts", () => {
 });
 
 describe("buildVideoGenOpts", () => {
-  it("forwards aspectRatio/generateAudio/watermark/model; keeps duration+resolution", () => {
+  it("forwards the documented Agnes video parameters", () => {
     expect(
       buildVideoGenOpts({
-        durationSeconds: 8,
         resolution: "1080p",
         aspectRatio: "9:16",
-        generateAudio: true,
-        watermark: true,
-        model: "google/veo-3",
+        numFrames: 241,
+        frameRate: 30,
+        numInferenceSteps: "28",
+        negativePrompt: "  text, watermark  ",
+        seed: "42",
+        model: "tabby-video",
       }),
     ).toEqual({
-      durationSeconds: 8,
       resolution: "1080p",
       aspectRatio: "9:16",
-      generateAudio: true,
-      watermark: true,
-      model: "google/veo-3",
+      numFrames: 241,
+      frameRate: 30,
+      numInferenceSteps: 28,
+      negativePrompt: "text, watermark",
+      seed: 42,
+      model: "tabby-video",
     });
   });
 
-  it("omits unchecked booleans + empty aspect/model", () => {
+  it("omits empty optional values and an invalid seed", () => {
     expect(
       buildVideoGenOpts({
-        durationSeconds: 5,
         resolution: "720p",
         aspectRatio: "",
-        generateAudio: false,
-        watermark: false,
+        numFrames: 121,
+        frameRate: 24,
+        numInferenceSteps: "0",
+        negativePrompt: "  ",
+        seed: "not-a-number",
         model: "",
       }),
-    ).toEqual({ durationSeconds: 5, resolution: "720p" });
+    ).toEqual({
+      resolution: "720p",
+      numFrames: 121,
+      frameRate: 24,
+    });
   });
 });
 

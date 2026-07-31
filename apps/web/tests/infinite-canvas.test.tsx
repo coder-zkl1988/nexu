@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -650,6 +651,21 @@ describe("group node markup", () => {
     expect(markup).toContain(`data-canvas-connect-handle-target="${text.id}"`);
     expect(markup).toContain(`data-canvas-connect-handle-source="${text.id}"`);
   });
+
+  it("a phone node exposes both handles so XHS can link its publish device", () => {
+    const phone = addNode({
+      type: "phone",
+      title: "手机预览",
+      metadata: { phone: { deviceId: "device-a" } },
+    });
+    const markup = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <CanvasSurface />
+      </QueryClientProvider>,
+    );
+    expect(markup).toContain(`data-canvas-connect-handle-target="${phone.id}"`);
+    expect(markup).toContain(`data-canvas-connect-handle-source="${phone.id}"`);
+  });
 });
 
 describe("PromptPanel visibility", () => {
@@ -766,7 +782,7 @@ describe("ConfigNode markup", () => {
     expect(renderToStaticMarkup(<CanvasSurface />)).not.toContain("参考图");
   });
 
-  it("connect menu offers all five creatable types (real menu constant)", () => {
+  it("connect menu offers all creatable types (real menu constant)", () => {
     // The menu only renders after a connect-drop gesture (unreachable in
     // static markup), so the contract is pinned on the exported constant
     // that drives the menu JSX.
@@ -776,6 +792,8 @@ describe("ConfigNode markup", () => {
       "video",
       "audio",
       "config",
+      "xhs",
+      "phone",
     ]);
     expect(CONNECT_MENU_ITEMS.map((item) => item.label)).toEqual([
       "文本",
@@ -783,6 +801,8 @@ describe("ConfigNode markup", () => {
       "视频",
       "音频",
       "配置",
+      "小红书",
+      "手机",
     ]);
   });
 });

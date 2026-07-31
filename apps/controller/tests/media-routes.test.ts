@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ControllerContainer } from "../src/app/container.js";
 import { registerMediaRoutes } from "../src/routes/media-routes.js";
 import {
@@ -31,6 +31,17 @@ async function postVideo(app: ReturnType<typeof buildApp>) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ prompt: "waves" }),
+  });
+}
+
+async function postVideoBody(
+  app: ReturnType<typeof buildApp>,
+  body: Record<string, unknown>,
+) {
+  return app.request("/api/v1/media/generate-video", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -79,6 +90,68 @@ describe("media route error mapping", () => {
       body: JSON.stringify({ prompt: "cat" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("video generation request validation", () => {
+  it("accepts the documented Agnes parameter surface", async () => {
+    const generateVideo = vi.fn(async () => ({
+      path: "/state/media/out.mp4",
+      url: "/api/v1/media/state-file?path=out",
+      items: [
+        {
+          path: "/state/media/out.mp4",
+          url: "/api/v1/media/state-file?path=out",
+        },
+      ],
+    }));
+    const app = buildApp({ generateVideo });
+
+    const response = await postVideoBody(app, {
+      prompt: "waves",
+      resolution: "480p",
+      aspectRatio: "3:4",
+      numFrames: 241,
+      frameRate: 30,
+      numInferenceSteps: 28,
+      negativePrompt: "text",
+      seed: 42,
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resolution: "480p",
+        aspectRatio: "3:4",
+        numFrames: 241,
+        frameRate: 30,
+        numInferenceSteps: 28,
+        negativePrompt: "text",
+        seed: 42,
+      }),
+    );
+  });
+
+  it.each([
+    { numFrames: 100 },
+    { numFrames: 449 },
+    { frameRate: 0 },
+    { frameRate: 61 },
+    { numInferenceSteps: 0 },
+    { aspectRatio: "2:1" },
+    { durationSeconds: 10, numFrames: 241 },
+    { durationSeconds: 19, frameRate: 24 },
+  ])("rejects invalid Agnes parameters: %o", async (invalid) => {
+    const generateVideo = vi.fn();
+    const app = buildApp({ generateVideo });
+
+    const response = await postVideoBody(app, {
+      prompt: "waves",
+      ...invalid,
+    });
+
+    expect(response.status).toBe(400);
+    expect(generateVideo).not.toHaveBeenCalled();
   });
 });
 

@@ -71,21 +71,61 @@ export const generateImageResponseSchema = z.object({
   items: z.array(generatedMediaItemSchema).min(1),
 });
 
-export const generateVideoRequestSchema = z.object({
-  prompt: z.string().min(1).max(2_000),
-  /** Optional clip duration in seconds (1–60). Passed as a hint to the backend. */
-  durationSeconds: z.number().int().min(1).max(60).optional(),
-  /** Optional output resolution hint. */
-  resolution: z.enum(["720p", "1080p"]).optional(),
-  /** Preferred generation model — best-effort hint. */
-  model: z.string().max(120).optional(),
-  /** Aspect-ratio hint, e.g. "16:9", "9:16", "1:1". Best-effort. */
-  aspectRatio: z.string().max(16).optional(),
-  /** Ask the backend to also generate an audio track. Best-effort. */
-  generateAudio: z.boolean().optional(),
-  /** Ask the backend to add a watermark. Best-effort. */
-  watermark: z.boolean().optional(),
-});
+export const generateVideoRequestSchema = z
+  .object({
+    prompt: z.string().min(1).max(2_000),
+    /** Legacy clip duration; new clients send numFrames + frameRate. */
+    durationSeconds: z.number().int().min(1).max(60).optional(),
+    /** Optional output resolution hint. */
+    resolution: z.enum(["480p", "720p", "1080p"]).optional(),
+    /** Preferred generation model — best-effort hint. */
+    model: z.string().max(120).optional(),
+    /** Aspect-ratio hint, e.g. "16:9", "9:16", "1:1". Best-effort. */
+    aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:3", "3:4"]).optional(),
+    /** Frame count accepted by Agnes Video: <=441 and 8n+1. */
+    numFrames: z
+      .number()
+      .int()
+      .min(1)
+      .max(441)
+      .refine((value) => (value - 1) % 8 === 0, "must follow the 8n+1 rule")
+      .optional(),
+    /** Output frame rate accepted by Agnes Video. */
+    frameRate: z.number().min(1).max(60).optional(),
+    /** Optional model inference step count. */
+    numInferenceSteps: z.number().int().positive().optional(),
+    /** Content that the video model should avoid. */
+    negativePrompt: z.string().max(2_000).optional(),
+    /** Optional deterministic generation seed. */
+    seed: z.number().int().safe().optional(),
+    /** Ask the backend to also generate an audio track. Best-effort. */
+    generateAudio: z.boolean().optional(),
+    /** Ask the backend to add a watermark. Best-effort. */
+    watermark: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.numFrames !== undefined && value.durationSeconds !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["durationSeconds"],
+        message: "durationSeconds and numFrames are mutually exclusive",
+      });
+    }
+
+    if (value.durationSeconds !== undefined) {
+      const frameRate = value.frameRate ?? 24;
+      const nearestStep = Math.round(
+        (value.durationSeconds * frameRate - 1) / 8,
+      );
+      if (nearestStep > 55) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["durationSeconds"],
+          message: "duration and frameRate require more than 441 frames",
+        });
+      }
+    }
+  });
 
 export const generateVideoResponseSchema = z.object({
   url: z.string(),

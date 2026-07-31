@@ -11,6 +11,8 @@
  *   dataURLs or mention tokens.
  */
 
+import type { VideoAspectRatio } from "./video-generation-params";
+
 // ── servablePathFromUrl ────────────────────────────────────────
 
 /**
@@ -256,35 +258,48 @@ export function buildImageGenOpts(s: ImageGenSettings): ImageGenOpts {
 }
 
 export type VideoGenSettings = {
-  durationSeconds: number;
-  resolution: "720p" | "1080p";
+  resolution: "480p" | "720p" | "1080p";
   /** e.g. "16:9"; "" = omit. */
-  aspectRatio: string;
-  /** unchecked (false) = omit. */
-  generateAudio: boolean;
-  /** unchecked (false) = omit. */
-  watermark: boolean;
+  aspectRatio: VideoAspectRatio | "";
+  numFrames: number;
+  frameRate: number;
+  numInferenceSteps: string;
+  negativePrompt: string;
+  seed: string;
   /** Model id hint; "" = omit. */
   model: string;
 };
 
 export type VideoGenOpts = {
-  durationSeconds?: number;
-  resolution?: "720p" | "1080p";
+  resolution?: "480p" | "720p" | "1080p";
   model?: string;
-  aspectRatio?: string;
-  generateAudio?: boolean;
-  watermark?: boolean;
+  aspectRatio?: VideoAspectRatio;
+  numFrames?: number;
+  frameRate?: number;
+  numInferenceSteps?: number;
+  negativePrompt?: string;
+  seed?: number;
 };
 
 export function buildVideoGenOpts(s: VideoGenSettings): VideoGenOpts {
+  const negativePrompt = s.negativePrompt.trim();
+  const seedInput = s.seed.trim();
+  const seed = Number(seedInput);
+  const inferenceStepsInput = s.numInferenceSteps.trim();
+  const numInferenceSteps = Number(inferenceStepsInput);
   return {
-    durationSeconds: s.durationSeconds,
     resolution: s.resolution,
+    numFrames: s.numFrames,
+    frameRate: s.frameRate,
+    ...(inferenceStepsInput !== "" &&
+    Number.isSafeInteger(numInferenceSteps) &&
+    numInferenceSteps > 0
+      ? { numInferenceSteps }
+      : {}),
     ...(s.model !== "" ? { model: s.model } : {}),
     ...(s.aspectRatio !== "" ? { aspectRatio: s.aspectRatio } : {}),
-    ...(s.generateAudio ? { generateAudio: true } : {}),
-    ...(s.watermark ? { watermark: true } : {}),
+    ...(negativePrompt !== "" ? { negativePrompt } : {}),
+    ...(seedInput !== "" && Number.isSafeInteger(seed) ? { seed } : {}),
   };
 }
 
@@ -353,17 +368,22 @@ export function imageSettingsSummary(s: {
 }
 
 /**
- * One-line summary for the video settings chip, e.g. "5s · 720p · 默认".
- * The 声音/水印 toggles live in the popover only (chip stays compact).
+ * One-line summary for the video settings chip, e.g. "121帧 · 5s · 720p · 16:9".
  */
 export function videoSettingsSummary(s: {
-  durationSeconds: number;
+  numFrames: number;
+  frameRate: number;
   resolution: string;
   aspectRatio: string;
 }): string {
-  return [`${s.durationSeconds}s`, s.resolution, s.aspectRatio || "默认"].join(
-    " · ",
-  );
+  const seconds =
+    s.frameRate > 0 ? Math.round((s.numFrames / s.frameRate) * 10) / 10 : 0;
+  return [
+    `${s.numFrames}帧`,
+    `${seconds}s`,
+    s.resolution,
+    s.aspectRatio || "默认",
+  ].join(" · ");
 }
 
 /** One-line summary for the audio settings chip, e.g. "默认音色 · 1x · mp3". */

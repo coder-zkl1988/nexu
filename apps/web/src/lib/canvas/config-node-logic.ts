@@ -17,6 +17,13 @@ import {
 import { addNode, connectNodes, getCanvasState } from "./canvas-store";
 import { usableReferencePaths } from "./prompt-panel-utils";
 import { collectUpstream } from "./resource-references";
+import {
+  type VideoAspectRatio,
+  isVideoAspectRatio,
+  isVideoResolution,
+  resolveCanvasVideoNumFrames,
+  resolveVideoFrameRate,
+} from "./video-generation-params";
 
 // ── Plan types ─────────────────────────────────────────────────
 
@@ -35,9 +42,14 @@ export type ConfigGenerationPlan =
       kind: "video";
       prompt: string;
       durationSeconds?: number;
-      resolution?: "720p" | "1080p";
+      resolution?: "480p" | "720p" | "1080p";
       model?: string;
-      aspectRatio?: string;
+      aspectRatio?: VideoAspectRatio;
+      numFrames?: number;
+      frameRate?: number;
+      numInferenceSteps?: number;
+      negativePrompt?: string;
+      seed?: number;
       generateAudio?: boolean;
       watermark?: boolean;
     }
@@ -104,21 +116,46 @@ export function buildConfigGenerationPlan(
   }
 
   if (cfg.mode === "video") {
+    const frameRate = resolveVideoFrameRate(cfg.frameRate);
+    const numFrames = resolveCanvasVideoNumFrames({
+      numFrames: cfg.numFrames,
+      durationSeconds: cfg.durationSeconds,
+      frameRate,
+    });
+    const negativePrompt = cfg.negativePrompt?.trim().slice(0, 2_000);
+    const usesTabbyVideo =
+      cfg.model === undefined ||
+      cfg.model === "tabby-video" ||
+      cfg.model === "tabby-video-free";
     return {
       kind: "video",
       prompt,
-      ...(cfg.durationSeconds !== undefined
-        ? { durationSeconds: cfg.durationSeconds }
+      numFrames,
+      frameRate,
+      ...(isVideoResolution(cfg.resolution)
+        ? { resolution: cfg.resolution }
         : {}),
-      ...(cfg.resolution !== undefined ? { resolution: cfg.resolution } : {}),
       ...(cfg.model !== undefined ? { model: cfg.model } : {}),
-      ...(cfg.aspectRatio !== undefined
+      ...(isVideoAspectRatio(cfg.aspectRatio)
         ? { aspectRatio: cfg.aspectRatio }
         : {}),
-      ...(cfg.generateAudio !== undefined
+      ...(negativePrompt !== undefined && negativePrompt.length > 0
+        ? { negativePrompt }
+        : {}),
+      ...(cfg.numInferenceSteps !== undefined &&
+      Number.isSafeInteger(cfg.numInferenceSteps) &&
+      cfg.numInferenceSteps > 0
+        ? { numInferenceSteps: cfg.numInferenceSteps }
+        : {}),
+      ...(cfg.seed !== undefined && Number.isSafeInteger(cfg.seed)
+        ? { seed: cfg.seed }
+        : {}),
+      ...(!usesTabbyVideo && cfg.generateAudio !== undefined
         ? { generateAudio: cfg.generateAudio }
         : {}),
-      ...(cfg.watermark !== undefined ? { watermark: cfg.watermark } : {}),
+      ...(!usesTabbyVideo && cfg.watermark !== undefined
+        ? { watermark: cfg.watermark }
+        : {}),
     };
   }
 
@@ -202,6 +239,15 @@ export function runConfigGeneration(
       ...(plan.aspectRatio !== undefined
         ? { aspectRatio: plan.aspectRatio }
         : {}),
+      ...(plan.numFrames !== undefined ? { numFrames: plan.numFrames } : {}),
+      ...(plan.frameRate !== undefined ? { frameRate: plan.frameRate } : {}),
+      ...(plan.numInferenceSteps !== undefined
+        ? { numInferenceSteps: plan.numInferenceSteps }
+        : {}),
+      ...(plan.negativePrompt !== undefined
+        ? { negativePrompt: plan.negativePrompt }
+        : {}),
+      ...(plan.seed !== undefined ? { seed: plan.seed } : {}),
       ...(plan.generateAudio !== undefined
         ? { generateAudio: plan.generateAudio }
         : {}),

@@ -243,7 +243,7 @@ describe("buildConfigGenerationPlan", () => {
     expect(result.referenceImages).toEqual([]);
   });
 
-  it("video mode: passes durationSeconds and resolution from metadata.config", () => {
+  it("video mode: passes the documented Agnes parameters from metadata.config", () => {
     const text = addNode({
       type: "text",
       title: "文本",
@@ -253,7 +253,17 @@ describe("buildConfigGenerationPlan", () => {
       type: "config",
       title: "生成配置",
       metadata: {
-        config: { mode: "video", durationSeconds: 10, resolution: "1080p" },
+        config: {
+          mode: "video",
+          durationSeconds: 10,
+          resolution: "1080p",
+          aspectRatio: "9:16",
+          numFrames: 241,
+          frameRate: 30,
+          numInferenceSteps: 28,
+          negativePrompt: "text",
+          seed: 42,
+        },
       },
     });
     connectNodes(text.id, config.id);
@@ -263,9 +273,125 @@ describe("buildConfigGenerationPlan", () => {
     expect(result.kind).toBe("video");
     expect(result.prompt).toBe("ocean waves");
     if (result.kind === "video") {
-      expect(result.durationSeconds).toBe(10);
       expect(result.resolution).toBe("1080p");
+      expect(result.durationSeconds).toBeUndefined();
+      expect(result.aspectRatio).toBe("9:16");
+      expect(result.numFrames).toBe(241);
+      expect(result.frameRate).toBe(30);
+      expect(result.numInferenceSteps).toBe(28);
+      expect(result.negativePrompt).toBe("text");
+      expect(result.seed).toBe(42);
     }
+  });
+
+  it("video mode: ignores legacy unsupported flags for Tabby models", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "ocean waves" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: {
+        config: {
+          mode: "video",
+          model: "tabby-video",
+          generateAudio: true,
+          watermark: true,
+        },
+      },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result || result.kind !== "video") {
+      throw new Error("expected video plan");
+    }
+    expect(result.generateAudio).toBeUndefined();
+    expect(result.watermark).toBeUndefined();
+  });
+
+  it("video mode: drops an invalid persisted aspect ratio", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "ocean waves" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: {
+        config: { mode: "video", aspectRatio: "2:1", numFrames: 121 },
+      },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result || result.kind !== "video") {
+      throw new Error("expected video plan");
+    }
+    expect(result.aspectRatio).toBeUndefined();
+    expect(result.numFrames).toBe(121);
+  });
+
+  it("video mode: migrates legacy seconds to a legal frame count", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "ocean waves" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: {
+        config: {
+          mode: "video",
+          durationSeconds: 10,
+          frameRate: 24,
+        },
+      },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result || result.kind !== "video") {
+      throw new Error("expected video plan");
+    }
+    expect(result.durationSeconds).toBeUndefined();
+    expect(result.numFrames).toBe(241);
+    expect(result.frameRate).toBe(24);
+  });
+
+  it("video mode: normalizes invalid persisted frame settings before submit", () => {
+    const text = addNode({
+      type: "text",
+      title: "文本",
+      metadata: { content: "ocean waves" },
+    });
+    const config = addNode({
+      type: "config",
+      title: "生成配置",
+      metadata: {
+        config: {
+          mode: "video",
+          numFrames: 100,
+          frameRate: 99,
+          negativePrompt: `  ${"x".repeat(2_100)}  `,
+          seed: 1.5,
+        },
+      },
+    });
+    connectNodes(text.id, config.id);
+
+    const result = buildConfigGenerationPlan(config.id);
+    if ("error" in result || result.kind !== "video") {
+      throw new Error("expected video plan");
+    }
+    expect(result.numFrames).toBe(121);
+    expect(result.frameRate).toBe(24);
+    expect(result.negativePrompt).toHaveLength(2_000);
+    expect(result.seed).toBeUndefined();
   });
 
   it("audio mode: passes voice and speed from metadata.config", () => {
@@ -364,7 +490,15 @@ describe("runConfigGeneration", () => {
       type: "config",
       title: "生成配置",
       metadata: {
-        config: { mode: "video", durationSeconds: 5, resolution: "720p" },
+        config: {
+          mode: "video",
+          resolution: "720p",
+          aspectRatio: "16:9",
+          numFrames: 121,
+          frameRate: 24,
+          negativePrompt: "watermark",
+          seed: 7,
+        },
       },
       position: { x: 0, y: 0 },
       size: { width: 320, height: 240 },
@@ -382,7 +516,14 @@ describe("runConfigGeneration", () => {
     expect(generateVideoIntoNode).toHaveBeenCalledWith(
       resultNode?.id,
       "rain forest",
-      { durationSeconds: 5, resolution: "720p" },
+      {
+        resolution: "720p",
+        aspectRatio: "16:9",
+        numFrames: 121,
+        frameRate: 24,
+        negativePrompt: "watermark",
+        seed: 7,
+      },
     );
   });
 

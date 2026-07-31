@@ -116,7 +116,7 @@ describe("generateImageIntoNode", () => {
     expect(updated?.title).toHaveLength(30);
   });
 
-  it("forwards referenceImages and count in the SDK body", async () => {
+  it("forwards tabby-image parameters in the SDK body", async () => {
     const node = addNode({ type: "image", title: "图片" });
     mockGenerateImage.mockResolvedValueOnce({
       data: {
@@ -131,6 +131,8 @@ describe("generateImageIntoNode", () => {
     await generateImageIntoNode(node.id, "sky", {
       referenceImages: ["/img/ref1.png"],
       count: 2,
+      model: "tabby-image",
+      transparentBackground: true,
     });
 
     expect(mockGenerateImage).toHaveBeenCalledWith({
@@ -138,6 +140,8 @@ describe("generateImageIntoNode", () => {
         prompt: "sky",
         referenceImages: ["/img/ref1.png"],
         count: 2,
+        model: "tabby-image",
+        transparentBackground: true,
       },
     });
   });
@@ -177,6 +181,7 @@ describe("generateImageIntoNode", () => {
       quality: "high",
       aspectRatio: "16:9",
       size: "2K",
+      transparentBackground: true,
     });
 
     const updated = getCanvasState().nodes.find((n) => n.id === node.id);
@@ -187,6 +192,7 @@ describe("generateImageIntoNode", () => {
       quality: "high",
       aspectRatio: "16:9",
       size: "2K",
+      transparentBackground: true,
     });
   });
 
@@ -244,7 +250,7 @@ describe("generateImageIntoNode", () => {
     const state = getCanvasState();
     const updated = state.nodes.find((n) => n.id === node.id);
     expect(updated?.metadata.task?.status).toBe("error");
-    expect(updated?.metadata.task?.error).toBe("生成失败，请重试");
+    expect(updated?.metadata.task?.error).toBe("timeout");
     expect(updated?.metadata.task?.retry).toEqual({
       kind: "image",
       prompt: "blue sky",
@@ -261,6 +267,7 @@ describe("generateImageIntoNode", () => {
 
     const updated = getCanvasState().nodes.find((n) => n.id === node.id);
     expect(updated?.metadata.task?.status).toBe("error");
+    expect(updated?.metadata.task?.error).toBe("network error");
     expect(updated?.metadata.task?.retry?.prompt).toBe("sunset");
   });
 
@@ -402,6 +409,52 @@ describe("generateVideoIntoNode", () => {
 
     expect(mockGenerateVideo).toHaveBeenCalledWith({
       body: { prompt: "forest", durationSeconds: 15, resolution: "720p" },
+    });
+  });
+
+  it("forwards documented Agnes parameters and preserves them for retry", async () => {
+    const node = addNode({ type: "video", title: "视频" });
+    mockGenerateVideo.mockResolvedValueOnce({
+      data: undefined,
+      error: { message: "fail" },
+      response: new Response(null, { status: 502 }),
+    } as never);
+
+    await generateVideoIntoNode(node.id, "forest", {
+      resolution: "480p",
+      aspectRatio: "3:4",
+      numFrames: 241,
+      frameRate: 30,
+      numInferenceSteps: 28,
+      negativePrompt: "text",
+      seed: 42,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith({
+      body: {
+        prompt: "forest",
+        resolution: "480p",
+        aspectRatio: "3:4",
+        numFrames: 241,
+        frameRate: 30,
+        numInferenceSteps: 28,
+        negativePrompt: "text",
+        seed: 42,
+      },
+    });
+    expect(
+      getCanvasState().nodes.find((item) => item.id === node.id)?.metadata.task
+        ?.retry,
+    ).toEqual({
+      kind: "video",
+      prompt: "forest",
+      resolution: "480p",
+      aspectRatio: "3:4",
+      numFrames: 241,
+      frameRate: 30,
+      numInferenceSteps: 28,
+      negativePrompt: "text",
+      seed: 42,
     });
   });
 

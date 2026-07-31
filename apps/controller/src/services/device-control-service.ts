@@ -22,6 +22,7 @@ type RpcResponse<T> =
 
 const DEFAULT_RPC_TIMEOUT_MS = 10_000;
 const DEFAULT_LIST_TIMEOUT_MS = 5_000;
+const DEFAULT_HEALTH_TIMEOUT_MS = 5_000;
 const MIN_DEVICE_TASK_HARD_TIMEOUT_MS = 30 * 60_000;
 const MAX_DEVICE_TASK_HARD_TIMEOUT_MS = 24 * 60 * 60_000;
 
@@ -47,8 +48,6 @@ export class DeviceControlService {
     private readonly configStore: NexuConfigStore,
     private readonly taskHistoryStore: DeviceTaskHistoryStore,
   ) {}
-
-  private healthAbortController: AbortController | null = null;
 
   private async getRpcPort(): Promise<number> {
     const config = await this.configStore.getConfig();
@@ -154,33 +153,17 @@ export class DeviceControlService {
   }
 
   async isAvailable(): Promise<boolean> {
-    // Cancel any in-flight health check
-    this.healthAbortController?.abort();
-    const ac = new AbortController();
-    this.healthAbortController = ac;
-
-    // Auto-timeout after 5 seconds
-    const timeout = setTimeout(() => ac.abort(), 5000);
-    // Don't prevent process exit
-    if (typeof timeout === "object" && "unref" in timeout) {
-      (
-        timeout as ReturnType<typeof setTimeout> & { unref: () => void }
-      ).unref();
-    }
-
     try {
       const port = await this.getRpcPort();
       const response = await fetch(`http://127.0.0.1:${port}/health`, {
-        signal: ac.signal,
+        // Availability is queried by polling and multiple API routes. Each
+        // caller needs an independent timeout; cancelling an earlier probe can
+        // otherwise turn a healthy concurrent media request into a false 503.
+        signal: AbortSignal.timeout(DEFAULT_HEALTH_TIMEOUT_MS),
       });
       return response.ok;
     } catch {
       return false;
-    } finally {
-      clearTimeout(timeout);
-      if (this.healthAbortController === ac) {
-        this.healthAbortController = null;
-      }
     }
   }
 
@@ -211,7 +194,17 @@ export class DeviceControlService {
     const dispatchedAt = new Date().toISOString();
     const result = await this.rpc<TaskResult>(
       "device.execute_task",
-      { deviceId, task: body.task, timeoutMs: taskTimeout },
+      {
+        deviceId,
+        task: body.task,
+        timeoutMs: taskTimeout,
+        guidance: body.guidance,
+        sessionId: body.sessionId,
+        maxSteps: body.maxSteps,
+        allowedActions: body.allowedActions,
+        allowedApps: body.allowedApps,
+        taskPolicy: body.taskPolicy,
+      },
       // The plugin treats timeoutMs as an idle timeout and re-arms it on every
       // phone progress heartbeat. Keep a much larger independent ceiling so a
       // wedged RPC cannot leave the request and publishing UI pending forever.

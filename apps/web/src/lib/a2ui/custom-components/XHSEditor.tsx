@@ -2,10 +2,24 @@ import { isImeComposing } from "@/lib/keyboard";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { getApiV1Devices } from "../../../../lib/api/sdk.gen";
 import type { CustomComponentProps } from "./registry";
-import { setRowStatus, updatePost } from "./xhs-batch-store";
-import { XHSImageGenerationDialog } from "./xhs-image-generation-dialog";
+import {
+  clearPostImageGeneration,
+  completePostImageGeneration,
+  getBatch,
+  setRowStatus,
+  startPostImageGeneration,
+  updatePost,
+  useBatch,
+} from "./xhs-batch-store";
+import {
+  type XHSImageGenerationRequest,
+  generateXhsImages,
+} from "./xhs-image-generation";
+import { XHSImageGenerationPlaceholders } from "./xhs-image-generation-placeholders";
+import { XHSImageGenerationPopover } from "./xhs-image-generation-popover";
 import {
   type XHSPublishResultItem,
   XhsPublishStatusUnknownError,
@@ -27,6 +41,7 @@ interface XHSCompData {
   /** The post's already-assigned device (batch mode). Seeds the selector so
    * opening the editor never silently reassigns the post to another phone. */
   deviceId?: string;
+  pendingImageSlots?: string[];
 }
 
 type PublishStatus =
@@ -47,6 +62,12 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const batchId = data.batchId;
   const postId = data.postId;
   const bound = Boolean(batchId && postId);
+  const { posts: sharedPosts } = useBatch(
+    batchId ?? "__standalone-xhs-editor__",
+  );
+  const sharedPost = bound
+    ? sharedPosts.find((post) => post.id === postId)
+    : undefined;
 
   // Local state
   const [title, setTitle] = useState(initialTitle);
@@ -57,7 +78,11 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
   const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
   const [publish, setPublish] = useState<PublishStatus>({ state: "idle" });
   const [imageGenerationOpen, setImageGenerationOpen] = useState(false);
+  const [pendingImageSlots, setPendingImageSlots] = useState<string[]>(
+    data.pendingImageSlots ?? [],
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageGenerationAnchorRef = useRef<HTMLButtonElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
 
   // Batch binding: mirror every local edit back to the shared store so the
@@ -67,12 +92,26 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
       updatePost(batchId, postId, {
         title,
         content,
-        images,
         hashtags,
         deviceId,
       });
     }
-  }, [bound, batchId, postId, title, content, images, hashtags, deviceId]);
+  }, [bound, batchId, postId, title, content, hashtags, deviceId]);
+
+  const displayedImages = sharedPost?.images ?? images;
+  const displayedPendingImageSlots =
+    sharedPost?.pendingImageSlots ?? pendingImageSlots;
+
+  const updateImages = (updater: (current: string[]) => string[]) => {
+    if (bound && batchId && postId) {
+      const latestImages =
+        getBatch(batchId).posts.find((post) => post.id === postId)?.images ??
+        [];
+      updatePost(batchId, postId, { images: updater(latestImages) });
+      return;
+    }
+    setImages(updater);
+  };
 
   // Online devices for publishing. Every listed device is connected, so the
   // list itself is the "online" set; default to the first one.
@@ -104,7 +143,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
-        setImages((prev) => [...prev, dataUrl]);
+        updateImages((prev) => [...prev, dataUrl]);
       };
       reader.readAsDataURL(file);
     }
@@ -112,11 +151,34 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
 
   // Remove image by URL
   const removeImage = (imgUrl: string) => {
-    setImages((prev) => prev.filter((url) => url !== imgUrl));
+    updateImages((prev) => prev.filter((url) => url !== imgUrl));
   };
 
-  const addGeneratedImages = (urls: string[]) => {
-    setImages((previous) => [...new Set([...previous, ...urls])]);
+  const handleGenerateImages = async (request: XHSImageGenerationRequest) => {
+    const slotIds = Array.from({ length: request.count }, () =>
+      crypto.randomUUID(),
+    );
+    if (bound && batchId && postId) {
+      startPostImageGeneration(batchId, postId, slotIds);
+    } else {
+      setPendingImageSlots(slotIds);
+    }
+    try {
+      const urls = await generateXhsImages(request);
+      if (bound && batchId && postId) {
+        completePostImageGeneration(batchId, postId, urls);
+      } else {
+        setImages((previous) => [...new Set([...previous, ...urls])]);
+      }
+      toast.success(`已生成 ${urls.length} 张图片并添加到帖子`);
+    } catch (error) {
+      if (bound && batchId && postId) {
+        clearPostImageGeneration(batchId, postId);
+      }
+      toast.error(error instanceof Error ? error.message : "图片生成失败");
+    } finally {
+      if (!bound) setPendingImageSlots([]);
+    }
   };
 
   // Add hashtag
@@ -154,7 +216,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
       reportResult("error", message);
       return;
     }
-    const post = { title, content, images, hashtags };
+    const post = { title, content, images: displayedImages, hashtags };
     try {
       await publishXhsPost(deviceId, post, (phase) => {
         if (bound && batchId && postId) setRowStatus(batchId, postId, phase);
@@ -254,7 +316,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
               gap: 8,
             }}
           >
-            {images.map((img) => (
+            {displayedImages.map((img) => (
               <div
                 key={img}
                 style={{
@@ -298,6 +360,9 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
                 </button>
               </div>
             ))}
+            <XHSImageGenerationPlaceholders
+              slotIds={displayedPendingImageSlots}
+            />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -330,15 +395,20 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
               添加图片
             </button>
             <button
+              ref={imageGenerationAnchorRef}
               type="button"
               onClick={() => setImageGenerationOpen(true)}
+              disabled={displayedPendingImageSlots.length > 0}
               title="AI 生成图片"
               style={{
                 aspectRatio: "1",
                 borderRadius: 8,
                 border: "1px solid #f2b8c4",
                 background: "#fff4f6",
-                cursor: "pointer",
+                cursor:
+                  displayedPendingImageSlots.length > 0
+                    ? "not-allowed"
+                    : "pointer",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -346,6 +416,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
                 gap: 3,
                 color: "#bb0028",
                 fontSize: 11,
+                opacity: displayedPendingImageSlots.length > 0 ? 0.55 : 1,
               }}
             >
               <Sparkles size={18} aria-hidden="true" />
@@ -399,12 +470,13 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
           </div>
         </div>
 
-        {/* Content textarea — flexes to fill the remaining editor height */}
+        {/* Content textarea — keeps a readable intrinsic height in inline chat
+            surfaces and still grows inside fixed-height sidebar/canvas hosts. */}
         <div
           style={{
             padding: "8px 16px 0",
-            flex: 1,
-            minHeight: 0,
+            flex: "1 0 220px",
+            minHeight: 220,
             display: "flex",
             flexDirection: "column",
           }}
@@ -415,7 +487,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
             placeholder="在这里分享你的故事..."
             style={{
               flex: 1,
-              minHeight: 80,
+              minHeight: 220,
               width: "100%",
               padding: "8px 12px",
               border: "1px solid #e5e5e5",
@@ -431,7 +503,7 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
         </div>
 
         {/* Hashtags section */}
-        <div style={{ padding: "8px 16px 0", flexShrink: 0 }}>
+        <div style={{ padding: "16px 16px 0", flexShrink: 0 }}>
           <div
             style={{
               display: "flex",
@@ -620,10 +692,11 @@ export function XHSEditor({ comp, onAction }: XHSEditorProps) {
         </div>
       )}
 
-      <XHSImageGenerationDialog
+      <XHSImageGenerationPopover
         open={imageGenerationOpen}
+        anchorRef={imageGenerationAnchorRef}
         onOpenChange={setImageGenerationOpen}
-        onGenerated={addGeneratedImages}
+        onGenerate={(request) => void handleGenerateImages(request)}
       />
     </div>
   );

@@ -16,8 +16,10 @@ import {
 } from "./skillhub/catalog-manager.js";
 import {
   copyStaticSkills,
+  recoverManagedBundleRefreshTransactions,
   replaceLibtvVideoFromBundle,
   replaceOfficeCliFromBundle,
+  replaceTabbyMediaSkillsFromBundle,
 } from "./skillhub/curated-skills.js";
 import { InstallQueue } from "./skillhub/install-queue.js";
 import { ensureNpmAvailable, runNpmInstall } from "./skillhub/npm-runner.js";
@@ -223,13 +225,20 @@ export class SkillhubService {
    */
   bootstrap(): void {
     if (process.env.CI) return;
+    recoverManagedBundleRefreshTransactions(this.env.openclawSkillsDir);
     this.dirWatcher.syncNow();
+    // Legacy ledgers may still describe publisher installs as ownerless
+    // managed skills. Recover their origin before any bundled refresh decides
+    // whether it owns the on-disk directory.
+    this.backfillManagedInstallMetadata();
     this.initialize();
   }
 
   start(): void {
     this.catalogManager.start();
     if (process.env.CI) return;
+
+    recoverManagedBundleRefreshTransactions(this.env.openclawSkillsDir);
 
     // Resolve bot IDs asynchronously and feed them to the dir watcher
     // so it can reconcile workspace skill directories on startup.
@@ -278,6 +287,14 @@ export class SkillhubService {
       // copyStaticSkills' first-install-only semantics would otherwise
       // never refresh it. See replaceLibtvVideoFromBundle for rationale.
       replaceLibtvVideoFromBundle({
+        staticDir: this.env.staticSkillsDir,
+        targetDir: this.env.openclawSkillsDir,
+        skillDb: this.db,
+      });
+
+      // Refresh Tabby's managed media skills so request-protocol fixes reach
+      // existing installs while preserving user-owned or removed copies.
+      replaceTabbyMediaSkillsFromBundle({
         staticDir: this.env.staticSkillsDir,
         targetDir: this.env.openclawSkillsDir,
         skillDb: this.db,

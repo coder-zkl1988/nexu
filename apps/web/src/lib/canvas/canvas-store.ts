@@ -4,6 +4,7 @@ import { getCanvasBoards, setActiveBoardId } from "./canvas-boards";
 import { NODE_MIN_HEIGHT, NODE_MIN_WIDTH } from "./canvas-geometry";
 import type { PersistedCanvas } from "./canvas-persistence";
 import { getActiveStorage } from "./canvas-persistence";
+import type { VideoAspectRatio } from "./video-generation-params";
 export { NODE_MIN_HEIGHT, NODE_MIN_WIDTH } from "./canvas-geometry";
 
 /**
@@ -73,8 +74,8 @@ export type CanvasNodeMetadata = {
     count?: number;
     /** video: duration in seconds, 1–60 */
     durationSeconds?: number;
-    /** video: output resolution */
-    resolution?: "720p" | "1080p";
+    /** video: output resolution tier */
+    resolution?: "480p" | "720p" | "1080p";
     /** audio: voice identifier */
     voice?: string;
     /** audio: playback speed, 0.5–2 */
@@ -85,6 +86,16 @@ export type CanvasNodeMetadata = {
     quality?: "auto" | "high" | "medium" | "low";
     /** image/video: aspect-ratio hint, e.g. "1:1", "16:9" */
     aspectRatio?: string;
+    /** video: frame count, <=441 and following 8n+1 */
+    numFrames?: number;
+    /** video: frame rate, 1-60 */
+    frameRate?: number;
+    /** video: optional positive model inference step count */
+    numInferenceSteps?: number;
+    /** video: content to avoid */
+    negativePrompt?: string;
+    /** video: deterministic seed */
+    seed?: number;
     /** image: output size hint, e.g. "1K", "2K", "4K" */
     size?: string;
     /** video: also generate an audio track (hint) */
@@ -153,14 +164,20 @@ export type CanvasNodeMetadata = {
           quality?: "auto" | "high" | "medium" | "low";
           aspectRatio?: string;
           size?: string;
+          transparentBackground?: boolean;
         }
       | {
           kind: "video";
           prompt: string;
           durationSeconds?: number;
-          resolution?: "720p" | "1080p";
+          resolution?: "480p" | "720p" | "1080p";
           model?: string;
-          aspectRatio?: string;
+          aspectRatio?: VideoAspectRatio;
+          numFrames?: number;
+          frameRate?: number;
+          numInferenceSteps?: number;
+          negativePrompt?: string;
+          seed?: number;
           generateAudio?: boolean;
           watermark?: boolean;
         }
@@ -229,7 +246,7 @@ export const NODE_DEFAULT_SIZES: Record<
   "team-step": { width: 300, height: 200 },
   config: { width: 320, height: 240 },
   xhs: { width: 440, height: 640 },
-  phone: { width: 300, height: 560 },
+  phone: { width: 300, height: 680 },
   group: { width: 760, height: 480 },
 };
 

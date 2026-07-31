@@ -83,6 +83,12 @@ export function reportXhsPublishResults(
 const DEVICE_IDLE_POLL_INTERVAL_MS = 2_000;
 const DEVICE_IDLE_WAIT_TIMEOUT_MS = 10 * 60_000;
 const XHS_TASK_IDLE_TIMEOUT_MS = 5 * 60_000;
+const XHS_MEDIA_ALBUM_NAME = "Tabby";
+
+interface XhsMediaSelection {
+  albumName: string;
+  filenames: string[];
+}
 
 function readApiErrorMessage(error: unknown, fallback: string): string {
   if (
@@ -205,30 +211,58 @@ export function stripMarkdownForXhs(text: string): string {
 }
 
 /**
- * Build the publish task for one XHS post — WHAT to publish only (title,
- * plain-text body, hashtags, image source). The HOW (open the publish entry,
- * the "TYPE replaces / fill each field once" discipline, putting hashtags into
- * the body instead of via the #话题 button, hitting publish) lives in the
- * phone-side tabby-rednote skill (references/post.md), which the device VLM
- * loads when com.xingin.xhs is foreground — one source of truth for the
- * on-device flow, so the desktop never drifts from it.
+ * Build a self-contained publish task for one XHS post. Device skills still own
+ * the general app flow, but the task repeats the destructive-input rules that
+ * are specific to this payload: TYPE replaces the whole field, so the body and
+ * hashtags must be written together exactly once.
  */
-export function buildXhsPublishTask(post: XHSPublishPost): string {
+export function buildXhsPublishTask(
+  post: XHSPublishPost,
+  mediaSelection?: XhsMediaSelection,
+): string {
+  const hasImages = post.images.length > 0;
   const parts: string[] = [
-    "发布一篇小红书图文笔记，请按小红书「发布笔记」流程操作。内容如下：",
+    hasImages
+      ? "发布一篇小红书图文笔记，请按小红书「发布笔记」流程操作，并严格遵守以下输入规则："
+      : "发布一篇小红书文字笔记。本次没有外部图片素材：点击底部发布按钮后必须选择「写文字」，不得选择「从相册选择」；若已经进入相册页，立即返回发布类型面板并改选「写文字」，不得选取任何已有图片。进入文字封面页后，使用下方标题作为封面短句，再继续到正式发帖页。",
+    "【发布授权】用户已经在桌面组件完成内容、图片模式、话题和目标设备选择，并主动点击「发布」或「全部发布」；该点击就是本次公开发布的最终确认。未指定的文字封面样式等非关键选项使用平台默认值，不要中途询问偏好。核对任务内容一致后，必须直接点击手机端最终「发布」或「发布笔记」按钮，不得再次询问用户是否确认。只有遇到账号状态异常、需人工身份校验、平台风控、内容审核，或素材与任务不一致时才停止并报告。",
+    "标题输入框只执行一次 TYPE。正文输入框也只执行一次 TYPE；TYPE 会替换整个字段，必须把下方【正文与话题】文本块原样一次性写入，并保留其中全部换行和空行。不得再单独输入话题，也不得点击「#话题」按钮。",
   ];
-  if (post.images.length > 0) {
+  if (hasImages) {
+    const albumName = mediaSelection?.albumName ?? XHS_MEDIA_ALBUM_NAME;
+    const filenames = mediaSelection?.filenames ?? [];
+    const filenameInstruction =
+      filenames.length > 0
+        ? ` 本批文件名为：${filenames.map((filename) => `「${filename}」`).join("、")}。`
+        : "";
     parts.push(
-      `【配图】从手机相册选择最新的 ${post.images.length} 张图片（刚从桌面推送的）。`,
+      `【配图】桌面端已确认向这台手机推送 ${post.images.length} 张图片，保存位置是相册「${albumName}」。${filenameInstruction}必须先切换到相册「${albumName}」，只选择该相册中与本批文件对应、刚新增且数量完全一致的最新 ${post.images.length} 张；不得在「全部」「最近项目」或其他相册中猜选。若看不到、数量不一致或无法确认是刚推送的图片，立即停止并报告“找不到刚推送的图片”，绝不能选择相册第一张或其他已有图片。`,
     );
   }
   parts.push(`【标题】\n<<<标题开始>>>\n${post.title}\n<<<标题结束>>>`);
+
+  const hashtags = [
+    ...new Set(
+      post.hashtags
+        .map((hashtag) => hashtag.trim().replace(/^#+\s*/, ""))
+        .filter(Boolean),
+    ),
+  ];
+  const plainBody = stripMarkdownForXhs(post.content);
+  const hashtagLine = hashtags.map((hashtag) => `#${hashtag}`).join(" ");
+  const bodyWithHashtags = hashtagLine
+    ? plainBody.length > 0
+      ? `${plainBody.replace(/\n+$/, "")}\n\n${hashtagLine}`
+      : hashtagLine
+    : plainBody;
   parts.push(
-    `【正文】\n<<<正文开始>>>\n${stripMarkdownForXhs(post.content)}\n<<<正文结束>>>`,
+    `【正文与话题（只写入一次）】\n<<<正文与话题开始>>>\n${bodyWithHashtags}\n<<<正文与话题结束>>>`,
   );
-  if (post.hashtags.length > 0) {
-    parts.push(`【话题】${post.hashtags.join("、")}`);
-  }
+  parts.push(
+    hasImages
+      ? "发布前核对图片数量、标题、正文换行、空行和末尾话题均与上述内容一致；任一项不一致就停止并报告，不要点击发布。全部一致后才能发布。"
+      : "发布前核对本次通过「写文字」生成文字封面、没有从相册选择任何图片，并确认标题、正文换行、空行和末尾话题均与上述内容一致；任一项不一致就停止并报告，不要点击发布。全部一致后才能发布。",
+  );
   return parts.join("\n");
 }
 
@@ -268,11 +302,13 @@ export async function publishXhsPost(
 ): Promise<void> {
   await waitForDeviceIdle(deviceId, onPhase);
 
+  let mediaSelection: XhsMediaSelection | undefined;
   if (post.images.length > 0) {
     onPhase?.("pushing");
     const resolvedImages = await Promise.all(
       post.images.map(imageSourceToDataUrl),
     );
+    const mediaBatchId = Date.now();
     const payload = resolvedImages.map((dataUrl, i) => {
       const mimeType =
         dataUrl.match(/^data:([^;]+);base64,/)?.[1] ?? "image/png";
@@ -280,31 +316,56 @@ export async function publishXhsPost(
         ? dataUrl.slice(dataUrl.indexOf(",") + 1)
         : dataUrl;
       return {
-        filename: `xhs-${Date.now()}-${i}.${extForMime(mimeType)}`,
+        filename: `xhs-${mediaBatchId}-${i}.${extForMime(mimeType)}`,
         mimeType,
         dataBase64: base64,
       };
     });
-    const { data } = await postApiV1DevicesByDeviceIdMedia({
+    const { data, error } = await postApiV1DevicesByDeviceIdMedia({
       path: { deviceId },
       body: { images: payload },
     });
-    const failed = (data?.results ?? []).filter(
-      (r: { success: boolean }) => !r.success,
-    );
-    if (failed.length > 0) {
-      throw new Error(`图片推送失败 ${failed.length}/${post.images.length} 张`);
+    if (error || !data) {
+      throw new Error(
+        `图片推送失败，已停止手机发布：${readApiErrorMessage(error, "设备未返回图片保存结果")}`,
+      );
     }
+    const confirmedCount = data.results.filter(
+      (result) => result.success && result.mediaId.trim().length > 0,
+    ).length;
+    if (
+      data.results.length !== payload.length ||
+      confirmedCount !== payload.length
+    ) {
+      throw new Error(
+        `图片推送未完成 ${confirmedCount}/${payload.length} 张，已停止手机发布`,
+      );
+    }
+    mediaSelection = {
+      albumName: XHS_MEDIA_ALBUM_NAME,
+      filenames: payload.map((image) => image.filename),
+    };
   }
 
   onPhase?.("publishing");
-  const task = buildXhsPublishTask(post);
+  const task = buildXhsPublishTask(post, mediaSelection);
   const dispatch = async () => {
     const { data, error, response } = await postApiV1DevicesByDeviceIdTasks({
       path: { deviceId },
       body: {
         task,
         allowedApps: ["com.xingin.xhs"],
+        taskPolicy: {
+          operationClass: "content.publish",
+          targetPackages: ["com.xingin.xhs"],
+          allowedAppRoles: [
+            "target_app",
+            "gallery",
+            "file_picker",
+            "system_dialog",
+          ],
+          allowedApps: ["com.xingin.xhs"],
+        },
         timeout: XHS_TASK_IDLE_TIMEOUT_MS,
       },
     });

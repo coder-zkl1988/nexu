@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
+  buildImageGenerationRequest,
   parseImageResponse,
   readOpenclawConfig,
   resolveLinkCredential,
@@ -21,16 +22,20 @@ import {
 } from "./lib.js";
 
 const SKILL_NAME = "tabby-image";
-const DEFAULT_SIZE = "1024x1024";
 
 function printHelp() {
   console.log(`Usage: node generate-image.js --prompt "desc" --filename "out.png" [options]
 
 Options:
-  -p, --prompt      Image description (required)
-  -f, --filename    Output filename (required)
-      --size        Image size, e.g. 1024x1024 (default), 1024x1536, 1536x1024
-  -h, --help        Show this help`);
+  -p, --prompt                  Image description (required)
+  -f, --filename                Output filename (required)
+      --model                   tabby-image or tabby-image-free
+      --size                    GPT: auto/1K/2K/3K/4K or WIDTHxHEIGHT;
+                                Agnes: 1K/2K/3K/4K or WIDTHxHEIGHT
+      --ratio                   1:1, 3:4, 4:3, 16:9, 9:16, 2:3, 3:2, 21:9
+      --quality                 GPT: auto, high, medium, low (ignored by Agnes)
+      --transparent-background GPT transparent background (ignored by Agnes)
+  -h, --help                    Show this help`);
 }
 
 function parseCliArgs() {
@@ -38,7 +43,11 @@ function parseCliArgs() {
     options: {
       prompt: { type: "string", short: "p" },
       filename: { type: "string", short: "f" },
-      size: { type: "string", default: DEFAULT_SIZE },
+      model: { type: "string" },
+      size: { type: "string" },
+      ratio: { type: "string" },
+      quality: { type: "string" },
+      "transparent-background": { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
     strict: true,
@@ -60,7 +69,11 @@ function parseCliArgs() {
   return {
     prompt: values.prompt,
     filename: values.filename,
+    model: values.model,
     size: values.size,
+    ratio: values.ratio,
+    quality: values.quality,
+    transparentBackground: values["transparent-background"] === true,
   };
 }
 
@@ -79,30 +92,39 @@ async function main() {
   const args = parseCliArgs();
 
   let credential;
+  let request;
   try {
     const config = readOpenclawConfig(process.env.OPENCLAW_STATE_DIR);
-    credential = resolveLinkCredential(config, process.env.OPENCLAW_STATE_DIR);
+    credential = resolveLinkCredential(
+      config,
+      process.env.OPENCLAW_STATE_DIR,
+      args.model,
+    );
+    request = buildImageGenerationRequest({
+      baseUrl: credential.baseUrl,
+      model: credential.model,
+      prompt: args.prompt,
+      size: args.size,
+      ratio: args.ratio,
+      quality: args.quality,
+      transparentBackground: args.transparentBackground,
+    });
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   }
 
   console.log(
-    `Generating image with model=${credential.model} size=${args.size}...`,
+    `Generating image with model=${credential.model} size=${request.body.size}...`,
   );
 
-  const res = await fetch(`${credential.baseUrl}/images/generations`, {
+  const res = await fetch(request.url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${credential.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: credential.model,
-      prompt: args.prompt,
-      n: 1,
-      size: args.size,
-    }),
+    body: JSON.stringify(request.body),
   });
 
   if (!res.ok) {

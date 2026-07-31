@@ -8,6 +8,7 @@ import type {
 import "@/lib/api";
 import {
   type QueryClient,
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -142,6 +143,7 @@ export function useCommunitySkillPages(options: {
       return data as unknown as SkillhubCatalogPageData;
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
     retry: (failureCount, error) =>
       !(error instanceof CatalogRevisionChangedError) && failureCount < 3,
@@ -199,7 +201,6 @@ export function useInstallSkill() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CATALOG_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: CATALOG_PAGES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: DETAIL_QUERY_KEY }),
       ]);

@@ -16,17 +16,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
+  buildVideoRequestBody,
   parseVideoResultResponse,
   parseVideoTaskResponse,
   readOpenclawConfig,
   resolveLinkCredential,
   resolveOutputPath,
-  validateNumFrames,
+  resolveVideoCreateUrl,
+  resolveVideoDimensions,
+  resolveVideoNumFrames,
+  resolveVideoPollUrl,
 } from "./lib.js";
 
 const SKILL_NAME = "tabby-video";
-const DEFAULT_WIDTH = 1152;
-const DEFAULT_HEIGHT = 768;
 const DEFAULT_NUM_FRAMES = 121;
 const DEFAULT_FRAME_RATE = 24;
 const DEFAULT_POLL_INTERVAL_MS = 5000;
@@ -39,17 +41,51 @@ Options:
   -p, --prompt          Video description (required)
   -f, --filename        Output filename (required)
       --image           Reference image URL. Pass once for image-to-video, twice+ for
-                         multi-image/keyframe video (repeatable)
+                         keyframe video (repeatable; multiple requires --keyframes)
       --keyframes       Treat --image entries as keyframes (requires 2+ --image)
+      --model           Configured relay model alias (default: account-selected tabby-video)
       --negative-prompt Content to avoid in the generated video
-      --width           Video width (default ${DEFAULT_WIDTH})
-      --height          Video height (default ${DEFAULT_HEIGHT})
-      --num-frames      Frame count, <= 441 and must follow the 8n+1 rule (default ${DEFAULT_NUM_FRAMES})
+      --duration-seconds  Desired duration; converted to a valid 8n+1 frame count
+      --resolution      480p, 720p, or 1080p (use with --aspect-ratio)
+      --aspect-ratio    16:9, 9:16, 1:1, 4:3, or 3:4
+      --width           Explicit video width (requires --height; cannot use preset options)
+      --height          Explicit video height (requires --width; cannot use preset options)
+      --num-frames      Frame count, <= 441 and must follow 8n+1 (default ${DEFAULT_NUM_FRAMES})
       --frame-rate      Frames per second, 1-60 (default ${DEFAULT_FRAME_RATE})
+      --num-inference-steps  Optional positive model inference step count
       --seed            Seed for reproducible output
       --poll-interval-ms  Polling interval while waiting for the result (default ${DEFAULT_POLL_INTERVAL_MS})
       --timeout-ms      Give up waiting for the result after this long (default ${DEFAULT_TIMEOUT_MS})
   -h, --help            Show this help`);
+}
+
+function parseOptionalInteger(value, label) {
+  if (value === undefined) return undefined;
+  if (!/^-?\d+$/.test(value)) {
+    throw new Error(`${label} must be an integer.`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${label} must be a safe integer.`);
+  }
+  return parsed;
+}
+
+function parseOptionalNumber(value, label) {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} must be a number.`);
+  }
+  return parsed;
+}
+
+function parsePositiveInteger(value, label) {
+  const parsed = parseOptionalInteger(value, label);
+  if (parsed === undefined || parsed <= 0) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return parsed;
 }
 
 function parseCliArgs() {
@@ -59,11 +95,16 @@ function parseCliArgs() {
       filename: { type: "string", short: "f" },
       image: { type: "string", multiple: true, default: [] },
       keyframes: { type: "boolean", default: false },
+      model: { type: "string" },
       "negative-prompt": { type: "string" },
-      width: { type: "string", default: String(DEFAULT_WIDTH) },
-      height: { type: "string", default: String(DEFAULT_HEIGHT) },
-      "num-frames": { type: "string", default: String(DEFAULT_NUM_FRAMES) },
+      "duration-seconds": { type: "string" },
+      resolution: { type: "string" },
+      "aspect-ratio": { type: "string" },
+      width: { type: "string" },
+      height: { type: "string" },
+      "num-frames": { type: "string" },
       "frame-rate": { type: "string", default: String(DEFAULT_FRAME_RATE) },
+      "num-inference-steps": { type: "string" },
       seed: { type: "string" },
       "poll-interval-ms": {
         type: "string",
@@ -80,65 +121,61 @@ function parseCliArgs() {
     process.exit(0);
   }
   if (!values.prompt) {
-    console.error("Error: --prompt is required");
-    process.exit(1);
+    throw new Error("--prompt is required");
   }
   if (!values.filename) {
-    console.error("Error: --filename is required");
-    process.exit(1);
+    throw new Error("--filename is required");
   }
   if (values.keyframes && values.image.length < 2) {
-    console.error("Error: --keyframes requires at least two --image values");
-    process.exit(1);
+    throw new Error("--keyframes requires at least two --image values");
   }
+  if (!values.keyframes && values.image.length > 1) {
+    throw new Error("multiple --image values require --keyframes");
+  }
+
+  const frameRate = parseOptionalNumber(values["frame-rate"], "--frame-rate");
+  const resolvedFrameRate = frameRate ?? DEFAULT_FRAME_RATE;
+  const numFrames = resolveVideoNumFrames({
+    numFrames: parseOptionalInteger(values["num-frames"], "--num-frames"),
+    durationSeconds: parseOptionalNumber(
+      values["duration-seconds"],
+      "--duration-seconds",
+    ),
+    frameRate: resolvedFrameRate,
+  });
+  const dimensions = resolveVideoDimensions({
+    width: parseOptionalInteger(values.width, "--width"),
+    height: parseOptionalInteger(values.height, "--height"),
+    resolution: values.resolution,
+    aspectRatio: values["aspect-ratio"],
+  });
+  const seed = parseOptionalInteger(values.seed, "--seed");
+  const numInferenceSteps =
+    values["num-inference-steps"] === undefined
+      ? undefined
+      : parsePositiveInteger(
+          values["num-inference-steps"],
+          "--num-inference-steps",
+        );
 
   return {
     prompt: values.prompt,
     filename: values.filename,
     images: values.image,
     keyframes: values.keyframes,
+    model: values.model?.trim() || undefined,
     negativePrompt: values["negative-prompt"],
-    width: Number.parseInt(values.width, 10),
-    height: Number.parseInt(values.height, 10),
-    numFrames: Number.parseInt(values["num-frames"], 10),
-    frameRate: Number.parseFloat(values["frame-rate"]),
-    seed:
-      values.seed !== undefined ? Number.parseInt(values.seed, 10) : undefined,
-    pollIntervalMs: Number.parseInt(values["poll-interval-ms"], 10),
-    timeoutMs: Number.parseInt(values["timeout-ms"], 10),
+    ...dimensions,
+    numFrames,
+    frameRate: resolvedFrameRate,
+    numInferenceSteps,
+    seed,
+    pollIntervalMs: parsePositiveInteger(
+      values["poll-interval-ms"],
+      "--poll-interval-ms",
+    ),
+    timeoutMs: parsePositiveInteger(values["timeout-ms"], "--timeout-ms"),
   };
-}
-
-function buildRequestBody(credential, args) {
-  const body = {
-    model: credential.model,
-    prompt: args.prompt,
-    width: args.width,
-    height: args.height,
-    num_frames: args.numFrames,
-    frame_rate: args.frameRate,
-  };
-  if (args.negativePrompt) body.negative_prompt = args.negativePrompt;
-  if (args.seed !== undefined) body.seed = args.seed;
-
-  if (args.images.length === 1 && !args.keyframes) {
-    body.image = args.images[0];
-  } else if (args.images.length > 1) {
-    body.extra_body = {
-      image: args.images,
-      ...(args.keyframes ? { mode: "keyframes" } : {}),
-    };
-  }
-
-  return body;
-}
-
-/** Polling lives at the gateway's origin, not under the /v1 creation path
- *  (mirrors the upstream Agnes contract: POST is under /v1/videos, GET
- *  results are under /agnesapi at the host root). */
-function resolvePollUrl(baseUrl, videoId) {
-  const origin = new URL(baseUrl).origin;
-  return `${origin}/agnesapi?video_id=${encodeURIComponent(videoId)}`;
 }
 
 async function downloadVideo(url) {
@@ -157,7 +194,7 @@ async function sleep(ms) {
 }
 
 async function pollForResult(credential, task, args) {
-  const pollUrl = resolvePollUrl(credential.baseUrl, task.id);
+  const pollUrl = resolveVideoPollUrl(credential.baseUrl, task);
   const startedAt = Date.now();
   const deadline = startedAt + args.timeoutMs;
 
@@ -188,7 +225,7 @@ async function pollForResult(credential, task, args) {
 
     if (Date.now() + args.pollIntervalMs > deadline) {
       throw new Error(
-        `VIDEO_GENERATION_TIMEOUT: gave up waiting after ${Math.round(args.timeoutMs / 1000)}s. video_id=${task.id}`,
+        `VIDEO_GENERATION_TIMEOUT: gave up waiting after ${Math.round(args.timeoutMs / 1000)}s. ${task.idParam}=${task.id}`,
       );
     }
     await sleep(args.pollIntervalMs);
@@ -196,10 +233,9 @@ async function pollForResult(credential, task, args) {
 }
 
 async function main() {
-  const args = parseCliArgs();
-
+  let args;
   try {
-    validateNumFrames(args.numFrames);
+    args = parseCliArgs();
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
@@ -208,7 +244,11 @@ async function main() {
   let credential;
   try {
     const config = readOpenclawConfig(process.env.OPENCLAW_STATE_DIR);
-    credential = resolveLinkCredential(config, process.env.OPENCLAW_STATE_DIR);
+    credential = resolveLinkCredential(
+      config,
+      process.env.OPENCLAW_STATE_DIR,
+      args.model,
+    );
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
@@ -218,13 +258,13 @@ async function main() {
     `Creating video task with model=${credential.model} size=${args.width}x${args.height} frames=${args.numFrames}@${args.frameRate}fps...`,
   );
 
-  const createRes = await fetch(`${credential.baseUrl}/videos`, {
+  const createRes = await fetch(resolveVideoCreateUrl(credential.baseUrl), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${credential.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(buildRequestBody(credential, args)),
+    body: JSON.stringify(buildVideoRequestBody(credential, args)),
   });
 
   if (!createRes.ok) {

@@ -19870,6 +19870,88 @@
                       "type": "string"
                     }
                   },
+                  "taskPolicy": {
+                    "type": "object",
+                    "properties": {
+                      "operationClass": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "targetPackages": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "allowedAppRoles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "target_app",
+                            "official_store",
+                            "system_installer",
+                            "system_settings",
+                            "default_sms",
+                            "gallery",
+                            "file_picker",
+                            "browser",
+                            "system_dialog",
+                            "other"
+                          ]
+                        }
+                      },
+                      "installSourcePolicy": {
+                        "type": "string",
+                        "enum": [
+                          "official_store_only"
+                        ]
+                      },
+                      "allowBrowserDownload": {
+                        "type": "boolean"
+                      },
+                      "allowedActions": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "allowedApps": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "confirmationPolicy": {
+                        "type": "object",
+                        "properties": {
+                          "login": {
+                            "type": "string",
+                            "enum": [
+                              "required",
+                              "forbidden"
+                            ]
+                          },
+                          "publish": {
+                            "type": "string",
+                            "enum": [
+                              "required",
+                              "forbidden"
+                            ]
+                          },
+                          "payment": {
+                            "type": "string",
+                            "enum": [
+                              "forbidden"
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
                   "timeout": {
                     "type": "integer",
                     "minimum": 0,
@@ -21110,6 +21192,7 @@
                   "resolution": {
                     "type": "string",
                     "enum": [
+                      "480p",
                       "720p",
                       "1080p"
                     ]
@@ -21120,7 +21203,37 @@
                   },
                   "aspectRatio": {
                     "type": "string",
-                    "maxLength": 16
+                    "enum": [
+                      "16:9",
+                      "9:16",
+                      "1:1",
+                      "4:3",
+                      "3:4"
+                    ]
+                  },
+                  "numFrames": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 441
+                  },
+                  "frameRate": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  "numInferenceSteps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "negativePrompt": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
                   },
                   "generateAudio": {
                     "type": "boolean"

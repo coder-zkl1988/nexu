@@ -17,6 +17,7 @@ import {
 } from "../../../lib/api/sdk.gen";
 import { attachBatchChildren } from "./canvas-batch";
 import { getCanvasState, setNodeTask, updateNode } from "./canvas-store";
+import type { VideoAspectRatio } from "./video-generation-params";
 
 // ── Image ──────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export async function generateImageIntoNode(
     quality?: "auto" | "high" | "medium" | "low";
     aspectRatio?: string;
     size?: string;
+    transparentBackground?: boolean;
   },
 ): Promise<boolean> {
   // The retry payload is persisted with the node, so a retry — even after an
@@ -67,6 +69,9 @@ export async function generateImageIntoNode(
       ? { aspectRatio: opts.aspectRatio }
       : {}),
     ...(opts?.size !== undefined ? { size: opts.size } : {}),
+    ...(opts?.transparentBackground !== undefined
+      ? { transparentBackground: opts.transparentBackground }
+      : {}),
   };
 
   setNodeTask(nodeId, { status: "generating", retry });
@@ -91,6 +96,9 @@ export async function generateImageIntoNode(
           ? { aspectRatio: opts.aspectRatio }
           : {}),
         ...(opts?.size !== undefined ? { size: opts.size } : {}),
+        ...(opts?.transparentBackground !== undefined
+          ? { transparentBackground: opts.transparentBackground }
+          : {}),
       },
     });
 
@@ -101,7 +109,7 @@ export async function generateImageIntoNode(
     if (!data || error) {
       setNodeTask(nodeId, {
         status: "error",
-        error: "生成失败，请重试",
+        error: readMediaErrorMessage(error, "生成失败，请重试"),
         retry,
       });
       return false;
@@ -117,18 +125,31 @@ export async function generateImageIntoNode(
     }
     setNodeTask(nodeId, null);
     return true;
-  } catch {
+  } catch (error) {
     // Check node existence before writing error state.
     const stillExists = getCanvasState().nodes.some((n) => n.id === nodeId);
     if (!stillExists) return false;
 
     setNodeTask(nodeId, {
       status: "error",
-      error: "生成失败，请重试",
+      error: readMediaErrorMessage(error, "生成失败，请重试"),
       retry,
     });
     return false;
   }
+}
+
+function readMediaErrorMessage(error: unknown, fallback: string): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim() !== ""
+  ) {
+    return error.message.trim().slice(0, 160);
+  }
+  return fallback;
 }
 
 // ── Video ──────────────────────────────────────────────────────
@@ -208,9 +229,14 @@ export async function generateVideoIntoNode(
   prompt: string,
   opts?: {
     durationSeconds?: number;
-    resolution?: "720p" | "1080p";
+    resolution?: "480p" | "720p" | "1080p";
     model?: string;
-    aspectRatio?: string;
+    aspectRatio?: VideoAspectRatio;
+    numFrames?: number;
+    frameRate?: number;
+    numInferenceSteps?: number;
+    negativePrompt?: string;
+    seed?: number;
     generateAudio?: boolean;
     watermark?: boolean;
   },
@@ -226,6 +252,15 @@ export async function generateVideoIntoNode(
     ...(opts?.aspectRatio !== undefined
       ? { aspectRatio: opts.aspectRatio }
       : {}),
+    ...(opts?.numFrames !== undefined ? { numFrames: opts.numFrames } : {}),
+    ...(opts?.frameRate !== undefined ? { frameRate: opts.frameRate } : {}),
+    ...(opts?.numInferenceSteps !== undefined
+      ? { numInferenceSteps: opts.numInferenceSteps }
+      : {}),
+    ...(opts?.negativePrompt !== undefined
+      ? { negativePrompt: opts.negativePrompt }
+      : {}),
+    ...(opts?.seed !== undefined ? { seed: opts.seed } : {}),
     ...(opts?.generateAudio !== undefined
       ? { generateAudio: opts.generateAudio }
       : {}),
@@ -248,6 +283,15 @@ export async function generateVideoIntoNode(
         ...(opts?.aspectRatio !== undefined
           ? { aspectRatio: opts.aspectRatio }
           : {}),
+        ...(opts?.numFrames !== undefined ? { numFrames: opts.numFrames } : {}),
+        ...(opts?.frameRate !== undefined ? { frameRate: opts.frameRate } : {}),
+        ...(opts?.numInferenceSteps !== undefined
+          ? { numInferenceSteps: opts.numInferenceSteps }
+          : {}),
+        ...(opts?.negativePrompt !== undefined
+          ? { negativePrompt: opts.negativePrompt }
+          : {}),
+        ...(opts?.seed !== undefined ? { seed: opts.seed } : {}),
         ...(opts?.generateAudio !== undefined
           ? { generateAudio: opts.generateAudio }
           : {}),
@@ -480,6 +524,7 @@ export function retryNodeTask(nodeId: string): void {
       quality: retry.quality,
       aspectRatio: retry.aspectRatio,
       size: retry.size,
+      transparentBackground: retry.transparentBackground,
     });
   } else if (retry.kind === "video") {
     void generateVideoIntoNode(nodeId, retry.prompt, {
@@ -487,6 +532,11 @@ export function retryNodeTask(nodeId: string): void {
       resolution: retry.resolution,
       model: retry.model,
       aspectRatio: retry.aspectRatio,
+      numFrames: retry.numFrames,
+      frameRate: retry.frameRate,
+      numInferenceSteps: retry.numInferenceSteps,
+      negativePrompt: retry.negativePrompt,
+      seed: retry.seed,
       generateAudio: retry.generateAudio,
       watermark: retry.watermark,
     });

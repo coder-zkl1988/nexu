@@ -1,16 +1,304 @@
+import { createHash, randomUUID } from "node:crypto";
 import {
   cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import type { SkillDb } from "./skill-db.js";
 
 const LIBTV_VIDEO_SLUG = "libtv-video";
 const OFFICECLI_SLUG = "officecli";
+const TABBY_MEDIA_SKILL_SLUGS = ["tabby-image", "tabby-video"] as const;
+const TRANSACTIONAL_BUNDLE_SKILL_SLUGS = [
+  ...TABBY_MEDIA_SKILL_SLUGS,
+  OFFICECLI_SLUG,
+] as const;
+export const TABBY_MEDIA_MANAGED_MARKER = ".nexu-managed-bundle";
+
+const managedBundleTransactionPattern = new RegExp(
+  `^\\.(${TRANSACTIONAL_BUNDLE_SKILL_SLUGS.join("|")})\\.(backup|staging)-[0-9a-f-]+$`,
+);
+
+type FileHashes = Readonly<Record<string, string>>;
+
+const LEGACY_TABBY_MEDIA_FILE_HASHES: Readonly<
+  Record<(typeof TABBY_MEDIA_SKILL_SLUGS)[number], readonly FileHashes[]>
+> = {
+  "tabby-image": [
+    {
+      "SKILL.md":
+        "f3114294eb4288477f8115f0d19a8ca10fb8bd7e3355b40bafe818e6bbbb218b",
+      "scripts/generate-image.js":
+        "1e7d7c99a739b08f5ac90ccde084d4cb671b4d67df7519af261abfb04f176505",
+      "scripts/lib.js":
+        "068abf6aa481821abf2012b6306b04d5c9c72e5e0cefa700cd9429559ee3fd20",
+    },
+    {
+      "SKILL.md":
+        "f3114294eb4288477f8115f0d19a8ca10fb8bd7e3355b40bafe818e6bbbb218b",
+      "scripts/generate-image.js":
+        "030909b2ff07aa805c9ea77f09456cff9e5d8de4440d3e85b306e3639b216df2",
+      "scripts/lib.js":
+        "36c3af16801421b9e549a084519a42cc42cb480d378be9dc2ecfc9b8058f56aa",
+    },
+  ],
+  "tabby-video": [
+    {
+      "SKILL.md":
+        "5bde37e968120170a7a81e96aac7ca927841894b154609708bf48fc03003ea80",
+      "scripts/generate-video.js":
+        "3d44ee607dca82dbffe52baac4cc54b5d1fbc29f89cb9535a723d9cdafe5b83a",
+      "scripts/lib.js":
+        "8ecd0c8eada341dc3db89370e1ca8bf321b1e6a470dcd1b2a88d1f24ea095d82",
+    },
+  ],
+};
+
+type ManagedBundleRefreshReason =
+  | "bundle-missing"
+  | "fresh-install"
+  | "replaced"
+  | "ownership-conflict";
+
+type ManagedBundleRefreshResult = {
+  installed: boolean;
+  reason: ManagedBundleRefreshReason;
+};
+
+function readDirectoryFileHashes(rootDir: string): FileHashes | null {
+  const hashes: Record<string, string> = {};
+  try {
+    const visit = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const absolutePath = resolve(directory, entry.name);
+        if (entry.isDirectory()) {
+          visit(absolutePath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          throw new Error("unsupported bundle entry");
+        }
+        const relativePath = relative(rootDir, absolutePath)
+          .split(sep)
+          .join("/");
+        hashes[relativePath] = createHash("sha256")
+          .update(readFileSync(absolutePath))
+          .digest("hex");
+      }
+    };
+    visit(rootDir);
+    return hashes;
+  } catch {
+    return null;
+  }
+}
+
+function fileHashesEqual(left: FileHashes, right: FileHashes): boolean {
+  const leftEntries = Object.entries(left).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  const rightEntries = Object.entries(right).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  return (
+    leftEntries.length === rightEntries.length &&
+    leftEntries.every(
+      ([file, hash], index) =>
+        rightEntries[index]?.[0] === file && rightEntries[index]?.[1] === hash,
+    )
+  );
+}
+
+function hasTabbyBundleOwnershipProof(
+  slug: (typeof TABBY_MEDIA_SKILL_SLUGS)[number],
+  srcDir: string,
+  destDir: string,
+): boolean {
+  try {
+    if (
+      readFileSync(resolve(destDir, TABBY_MEDIA_MANAGED_MARKER), "utf8") ===
+      `${slug}\n`
+    ) {
+      return true;
+    }
+  } catch {
+    // Legacy managed copies predate the marker; verify their exact contents.
+  }
+
+  const destinationHashes = readDirectoryFileHashes(destDir);
+  const sourceHashes = readDirectoryFileHashes(srcDir);
+  if (!destinationHashes || !sourceHashes) {
+    return false;
+  }
+  if (fileHashesEqual(destinationHashes, sourceHashes)) {
+    return true;
+  }
+  return LEGACY_TABBY_MEDIA_FILE_HASHES[slug].some((fingerprint) =>
+    fileHashesEqual(destinationHashes, fingerprint),
+  );
+}
+
+function replaceDirectoryFromBundle(params: {
+  srcDir: string;
+  destDir: string;
+  targetDir: string;
+  slug: string;
+  marker?: string;
+}): void {
+  mkdirSync(params.targetDir, { recursive: true });
+  const suffix = randomUUID();
+  const stagingDir = resolve(
+    params.targetDir,
+    `.${params.slug}.staging-${suffix}`,
+  );
+  const backupDir = resolve(
+    params.targetDir,
+    `.${params.slug}.backup-${suffix}`,
+  );
+  let movedExisting = false;
+
+  try {
+    cpSync(params.srcDir, stagingDir, { recursive: true });
+    if (params.marker !== undefined) {
+      writeFileSync(
+        resolve(stagingDir, TABBY_MEDIA_MANAGED_MARKER),
+        `${params.marker}\n`,
+        "utf8",
+      );
+    }
+    if (existsSync(params.destDir)) {
+      renameSync(params.destDir, backupDir);
+      movedExisting = true;
+    }
+    try {
+      renameSync(stagingDir, params.destDir);
+    } catch (error) {
+      if (movedExisting && !existsSync(params.destDir)) {
+        renameSync(backupDir, params.destDir);
+        movedExisting = false;
+      }
+      throw error;
+    }
+    if (movedExisting) {
+      rmSync(backupDir, { recursive: true, force: true });
+      movedExisting = false;
+    }
+  } finally {
+    rmSync(stagingDir, { recursive: true, force: true });
+    if (movedExisting && existsSync(params.destDir)) {
+      rmSync(backupDir, { recursive: true, force: true });
+    }
+  }
+}
+
+/**
+ * Recover an interrupted atomic bundle refresh before the skill directory is
+ * reconciled with the ledger. A backup is the last known-good copy; staging
+ * directories are always incomplete or superseded and can be discarded.
+ */
+export function recoverManagedBundleRefreshTransactions(
+  targetDir: string,
+): void {
+  if (!existsSync(targetDir)) return;
+
+  const backupsBySlug = new Map<string, string[]>();
+  const stagingDirs: string[] = [];
+
+  for (const entry of readdirSync(targetDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const match = entry.name.match(managedBundleTransactionPattern);
+    const slug = match?.[1];
+    const kind = match?.[2];
+    if (!slug || !kind) continue;
+
+    const artifactPath = resolve(targetDir, entry.name);
+    if (kind === "staging") {
+      stagingDirs.push(artifactPath);
+      continue;
+    }
+
+    const backups = backupsBySlug.get(slug) ?? [];
+    backups.push(artifactPath);
+    backupsBySlug.set(slug, backups);
+  }
+
+  for (const [slug, backups] of backupsBySlug) {
+    backups.sort((left, right) => right.localeCompare(left));
+    const destinationDir = resolve(targetDir, slug);
+    if (!existsSync(destinationDir)) {
+      const backupToRestore = backups.shift();
+      if (backupToRestore) {
+        renameSync(backupToRestore, destinationDir);
+      }
+    }
+    for (const backupDir of backups) {
+      rmSync(backupDir, { recursive: true, force: true });
+    }
+  }
+
+  for (const stagingDir of stagingDirs) {
+    rmSync(stagingDir, { recursive: true, force: true });
+  }
+}
+
+function replaceManagedSkillFromBundle(params: {
+  staticDir: string;
+  targetDir: string;
+  skillDb: SkillDb;
+  slug: string;
+  requireTabbyOwnershipProof?: boolean;
+}): ManagedBundleRefreshResult {
+  const srcDir = resolve(params.staticDir, params.slug);
+  if (!existsSync(srcDir)) {
+    return { installed: false, reason: "bundle-missing" };
+  }
+
+  const destDir = resolve(params.targetDir, params.slug);
+  const sharedRecords = params.skillDb
+    .getInstalledRecordsBySlug(params.slug)
+    .filter((record) => record.source !== "workspace");
+  const existed = existsSync(destDir);
+  const hasRequiredOwnershipProof =
+    !params.requireTabbyOwnershipProof ||
+    !existed ||
+    hasTabbyBundleOwnershipProof(
+      params.slug as (typeof TABBY_MEDIA_SKILL_SLUGS)[number],
+      srcDir,
+      destDir,
+    );
+  const managedOwnsDirectory =
+    sharedRecords.length === 1 &&
+    sharedRecords[0]?.source === "managed" &&
+    sharedRecords[0].ownerHandle === null &&
+    hasRequiredOwnershipProof;
+
+  if (
+    sharedRecords.some(
+      (record) => record.source !== "managed" || record.ownerHandle !== null,
+    ) ||
+    ((existed || params.skillDb.getAllKnownSlugs().has(params.slug)) &&
+      !managedOwnsDirectory)
+  ) {
+    return { installed: false, reason: "ownership-conflict" };
+  }
+
+  replaceDirectoryFromBundle({
+    srcDir,
+    destDir,
+    targetDir: params.targetDir,
+    slug: params.slug,
+    ...(params.requireTabbyOwnershipProof ? { marker: params.slug } : {}),
+  });
+  params.skillDb.recordInstall(params.slug, "managed");
+
+  return { installed: true, reason: existed ? "replaced" : "fresh-install" };
+}
 
 /**
  * Skills to install from ClawHub on first launch.
@@ -181,46 +469,31 @@ export function replaceOfficeCliFromBundle(params: {
   staticDir: string;
   targetDir: string;
   skillDb: SkillDb;
-}): {
-  installed: boolean;
-  reason:
-    | "bundle-missing"
-    | "fresh-install"
-    | "replaced"
-    | "ownership-conflict";
-} {
-  const srcDir = resolve(params.staticDir, OFFICECLI_SLUG);
-  if (!existsSync(srcDir)) {
-    return { installed: false, reason: "bundle-missing" };
-  }
+}): ManagedBundleRefreshResult {
+  return replaceManagedSkillFromBundle({ ...params, slug: OFFICECLI_SLUG });
+}
 
-  const destDir = resolve(params.targetDir, OFFICECLI_SLUG);
-  const sharedRecords = params.skillDb
-    .getInstalledRecordsBySlug(OFFICECLI_SLUG)
-    .filter((record) => record.source !== "workspace");
-  if (
-    sharedRecords.some(
-      (record) => record.source !== "managed" || record.ownerHandle !== null,
-    )
-  ) {
-    return { installed: false, reason: "ownership-conflict" };
+/**
+ * Keep the Tabby image/video skills aligned with the desktop bundle without
+ * overwriting user-owned or explicitly removed copies.
+ */
+export function replaceTabbyMediaSkillsFromBundle(params: {
+  staticDir: string;
+  targetDir: string;
+  skillDb: SkillDb;
+}): ReadonlyArray<
+  ManagedBundleRefreshResult & {
+    slug: (typeof TABBY_MEDIA_SKILL_SLUGS)[number];
   }
-  const existed = existsSync(destDir);
-  if (existed) {
-    const managedOwnsDirectory =
-      sharedRecords.length === 1 &&
-      sharedRecords[0]?.source === "managed" &&
-      sharedRecords[0].ownerHandle === null;
-    if (!managedOwnsDirectory) {
-      return { installed: false, reason: "ownership-conflict" };
-    }
-    rmSync(destDir, { recursive: true, force: true });
-  }
-  mkdirSync(destDir, { recursive: true });
-  cpSync(srcDir, destDir, { recursive: true });
-  params.skillDb.recordInstall(OFFICECLI_SLUG, "managed");
-
-  return { installed: true, reason: existed ? "replaced" : "fresh-install" };
+> {
+  return TABBY_MEDIA_SKILL_SLUGS.map((slug) => ({
+    slug,
+    ...replaceManagedSkillFromBundle({
+      ...params,
+      slug,
+      requireTabbyOwnershipProof: true,
+    }),
+  }));
 }
 
 export type CuratedInstallResult = {

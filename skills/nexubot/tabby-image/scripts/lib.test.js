@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import {
+  buildImageGenerationRequest,
+  buildImageGenerationsUrl,
   parseImageResponse,
   readImageCreditState,
   readOpenclawConfig,
@@ -170,6 +172,237 @@ test("resolveLinkCredential still uses tabby-image with no balance when tabby-im
   };
   const result = resolveLinkCredential(config, dir);
   assert.equal(result.model, "tabby-image");
+});
+
+test("resolveLinkCredential honors an explicit paid model even without balance", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-image-test-"));
+  fs.writeFileSync(
+    path.join(dir, "nexu-account-credit-state.json"),
+    JSON.stringify({ hasBalance: false }),
+  );
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://relay.example/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-image" }, { id: "tabby-image-free" }],
+        },
+      },
+    },
+  };
+
+  const result = resolveLinkCredential(config, dir, "tabby-image");
+
+  assert.equal(result.model, "tabby-image");
+});
+
+test("resolveLinkCredential honors an explicit free model", () => {
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://relay.example/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-image" }, { id: "tabby-image-free" }],
+        },
+      },
+    },
+  };
+
+  const result = resolveLinkCredential(config, undefined, "tabby-image-free");
+
+  assert.equal(result.model, "tabby-image-free");
+});
+
+test("resolveLinkCredential rejects an explicit model missing from the account", () => {
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://relay.example/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-image-free" }],
+        },
+      },
+    },
+  };
+
+  assert.throws(
+    () => resolveLinkCredential(config, undefined, "tabby-image"),
+    /NO_IMAGE_MODEL.*tabby-image/,
+  );
+});
+
+test("resolveLinkCredential rejects a non-relay image model alias", () => {
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://relay.example/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-image" }],
+        },
+      },
+    },
+  };
+
+  assert.throws(
+    () => resolveLinkCredential(config, undefined, "gpt-image-2"),
+    /INVALID_IMAGE_MODEL/,
+  );
+});
+
+test("buildImageGenerationsUrl uses the configured relay and normalizes trailing slashes", () => {
+  assert.equal(
+    buildImageGenerationsUrl("https://relay.example/v1///"),
+    "https://relay.example/v1/images/generations",
+  );
+});
+
+test("buildImageGenerationRequest builds the exact GPT Image body", () => {
+  const result = buildImageGenerationRequest({
+    baseUrl: "https://relay.example/v1",
+    model: "tabby-image",
+    prompt: "a cat on mars",
+  });
+
+  assert.equal(result.url, "https://relay.example/v1/images/generations");
+  assert.deepEqual(result.body, {
+    model: "tabby-image",
+    prompt: "a cat on mars",
+    n: 1,
+    size: "1024x1024",
+  });
+  assert.equal(Object.hasOwn(result.body, "response_format"), false);
+  assert.equal(Object.hasOwn(result.body, "extra_body"), false);
+});
+
+test("buildImageGenerationRequest maps GPT ratio and optional controls", () => {
+  const result = buildImageGenerationRequest({
+    baseUrl: "https://relay.example/v1/",
+    model: "tabby-image",
+    prompt: "product shot",
+    ratio: "16:9",
+    quality: "high",
+    transparentBackground: true,
+  });
+
+  assert.deepEqual(result.body, {
+    model: "tabby-image",
+    prompt: "product shot",
+    n: 1,
+    size: "1536x864",
+    quality: "high",
+    background: "transparent",
+  });
+  assert.equal(Object.hasOwn(result.body, "ratio"), false);
+});
+
+test("buildImageGenerationRequest builds the exact Agnes URL-output body", () => {
+  const result = buildImageGenerationRequest({
+    baseUrl: "https://relay.example/v1",
+    model: "tabby-image-free",
+    prompt: "a luminous city",
+    size: "2K",
+    ratio: "16:9",
+  });
+
+  assert.equal(result.url, "https://relay.example/v1/images/generations");
+  assert.deepEqual(result.body, {
+    model: "tabby-image-free",
+    prompt: "a luminous city",
+    size: "2K",
+    extra_body: { response_format: "url" },
+    ratio: "16:9",
+  });
+  assert.equal(Object.hasOwn(result.body, "n"), false);
+  assert.equal(Object.hasOwn(result.body, "response_format"), false);
+});
+
+test("buildImageGenerationRequest defaults Agnes to 1K and keeps the relay alias", () => {
+  const result = buildImageGenerationRequest({
+    baseUrl: "https://relay.example/v1",
+    model: "tabby-image-free",
+    prompt: "a studio portrait",
+  });
+
+  assert.deepEqual(result.body, {
+    model: "tabby-image-free",
+    prompt: "a studio portrait",
+    size: "1K",
+    extra_body: { response_format: "url" },
+  });
+});
+
+test("buildImageGenerationRequest omits GPT-only controls for Agnes", () => {
+  const result = buildImageGenerationRequest({
+    baseUrl: "https://relay.example/v1",
+    model: "tabby-image-free",
+    prompt: "a cat",
+    quality: "high",
+    transparentBackground: true,
+  });
+
+  assert.deepEqual(result.body, {
+    model: "tabby-image-free",
+    prompt: "a cat",
+    size: "1K",
+    extra_body: { response_format: "url" },
+  });
+});
+
+test("buildImageGenerationRequest maps GPT tiers and validates exact sizes", () => {
+  assert.equal(
+    buildImageGenerationRequest({
+      baseUrl: "https://relay.example/v1",
+      model: "tabby-image",
+      prompt: "a cat",
+      size: "2K",
+      ratio: "9:16",
+    }).body.size,
+    "1152x2048",
+  );
+  assert.equal(
+    buildImageGenerationRequest({
+      baseUrl: "https://relay.example/v1",
+      model: "tabby-image",
+      prompt: "a cat",
+      size: "4K",
+      ratio: "1:1",
+    }).body.size,
+    "2160x2160",
+  );
+  assert.equal(
+    buildImageGenerationRequest({
+      baseUrl: "https://relay.example/v1",
+      model: "tabby-image",
+      prompt: "a cat",
+      size: "1536x864",
+    }).body.size,
+    "1536x864",
+  );
+
+  assert.throws(
+    () =>
+      buildImageGenerationRequest({
+        baseUrl: "https://relay.example/v1",
+        model: "tabby-image-free",
+        prompt: "a cat",
+        ratio: "5:4",
+      }),
+    /INVALID_RATIO/,
+  );
+  assert.throws(
+    () =>
+      buildImageGenerationRequest({
+        baseUrl: "https://relay.example/v1",
+        model: "tabby-image",
+        prompt: "a cat",
+        size: "1537x864",
+      }),
+    /INVALID_SIZE/,
+  );
 });
 
 test("parseImageResponse returns a b64 payload when present", () => {

@@ -4,12 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import {
+  buildVideoRequestBody,
   parseVideoResultResponse,
   parseVideoTaskResponse,
   readAccountCreditState,
   readOpenclawConfig,
   resolveLinkCredential,
   resolveOutputPath,
+  resolveVideoCreateUrl,
+  resolveVideoDimensions,
+  resolveVideoNumFrames,
+  resolveVideoPollUrl,
+  validateFrameRate,
   validateNumFrames,
 } from "./lib.js";
 
@@ -78,6 +84,41 @@ test("resolveLinkCredential falls back to tabby-video-free when the account has 
   assert.equal(result.model, "tabby-video-free");
 });
 
+test("resolveLinkCredential honors an available requested relay alias", () => {
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://relay.example/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-video" }, { id: "tabby-video-free" }],
+        },
+      },
+    },
+  };
+  const result = resolveLinkCredential(config, undefined, "tabby-video");
+  assert.equal(result.baseUrl, "https://relay.example/v1");
+  assert.equal(result.model, "tabby-video");
+});
+
+test("resolveLinkCredential rejects an upstream model name not exposed by the relay", () => {
+  const config = {
+    models: {
+      providers: {
+        link: {
+          baseUrl: "https://relay.example/v1",
+          apiKey: "key123",
+          models: [{ id: "tabby-video" }],
+        },
+      },
+    },
+  };
+  assert.throws(
+    () => resolveLinkCredential(config, undefined, "agnes-video-v2.0"),
+    /NO_VIDEO_MODEL/,
+  );
+});
+
 test("readAccountCreditState defaults to true when the state file is missing", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tabby-video-test-"));
   assert.equal(readAccountCreditState(dir), true);
@@ -102,6 +143,73 @@ test("validateNumFrames rejects non-positive-integer input", () => {
   assert.throws(() => validateNumFrames(1.5), /BAD_NUM_FRAMES/);
 });
 
+test("validateFrameRate accepts 1-60 and rejects out-of-range values", () => {
+  assert.doesNotThrow(() => validateFrameRate(1));
+  assert.doesNotThrow(() => validateFrameRate(24));
+  assert.doesNotThrow(() => validateFrameRate(60));
+  assert.throws(() => validateFrameRate(0), /BAD_FRAME_RATE/);
+  assert.throws(() => validateFrameRate(61), /BAD_FRAME_RATE/);
+  assert.throws(() => validateFrameRate(Number.NaN), /BAD_FRAME_RATE/);
+});
+
+test("resolveVideoNumFrames maps duration to the nearest 8n+1 count", () => {
+  assert.equal(
+    resolveVideoNumFrames({ durationSeconds: 5, frameRate: 24 }),
+    121,
+  );
+  assert.equal(
+    resolveVideoNumFrames({ durationSeconds: 10, frameRate: 24 }),
+    241,
+  );
+});
+
+test("resolveVideoNumFrames rejects conflicting or oversized duration input", () => {
+  assert.throws(
+    () =>
+      resolveVideoNumFrames({
+        numFrames: 121,
+        durationSeconds: 5,
+        frameRate: 24,
+      }),
+    /BAD_DURATION/,
+  );
+  assert.throws(
+    () => resolveVideoNumFrames({ durationSeconds: 20, frameRate: 24 }),
+    /BAD_DURATION/,
+  );
+});
+
+test("resolveVideoDimensions maps resolution and aspect ratio to dimensions", () => {
+  assert.deepEqual(
+    resolveVideoDimensions({ resolution: "720p", aspectRatio: "16:9" }),
+    { width: 1280, height: 720 },
+  );
+  assert.deepEqual(
+    resolveVideoDimensions({ resolution: "720p", aspectRatio: "9:16" }),
+    { width: 720, height: 1280 },
+  );
+  assert.deepEqual(
+    resolveVideoDimensions({ resolution: "1080p", aspectRatio: "4:3" }),
+    { width: 1440, height: 1080 },
+  );
+});
+
+test("resolveVideoDimensions preserves explicit dimensions and rejects ambiguity", () => {
+  assert.deepEqual(resolveVideoDimensions({ width: 1152, height: 768 }), {
+    width: 1152,
+    height: 768,
+  });
+  assert.throws(
+    () =>
+      resolveVideoDimensions({
+        width: 1280,
+        height: 720,
+        resolution: "720p",
+      }),
+    /BAD_SIZE/,
+  );
+});
+
 test("parseVideoTaskResponse prefers video_id", () => {
   const result = parseVideoTaskResponse({
     id: "task_1",
@@ -120,15 +228,23 @@ test("parseVideoTaskResponse throws BAD_RESPONSE when neither id is present", ()
   assert.throws(() => parseVideoTaskResponse({}), /BAD_RESPONSE/);
 });
 
-test("parseVideoResultResponse returns the video URL when completed", () => {
+test("parseVideoResultResponse returns metadata.url when completed", () => {
   const result = parseVideoResultResponse({
     status: "completed",
-    remixed_from_video_id: "https://example.com/video.mp4",
+    metadata: { url: "https://example.com/video.mp4" },
   });
   assert.deepEqual(result, {
     status: "completed",
     url: "https://example.com/video.mp4",
   });
+});
+
+test("parseVideoResultResponse keeps the legacy result field as fallback", () => {
+  const result = parseVideoResultResponse({
+    status: "completed",
+    remixed_from_video_id: "https://example.com/legacy.mp4",
+  });
+  assert.equal(result.url, "https://example.com/legacy.mp4");
 });
 
 test("parseVideoResultResponse throws BAD_RESPONSE when completed without a URL", () => {
@@ -152,6 +268,100 @@ test("parseVideoResultResponse passes through in-progress status and progress", 
     progress: 42,
   });
   assert.deepEqual(result, { status: "in_progress", progress: 42 });
+});
+
+test("buildVideoRequestBody preserves tabby-video alias and Agnes field names", () => {
+  const body = buildVideoRequestBody(
+    { model: "tabby-video" },
+    {
+      prompt: "ocean waves",
+      width: 1280,
+      height: 720,
+      numFrames: 121,
+      frameRate: 24,
+      numInferenceSteps: 28,
+      negativePrompt: "text overlays",
+      seed: 42,
+      images: [],
+      keyframes: false,
+    },
+  );
+  assert.deepEqual(body, {
+    model: "tabby-video",
+    prompt: "ocean waves",
+    width: 1280,
+    height: 720,
+    num_frames: 121,
+    frame_rate: 24,
+    num_inference_steps: 28,
+    negative_prompt: "text overlays",
+    seed: 42,
+  });
+});
+
+test("buildVideoRequestBody uses image for one image and extra_body for keyframes", () => {
+  const base = {
+    prompt: "animate",
+    width: 720,
+    height: 1280,
+    numFrames: 121,
+    frameRate: 24,
+  };
+  const single = buildVideoRequestBody(
+    { model: "tabby-video" },
+    { ...base, images: ["https://example.com/a.png"], keyframes: false },
+  );
+  assert.equal(single.image, "https://example.com/a.png");
+  assert.equal(single.extra_body, undefined);
+
+  const keyframes = buildVideoRequestBody(
+    { model: "tabby-video" },
+    {
+      ...base,
+      images: ["https://example.com/a.png", "https://example.com/b.png"],
+      keyframes: true,
+    },
+  );
+  assert.deepEqual(keyframes.extra_body, {
+    image: ["https://example.com/a.png", "https://example.com/b.png"],
+    mode: "keyframes",
+  });
+  assert.equal(keyframes.image, undefined);
+});
+
+test("buildVideoRequestBody rejects undocumented multi-image mode", () => {
+  assert.throws(
+    () =>
+      buildVideoRequestBody(
+        { model: "tabby-video" },
+        {
+          prompt: "blend",
+          width: 1280,
+          height: 720,
+          numFrames: 121,
+          frameRate: 24,
+          images: ["https://example.com/a.png", "https://example.com/b.png"],
+          keyframes: false,
+        },
+      ),
+    /BAD_IMAGES/,
+  );
+});
+
+test("video URLs preserve the configured relay and use each documented path", () => {
+  const baseUrl = "https://tabbyapi.picaso.studio/v1/";
+  assert.equal(
+    resolveVideoCreateUrl(baseUrl),
+    "https://tabbyapi.picaso.studio/v1/videos",
+  );
+  assert.equal(
+    resolveVideoPollUrl(baseUrl, { id: "video_1", idParam: "video_id" }),
+    "https://tabbyapi.picaso.studio/agnesapi?video_id=video_1",
+  );
+  assert.equal(
+    resolveVideoPollUrl(baseUrl, { id: "task 1", idParam: "task_id" }),
+    "https://tabbyapi.picaso.studio/v1/videos/task%201",
+  );
 });
 
 test("resolveOutputPath returns an absolute filename as-is", () => {

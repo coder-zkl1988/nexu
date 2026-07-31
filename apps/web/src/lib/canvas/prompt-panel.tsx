@@ -30,6 +30,7 @@ import {
 } from "./canvas-generation";
 import { useCanvasModelOptions } from "./canvas-model-options";
 import type { CanvasNode } from "./canvas-store";
+import { updateNode } from "./canvas-store";
 import { ParamPill, SettingsGroup } from "./param-pills";
 import { setDraft, useDraft } from "./prompt-drafts";
 import {
@@ -48,6 +49,18 @@ import {
   videoSettingsSummary,
 } from "./prompt-panel-utils";
 import { collectUpstream, collectUpstreamNodes } from "./resource-references";
+import {
+  DEFAULT_VIDEO_ASPECT_RATIO,
+  DEFAULT_VIDEO_RESOLUTION,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_FRAME_PRESETS,
+  VIDEO_RESOLUTIONS,
+  isVideoAspectRatio,
+  isVideoResolution,
+  resolveCanvasVideoNumFrames,
+  resolveVideoFrameRate,
+  videoDurationSeconds,
+} from "./video-generation-params";
 
 // ── Panel ──────────────────────────────────────────────────────
 
@@ -70,25 +83,21 @@ export function PromptPanel({ node }: PromptPanelProps) {
 
   // Per-type params
   const [imageCount, setImageCount] = useState<number>(1);
-  const [videoDuration, setVideoDuration] = useState<number>(5);
-  const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">(
-    "720p",
-  );
   const [audioVoice, setAudioVoice] = useState<string>("");
   const [audioSpeed, setAudioSpeed] = useState<number>(1);
 
-  // W5 settings — all ephemeral local state (no persistence, matching above).
-  // Model hint ("" = default model). A model picked for one modality is
+  // Image/audio settings remain ephemeral; documented video settings are
+  // persisted on the node below. Model hint ("" = default model). A model picked for one modality is
   // meaningless for another, and our model list carries no capability metadata
   // to validate it against — so the hint is dropped whenever the selected
   // node's type changes, and never leaks image → audio. (React's "adjust state
   // during render when a prop changes" pattern; an effect would lint-fail and
   // render one stale frame first.)
-  const [model, setModel] = useState<string>("");
+  const [localModel, setLocalModel] = useState<string>("");
   const [modelNodeType, setModelNodeType] = useState(node.type);
   if (modelNodeType !== node.type) {
     setModelNodeType(node.type);
-    setModel("");
+    setLocalModel("");
   }
   // Image-only
   const [imageQuality, setImageQuality] = useState<ImageQuality>("auto");
@@ -103,10 +112,55 @@ export function PromptPanel({ node }: PromptPanelProps) {
     setSettingsNodeId(nodeId);
     setSettingsOpen(false);
   }
-  // Video-only
-  const [videoAspect, setVideoAspect] = useState<string>("");
-  const [videoGenerateAudio, setVideoGenerateAudio] = useState<boolean>(false);
-  const [videoWatermark, setVideoWatermark] = useState<boolean>(false);
+  // Video-only settings live on the node so switching selection or reloading
+  // the persisted board does not silently reset the requested generation.
+  const videoConfig =
+    node.metadata.config?.mode === "video" ? node.metadata.config : undefined;
+  const videoFrameRate = resolveVideoFrameRate(videoConfig?.frameRate);
+  const videoNumFrames = resolveCanvasVideoNumFrames({
+    numFrames: videoConfig?.numFrames,
+    durationSeconds: videoConfig?.durationSeconds,
+    frameRate: videoFrameRate,
+  });
+  const videoResolution = isVideoResolution(videoConfig?.resolution)
+    ? videoConfig.resolution
+    : DEFAULT_VIDEO_RESOLUTION;
+  const videoAspect = isVideoAspectRatio(videoConfig?.aspectRatio)
+    ? videoConfig.aspectRatio
+    : DEFAULT_VIDEO_ASPECT_RATIO;
+  const videoNegativePrompt = (videoConfig?.negativePrompt ?? "").slice(
+    0,
+    2_000,
+  );
+  const videoNumInferenceSteps =
+    videoConfig?.numInferenceSteps !== undefined &&
+    Number.isSafeInteger(videoConfig.numInferenceSteps) &&
+    videoConfig.numInferenceSteps > 0
+      ? String(videoConfig.numInferenceSteps)
+      : "";
+  const videoSeed =
+    videoConfig?.seed !== undefined && Number.isSafeInteger(videoConfig.seed)
+      ? String(videoConfig.seed)
+      : "";
+
+  function setVideoParam(
+    patch: Partial<NonNullable<CanvasNode["metadata"]["config"]>>,
+  ) {
+    updateNode(nodeId, {
+      metadata: {
+        config: { mode: "video", ...videoConfig, ...patch },
+      },
+    });
+  }
+
+  const model = node.type === "video" ? (videoConfig?.model ?? "") : localModel;
+  function setModel(value: string) {
+    if (node.type === "video") {
+      setVideoParam({ model: value || undefined });
+      return;
+    }
+    setLocalModel(value);
+  }
   // Audio-only
   const [audioFormat, setAudioFormat] = useState<AudioFormat | "">("");
   const [audioInstructions, setAudioInstructions] = useState<string>("");
@@ -269,11 +323,13 @@ export function PromptPanel({ node }: PromptPanelProps) {
         nodeId,
         mergedPrompt,
         buildVideoGenOpts({
-          durationSeconds: videoDuration,
           resolution: videoResolution,
           aspectRatio: videoAspect,
-          generateAudio: videoGenerateAudio,
-          watermark: videoWatermark,
+          numFrames: videoNumFrames,
+          frameRate: videoFrameRate,
+          numInferenceSteps: videoNumInferenceSteps,
+          negativePrompt: videoNegativePrompt,
+          seed: videoSeed,
           model,
         }),
       );
@@ -302,11 +358,13 @@ export function PromptPanel({ node }: PromptPanelProps) {
     imageAspect,
     imageSize,
     imageTransparent,
-    videoDuration,
+    videoNumFrames,
+    videoFrameRate,
+    videoNumInferenceSteps,
     videoResolution,
     videoAspect,
-    videoGenerateAudio,
-    videoWatermark,
+    videoNegativePrompt,
+    videoSeed,
     audioVoice,
     audioSpeed,
     audioFormat,
@@ -473,7 +531,8 @@ export function PromptPanel({ node }: PromptPanelProps) {
                 })
               : node.type === "video"
                 ? videoSettingsSummary({
-                    durationSeconds: videoDuration,
+                    numFrames: videoNumFrames,
+                    frameRate: videoFrameRate,
                     resolution: videoResolution,
                     aspectRatio: videoAspect,
                   })
@@ -588,61 +647,151 @@ export function PromptPanel({ node }: PromptPanelProps) {
             )}
             {node.type === "video" && (
               <>
+                <SettingsGroup label="帧数 / 时长">
+                  {VIDEO_FRAME_PRESETS.map((frames) => (
+                    <ParamPill
+                      key={frames}
+                      active={videoNumFrames === frames}
+                      onClick={() =>
+                        setVideoParam({
+                          numFrames: frames,
+                          durationSeconds: undefined,
+                        })
+                      }
+                    >
+                      {frames}帧 · 约
+                      {videoDurationSeconds(frames, videoFrameRate)}秒
+                    </ParamPill>
+                  ))}
+                </SettingsGroup>
                 <div className="flex items-center gap-2 pb-2.5 text-xs">
                   <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
-                    时长(秒)
+                    推理步数
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={videoNumInferenceSteps}
+                    onChange={(e) => {
+                      const value = e.target.value.trim();
+                      const numInferenceSteps = Number(value);
+                      setVideoParam({
+                        numInferenceSteps:
+                          value !== "" &&
+                          Number.isSafeInteger(numInferenceSteps) &&
+                          numInferenceSteps > 0
+                            ? numInferenceSteps
+                            : undefined,
+                      });
+                    }}
+                    placeholder="模型默认"
+                    className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pb-2.5 text-xs">
+                  <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                    自定义帧数
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={441}
+                    step={8}
+                    value={videoNumFrames}
+                    onChange={(e) =>
+                      setVideoParam({
+                        numFrames: Number(e.target.value),
+                        durationSeconds: undefined,
+                      })
+                    }
+                    className="min-w-0 flex-1 accent-[var(--color-accent)]"
+                  />
+                  <span className="w-16 shrink-0 text-right tabular-nums text-text-secondary">
+                    {videoNumFrames} 帧
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 pb-2.5 text-xs">
+                  <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                    帧率
                   </span>
                   <input
                     type="number"
                     min={1}
                     max={60}
-                    value={videoDuration}
-                    onChange={(e) => setVideoDuration(Number(e.target.value))}
+                    step="any"
+                    value={videoFrameRate}
+                    onChange={(e) =>
+                      setVideoParam({
+                        frameRate: Math.min(
+                          60,
+                          Math.max(1, Number(e.target.value) || 1),
+                        ),
+                      })
+                    }
                     className="w-20 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
                   />
+                  <span className="text-[11px] text-text-tertiary">fps</span>
                 </div>
                 <SettingsGroup label="分辨率">
-                  {(["720p", "1080p"] as const).map((r) => (
+                  {VIDEO_RESOLUTIONS.map((r) => (
                     <ParamPill
                       key={r}
                       active={videoResolution === r}
-                      onClick={() => setVideoResolution(r)}
+                      onClick={() => setVideoParam({ resolution: r })}
                     >
                       {r}
                     </ParamPill>
                   ))}
                 </SettingsGroup>
                 <SettingsGroup label="宽高比">
-                  <ParamPill
-                    active={videoAspect === ""}
-                    onClick={() => setVideoAspect("")}
-                  >
-                    默认
-                  </ParamPill>
-                  {["16:9", "9:16", "1:1"].map((r) => (
+                  {VIDEO_ASPECT_RATIOS.map((r) => (
                     <ParamPill
                       key={r}
                       active={videoAspect === r}
-                      onClick={() => setVideoAspect(r)}
+                      onClick={() => setVideoParam({ aspectRatio: r })}
                     >
                       {r}
                     </ParamPill>
                   ))}
                 </SettingsGroup>
-                <SettingsGroup label="其他">
-                  <ParamPill
-                    active={videoGenerateAudio}
-                    onClick={() => setVideoGenerateAudio((v) => !v)}
-                  >
-                    生成声音
-                  </ParamPill>
-                  <ParamPill
-                    active={videoWatermark}
-                    onClick={() => setVideoWatermark((v) => !v)}
-                  >
-                    水印
-                  </ParamPill>
-                </SettingsGroup>
+                <div className="flex items-center gap-2 pb-2.5 text-xs">
+                  <span className="shrink-0 text-[11px] font-medium text-text-tertiary">
+                    种子
+                  </span>
+                  <input
+                    type="number"
+                    value={videoSeed}
+                    step={1}
+                    onChange={(e) => {
+                      const value = e.target.value.trim();
+                      const seed = Number(value);
+                      setVideoParam({
+                        seed:
+                          value !== "" && Number.isSafeInteger(seed)
+                            ? seed
+                            : undefined,
+                      });
+                    }}
+                    placeholder="随机"
+                    className="min-w-0 flex-1 rounded-lg border-0 bg-surface-2 px-2 py-1.5 text-xs text-text-primary outline-none"
+                  />
+                </div>
+                <label className="block pb-0.5 text-[11px] font-medium text-text-tertiary">
+                  反向提示词
+                  <textarea
+                    value={videoNegativePrompt}
+                    onChange={(e) =>
+                      setVideoParam({
+                        negativePrompt: e.target.value || undefined,
+                      })
+                    }
+                    placeholder="输入希望视频避免出现的内容"
+                    rows={2}
+                    maxLength={2_000}
+                    className="mt-1.5 w-full resize-none rounded-lg border-0 bg-surface-2 px-2.5 py-2 text-xs font-normal text-text-primary outline-none placeholder:text-text-tertiary"
+                  />
+                </label>
               </>
             )}
             {node.type === "audio" && (

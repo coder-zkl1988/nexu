@@ -54,6 +54,36 @@ export const deviceRenameBodySchema = z.object({
   name: z.string().min(1).max(64),
 });
 
+export const deviceAppRoleSchema = z.enum([
+  "target_app",
+  "official_store",
+  "system_installer",
+  "system_settings",
+  "default_sms",
+  "gallery",
+  "file_picker",
+  "browser",
+  "system_dialog",
+  "other",
+]);
+
+export const deviceTaskConfirmationPolicySchema = z.object({
+  login: z.enum(["required", "forbidden"]).optional(),
+  publish: z.enum(["required", "forbidden"]).optional(),
+  payment: z.literal("forbidden").optional(),
+});
+
+export const deviceTaskPolicySchema = z.object({
+  operationClass: z.string().min(1).optional(),
+  targetPackages: z.array(z.string().min(1)).optional(),
+  allowedAppRoles: z.array(deviceAppRoleSchema).optional(),
+  installSourcePolicy: z.literal("official_store_only").optional(),
+  allowBrowserDownload: z.boolean().optional(),
+  allowedActions: z.array(z.string().min(1)).optional(),
+  allowedApps: z.array(z.string().min(1)).optional(),
+  confirmationPolicy: deviceTaskConfirmationPolicySchema.optional(),
+});
+
 export const deviceExecuteTaskBodySchema = z.object({
   task: z.string().min(1),
   maxSteps: z.number().int().min(1).max(100).optional().default(30),
@@ -61,6 +91,7 @@ export const deviceExecuteTaskBodySchema = z.object({
   sessionId: z.string().optional(),
   allowedActions: z.array(z.string()).optional(),
   allowedApps: z.array(z.string()).optional(),
+  taskPolicy: deviceTaskPolicySchema.optional(),
   timeout: z.number().int().positive().optional().default(120000),
 });
 
@@ -148,6 +179,11 @@ export type DeviceCapabilities = z.infer<typeof deviceCapabilitiesSchema>;
 export type DeviceStatus = z.infer<typeof deviceStatusSchema>;
 export type DeviceInfo = z.infer<typeof deviceInfoSchema>;
 export type DeviceListResponse = z.infer<typeof deviceListResponseSchema>;
+export type DeviceAppRole = z.infer<typeof deviceAppRoleSchema>;
+export type DeviceTaskConfirmationPolicy = z.infer<
+  typeof deviceTaskConfirmationPolicySchema
+>;
+export type DeviceTaskPolicy = z.infer<typeof deviceTaskPolicySchema>;
 export type DeviceExecuteTaskBody = z.infer<typeof deviceExecuteTaskBodySchema>;
 export type StepRecord = z.infer<typeof stepRecordSchema>;
 export type DeviceTaskArtifact = z.infer<typeof deviceTaskArtifactSchema>;

@@ -3,11 +3,9 @@ import {
   publishXhsPost,
 } from "@/lib/a2ui/custom-components/xhs-publish";
 import { isImeComposing } from "@/lib/keyboard";
-import { useQuery } from "@tanstack/react-query";
 import { ImagePlus, Loader2, Send, Sparkles, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { getApiV1Devices } from "../../../lib/api/sdk.gen";
 import {
   type CanvasConnection,
   type CanvasNode,
@@ -66,6 +64,29 @@ export function connectedImageConnectionIds(
     .map((connection) => connection.id);
 }
 
+export function connectedPhoneDeviceId(
+  nodes: readonly Pick<CanvasNode, "id" | "type" | "metadata">[],
+  connections: readonly CanvasConnection[],
+  xhsNodeId: string,
+): string | null {
+  const connectedNodeIds = new Set<string>();
+  for (const connection of connections) {
+    if (connection.fromNodeId === xhsNodeId) {
+      connectedNodeIds.add(connection.toNodeId);
+    } else if (connection.toNodeId === xhsNodeId) {
+      connectedNodeIds.add(connection.fromNodeId);
+    }
+  }
+  for (const candidate of nodes) {
+    if (candidate.type !== "phone" || !connectedNodeIds.has(candidate.id)) {
+      continue;
+    }
+    const deviceId = candidate.metadata.phone?.deviceId?.trim();
+    if (deviceId) return deviceId;
+  }
+  return null;
+}
+
 export function XhsNodeContent({ node }: { node: CanvasNode }) {
   const post = node.metadata.xhs ?? EMPTY_POST;
   const { nodes, connections } = useCanvas();
@@ -73,17 +94,7 @@ export function XhsNodeContent({ node }: { node: CanvasNode }) {
   const [copyPending, setCopyPending] = useState(false);
   const [publishPending, setPublishPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const { data: devicesData } = useQuery({
-    queryKey: ["devices"],
-    queryFn: async () => {
-      const { data, error } = await getApiV1Devices();
-      if (error || !data) throw new Error("设备列表加载失败");
-      return data;
-    },
-    refetchInterval: 10_000,
-  });
-  const devices = devicesData?.devices ?? [];
+  const publishDeviceId = connectedPhoneDeviceId(nodes, connections, node.id);
 
   const patchPost = (patch: Partial<CanvasXhsPost>) => {
     updateNode(node.id, {
@@ -156,14 +167,14 @@ export function XhsNodeContent({ node }: { node: CanvasNode }) {
   };
 
   const handlePublish = async () => {
-    if (!post.deviceId) {
-      toast.error("请先选择发布设备");
+    if (!publishDeviceId) {
+      toast.error("请先连接已选择设备的手机节点");
       return;
     }
     if (publishPending) return;
     setPublishPending(true);
     try {
-      await publishXhsPost(post.deviceId, post);
+      await publishXhsPost(publishDeviceId, post);
       toast.success("手机端已完成发布");
     } catch (error) {
       const message = error instanceof Error ? error.message : "发布失败";
@@ -334,23 +345,11 @@ export function XhsNodeContent({ node }: { node: CanvasNode }) {
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
-        <select
-          value={post.deviceId ?? ""}
-          onChange={(event) => patchPost({ deviceId: event.target.value })}
-          className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-surface-0 px-2 text-xs outline-none"
-        >
-          <option value="">选择发布设备</option>
-          {devices.map((device) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.name || device.model || device.deviceId}
-            </option>
-          ))}
-        </select>
+      <div className="flex shrink-0 justify-end border-t border-border px-4 py-3">
         <button
           type="button"
           onClick={() => void handlePublish()}
-          disabled={publishPending || !post.deviceId}
+          disabled={publishPending || !publishDeviceId}
           className="flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-45"
         >
           {publishPending ? (

@@ -212,6 +212,18 @@ describe("WorkspaceLayout", () => {
     expect(markup).toContain("Design sync thread");
   });
 
+  it("does not render a sidebar collapse control in the desktop shell", () => {
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { userAgent: "Mozilla/5.0 Electron" },
+    });
+
+    const markup = renderWorkspaceLayout();
+
+    expect(markup).not.toContain("layout.collapseSidebar");
+    expect(markup).not.toContain("layout.expandSidebar");
+  });
+
   it("shows a syncing placeholder instead of zero balance while rewards are still loading", () => {
     const markup = renderWorkspaceLayout(
       "/workspace/sessions/sess-1",

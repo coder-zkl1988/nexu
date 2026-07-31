@@ -472,7 +472,12 @@ export class SkillDirWatcher {
   private scanDirSlugs(dir: string): string[] | null {
     try {
       return readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => existsSync(resolve(dir, entry.name, "SKILL.md")))
+        .filter(
+          (entry) =>
+            !entry.name.startsWith(".") &&
+            (entry.isDirectory() || entry.isSymbolicLink()) &&
+            existsSync(resolve(dir, entry.name, "SKILL.md")),
+        )
         .map((entry) => entry.name);
     } catch {
       return null;
