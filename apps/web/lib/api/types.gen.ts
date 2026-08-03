@@ -7022,6 +7022,103 @@ export type GetApiV1SchedulesByScheduleIdRunsResponses = {
 
 export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesByScheduleIdRunsResponses[keyof GetApiV1SchedulesByScheduleIdRunsResponses];
 
+export type PostApiV1MediaImageJobsData = {
+    body?: {
+        prompt: string;
+        referenceImages?: Array<string>;
+        count?: number;
+        model?: string;
+        quality?: 'auto' | 'high' | 'medium' | 'low';
+        aspectRatio?: string;
+        size?: string;
+        transparentBackground?: boolean;
+        sourceImage?: string;
+        maskDataUrl?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/media/image-jobs';
+};
+
+export type PostApiV1MediaImageJobsErrors = {
+    /**
+     * Image generation queue is full
+     */
+    429: {
+        message: string;
+    };
+};
+
+export type PostApiV1MediaImageJobsError = PostApiV1MediaImageJobsErrors[keyof PostApiV1MediaImageJobsErrors];
+
+export type PostApiV1MediaImageJobsResponses = {
+    /**
+     * Image generation job accepted
+     */
+    202: {
+        jobId: string;
+        status: 'queued' | 'running' | 'succeeded' | 'failed';
+        createdAt: string;
+        startedAt?: string;
+        completedAt?: string;
+        result?: {
+            url: string;
+            path: string;
+            items: Array<{
+                url: string;
+                path: string;
+            }>;
+        };
+        error?: string;
+    };
+};
+
+export type PostApiV1MediaImageJobsResponse = PostApiV1MediaImageJobsResponses[keyof PostApiV1MediaImageJobsResponses];
+
+export type GetApiV1MediaImageJobsByJobIdData = {
+    body?: never;
+    path: {
+        jobId: string;
+    };
+    query?: never;
+    url: '/api/v1/media/image-jobs/{jobId}';
+};
+
+export type GetApiV1MediaImageJobsByJobIdErrors = {
+    /**
+     * Image generation job not found or expired
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1MediaImageJobsByJobIdError = GetApiV1MediaImageJobsByJobIdErrors[keyof GetApiV1MediaImageJobsByJobIdErrors];
+
+export type GetApiV1MediaImageJobsByJobIdResponses = {
+    /**
+     * Current image generation job state
+     */
+    200: {
+        jobId: string;
+        status: 'queued' | 'running' | 'succeeded' | 'failed';
+        createdAt: string;
+        startedAt?: string;
+        completedAt?: string;
+        result?: {
+            url: string;
+            path: string;
+            items: Array<{
+                url: string;
+                path: string;
+            }>;
+        };
+        error?: string;
+    };
+};
+
+export type GetApiV1MediaImageJobsByJobIdResponse = GetApiV1MediaImageJobsByJobIdResponses[keyof GetApiV1MediaImageJobsByJobIdResponses];
+
 export type PostApiV1MediaGenerateImageData = {
     body?: {
         prompt: string;

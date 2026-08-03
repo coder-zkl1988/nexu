@@ -83,6 +83,7 @@ import {
   teardownLaunchdServices,
 } from "./services";
 import { AgentBrowserRelay } from "./services/agent-browser-relay";
+import { broadcastDesktopCommandToTargets } from "./services/desktop-command-broadcast";
 import {
   type DesktopShellPreferences,
   applyDesktopShellPreferencesOnStartup,
@@ -750,6 +751,10 @@ function sendHostDesktopCommand(command: HostDesktopCommand): void {
   mainWindow?.webContents.send("host:desktop-command", command);
 }
 
+function broadcastHostDesktopCommand(command: HostDesktopCommand): void {
+  broadcastDesktopCommandToTargets(webContents.getAllWebContents(), command);
+}
+
 function sendSetupProgress(stage: string, detail?: string): void {
   sendHostDesktopCommand({ type: "setup:progress", stage, detail });
 }
@@ -1210,14 +1215,17 @@ function startAgentBrowserRelay(): void {
       // watch it, so raise it in the window that owns the view.
       if (!mainWindow || mainWindow.isDestroyed()) return;
       if (!mainWindow.isVisible()) mainWindow.show();
-      sendHostDesktopCommand({
+      broadcastHostDesktopCommand({
         type: "browser:agent-opened",
         tabId: AGENT_TAB_ID,
         url,
       });
     },
     onRunEnded: (sessionKey) => {
-      sendHostDesktopCommand({ type: "browser:agent-run-ended", sessionKey });
+      broadcastHostDesktopCommand({
+        type: "browser:agent-run-ended",
+        sessionKey,
+      });
     },
     onLog: (message) => {
       console.error(`[agent-browser] ${message}`);

@@ -61,11 +61,20 @@ if (typeof globalThis.localStorage === "undefined") {
   } as Storage;
 }
 
-// Mock SDK for seam tests
-vi.mock("../lib/api/sdk.gen", () => ({
+const apiMocks = vi.hoisted(() => ({
   postApiV1MediaGenerateImage: vi.fn(),
   postApiV1MediaGenerateVideo: vi.fn(),
   postApiV1MediaGenerateAudio: vi.fn(),
+}));
+
+// Mock SDK for seam tests. Async job submission/polling is covered separately.
+vi.mock("../lib/api/sdk.gen", () => apiMocks);
+vi.mock("../src/lib/media/image-generation-jobs", () => ({
+  generateImageViaJob: vi.fn(async (body: Record<string, unknown>) => {
+    const response = await apiMocks.postApiV1MediaGenerateImage({ body });
+    if (!response?.data || response.error) throw new Error("生成失败");
+    return response.data;
+  }),
 }));
 
 import { postApiV1MediaGenerateImage } from "../lib/api/sdk.gen";

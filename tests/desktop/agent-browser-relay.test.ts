@@ -16,14 +16,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 
 const controlWindow = vi.fn();
+const ensureAgentTab = vi.fn();
+const isAgentTabPanelHosted = vi.fn(() => true);
+const waitForAgentTabPanel = vi.fn(async () => true);
 
 vi.mock("../../apps/desktop/main/services/embedded-browser-manager", () => ({
   AGENT_TAB_ID: "agent",
   embeddedBrowserManager: {
-    ensureAgentTab: vi.fn(),
+    ensureAgentTab: (...args: unknown[]) => ensureAgentTab(...args),
     controlWindow: (...args: unknown[]) => controlWindow(...args),
-    isAgentTabPanelHosted: vi.fn(() => true),
-    waitForAgentTabPanel: vi.fn(async () => true),
+    isAgentTabPanelHosted: (...args: unknown[]) =>
+      isAgentTabPanelHosted(...args),
+    waitForAgentTabPanel: (...args: unknown[]) => waitForAgentTabPanel(...args),
   },
 }));
 
@@ -132,11 +136,12 @@ async function waitUntil(
 function createRelay(
   port: number,
   onRunEnded?: (sessionKey: string) => void,
+  onOpen: (url: string) => void = () => undefined,
 ): AgentBrowserRelay {
   return new AgentBrowserRelay({
     controllerBaseUrl: `http://127.0.0.1:${port}`,
     getWindow: () => ({ isDestroyed: () => false }) as unknown as BrowserWindow,
-    onOpen: () => undefined,
+    onOpen,
     onRunEnded,
     timing: TIMING,
   });
@@ -148,6 +153,9 @@ afterEach(async () => {
     await cleanups.pop()?.();
   }
   controlWindow.mockReset();
+  ensureAgentTab.mockReset();
+  isAgentTabPanelHosted.mockReset().mockReturnValue(true);
+  waitForAgentTabPanel.mockReset().mockResolvedValue(true);
 });
 
 describe("AgentBrowserRelay", () => {
@@ -178,6 +186,38 @@ describe("AgentBrowserRelay", () => {
     expect(controller.results[0]).toMatchObject({
       requestId: "r1",
       outcome: { ok: true, snapshot: { url: "https://example.com/" } },
+    });
+  });
+
+  it("does not report an opened page until the browser panel is visible", async () => {
+    const controller = await startFakeController();
+    const onOpen = vi.fn();
+    const relay = createRelay(controller.port, undefined, onOpen);
+    cleanups.push(
+      () => controller.close(),
+      () => relay.stop(),
+    );
+    isAgentTabPanelHosted.mockReturnValue(false);
+    waitForAgentTabPanel.mockResolvedValue(false);
+    controlWindow.mockResolvedValue({ kind: "ok" });
+
+    relay.start();
+    await waitUntil(() => controller.subscribers() === 1, "subscription");
+    controller.send({
+      requestId: "open-without-panel",
+      sessionKey: "agent:bot:main",
+      command: { action: "open", url: "https://example.com/" },
+    });
+
+    await waitUntil(() => controller.results.length === 1, "result POST");
+    expect(onOpen).toHaveBeenCalledWith("https://example.com/");
+    expect(waitForAgentTabPanel).toHaveBeenCalledOnce();
+    expect(controller.results[0]).toMatchObject({
+      requestId: "open-without-panel",
+      outcome: {
+        ok: false,
+        error: expect.stringContaining("browser panel did not open"),
+      },
     });
   });
 

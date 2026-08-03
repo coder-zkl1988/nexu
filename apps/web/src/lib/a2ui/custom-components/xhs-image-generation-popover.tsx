@@ -4,7 +4,13 @@ import {
   type ImageQuality,
   imageQualityLabel,
 } from "@/lib/canvas/prompt-panel-utils";
-import { ImagePlus, Sparkles, X } from "lucide-react";
+import {
+  ImagePlus,
+  LoaderCircle,
+  Sparkles,
+  WandSparkles,
+  X,
+} from "lucide-react";
 import {
   type RefObject,
   useEffect,
@@ -13,6 +19,11 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
+import {
+  type XhsPostPromptContext,
+  generateXhsImagePrompt,
+} from "../../media/image-prompt-optimization";
 import type { XHSImageGenerationRequest } from "./xhs-image-generation";
 
 type XHSImageGenerationPopoverProps = {
@@ -20,6 +31,7 @@ type XHSImageGenerationPopoverProps = {
   anchorRef: RefObject<HTMLButtonElement | null>;
   onOpenChange: (open: boolean) => void;
   onGenerate: (request: XHSImageGenerationRequest) => void;
+  postContext: XhsPostPromptContext;
 };
 
 type PopoverPosition = {
@@ -61,6 +73,7 @@ export function XHSImageGenerationPopover({
   anchorRef,
   onOpenChange,
   onGenerate,
+  postContext,
 }: XHSImageGenerationPopoverProps) {
   const models = useCanvasModelOptions("image");
   const panelRef = useRef<HTMLDialogElement>(null);
@@ -72,6 +85,7 @@ export function XHSImageGenerationPopover({
   const [size, setSize] = useState("");
   const [count, setCount] = useState(1);
   const [transparentBackground, setTransparentBackground] = useState(false);
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -144,6 +158,23 @@ export function XHSImageGenerationPopover({
     });
   };
 
+  const handleGeneratePrompt = async () => {
+    if (isGeneratingPrompt) return;
+    setIsGeneratingPrompt(true);
+    try {
+      setPrompt(await generateXhsImagePrompt(postContext));
+      toast.success("已根据帖子生成图片提示词");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "AI 提示词生成失败");
+    } finally {
+      setIsGeneratingPrompt(false);
+    }
+  };
+
+  const hasPostContent = Boolean(
+    postContext.title.trim() || postContext.content.trim(),
+  );
+
   return createPortal(
     <dialog
       ref={panelRef}
@@ -169,18 +200,34 @@ export function XHSImageGenerationPopover({
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        <label className="block space-y-2">
-          <span className="text-xs font-medium text-text-secondary">
-            画面描述
+        <div className="space-y-2">
+          <span className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-text-secondary">
+              画面描述
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleGeneratePrompt()}
+              disabled={!hasPostContent || isGeneratingPrompt}
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {isGeneratingPrompt ? (
+                <LoaderCircle size={13} className="animate-spin" />
+              ) : (
+                <WandSparkles size={13} />
+              )}
+              {isGeneratingPrompt ? "生成中" : "根据帖子生成"}
+            </button>
           </span>
           <textarea
+            aria-label="画面描述"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             placeholder="例如：清晨咖啡馆窗边的手账与拿铁，自然光，生活方式摄影"
             rows={3}
             className="w-full resize-none rounded-lg border border-border bg-surface-1 px-3 py-2 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-text-secondary"
           />
-        </label>
+        </div>
 
         <label className="flex items-center justify-between gap-4">
           <span className="text-xs font-medium text-text-secondary">
@@ -275,7 +322,7 @@ export function XHSImageGenerationPopover({
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={!prompt.trim()}
+          disabled={!prompt.trim() || isGeneratingPrompt}
           className="flex h-9 items-center gap-2 rounded-lg bg-rose-600 px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
         >
           <ImagePlus size={15} />

@@ -20,15 +20,54 @@ import {
   observePreviewArtifact,
 } from "../src/lib/browser/browser-preview-auto-open";
 import {
+  buildDesktopBrowserHistoryItems,
   isPreviewArtifactActive,
   normalizeBrowserUrl,
   pushBrowserHistory,
+  resolveBrowserViewportLayout,
   selectBrowserNavigationTarget,
   selectLatestPreviewArtifact,
   sortPreviewArtifacts,
 } from "../src/lib/browser/embedded-browser";
 
 describe("embedded browser helpers", () => {
+  it("fills the available browser area in responsive mode", () => {
+    expect(
+      resolveBrowserViewportLayout(
+        { x: 100, y: 80, width: 900, height: 700 },
+        "responsive",
+      ),
+    ).toEqual({
+      bounds: { x: 100, y: 80, width: 900, height: 700 },
+      zoomFactor: 1,
+    });
+  });
+
+  it("centers a mobile viewport at its native CSS size when space allows", () => {
+    expect(
+      resolveBrowserViewportLayout(
+        { x: 0, y: 0, width: 1000, height: 1000 },
+        "mobile",
+      ),
+    ).toEqual({
+      bounds: { x: 312.5, y: 94, width: 375, height: 812 },
+      zoomFactor: 1,
+    });
+  });
+
+  it("scales a tablet viewport uniformly while preserving its CSS dimensions", () => {
+    const layout = resolveBrowserViewportLayout(
+      { x: 20, y: 30, width: 500, height: 700 },
+      "tablet",
+    );
+
+    expect(layout.zoomFactor).toBeCloseTo(468 / 768);
+    expect(layout.bounds.x).toBeCloseTo(36);
+    expect(layout.bounds.y).toBeCloseTo(68);
+    expect(layout.bounds.width).toBeCloseTo(468);
+    expect(layout.bounds.height).toBeCloseTo(624);
+  });
+
   it("normalizes public and local addresses while rejecting unsafe protocols", () => {
     expect(normalizeBrowserUrl("example.com/demo")).toBe(
       "https://example.com/demo",
@@ -120,6 +159,43 @@ describe("embedded browser helpers", () => {
         "http://127.0.0.1:4173/index.html?version=2#preview",
       ),
     ).toBe(true);
+  });
+
+  it("builds native history menu items with active version state", () => {
+    expect(
+      buildDesktopBrowserHistoryItems(
+        [
+          {
+            id: "current",
+            title: "当前版本",
+            status: "live",
+            previewUrl: "https://preview.test/current",
+            createdAt: "invalid",
+          },
+          {
+            id: "older",
+            title: "较早版本",
+            status: "live",
+            previewUrl: "https://preview.test/older",
+            createdAt: "invalid",
+          },
+        ],
+        "https://preview.test/current?version=2",
+      ),
+    ).toEqual([
+      {
+        id: "current",
+        label: "当前版本",
+        sublabel: "生成时间未知",
+        selected: true,
+      },
+      {
+        id: "older",
+        label: "较早版本",
+        sublabel: "生成时间未知",
+        selected: false,
+      },
+    ]);
   });
 
   it("auto-opens an artifact generated after the session watcher starts", () => {

@@ -44,11 +44,13 @@ export type RunTrustedScript = (input: {
 
 const TABBY_IMAGE_MAX_ATTEMPTS = 2;
 const TABBY_IMAGE_RETRY_DELAY_MS = 1_500;
+const TABBY_IMAGE_RETRYABLE_GATEWAY_STATUS =
+  /tabby-image gateway \((502|503|504|52[0-7])\)/i;
 
 export function isRetryableTabbyImageError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
-    /tabby-image gateway \((?:502|503|504)\)/i.test(message) ||
+    TABBY_IMAGE_RETRYABLE_GATEWAY_STATUS.test(message) ||
     /\b(?:ETIMEDOUT|ECONNRESET|ECONNREFUSED)\b/i.test(message) ||
     /\bfetch failed\b/i.test(message)
   );
@@ -56,11 +58,11 @@ export function isRetryableTabbyImageError(error: unknown): boolean {
 
 export function readableTabbyImageError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
-  const status = message.match(/tabby-image gateway \((502|503|504)\)/i)?.[1];
-  if (status === "504") {
+  const status = message.match(TABBY_IMAGE_RETRYABLE_GATEWAY_STATUS)?.[1];
+  if (status === "504" || status === "522" || status === "524") {
     return new Error("tabby-image 中转站响应超时，已自动重试，请稍后再试");
   }
-  if (status === "502" || status === "503") {
+  if (status !== undefined) {
     return new Error("tabby-image 中转站暂时不可用，已自动重试，请稍后再试");
   }
   if (

@@ -490,16 +490,7 @@ function generateA2UIJSONL(surfaceId, components, initialData, catalogId) {
   return JSON.stringify({ version: "v0.9", createSurface });
 }
 
-const plugin = {
-  id: "nexu-a2ui",
-  name: "Nexu A2UI Renderer",
-  description:
-    "Registers the render_a2ui tool for rendering interactive UI components directly in chat messages.",
-  register(api) {
-    api.registerTool({
-      name: "render_a2ui",
-      label: "Render Interactive UI",
-      description: `Render interactive UI components (forms, buttons, date pickers, sliders, etc.) directly in the chat.
+export const RENDER_A2UI_DESCRIPTION = `Render interactive UI components (forms, buttons, date pickers, sliders, etc.) directly in the chat.
 
 WHEN TO USE:
 - Displaying connected phone/device status — use PhonePreview component
@@ -509,6 +500,7 @@ WHEN TO USE:
     • TWO OR MORE posts → a SINGLE XHSBatchTable holding all of them (one row per post). MANDATORY: never place multiple XHSEditor components in one surface, never emit several XHSEditor surfaces, and never a plain-text list. The XHSBatchTable and each expanded post editor stay inline in the chat thread; do not route them to the canvas.
     • CONTENT FORMAT: title and body are SEPARATE fields. Write the body as PLAIN TEXT — Xiaohongshu does not render Markdown. No \`#\` headings, no \`**bold**\`, no \`-\`/\`*\` bullets, and NEVER repeat the title as a \`# heading\` on the first body line. Emojis and line breaks are encouraged.
     • Images are OPTIONAL and are NOT a prerequisite for publishing: render the post(s) immediately with images:[] and let the user add images afterwards. NEVER stall, loop, or refuse to render just because there are no images yet.
+- Updating an existing XHSEditor or XHSBatchTable in the chat, including putting a generated image into it. Reuse the exact prior surfaceId and preserve all existing post fields. For a requested generated image, first call image_generate and wait for its real media path, then call render_a2ui with that path appended to the XHS images. NEVER use canvas_read or canvas_op for a chat XHS component.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
 - Offering selectable actions (confirm/cancel, option selection)
@@ -518,9 +510,10 @@ HOW TO USE:
 1. Call this tool with a surfaceId and an array of component definitions.
    surfaceId is the surface's IDENTITY, not a per-call serial number:
    - Creating a genuinely NEW surface (a different artifact) -> pick a new descriptive id.
-   - Updating / revising / iterating on content you already rendered (same editor, same post, new wording) -> REUSE the exact same surfaceId as before. Re-rendering with the same id updates the existing surface and its canvas node in place; minting a new id every revision litters the canvas with stale duplicate nodes.
+   - Updating / revising / iterating on content you already rendered (same editor, same post, new wording or images) -> REUSE the exact same surfaceId as before. Re-rendering with the same id updates the existing surface in place. Inline XHS surfaces remain in their original chat card; they are not canvas nodes.
 2. The tool result is automatically rendered as interactive UI. Do NOT copy, repeat, or echo the JSONL in your text response. Just reply naturally — the UI appears alongside your message.
 3. CRITICAL: NEVER include raw JSONL or \`\`\`a2ui code blocks in your text output. The system renders UI automatically. Your text and A2UI are separate.
+4. Do not claim an image was generated or inserted until image_generate returned a real media path and this render_a2ui call completed with that path in the XHS images field.
 
 SURFACE PLACEMENT (automatic — you normally don't control it):
 - MarkdownEditor surfaces automatically open in the right side panel, with an "open panel" button shown in the chat thread. XHSEditor and XHSBatchTable stay inline in the conversation.
@@ -551,60 +544,71 @@ CUSTOM COMPONENTS:
 - MarkdownEditor: Display markdown/copywriting content with a copy button.
 - XHSEditor: Inline Xiaohongshu/RedNote content editor card with title, body, image upload or AI image generation, hashtags, and a device picker + publish button.
 - XHSBatchTable: Inline chat table for multiple XHS posts (fixed height, max ~5 rows). Each row shows thumbnail/title/preview/target-phone/status; clicking a row expands that post's XHSEditor directly below the table; a "全部发布" button publishes all posts to their assigned phones. Pass each post's title/content/images/hashtags; omit deviceId to auto-assign phones round-robin.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, or XHSBatchTable.`,
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, or XHSBatchTable.`;
 
-            parameters: {
-              type: "object",
-              properties: {
-                surfaceId: {
-                  type: "string",
-                  description:
-                    "Stable identity of this UI surface (e.g. 'registration-form', 'booking-ui'). Reuse the SAME id when updating or revising previously rendered content; only use a new id for a genuinely different surface.",
-                },
-                catalogId: {
-                  type: "string",
-                  description:
-                    "Catalog ID for custom components. Use 'https://nexu.app/a2ui/custom-catalog.json' when using PhonePreview, MarkdownEditor, or XHSEditor components. Omit for standard components.",
-                },
-              components: {
-                type: "array",
-                description:
-                  "Array of component definitions. Each component must have a unique 'id' and a 'type'. Container components reference children by ID.",
-                items: {
-                  oneOf: COMPONENT_SCHEMAS.map((s) => ({
-                    type: "object",
-                    properties: s.properties,
-                    required: s.required,
-                    additionalProperties: false,
-                  })),
-                },
-              },
-              initialData: {
+const plugin = {
+  id: "nexu-a2ui",
+  name: "Nexu A2UI Renderer",
+  description:
+    "Registers the render_a2ui tool for rendering interactive UI components directly in chat messages.",
+  register(api) {
+    api.registerTool({
+      name: "render_a2ui",
+      label: "Render Interactive UI",
+      description: RENDER_A2UI_DESCRIPTION,
+
+      parameters: {
+        type: "object",
+        properties: {
+          surfaceId: {
+            type: "string",
+            description:
+              "Stable identity of this UI surface (e.g. 'registration-form', 'booking-ui'). Reuse the SAME id when updating or revising previously rendered content; only use a new id for a genuinely different surface.",
+          },
+          catalogId: {
+            type: "string",
+            description:
+              "Catalog ID for custom components. Use 'https://nexu.app/a2ui/custom-catalog.json' when using PhonePreview, MarkdownEditor, or XHSEditor components. Omit for standard components.",
+          },
+          components: {
+            type: "array",
+            description:
+              "Array of component definitions. Each component must have a unique 'id' and a 'type'. Container components reference children by ID.",
+            items: {
+              oneOf: COMPONENT_SCHEMAS.map((s) => ({
                 type: "object",
-                description:
-                  "Optional initial data model values. Each key becomes a top-level path in the data model. Use this to pre-fill form values.",
-              },
+                properties: s.properties,
+                required: s.required,
+                additionalProperties: false,
+              })),
             },
-            required: ["surfaceId", "components"],
           },
-
-          async execute(_toolCallId, params) {
-            const jsonl = generateA2UIJSONL(
-              params.surfaceId,
-              params.components,
-              params.initialData,
-              params.catalogId,
-            );
-
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: ["```a2ui", jsonl, "```"].join("\n"),
-                },
-              ],
-            };
+          initialData: {
+            type: "object",
+            description:
+              "Optional initial data model values. Each key becomes a top-level path in the data model. Use this to pre-fill form values.",
           },
+        },
+        required: ["surfaceId", "components"],
+      },
+
+      async execute(_toolCallId, params) {
+        const jsonl = generateA2UIJSONL(
+          params.surfaceId,
+          params.components,
+          params.initialData,
+          params.catalogId,
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: ["```a2ui", jsonl, "```"].join("\n"),
+            },
+          ],
+        };
+      },
     });
 
     api.registerTool({
