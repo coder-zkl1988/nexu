@@ -99,6 +99,38 @@ Config 生成器必须输出符合此格式的 JSON。OpenClaw gateway 通过 ch
 
 Config 生成器在检测到 `LITELLM_BASE_URL` 环境变量时会自动添加此前缀。
 
+### Amazon Bedrock (`aws-sdk`)
+
+Bedrock 使用 OpenClaw 的 AWS SDK 认证链，不在 Nexu 配置中保存 Access Key 或 Secret Key：
+
+```json
+{
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "amazon-bedrock": {
+        "baseUrl": "https://bedrock-runtime.us-east-1.amazonaws.com",
+        "auth": "aws-sdk",
+        "api": "bedrock-converse-stream",
+        "models": [
+          {
+            "id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "name": "Claude Sonnet 4",
+            "compat": { "supportsStore": false }
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+- `auth: "aws-sdk"` 强制使用运行 Nexu/OpenClaw 进程可见的 AWS 默认凭据链；`apiKey` 应省略。
+- OpenClaw 2026.7.1 不接受 `models.bedrockDiscovery`。自动发现属于外置 `@openclaw/amazon-bedrock-provider` 插件，其配置路径是 `plugins.entries.amazon-bedrock.config.discovery`；Nexu 当前不会把旧字段写入运行时配置。
+- 保存前必须填写当前区域已授权的模型或推理配置 ID。验证通过打包的 OpenClaw 执行最小 token 实时 probe；只有目标 `amazon-bedrock/<modelId>` 明确返回 `ok` 才算成功。
+- 临时 probe 只加载正式运行时扩展目录中的 `amazon-bedrock` 插件。插件未安装时返回明确的不可用错误，不会把传输层缺失误报为 AWS 凭据失败。
+- 认证、限流、计费权限、格式、超时和无可用模型错误只映射为安全的产品错误，不透传 CLI 输出，避免日志或界面泄露凭据上下文。
+
 ---
 
 ## agents
@@ -146,7 +178,12 @@ Config 生成器在检测到 `LITELLM_BASE_URL` 环境变量时会自动添加�
           "enabled": true,
           "appId": "cli_a1b2c3d4",
           "appSecret": "secret_value",
-          "connectionMode": "websocket"
+          "connectionMode": "websocket",
+          "streaming": true,
+          "renderMode": "card",
+          "replyInThread": "enabled",
+          "mediaMaxMb": 30,
+          "tts": { "auto": "inbound" }
         }
       }
     }
@@ -167,8 +204,15 @@ Config 生成器在检测到 `LITELLM_BASE_URL` 环境变量时会自动添加�
 | `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | 群聊策略 |
 | `requireMention` | boolean | 是否需要 @mention 才响应（群消息） |
 | `allowFrom` | string[] | 允许的用户 open_id 列表；`dmPolicy`/`groupPolicy` 为 `"allowlist"` 时生效 |
+| `streaming` | boolean | 是否使用流式卡片更新回复 |
+| `renderMode` | `"auto"` \| `"raw"` \| `"card"` | 回复渲染格式；`raw` 为纯文本，`card` 为交互卡片 |
+| `replyInThread` | `"enabled"` \| `"disabled"` | 是否在飞书话题线程中回复 |
+| `mediaMaxMb` | number | 单条音频、图片、文件或视频的媒体大小上限（MB） |
+| `tts.auto` | `"off"` \| `"always"` \| `"tagged"` \| `"inbound"` | 自动语音回复策略 |
 
 > **UI control:** `requireMention`, `dmPolicy`, `groupPolicy`, and `allowFrom` can be configured per feishu channel via the Permissions panel in the UI. When not set (channel.feishuPermissions === null), the compiler emits historical defaults (requireMention=true, dmPolicy=open, groupPolicy=open, allowFrom=["*"]).
+
+> **Delivery capabilities:** `streaming`, `renderMode`, `replyInThread`, `mediaMaxMb`, and `tts.auto` are configured per account in the Message capabilities panel. Audio, image, file, and video support is supplied by the bundled Feishu runtime; `tts.auto` controls generated voice replies, not whether inbound media can be received.
 
 ### Slack
 
@@ -192,7 +236,18 @@ Slack channel 有**顶层字段**和 **account 字段**两级。顶层控制全�
           "signingSecret": "abc123",
           "mode": "http",
           "webhookPath": "/slack/events/team-T123",
-          "appToken": "xapp-placeholder-not-used-in-http-mode"
+          "appToken": "xapp-placeholder-not-used-in-http-mode",
+          "replyToMode": "all",
+          "streaming": {
+            "mode": "progress",
+            "nativeTransport": true,
+            "progress": {
+              "nativeTaskCards": true,
+              "render": "rich",
+              "toolProgress": true,
+              "commandText": "status"
+            }
+          }
         }
       }
     }
@@ -224,6 +279,15 @@ Slack channel 有**顶层字段**和 **account 字段**两级。顶层控制全�
 | `webhookPath` | string | HTTP 模式 | webhook 路径，如 `/slack/events/slack-T123` |
 | `dmPolicy` | `"pairing"` \| `"allowlist"` \| `"open"` | 否 | 覆盖顶层 |
 | `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | 否 | 覆盖顶层 |
+| `replyToMode` | `"off"` \| `"first"` \| `"all"` \| `"batched"` | 否 | 是否将回复放入 Slack thread |
+| `streaming.mode` | `"off"` \| `"partial"` \| `"block"` \| `"progress"` | 否 | 实时响应模式 |
+| `streaming.nativeTransport` | boolean | 否 | 使用 Slack 原生流式传输 |
+| `streaming.progress.nativeTaskCards` | boolean | 否 | progress 模式下显示 Slack 原生任务卡片 |
+| `streaming.progress.render` | `"text"` \| `"rich"` | 否 | 进度卡片渲染方式 |
+| `streaming.progress.toolProgress` | boolean | 否 | 是否在进度卡片中显示工具执行进度 |
+| `streaming.progress.commandText` | `"raw"` \| `"status"` | 否 | 命令执行文本的显示方式 |
+
+> **UI control:** `replyToMode`, `streaming.mode`, and `streaming.progress.nativeTaskCards` are configurable per Slack workspace. Native task cards are only emitted when `streaming.mode` is `"progress"`; disabling progress mode clears the card toggle.
 
 ---
 
@@ -392,6 +456,8 @@ Nexu 不生成 wildcard `commands.ownerAllowFrom`。随包 OpenClaw 2026.7.1 会
   }
 }
 ```
+
+Nexu 编译器默认省略 `plugins.allow` 与 `plugins.deny`，让 OpenClaw 发现所有已安装插件；需要平台配置或显式开关的插件仍写入 `plugins.entries`。不得用静态插件目录白名单阻断用户后来安装的插件。
 
 ---
 

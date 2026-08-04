@@ -25,6 +25,7 @@ import type {
   ConnectWechatInput,
   ConnectWecomInput,
   FeishuPermissions,
+  UpdateChannelCapabilitiesInput,
 } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
 import { ChannelConnectError } from "../lib/channel-connect-error.js";
@@ -753,6 +754,43 @@ export class ChannelService {
         botId: updated.botId,
       },
       "channel_update_feishu_permissions_success",
+    );
+    return updated;
+  }
+
+  async updateChannelCapabilities(
+    channelId: string,
+    input: UpdateChannelCapabilitiesInput,
+  ): Promise<ChannelResponse> {
+    const previous = await this.configStore.getChannel(channelId);
+    const updated = await this.configStore.updateChannelCapabilities(
+      channelId,
+      input,
+    );
+    try {
+      await this.syncService.syncAll();
+    } catch (error) {
+      if (previous) {
+        await this.configStore.updateChannel(channelId, {
+          ...(previous.channelType === "slack"
+            ? { slackCapabilities: previous.slackCapabilities ?? null }
+            : {}),
+          ...(previous.channelType === "feishu"
+            ? { feishuCapabilities: previous.feishuCapabilities ?? null }
+            : {}),
+        });
+        await this.syncService.syncAll().catch(() => undefined);
+      }
+      throw error;
+    }
+    logger.info(
+      {
+        channelId: updated.id,
+        channelType: updated.channelType,
+        accountId: updated.accountId,
+        botId: updated.botId,
+      },
+      "channel_update_capabilities_success",
     );
     return updated;
   }

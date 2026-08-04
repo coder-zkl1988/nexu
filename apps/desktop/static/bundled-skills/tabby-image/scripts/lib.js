@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const TABBY_IMAGE_MODEL = "tabby-image";
-const TABBY_IMAGE_FREE_MODEL = "tabby-image-free";
-const IMAGE_MODEL_IDS = [TABBY_IMAGE_MODEL, TABBY_IMAGE_FREE_MODEL];
+const TABBY_IMAGE_MODEL = "tabby-image-pro";
+const TABBY_IMAGE_FLASH_MODEL = "tabby-image-flash";
+const IMAGE_MODEL_IDS = [TABBY_IMAGE_MODEL, TABBY_IMAGE_FLASH_MODEL];
 const GPT_IMAGE_SIZE_TIERS = new Map([
   ["1K", 1024],
   ["2K", 2048],
@@ -69,9 +69,10 @@ export function readImageCreditState(stateDir) {
 
 /**
  * Pick the tabby-image credential and model id out of an already-parsed
- * openclaw.json config object. Prefers "tabby-image" over "tabby-image-free"
+ * openclaw.json config object. Prefers "tabby-image-pro" over
+ * "tabby-image-flash"
  * when both are present on the account and the account has credit balance;
- * falls back to "tabby-image-free" when the balance is exhausted.
+ * falls back to "tabby-image-flash" when the balance is exhausted.
  */
 export function resolveLinkCredential(config, stateDir, requestedModel) {
   const link = config?.models?.providers?.link;
@@ -91,7 +92,7 @@ export function resolveLinkCredential(config, stateDir, requestedModel) {
     !IMAGE_MODEL_IDS.includes(requestedModel)
   ) {
     throw new Error(
-      `INVALID_IMAGE_MODEL: ${requestedModel}. Use tabby-image or tabby-image-free.`,
+      `INVALID_IMAGE_MODEL: ${requestedModel}. Use tabby-image-pro or tabby-image-flash.`,
     );
   }
 
@@ -104,7 +105,7 @@ export function resolveLinkCredential(config, stateDir, requestedModel) {
     requestedModel ?? preferredOrder.find((id) => availableIds.has(id));
   if (!model) {
     throw new Error(
-      "NO_IMAGE_MODEL: Your Tabby account does not have access to the tabby-image model.",
+      "NO_IMAGE_MODEL: Your Tabby account does not have access to a supported Tabby image model.",
     );
   }
   if (!availableIds.has(model)) {
@@ -211,7 +212,7 @@ function resolveAgnesImageSize(size) {
   const resolved = size ?? "1K";
   if (!AGNES_IMAGE_SIZE_TIERS.has(resolved) && !/^\d+x\d+$/.test(resolved)) {
     throw new Error(
-      `INVALID_SIZE: ${resolved}. tabby-image-free supports 1K/2K/3K/4K or WIDTHxHEIGHT.`,
+      `INVALID_SIZE: ${resolved}. tabby-image-flash supports 1K/2K/3K/4K or WIDTHxHEIGHT.`,
     );
   }
   return resolved;
@@ -256,7 +257,7 @@ export function buildImageGenerationRequest({
     return { url, body };
   }
 
-  if (model === TABBY_IMAGE_FREE_MODEL) {
+  if (model === TABBY_IMAGE_FLASH_MODEL) {
     validateRatio(ratio);
     const body = {
       model,
@@ -271,7 +272,7 @@ export function buildImageGenerationRequest({
   }
 
   throw new Error(
-    `INVALID_IMAGE_MODEL: ${model}. Use tabby-image or tabby-image-free.`,
+    `INVALID_IMAGE_MODEL: ${model}. Use tabby-image-pro or tabby-image-flash.`,
   );
 }
 

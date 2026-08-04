@@ -4,8 +4,18 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WorkspaceLayout,
+  deleteSidebarSession,
+  filterSidebarSessions,
   getSidebarCreditBreakdown,
+  isScheduledSessionSectionExpanded,
+  renameSidebarSession,
 } from "../src/layouts/workspace-layout";
+
+const sessionApiMocks = vi.hoisted(() => ({
+  getSessions: vi.fn(),
+  deleteSession: vi.fn(),
+  renameSession: vi.fn(),
+}));
 
 vi.mock("@/lib/api", () => ({}));
 
@@ -59,11 +69,12 @@ vi.mock("@/lib/auth-client", () => ({
 }));
 
 vi.mock("../lib/api/sdk.gen", () => ({
-  getApiV1Sessions: vi.fn(async () => ({
-    data: {
-      sessions: [],
-    },
-  })),
+  getApiV1Sessions: (...args: unknown[]) =>
+    sessionApiMocks.getSessions(...args),
+  deleteApiV1SessionsById: (...args: unknown[]) =>
+    sessionApiMocks.deleteSession(...args),
+  patchApiInternalSessionsById: (...args: unknown[]) =>
+    sessionApiMocks.renameSession(...args),
   getApiV1Me: vi.fn(async () => ({
     data: {
       email: "alice@example.com",
@@ -131,28 +142,42 @@ function renderWorkspaceLayout(
     activeProfileName?: string;
     profiles?: Array<Record<string, unknown>>;
   },
+  sessionListError = false,
 ): string {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
+        retryOnMount: false,
       },
     },
   });
 
-  queryClient.setQueryData(
-    ["sidebar-sessions"],
-    [
-      {
-        id: "sess-1",
-        title: "Design sync thread",
-        channelType: "slack",
-        lastTime: "2026-03-20T08:57:00.000Z",
-        status: "active",
-        sessionKey: "agent:bot-1:slack:channel:C123",
-      },
-    ],
-  );
+  if (sessionListError) {
+    const query = queryClient.getQueryCache().build(queryClient, {
+      queryKey: ["sidebar-sessions"],
+      queryFn: async () => [],
+    });
+    query.setState({
+      error: new Error("session list unavailable"),
+      fetchStatus: "idle",
+      status: "error",
+    });
+  } else {
+    queryClient.setQueryData(
+      ["sidebar-sessions"],
+      [
+        {
+          id: "sess-1",
+          title: "Design sync thread",
+          channelType: "slack",
+          lastTime: "2026-03-20T08:57:00.000Z",
+          status: "active",
+          sessionKey: "agent:bot-1:slack:channel:C123",
+        },
+      ],
+    );
+  }
   queryClient.setQueryData(["me"], {
     email: "alice@example.com",
     name: "Alice",
@@ -197,9 +222,13 @@ function renderWorkspaceLayout(
 
 describe("WorkspaceLayout", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     storage.clear();
     storage.set("nexu_setup_complete", "1");
     installBrowserStubs();
+    sessionApiMocks.getSessions.mockResolvedValue({ data: { sessions: [] } });
+    sessionApiMocks.deleteSession.mockResolvedValue({ data: {} });
+    sessionApiMocks.renameSession.mockResolvedValue({ data: {} });
   });
 
   it("renders structured sidebar session rows for the workspace shell", () => {
@@ -210,6 +239,115 @@ describe("WorkspaceLayout", () => {
     expect(markup).toContain('data-session-state="active"');
     expect(markup).toContain("<title>Slack</title>");
     expect(markup).toContain("Design sync thread");
+    expect(markup).not.toContain("data-session-group-heading");
+  });
+
+  it("renders an unavailable retry state instead of a fake empty session list", () => {
+    const markup = renderWorkspaceLayout(
+      "/workspace/sessions/sess-1",
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(markup).toContain('data-session-list-unavailable="true"');
+    expect(markup).toContain('data-session-list-retry="true"');
+    expect(markup).toContain("layout.sessionsUnavailable");
+    expect(markup).not.toContain("layout.noMatchingConversations");
+  });
+
+  it("rejects SDK errors for rename and delete instead of reporting success", async () => {
+    sessionApiMocks.renameSession.mockResolvedValue({
+      error: { message: "rename denied" },
+    });
+    sessionApiMocks.deleteSession.mockResolvedValue({
+      error: { message: "delete denied" },
+    });
+
+    await expect(
+      renameSidebarSession({ id: "sess-1", title: "New title" }),
+    ).rejects.toThrow("rename session failed");
+    await expect(deleteSidebarSession("sess-1")).rejects.toThrow(
+      "delete session failed",
+    );
+  });
+
+  it("renders the filter dropdown before session search without a section title", () => {
+    const markup = renderWorkspaceLayout();
+    const filterIndex = markup.indexOf('data-session-filter="true"');
+    const searchIndex = markup.indexOf('data-session-search="true"');
+
+    expect(markup).toContain('data-session-controls="true"');
+    expect(filterIndex).toBeGreaterThan(-1);
+    expect(searchIndex).toBeGreaterThan(filterIndex);
+    expect(markup).toContain('role="combobox"');
+    expect(markup).toContain('class="w-[84px] shrink-0"');
+    expect(markup).not.toContain(">layout.conversations</div>");
+  });
+
+  it("filters conversations by title and stable session category", () => {
+    const sessions = [
+      {
+        id: "live-1",
+        title: "Release review",
+        channelType: "web",
+        lastTime: null,
+        status: "active",
+        sessionKey: "agent:bot-1:main",
+      },
+      {
+        id: "ended-1",
+        title: "Archived notes",
+        channelType: "slack",
+        lastTime: null,
+        status: "ended",
+        sessionKey: "agent:bot-1:slack:dm:1",
+      },
+      {
+        id: "scheduled-1",
+        title: "Release monitor",
+        channelType: "web",
+        lastTime: null,
+        status: "active",
+        sessionKey: "agent:bot-1:schedule-daily",
+      },
+    ];
+
+    expect(filterSidebarSessions(sessions, "release", "all")).toHaveLength(2);
+    expect(
+      filterSidebarSessions(sessions, "", "conversations").map(
+        (item) => item.id,
+      ),
+    ).toEqual(["live-1", "ended-1"]);
+    expect(
+      filterSidebarSessions(sessions, "monitor", "scheduled").map(
+        (item) => item.id,
+      ),
+    ).toEqual(["scheduled-1"]);
+  });
+
+  it("keeps scheduled matches expanded while search or its filter is active", () => {
+    expect(
+      isScheduledSessionSectionExpanded({
+        collapsed: true,
+        filter: "all",
+        search: "release",
+      }),
+    ).toBe(true);
+    expect(
+      isScheduledSessionSectionExpanded({
+        collapsed: true,
+        filter: "scheduled",
+        search: "",
+      }),
+    ).toBe(true);
+    expect(
+      isScheduledSessionSectionExpanded({
+        collapsed: true,
+        filter: "all",
+        search: "",
+      }),
+    ).toBe(false);
   });
 
   it("does not render a sidebar collapse control in the desktop shell", () => {

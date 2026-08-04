@@ -132,6 +132,38 @@ state.
 `chat.side_result` must be correlated by `runId`, and SSE forwarding must also
 filter by `sessionKey`.
 
+Message history control also uses dedicated generated-SDK routes:
+
+- `POST /api/v1/sessions/{id}/messages/{messageId}/branch` creates a real
+  OpenClaw session fork and selects the message as the fork's active leaf.
+- `POST /api/v1/sessions/{id}/messages/{messageId}/rollback` changes the
+  current session's active leaf. The controller rejects both operations while
+  the session is running.
+
+## Runtime operations and recovery
+
+The Run center consumes controller-normalized OpenClaw contracts:
+
+- `GET /api/v1/runtime/operations` returns the true OpenClaw model/task
+  contract and one normalized DAG containing both OpenClaw and Nexu Team
+  nodes. Team execution cards persist their OpenClaw `sessionKey`; the DAG
+  fetch is global rather than scoped to the viewed conversation, links the
+  card to its runtime task with an `executes` edge, and assigns both nodes to
+  the same Team group.
+- `GET /api/v1/runtime/audit` combines the Nexu-owned persistent approval
+  ledger with OpenClaw's metadata-only runtime audit. Approval request payloads
+  and credentials must not be persisted.
+- `GET /api/v1/runtime/recovery` exposes durable checkpoints and the health
+  contract's delivery-failure and context-engine quarantine summaries.
+- `POST /api/v1/runtime/recovery/checkpoints/{checkpointId}/restore` is the
+  only destructive recovery action and requires `confirm: true`. Do not invent
+  dead-letter replay/delete or quarantine-clear routes when the active
+  OpenClaw contract does not expose those operations. Restore responses must
+  validate the returned key/checkpoint/session identity and whitelist public
+  fields; runtime paths such as `entry.sessionFile` never cross the controller
+  boundary. Health normalization accepts `oldestFailedAt: null` and omits that
+  optional timestamp from the public response.
+
 ## Local attachment paths
 
 Desktop attachment requests may carry an app-staged path instead of inline base64. Route schemas must cap item count and payload size, while service code must independently validate that the lexical and canonical paths stay inside `<OPENCLAW_STATE_DIR>/media/inbound/`. Reject symbolic links, directories where a file is expected, files where a directory is expected, and non-regular entries before moving content into the session workspace.

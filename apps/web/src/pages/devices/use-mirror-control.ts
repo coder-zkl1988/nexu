@@ -39,7 +39,9 @@ export function useMirrorControl(
   const onDeviceMessageRef = useRef(onDeviceMessage);
   onDeviceMessageRef.current = onDeviceMessage;
 
-  const host = wsHost ?? window.location.hostname;
+  const host =
+    wsHost ??
+    (typeof window === "undefined" ? "localhost" : window.location.hostname);
   const port = wsPort ?? 18790;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reconnectKey triggers reconnection

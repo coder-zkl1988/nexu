@@ -11,6 +11,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import type { OpenClawConfig } from "@nexu/shared";
+import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import { serializeOpenClawConfig } from "../lib/openclaw-config-serialization.js";
 import type { OpenClawWsClient } from "../runtime/openclaw-ws-client.js";
@@ -104,6 +105,48 @@ export interface ChatControlResult {
   interruptedActiveRun?: boolean;
 }
 
+export const openClawModelCatalogEntrySchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    provider: z.string(),
+    api: z.string().optional(),
+    alias: z.string().optional(),
+    available: z.boolean().optional(),
+    contextWindow: z.number().int().optional(),
+    reasoning: z.boolean().optional(),
+    input: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+export const openClawModelsListResultSchema = z.object({
+  models: z.array(openClawModelCatalogEntrySchema),
+});
+
+export type OpenClawModelCatalogEntry = z.infer<
+  typeof openClawModelCatalogEntrySchema
+>;
+export type OpenClawModelsListResult = z.infer<
+  typeof openClawModelsListResultSchema
+>;
+
+export type SessionCompactionCheckpointReason =
+  | "manual"
+  | "auto-threshold"
+  | "overflow-retry"
+  | "timeout-retry";
+
+export interface SessionCompactionCheckpointSnapshot {
+  checkpointId: string;
+  sessionKey: string;
+  sessionId: string;
+  createdAt: number;
+  reason: SessionCompactionCheckpointReason;
+  tokensBefore?: number;
+  tokensAfter?: number;
+  summary?: string;
+}
+
 export interface LogoutChannelAccountResult {
   cleared?: boolean;
   loggedOut?: boolean;
@@ -158,10 +201,16 @@ export interface WorkboardCard {
   title: string;
   status: string;
   agentId?: string | null;
+  sessionKey?: string | null;
   notes?: string;
   metadata?: {
     /** Workflow step replies are recorded as comments (newest last). */
     comments?: Array<{ body?: string }>;
+    /** Workboard stores dependency edges as reciprocal parent/child links. */
+    links?: Array<{
+      type?: string;
+      targetCardId?: string;
+    }>;
   };
 }
 
@@ -237,6 +286,16 @@ export class OpenClawGatewayService {
     return this.wsClient.request("system.info", {});
   }
 
+  /** Runtime-authenticated model catalog exposed by OpenClaw. */
+  async listModels(
+    view: "all" | "configured" = "all",
+  ): Promise<OpenClawModelsListResult> {
+    const result = await this.wsClient.request<unknown>("models.list", {
+      view,
+    });
+    return openClawModelsListResultSchema.parse(result);
+  }
+
   /**
    * Synthesize speech for a text snippet (OpenClaw >=2026.7.1 tts.speak).
    * Requires a configured speech provider; rejects with the provider error
@@ -264,19 +323,22 @@ export class OpenClawGatewayService {
     label?: string | null;
     category?: string | null;
     archived?: boolean;
+    pinned?: boolean;
+    unread?: boolean;
     model?: string | null;
   }): Promise<unknown> {
     return this.wsClient.request("sessions.patch", params);
   }
 
   /**
-   * Create a session; with `parentSessionKey` this forks the parent
-   * (context inherited via the parent chain).
+   * Create a session. Context is copied from `parentSessionKey` only when the
+   * real OpenClaw `fork` flag is also enabled.
    */
   async sessionsCreate(params: {
     key: string;
     agentId?: string;
     parentSessionKey?: string;
+    fork?: boolean;
   }): Promise<{
     ok?: boolean;
     key?: string;
@@ -284,6 +346,152 @@ export class OpenClawGatewayService {
     entry?: { sessionId?: string; sessionFile?: string };
   }> {
     return this.wsClient.request("sessions.create", params);
+  }
+
+  /** List durable compaction boundaries that can seed a recovery branch. */
+  async sessionsCompactionList(params: {
+    key: string;
+    agentId?: string;
+  }): Promise<{
+    ok?: boolean;
+    key?: string;
+    checkpoints?: SessionCompactionCheckpointSnapshot[];
+  }> {
+    return this.wsClient.request("sessions.compaction.list", params);
+  }
+
+  /** Create a non-destructive session branch from one durable checkpoint. */
+  async sessionsCompactionBranch(params: {
+    key: string;
+    agentId?: string;
+    checkpointId: string;
+  }): Promise<{
+    ok?: boolean;
+    sourceKey?: string;
+    key?: string;
+    sessionId?: string;
+    checkpoint?: SessionCompactionCheckpointSnapshot;
+    entry?: { sessionId?: string; sessionFile?: string };
+  }> {
+    return this.wsClient.request("sessions.compaction.branch", params);
+  }
+
+  /** Restore the current session in place to a durable compaction checkpoint. */
+  async sessionsCompactionRestore(params: {
+    key: string;
+    agentId?: string;
+    checkpointId: string;
+  }): Promise<{
+    ok: true;
+    key: string;
+    sessionId: string;
+    checkpoint: SessionCompactionCheckpointSnapshot;
+    entry: { sessionId: string; updatedAt: number };
+  }> {
+    return this.wsClient.request("sessions.compaction.restore", params);
+  }
+
+  // ---- Desktop operations (OpenClaw >=2026.7.1) ------------------------
+
+  /** Pending command approvals visible to the controller operator client. */
+  async listExecApprovals(): Promise<unknown> {
+    return this.wsClient.request("exec.approval.list", {});
+  }
+
+  /** Pending plugin/tool approvals visible to the controller operator client. */
+  async listPluginApprovals(): Promise<unknown> {
+    return this.wsClient.request("plugin.approval.list", {});
+  }
+
+  async resolveApproval(params: {
+    id: string;
+    kind: "exec" | "plugin";
+    decision: "allow-once" | "allow-always" | "deny";
+  }): Promise<unknown> {
+    return this.wsClient.request(`${params.kind}.approval.resolve`, {
+      id: params.id,
+      decision: params.decision,
+    });
+  }
+
+  /** Detached OpenClaw task ledger, optionally scoped to one session. */
+  async listTasks(params: {
+    sessionKey?: string;
+    agentId?: string;
+    status?:
+      | "queued"
+      | "running"
+      | "completed"
+      | "failed"
+      | "timed_out"
+      | "cancelled"
+      | Array<
+          | "queued"
+          | "running"
+          | "completed"
+          | "failed"
+          | "timed_out"
+          | "cancelled"
+        >;
+    cursor?: string;
+    limit?: number;
+  }): Promise<unknown> {
+    return this.wsClient.request("tasks.list", params);
+  }
+
+  /** Content-free OpenClaw agent/tool audit records. */
+  async listAudit(params: {
+    agentId?: string;
+    sessionKey?: string;
+    runId?: string;
+    kind?: "agent_run" | "tool_action";
+    status?:
+      | "started"
+      | "succeeded"
+      | "failed"
+      | "cancelled"
+      | "timed_out"
+      | "blocked"
+      | "unknown";
+    after?: number;
+    before?: number;
+    limit?: number;
+    cursor?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("audit.list", params);
+  }
+
+  async cancelTask(params: {
+    taskId: string;
+    reason?: string;
+  }): Promise<unknown> {
+    return this.wsClient.request("tasks.cancel", params);
+  }
+
+  /** Per-session token and cost accounting from the transcript ledger. */
+  async getSessionUsage(params: {
+    key: string;
+    agentId?: string;
+    includeContextWeight?: boolean;
+  }): Promise<unknown> {
+    return this.wsClient.request("sessions.usage", {
+      ...params,
+      groupBy: "instance",
+      limit: 1,
+    });
+  }
+
+  /** Provider-reported quota windows, reset times, balances, and plans. */
+  async getProviderUsage(): Promise<unknown> {
+    return this.wsClient.request("usage.status", {});
+  }
+
+  /** Memory subsystem status for one agent. */
+  async getMemoryStatus(agentId?: string): Promise<unknown> {
+    return this.wsClient.request(
+      "doctor.memory.status",
+      agentId ? { agentId } : {},
+    );
   }
 
   // ---- Workboard (team task board) --------------------------------------
@@ -316,6 +524,7 @@ export class OpenClawGatewayService {
       title: string;
       boardId?: string;
       agentId?: string;
+      sessionKey?: string;
       notes?: string;
     }>;
   }): Promise<{ children: WorkboardCard[] }> {
@@ -371,6 +580,7 @@ export class OpenClawGatewayService {
     id: string;
     notes?: string;
     title?: string;
+    sessionKey?: string | null;
   }): Promise<{ card: WorkboardCard }> {
     return this.wsClient.request("workboard.cards.update", params);
   }

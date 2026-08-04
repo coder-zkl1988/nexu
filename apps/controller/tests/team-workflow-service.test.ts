@@ -332,6 +332,18 @@ describe("TeamWorkflowService", () => {
       { stepId: "research", cardId: "card-1" },
       { stepId: "write", cardId: "card-2" },
     ]);
+    const decomposeInput = gateway.workboardCardDecompose.mock
+      .calls[0]?.[0] as {
+      children: Array<{ notes?: string; sessionKey?: string }>;
+    };
+    expect(decomposeInput.children[0]).toMatchObject({
+      notes: "(waiting for upstream steps)",
+      sessionKey: `agent:bot-researcher:subagent:wf-${result.runId}-research`,
+    });
+    expect(decomposeInput.children[1]).toMatchObject({
+      notes: "(waiting for upstream steps)",
+      sessionKey: `agent:bot-writer:subagent:wf-${result.runId}-write`,
+    });
     // write depends on research → one sibling dependency link.
     expect(gateway.workboardCardLinkDependency).toHaveBeenCalledWith({
       parentId: "card-1",
@@ -369,6 +381,11 @@ describe("TeamWorkflowService", () => {
     expect(gateway.workboardCardComment).toHaveBeenCalledWith({
       id: "card-2",
       body: "FINAL-POST-OK",
+    });
+    expect(gateway.workboardCardUpdate).toHaveBeenCalledWith({
+      id: "card-1",
+      sessionKey: expect.stringMatching(/^agent:bot-researcher:subagent:wf-/),
+      notes: expect.stringContaining("[TASK]"),
     });
     expect(gateway.workboardCardComplete).toHaveBeenCalledWith({
       id: "card-1",
@@ -679,6 +696,110 @@ describe("TeamWorkflowService", () => {
         (input as { sessionKey: string }).sessionKey.includes("-write"),
       ),
     ).toHaveLength(1);
+  });
+
+  it("keeps approval suspension and resume independent from audit failures", async () => {
+    const approvalAudit = {
+      recordRequested: vi.fn(async () => {
+        throw new Error("audit request write failed");
+      }),
+      recordResolved: vi.fn(async () => {
+        throw new Error("audit resolution write failed");
+      }),
+    };
+    const service = buildService({
+      approvalAudit,
+      getReviewerName: async () => "Desktop User",
+    });
+    const workflow = await service.createWorkflow(TEAM.id, {
+      name: "Audit-independent gate",
+      inputs: [],
+      steps: [
+        {
+          id: "gate",
+          type: "approval" as const,
+          assigneeSlug: "writer",
+          task: "Approve sensitive-task-prompt",
+          dependsOn: [],
+        },
+        {
+          id: "write",
+          type: "task" as const,
+          assigneeSlug: "writer",
+          task: "Continue after approval.",
+          output: "result",
+          dependsOn: ["gate"],
+        },
+      ],
+    });
+
+    const run = await service.runWorkflow(TEAM.id, workflow.id, { inputs: {} });
+    await vi.waitFor(() => {
+      expect(service.listPendingApprovals(TEAM.id)).toHaveLength(1);
+    });
+    expect(approvalAudit.recordRequested).toHaveBeenCalledWith(
+      expect.not.objectContaining({ description: expect.anything() }),
+    );
+
+    await expect(
+      service.approveStep(TEAM.id, workflow.id, run.runId, "gate"),
+    ).resolves.toBeUndefined();
+
+    await vi.waitFor(() => {
+      expect(gateway.workboardCardComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "card-parent" }),
+      );
+    });
+    expect(service.listPendingApprovals(TEAM.id)).toHaveLength(0);
+    expect(
+      sendChat.mock.calls.filter(([input]) =>
+        (input as { sessionKey: string }).sessionKey.includes("-write"),
+      ),
+    ).toHaveLength(1);
+    expect(approvalAudit.recordResolved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "approved",
+        reviewer: "Desktop User",
+      }),
+    );
+  });
+
+  it("keeps a failed approval pending so it can be retried", async () => {
+    gateway.workboardCardComplete
+      .mockRejectedValueOnce(new Error("gateway unavailable"))
+      .mockResolvedValue({});
+    const service = buildService();
+    const workflow = await service.createWorkflow(TEAM.id, {
+      name: "Retryable gate",
+      inputs: [],
+      steps: [
+        {
+          id: "gate",
+          type: "approval" as const,
+          assigneeSlug: "writer",
+          task: "Approve release",
+          dependsOn: [],
+        },
+      ],
+    });
+    const run = await service.runWorkflow(TEAM.id, workflow.id, { inputs: {} });
+    await vi.waitFor(() => {
+      expect(service.listPendingApprovals(TEAM.id)).toHaveLength(1);
+    });
+
+    await expect(
+      service.approveStep(TEAM.id, workflow.id, run.runId, "gate"),
+    ).rejects.toThrow("gateway unavailable");
+    expect(service.listPendingApprovals(TEAM.id)).toHaveLength(1);
+
+    await expect(
+      Promise.all([
+        service.approveStep(TEAM.id, workflow.id, run.runId, "gate"),
+        service.approveStep(TEAM.id, workflow.id, run.runId, "gate"),
+      ]),
+    ).resolves.toEqual([undefined, undefined]);
+    expect(service.listPendingApprovals(TEAM.id)).toHaveLength(0);
+    expect(gateway.workboardCardComplete).toHaveBeenCalledTimes(3);
   });
 
   it("rejects approving a step that is not pending", async () => {

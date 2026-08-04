@@ -180,11 +180,13 @@ export function listModelProviderRuntimeDescriptorsFromProviders(
 
       const usesProxyRuntimeKey = customProvider
         ? false
-        : isProviderProxied({
-            providerId,
-            baseUrl: resolvedBaseUrl,
-            oauthRegion: provider.oauthRegion ?? null,
-          });
+        : provider.auth === "aws-sdk"
+          ? false
+          : isProviderProxied({
+              providerId,
+              baseUrl: resolvedBaseUrl,
+              oauthRegion: provider.oauthRegion ?? null,
+            });
       const runtimeKey = customProvider
         ? encodeCustomProviderRuntimeKey(
             customProvider.templateId,

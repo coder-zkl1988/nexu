@@ -1,5 +1,13 @@
 import { BudgetWarningBanner } from "@/components/budget-warning-banner";
 import { PlatformIcon } from "@/components/platform-icons";
+import { SessionRecoveryDialog } from "@/components/session-recovery-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAutoUpdate } from "@/hooks/use-auto-update";
 import { useCloudConnect } from "@/hooks/use-cloud-connect";
 import { useCommunitySkillStatus } from "@/hooks/use-community-catalog";
@@ -24,7 +32,6 @@ import { EmbeddedBrowser } from "@/lib/browser/embedded-browser";
 import { exportBoardAsZip } from "@/lib/canvas/canvas-export";
 import { CanvasBoardTitle } from "@/lib/canvas/canvas-toolbar";
 import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
-import { openExternalUrl } from "@/lib/desktop-links";
 import {
   isMacDesktopPlatform,
   isWindowsDesktopPlatform,
@@ -35,6 +42,7 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
+  ArchiveRestore,
   BookOpen,
   Bot,
   ChevronRight,
@@ -43,18 +51,25 @@ import {
   CirclePlus,
   Clock,
   FileDown,
+  FolderInput,
   GitBranch,
+  History,
   Home,
   Info,
   LogOut,
   Mail,
+  MailOpen,
   Maximize2,
   MessageSquare,
   Minimize2,
   MoreHorizontal,
   Pencil,
+  Pin,
+  PinOff,
   Puzzle,
+  RefreshCw,
   ScrollText,
+  Search,
   Settings,
   Smartphone,
   Sparkles,
@@ -78,6 +93,7 @@ import {
   getApiV1Me,
   getApiV1Sessions,
   patchApiInternalSessionsById,
+  patchApiV1SessionsByIdOrganization,
   postApiV1SessionsByIdArchive,
   postApiV1SessionsByIdFork,
 } from "../../lib/api/sdk.gen";
@@ -89,6 +105,71 @@ interface SidebarSession {
   lastTime: string | null;
   status: string;
   sessionKey: string;
+  category: string | null;
+  pinned: boolean;
+  unread: boolean;
+  archived: boolean;
+  checkpointCount: number;
+  runState: "idle" | "running" | "failed";
+}
+
+export type SidebarSessionFilter =
+  | "all"
+  | "conversations"
+  | "scheduled"
+  | "unread"
+  | "running"
+  | "failed"
+  | "archived";
+
+export function filterSidebarSessions(
+  sessions: SidebarSession[],
+  search: string,
+  filter: SidebarSessionFilter,
+): SidebarSession[] {
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  return sessions.filter((session) => {
+    if (
+      normalizedSearch &&
+      !session.title.toLocaleLowerCase().includes(normalizedSearch) &&
+      !session.category?.toLocaleLowerCase().includes(normalizedSearch)
+    ) {
+      return false;
+    }
+    const scheduled = session.sessionKey.includes(":schedule-");
+    if (filter === "scheduled") return scheduled && !session.archived;
+    if (filter === "conversations") return !scheduled && !session.archived;
+    if (filter === "unread") return session.unread && !session.archived;
+    if (filter === "running") {
+      return session.runState === "running" && !session.archived;
+    }
+    if (filter === "failed") {
+      return session.runState === "failed" && !session.archived;
+    }
+    if (filter === "archived") return session.archived;
+    return !session.archived;
+  });
+}
+
+export function sortSidebarSessions(
+  sessions: SidebarSession[],
+): SidebarSession[] {
+  return [...sessions].sort((left, right) => {
+    if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+    return (right.lastTime ?? "").localeCompare(left.lastTime ?? "");
+  });
+}
+
+export function isScheduledSessionSectionExpanded(input: {
+  collapsed: boolean;
+  filter: SidebarSessionFilter;
+  search: string;
+}): boolean {
+  return (
+    !input.collapsed ||
+    (input.filter !== "all" && input.filter !== "conversations") ||
+    input.search.trim().length > 0
+  );
 }
 
 // Cloud balance amounts arrive as integer US cents; show them as exact USD.
@@ -142,6 +223,12 @@ function mapDbSession(s: {
   updatedAt?: string;
   status?: string | null;
   sessionKey?: string;
+  category?: string | null;
+  pinned?: boolean;
+  unread?: boolean;
+  archived?: boolean;
+  checkpointCount?: number;
+  runState?: "idle" | "running" | "failed";
 }): SidebarSession {
   return {
     id: s.id,
@@ -150,7 +237,35 @@ function mapDbSession(s: {
     lastTime: s.lastMessageAt ?? s.updatedAt ?? null,
     status: s.status ?? "",
     sessionKey: s.sessionKey ?? "",
+    category: s.category ?? null,
+    pinned: s.pinned ?? false,
+    unread: s.unread ?? false,
+    archived: s.archived ?? false,
+    checkpointCount: s.checkpointCount ?? 0,
+    runState: s.runState ?? "idle",
   };
+}
+
+export async function deleteSidebarSession(sessionId: string): Promise<void> {
+  const { error } = await deleteApiV1SessionsById({
+    path: { id: sessionId },
+  });
+  if (error) {
+    throw new Error("delete session failed");
+  }
+}
+
+export async function renameSidebarSession(input: {
+  id: string;
+  title: string;
+}): Promise<void> {
+  const { error } = await patchApiInternalSessionsById({
+    path: { id: input.id },
+    body: { title: input.title },
+  });
+  if (error) {
+    throw new Error("rename session failed");
+  }
 }
 
 type Platform =
@@ -255,15 +370,6 @@ function EmptyState({ onGoConfig }: { onGoConfig: () => void }) {
 
 const SETUP_COMPLETE_KEY = "nexu_setup_complete";
 const GITHUB_URL = "https://github.com/coder-zkl1988/tabby";
-function resolveCloudUsageUrl(cloudUrl?: string | null): string {
-  if (!cloudUrl) return "https://tabby.picaso.studio/workspace/usage";
-  try {
-    const origin = new URL(cloudUrl).origin;
-    return `${origin}/workspace/usage`;
-  } catch {
-    return "https://tabby.picaso.studio/workspace/usage";
-  }
-}
 
 const GitHubIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -437,6 +543,9 @@ function WorkspaceLayoutContent() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showHelpMenu, setShowHelpMenu] = useState(false);
   const [scheduledCollapsed, setScheduledCollapsed] = useState(true);
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionFilter, setSessionFilter] =
+    useState<SidebarSessionFilter>("all");
   const {
     status: rewardsStatus,
     loading: rewardsStatusLoading,
@@ -712,14 +821,20 @@ function WorkspaceLayoutContent() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showBalancePopup]);
 
-  const { data: sessionsData } = useQuery({
+  const sessionsQuery = useQuery({
     queryKey: ["sidebar-sessions"],
     queryFn: async (): Promise<SidebarSession[]> => {
-      const { data } = await getApiV1Sessions({ query: { limit: 100 } });
-      return (data?.sessions ?? []).map(mapDbSession);
+      const { data, error } = await getApiV1Sessions({
+        query: { limit: 500, archived: "include" },
+      });
+      if (error || !data) {
+        throw new Error("session list unavailable");
+      }
+      return data.sessions.map(mapDbSession);
     },
     refetchInterval: 10_000,
   });
+  const sessionsData = sessionsQuery.data;
   const { data: me } = useQuery({
     queryKey: ["me"],
     queryFn: async () => {
@@ -729,15 +844,16 @@ function WorkspaceLayoutContent() {
   });
 
   const deleteSessionMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
-      await deleteApiV1SessionsById({ path: { id: sessionId } });
-    },
+    mutationFn: deleteSidebarSession,
     onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
       // If the deleted session is currently viewed, navigate away
       if (selectedSessionId === deletedId) {
         navigate("/workspace");
       }
+    },
+    onError: () => {
+      setSessionActionError(t("layout.deleteSessionFailed"));
     },
   });
 
@@ -748,6 +864,14 @@ function WorkspaceLayoutContent() {
     title: string;
   } | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [groupTarget, setGroupTarget] = useState<{
+    id: string;
+    category: string | null;
+  } | null>(null);
+  const [groupValue, setGroupValue] = useState("");
+  const [recoveryTarget, setRecoveryTarget] = useState<SidebarSession | null>(
+    null,
+  );
   const [sessionActionError, setSessionActionError] = useState<string | null>(
     null,
   );
@@ -766,24 +890,22 @@ function WorkspaceLayoutContent() {
   }, [sessionActionError]);
 
   const renameSessionMutation = useMutation({
-    mutationFn: async (input: { id: string; title: string }) => {
-      await patchApiInternalSessionsById({
-        path: { id: input.id },
-        body: { title: input.title },
-      });
-    },
+    mutationFn: renameSidebarSession,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["sessions-recent"] });
       setRenameTarget(null);
     },
+    onError: () => {
+      setSessionActionError(t("layout.renameSessionFailed"));
+    },
   });
 
   const archiveSessionMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
+    mutationFn: async (input: { id: string; archived: boolean }) => {
       const { error } = await postApiV1SessionsByIdArchive({
-        path: { id: sessionId },
-        body: { archived: true },
+        path: { id: input.id },
+        body: { archived: input.archived },
       });
       if (error) {
         throw new Error(
@@ -791,10 +913,41 @@ function WorkspaceLayoutContent() {
         );
       }
     },
-    onSuccess: (_data, archivedId) => {
+    onSuccess: (_data, input) => {
       queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
-      if (selectedSessionId === archivedId) {
+      if (input.archived && selectedSessionId === input.id) {
         navigate("/workspace");
+      }
+    },
+    onError: (err) => {
+      setSessionActionError(err instanceof Error ? err.message : String(err));
+    },
+  });
+
+  const organizationSessionMutation = useMutation({
+    mutationFn: async (input: {
+      id: string;
+      category?: string;
+      clearCategory?: boolean;
+      pinned?: boolean;
+      unread?: boolean;
+    }) => {
+      const { id, ...body } = input;
+      const { error } = await patchApiV1SessionsByIdOrganization({
+        path: { id },
+        body,
+      });
+      if (error) {
+        throw new Error(
+          (error as { message?: string }).message ??
+            "session organization update failed",
+        );
+      }
+    },
+    onSuccess: (_data, input) => {
+      queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
+      if (input.category !== undefined || input.clearCategory) {
+        setGroupTarget(null);
       }
     },
     onError: (err) => {
@@ -826,6 +979,17 @@ function WorkspaceLayoutContent() {
   });
 
   const sessions = sessionsData ?? [];
+  const visibleSessions = sortSidebarSessions(
+    filterSidebarSessions(sessions, sessionSearch, sessionFilter),
+  );
+  const scheduledSectionForcedOpen =
+    (sessionFilter !== "all" && sessionFilter !== "conversations") ||
+    sessionSearch.trim().length > 0;
+  const scheduledSectionExpanded = isScheduledSessionSectionExpanded({
+    collapsed: scheduledCollapsed,
+    filter: sessionFilter,
+    search: sessionSearch,
+  });
 
   const sessionMatch = location.pathname.match(/\/workspace\/sessions\/(.+)/);
   const selectedSessionId = sessionMatch?.[1] ?? null;
@@ -1096,24 +1260,138 @@ function WorkspaceLayoutContent() {
 
           {/* Conversations section */}
           <div className="flex min-h-0 flex-1 flex-col px-2 pt-6">
-            <div className="sidebar-section-label shrink-0 whitespace-nowrap">
-              {t("layout.conversations")}
+            <div
+              data-session-controls="true"
+              className="flex shrink-0 items-center gap-2"
+            >
+              <div className="w-[84px] shrink-0">
+                <Select
+                  value={sessionFilter}
+                  onValueChange={(value) =>
+                    setSessionFilter(value as SidebarSessionFilter)
+                  }
+                >
+                  <SelectTrigger
+                    data-session-filter="true"
+                    aria-label={t("layout.sessionFilter")}
+                    className="h-7 w-full border-border bg-surface-0 px-2 text-[10px] text-text-muted shadow-none focus:ring-1 focus:ring-[var(--color-brand-primary)]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent
+                    align="end"
+                    className="border-border bg-surface-0 text-text-primary"
+                  >
+                    <SelectItem
+                      value="all"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterAll")}
+                    </SelectItem>
+                    <SelectItem
+                      value="conversations"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterConversations")}
+                    </SelectItem>
+                    <SelectItem
+                      value="scheduled"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterScheduled")}
+                    </SelectItem>
+                    <SelectItem
+                      value="unread"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterUnread")}
+                    </SelectItem>
+                    <SelectItem
+                      value="running"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterRunning")}
+                    </SelectItem>
+                    <SelectItem
+                      value="failed"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterFailed")}
+                    </SelectItem>
+                    <SelectItem
+                      value="archived"
+                      className="text-[11px] focus:text-accent-fg data-[highlighted]:text-accent-fg"
+                    >
+                      {t("layout.sessionFilterArchived")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-text-tertiary" />
+                <input
+                  data-session-search="true"
+                  type="search"
+                  value={sessionSearch}
+                  onChange={(event) => setSessionSearch(event.target.value)}
+                  placeholder={t("layout.searchConversations")}
+                  className="h-7 w-full rounded-md border border-border bg-surface-0 pl-7 pr-2 text-[11px] text-text-primary outline-none placeholder:text-text-tertiary focus:border-[var(--color-brand-primary)]"
+                />
+              </label>
             </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+            <div className="mt-2 min-h-0 flex-1 space-y-3 overflow-y-auto">
+              {sessionsQuery.isPending && (
+                <div
+                  data-session-list-loading="true"
+                  className="px-2 py-6 text-center text-[11px] text-text-muted"
+                >
+                  {t("layout.sessionsLoading")}
+                </div>
+              )}
+              {sessionsQuery.isError && (
+                <div
+                  data-session-list-unavailable="true"
+                  className="px-2 py-6 text-center text-[11px] text-text-muted"
+                >
+                  <div>{t("layout.sessionsUnavailable")}</div>
+                  <button
+                    type="button"
+                    data-session-list-retry="true"
+                    onClick={() => sessionsQuery.refetch()}
+                    className="mx-auto mt-2 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-text-primary hover:bg-surface-2"
+                  >
+                    <RefreshCw className="size-3" />
+                    {t("layout.retrySessions")}
+                  </button>
+                </div>
+              )}
+              {sessionsQuery.isSuccess && visibleSessions.length === 0 && (
+                <div
+                  data-session-filter-empty="true"
+                  className="px-2 py-6 text-center text-[11px] text-text-muted"
+                >
+                  {t("layout.noMatchingConversations")}
+                </div>
+              )}
               {(() => {
                 // Split sessions into regular and scheduled
-                const regularSessions = sessions.filter(
+                const regularSessions = visibleSessions.filter(
                   (s) => !s.sessionKey.includes(":schedule-"),
                 );
-                const scheduledSessions = sessions.filter((s) =>
+                const scheduledSessions = visibleSessions.filter((s) =>
                   s.sessionKey.includes(":schedule-"),
                 );
 
-                // Regular sessions grouped by channelType
+                // Keep meaningful user organization visible, while leaving
+                // ordinary conversations as one unlabelled list.
                 const regularGroups = Object.entries(
                   regularSessions.reduce(
                     (acc, s) => {
-                      const key = s.channelType ?? "web";
+                      const key = s.pinned
+                        ? "pinned"
+                        : s.category
+                          ? `category:${s.category}`
+                          : "default";
                       const group = acc[key] ?? [];
                       group.push(s);
                       acc[key] = group;
@@ -1127,6 +1405,24 @@ function WorkspaceLayoutContent() {
                   <>
                     {regularGroups.map(([channelType, groupSessions]) => (
                       <div key={channelType}>
+                        {channelType !== "default" && (
+                          <div
+                            data-session-group-heading={channelType}
+                            className="mb-1 flex items-center gap-1.5 px-2 text-[10px] font-medium text-text-muted"
+                          >
+                            {channelType === "pinned" && (
+                              <Pin className="size-3" />
+                            )}
+                            <span className="truncate">
+                              {channelType === "pinned"
+                                ? t("layout.pinnedSessions")
+                                : channelType.slice("category:".length)}
+                            </span>
+                            <span className="ml-auto text-[9px] text-text-tertiary">
+                              {groupSessions.length}
+                            </span>
+                          </div>
+                        )}
                         <div className="space-y-0.5">
                           {groupSessions.map((s) => {
                             const isActive = selectedSessionId === s.id;
@@ -1138,14 +1434,23 @@ function WorkspaceLayoutContent() {
                                   s.channelType ?? "web"
                                 }
                                 data-session-state={s.status || "idle"}
+                                data-session-run-state={s.runState}
+                                data-session-unread={
+                                  s.unread ? "true" : "false"
+                                }
+                                data-session-pinned={
+                                  s.pinned ? "true" : "false"
+                                }
                                 className={cn(
                                   "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
                                   isActive && "nav-item-active",
+                                  s.archived && "opacity-70",
                                 )}
                               >
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    if (s.archived) return;
                                     const channel = normalizeChannel(
                                       s.channelType,
                                     );
@@ -1156,6 +1461,12 @@ function WorkspaceLayoutContent() {
                                       target: "conversations",
                                       ...(channel ? { channel } : {}),
                                     });
+                                    if (s.unread) {
+                                      organizationSessionMutation.mutate({
+                                        id: s.id,
+                                        unread: false,
+                                      });
+                                    }
                                     navigate(`/workspace/sessions/${s.id}`);
                                   }}
                                   className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
@@ -1167,15 +1478,38 @@ function WorkspaceLayoutContent() {
                                     <div className="flex items-center gap-2 min-w-0">
                                       <div
                                         className={cn(
-                                          "text-[12px] truncate whitespace-nowrap font-medium",
+                                          "text-[12px] truncate whitespace-nowrap",
+                                          s.unread
+                                            ? "font-semibold"
+                                            : "font-medium",
                                           !isActive && "text-text-primary",
                                         )}
                                       >
                                         {s.title}
                                       </div>
-                                      {s.status === "active" && (
-                                        <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                          Live
+                                      {s.pinned && (
+                                        <Pin className="size-3 shrink-0 text-text-muted" />
+                                      )}
+                                      {s.unread && (
+                                        <span
+                                          aria-label={t("layout.unreadSession")}
+                                          className="size-1.5 shrink-0 rounded-full bg-[var(--color-brand-primary)]"
+                                        />
+                                      )}
+                                      {s.runState !== "idle" && (
+                                        <span
+                                          className={cn(
+                                            "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                            s.runState === "running"
+                                              ? "bg-[var(--color-success-subtle)] text-[var(--color-success)]"
+                                              : "bg-[var(--color-danger-subtle)] text-danger",
+                                          )}
+                                        >
+                                          {t(
+                                            s.runState === "running"
+                                              ? "layout.sessionRunning"
+                                              : "layout.sessionFailed",
+                                          )}
                                         </span>
                                       )}
                                     </div>
@@ -1191,8 +1525,11 @@ function WorkspaceLayoutContent() {
                                   </div>
                                 </button>
                                 <div className="relative flex items-center gap-1 shrink-0">
-                                  {s.status === "active" && (
-                                    <div className="w-2 h-2 rounded-full bg-[var(--color-success)] shrink-0" />
+                                  {s.runState === "running" && (
+                                    <div className="size-2 shrink-0 animate-pulse rounded-full bg-[var(--color-success)]" />
+                                  )}
+                                  {s.runState === "failed" && (
+                                    <div className="size-2 shrink-0 rounded-full bg-danger" />
                                   )}
                                   <button
                                     type="button"
@@ -1212,46 +1549,143 @@ function WorkspaceLayoutContent() {
                                   </button>
                                   {sessionMenuId === s.id && (
                                     <div
-                                      className="absolute right-0 top-full z-50 mt-1 w-36 rounded-lg border border-border bg-surface-0 py-1 shadow-lg"
+                                      className="absolute right-0 top-full z-50 mt-1 w-44 rounded-lg border border-border bg-surface-0 py-1 shadow-lg"
                                       onMouseDown={(e) => e.stopPropagation()}
                                     >
-                                      <button
-                                        type="button"
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
-                                        onClick={() => {
-                                          setSessionMenuId(null);
-                                          setRenameTarget({
-                                            id: s.id,
-                                            title: s.title,
-                                          });
-                                          setRenameValue(s.title);
-                                        }}
-                                      >
-                                        <Pencil className="w-3 h-3" />
-                                        {t("layout.renameSession")}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
-                                        onClick={() => {
-                                          setSessionMenuId(null);
-                                          forkSessionMutation.mutate(s.id);
-                                        }}
-                                      >
-                                        <GitBranch className="w-3 h-3" />
-                                        {t("layout.forkSession")}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
-                                        onClick={() => {
-                                          setSessionMenuId(null);
-                                          archiveSessionMutation.mutate(s.id);
-                                        }}
-                                      >
-                                        <Archive className="w-3 h-3" />
-                                        {t("layout.archiveSession")}
-                                      </button>
+                                      {!s.archived && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              setRenameTarget({
+                                                id: s.id,
+                                                title: s.title,
+                                              });
+                                              setRenameValue(s.title);
+                                            }}
+                                          >
+                                            <Pencil className="size-3" />
+                                            {t("layout.renameSession")}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              organizationSessionMutation.mutate(
+                                                {
+                                                  id: s.id,
+                                                  pinned: !s.pinned,
+                                                },
+                                              );
+                                            }}
+                                          >
+                                            {s.pinned ? (
+                                              <PinOff className="size-3" />
+                                            ) : (
+                                              <Pin className="size-3" />
+                                            )}
+                                            {t(
+                                              s.pinned
+                                                ? "layout.unpinSession"
+                                                : "layout.pinSession",
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              organizationSessionMutation.mutate(
+                                                {
+                                                  id: s.id,
+                                                  unread: !s.unread,
+                                                },
+                                              );
+                                            }}
+                                          >
+                                            {s.unread ? (
+                                              <MailOpen className="size-3" />
+                                            ) : (
+                                              <Mail className="size-3" />
+                                            )}
+                                            {t(
+                                              s.unread
+                                                ? "layout.markSessionRead"
+                                                : "layout.markSessionUnread",
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              setGroupTarget({
+                                                id: s.id,
+                                                category: s.category,
+                                              });
+                                              setGroupValue(s.category ?? "");
+                                            }}
+                                          >
+                                            <FolderInput className="size-3" />
+                                            {t("layout.moveSessionToGroup")}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              setRecoveryTarget(s);
+                                            }}
+                                          >
+                                            <History className="size-3" />
+                                            {t("layout.recoverSession")}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              forkSessionMutation.mutate(s.id);
+                                            }}
+                                          >
+                                            <GitBranch className="size-3" />
+                                            {t("layout.forkSession")}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                            onClick={() => {
+                                              setSessionMenuId(null);
+                                              archiveSessionMutation.mutate({
+                                                id: s.id,
+                                                archived: true,
+                                              });
+                                            }}
+                                          >
+                                            <Archive className="size-3" />
+                                            {t("layout.archiveSession")}
+                                          </button>
+                                        </>
+                                      )}
+                                      {s.archived && (
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-text-primary hover:bg-surface-2"
+                                          onClick={() => {
+                                            setSessionMenuId(null);
+                                            archiveSessionMutation.mutate({
+                                              id: s.id,
+                                              archived: false,
+                                            });
+                                          }}
+                                        >
+                                          <ArchiveRestore className="size-3" />
+                                          {t("layout.restoreSession")}
+                                        </button>
+                                      )}
                                       <button
                                         type="button"
                                         className="flex w-full items-center gap-2 px-3 py-1.5 text-[12px] text-danger hover:bg-surface-2"
@@ -1260,7 +1694,7 @@ function WorkspaceLayoutContent() {
                                           deleteSessionMutation.mutate(s.id);
                                         }}
                                       >
-                                        <Trash2 className="w-3 h-3" />
+                                        <Trash2 className="size-3" />
                                         {t("layout.deleteSession")}
                                       </button>
                                     </div>
@@ -1278,16 +1712,18 @@ function WorkspaceLayoutContent() {
                       <div>
                         <button
                           type="button"
+                          aria-expanded={scheduledSectionExpanded}
+                          disabled={scheduledSectionForcedOpen}
                           onClick={() =>
                             setScheduledCollapsed(!scheduledCollapsed)
                           }
-                          className="flex items-center gap-2 w-full px-1 py-1.5 text-[12px] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                          className="flex w-full cursor-pointer items-center gap-2 px-1 py-1.5 text-[12px] text-text-muted transition-colors hover:text-text-primary disabled:cursor-default"
                         >
                           <ChevronRight
                             size={12}
                             className={cn(
                               "transition-transform",
-                              !scheduledCollapsed && "rotate-90",
+                              scheduledSectionExpanded && "rotate-90",
                             )}
                           />
                           <Clock size={12} />
@@ -1296,7 +1732,7 @@ function WorkspaceLayoutContent() {
                             {scheduledSessions.length}
                           </span>
                         </button>
-                        {!scheduledCollapsed && (
+                        {scheduledSectionExpanded && (
                           <div className="space-y-0.5 mt-1">
                             {scheduledSessions.map((s) => {
                               const isActive = selectedSessionId === s.id;
@@ -1308,17 +1744,26 @@ function WorkspaceLayoutContent() {
                                     s.channelType ?? "web"
                                   }
                                   data-session-state={s.status || "idle"}
+                                  data-session-run-state={s.runState}
                                   className={cn(
                                     "group flex items-center gap-2.5 w-full rounded-[10px] transition-colors cursor-pointer px-3 py-2 text-left",
                                     isActive && "nav-item-active",
+                                    s.archived && "opacity-70",
                                   )}
                                 >
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      if (s.archived) return;
                                       track("workspace_sidebar_click", {
                                         target: "conversations",
                                       });
+                                      if (s.unread) {
+                                        organizationSessionMutation.mutate({
+                                          id: s.id,
+                                          unread: false,
+                                        });
+                                      }
                                       navigate(`/workspace/sessions/${s.id}`);
                                     }}
                                     className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
@@ -1337,9 +1782,20 @@ function WorkspaceLayoutContent() {
                                         >
                                           {s.title}
                                         </div>
-                                        {s.status === "active" && (
-                                          <span className="shrink-0 rounded-full bg-[var(--color-success-subtle)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-[var(--color-success)]">
-                                            Live
+                                        {s.runState !== "idle" && (
+                                          <span
+                                            className={cn(
+                                              "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                                              s.runState === "running"
+                                                ? "bg-[var(--color-success-subtle)] text-[var(--color-success)]"
+                                                : "bg-[var(--color-danger-subtle)] text-danger",
+                                            )}
+                                          >
+                                            {t(
+                                              s.runState === "running"
+                                                ? "layout.sessionRunning"
+                                                : "layout.sessionFailed",
+                                            )}
                                           </span>
                                         )}
                                       </div>
@@ -1349,17 +1805,34 @@ function WorkspaceLayoutContent() {
                                     </div>
                                   </button>
                                   <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        deleteSessionMutation.mutate(s.id);
-                                      }}
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-surface-2 text-text-muted hover:text-danger"
-                                      title={t("layout.deleteSession")}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    {s.archived ? (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          archiveSessionMutation.mutate({
+                                            id: s.id,
+                                            archived: false,
+                                          });
+                                        }}
+                                        className="p-1 text-text-muted transition-colors hover:text-text-primary"
+                                        title={t("layout.restoreSession")}
+                                      >
+                                        <ArchiveRestore className="size-3.5" />
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          deleteSessionMutation.mutate(s.id);
+                                        }}
+                                        className="p-1 text-text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                                        title={t("layout.deleteSession")}
+                                      >
+                                        <Trash2 className="size-3.5" />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1572,23 +2045,16 @@ function WorkspaceLayoutContent() {
                           </div>
                           <button
                             type="button"
-                            data-sidebar-rewards-balance-detail="true"
-                            className="mt-2.5 flex w-full items-center justify-between border-t border-border/60 pt-2.5 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary"
-                            onClick={() => {
-                              track("workspace_click_usage_detail");
-                              track("workspace_sidebar_click", {
-                                target: "credits_popup_detail",
-                              });
-                              void openExternalUrl(
-                                resolveCloudUsageUrl(
-                                  desktopCloudStatus?.cloudUrl,
-                                ),
-                              );
-                              setShowBalancePopup(false);
-                            }}
+                            disabled
+                            data-sidebar-rewards-balance-detail="development"
+                            className="mt-2.5 flex w-full cursor-not-allowed items-center justify-between border-t border-border/60 pt-2.5 text-[11px] font-medium text-text-muted opacity-60"
                           >
                             {t("layout.sidebar.balancePopup.viewDetail")}
-                            <ChevronRight size={12} />
+                            <span className="font-normal">
+                              {t(
+                                "layout.sidebar.balancePopup.detailDevelopment",
+                              )}
+                            </span>
                           </button>
                         </div>
                       </div>,
@@ -1985,6 +2451,81 @@ function WorkspaceLayoutContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Session group dialog */}
+      {groupTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30"
+          onMouseDown={() => setGroupTarget(null)}
+        >
+          <div
+            className="w-80 rounded-lg border border-border bg-surface-0 p-4 shadow-xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 text-[13px] font-semibold text-text-primary">
+              {t("layout.moveSessionToGroup")}
+            </div>
+            <input
+              // biome-ignore lint/a11y/noAutofocus: focus the field when the dialog opens
+              autoFocus
+              value={groupValue}
+              onChange={(event) => setGroupValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  organizationSessionMutation.mutate({
+                    id: groupTarget.id,
+                    ...(groupValue.trim()
+                      ? { category: groupValue.trim() }
+                      : { clearCategory: true }),
+                  });
+                }
+                if (event.key === "Escape") setGroupTarget(null);
+              }}
+              placeholder={t("layout.sessionGroupPlaceholder")}
+              className="w-full rounded-lg border border-border bg-surface-1 px-3 py-2 text-[13px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-1.5 text-[12px] text-text-muted hover:bg-surface-2"
+                onClick={() => setGroupTarget(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={organizationSessionMutation.isPending}
+                className="rounded-lg bg-accent px-3 py-1.5 text-[12px] text-white hover:opacity-90 disabled:opacity-50"
+                onClick={() =>
+                  organizationSessionMutation.mutate({
+                    id: groupTarget.id,
+                    ...(groupValue.trim()
+                      ? { category: groupValue.trim() }
+                      : { clearCategory: true }),
+                  })
+                }
+              >
+                {t("common.confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recoveryTarget && (
+        <SessionRecoveryDialog
+          session={recoveryTarget}
+          onClose={() => setRecoveryTarget(null)}
+          onContinue={(sessionId) => {
+            setRecoveryTarget(null);
+            navigate(`/workspace/sessions/${sessionId}`);
+          }}
+          onRecovered={(sessionId) => {
+            setRecoveryTarget(null);
+            navigate(`/workspace/sessions/${sessionId}`);
+          }}
+        />
       )}
 
       {/* Session action error toast */}

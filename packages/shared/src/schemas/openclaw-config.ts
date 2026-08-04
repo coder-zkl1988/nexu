@@ -98,27 +98,63 @@ const compactionSchema = z
 const memorySearchRemoteSchema = z
   .object({
     baseUrl: z.string().optional(),
-    apiKey: z.string().optional(),
+    apiKey: z.union([z.string(), providerSecretRefSchema]).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    nonBatchConcurrency: z.number().int().positive().optional(),
+    batch: z
+      .object({
+        enabled: z.boolean().optional(),
+        wait: z.boolean().optional(),
+        concurrency: z.number().int().positive().optional(),
+        pollIntervalMs: z.number().int().positive().optional(),
+        timeoutMinutes: z.number().positive().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 
 const memorySearchSyncSchema = z
   .object({
+    onSessionStart: z.boolean().optional(),
+    onSearch: z.boolean().optional(),
+    watch: z.boolean().optional(),
+    watchDebounceMs: z.number().int().nonnegative().optional(),
     intervalMinutes: z.number().optional(),
+    embeddingBatchTimeoutSeconds: z.number().positive().optional(),
+    sessions: z
+      .object({
+        deltaBytes: z.number().int().nonnegative().optional(),
+        deltaMessages: z.number().int().nonnegative().optional(),
+        postCompactionForce: z.boolean().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 
 const memorySearchStoreSchema = z
   .object({
     driver: z.enum(["sqlite"]).optional(),
-    path: z.string().optional(),
-    vectorExtension: z.string().optional(),
+    fts: z
+      .object({ tokenizer: z.enum(["unicode61", "trigram"]).optional() })
+      .optional(),
+    vector: z
+      .object({
+        enabled: z.boolean().optional(),
+        extensionPath: z.string().optional(),
+      })
+      .optional(),
+    cache: z
+      .object({
+        enabled: z.boolean().optional(),
+        maxEntries: z.number().int().positive().optional(),
+      })
+      .optional(),
   })
   .passthrough();
 
 const memorySearchChunkingSchema = z
   .object({
-    tokenSize: z.number().optional(),
+    tokens: z.number().optional(),
     overlap: z.number().optional(),
   })
   .passthrough();
@@ -127,11 +163,24 @@ const memorySearchQuerySchema = z
   .object({
     maxResults: z.number().optional(),
     minScore: z.number().optional(),
-    mmr: z.boolean().optional(),
-    timeDecay: z
+    hybrid: z
       .object({
         enabled: z.boolean().optional(),
-        halfLifeDays: z.number().optional(),
+        vectorWeight: z.number().optional(),
+        textWeight: z.number().optional(),
+        candidateMultiplier: z.number().optional(),
+        mmr: z
+          .object({
+            enabled: z.boolean().optional(),
+            lambda: z.number().optional(),
+          })
+          .optional(),
+        temporalDecay: z
+          .object({
+            enabled: z.boolean().optional(),
+            halfLifeDays: z.number().optional(),
+          })
+          .optional(),
       })
       .optional(),
   })
@@ -141,11 +190,23 @@ const memorySearchSchema = z
   .object({
     enabled: z.boolean().optional(),
     sources: z.array(z.enum(["memory", "sessions"])).optional(),
-    provider: z
-      .enum(["openai", "gemini", "local", "voyage", "mistral"])
+    extraPaths: z.array(z.string()).optional(),
+    experimental: z
+      .object({ sessionMemory: z.boolean().optional() })
       .optional(),
+    provider: z.string().min(1).optional(),
+    fallback: z.string().min(1).optional(),
     model: z.string().optional(),
     remote: memorySearchRemoteSchema.optional(),
+    local: z
+      .object({
+        modelPath: z.string().optional(),
+        modelCacheDir: z.string().optional(),
+        contextSize: z
+          .union([z.number().int().positive(), z.literal("auto")])
+          .optional(),
+      })
+      .optional(),
     sync: memorySearchSyncSchema.optional(),
     store: memorySearchStoreSchema.optional(),
     chunking: memorySearchChunkingSchema.optional(),
@@ -236,7 +297,23 @@ const slackAccountSchema = z
     webhookPath: z.string().optional(),
     dmPolicy: z.enum(["pairing", "allowlist", "open"]).optional(),
     groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional(),
-    streaming: z.enum(["off", "partial", "block", "progress"]).optional(),
+    streaming: z
+      .object({
+        mode: z.enum(["off", "partial", "block", "progress"]).optional(),
+        nativeTransport: z.boolean().optional(),
+        progress: z
+          .object({
+            nativeTaskCards: z.boolean().optional(),
+            render: z.enum(["text", "rich"]).optional(),
+            toolProgress: z.boolean().optional(),
+            commandText: z.enum(["raw", "status"]).optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+    replyToMode: z.enum(["off", "first", "all", "batched"]).optional(),
   })
   .passthrough();
 
@@ -284,6 +361,16 @@ const feishuAccountSchema = z
     dmPolicy: z.enum(["pairing", "allowlist", "open", "disabled"]).optional(),
     groupPolicy: z.enum(["open", "allowlist", "disabled"]).optional(),
     allowFrom: z.array(z.string()).optional(),
+    streaming: z.boolean().optional(),
+    renderMode: z.enum(["auto", "raw", "card"]).optional(),
+    replyInThread: z.enum(["enabled", "disabled"]).optional(),
+    mediaMaxMb: z.number().optional(),
+    tts: z
+      .object({
+        auto: z.enum(["off", "always", "tagged", "inbound"]).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -448,6 +535,7 @@ const modelProviderSchema = z
   .object({
     baseUrl: z.string(),
     apiKey: z.union([z.string(), providerSecretRefSchema]).optional(),
+    auth: z.enum(["api-key", "token", "oauth", "aws-sdk"]).optional(),
     api: z.string(),
     models: z.array(modelEntrySchema),
   })
@@ -510,6 +598,7 @@ const toolsWebSchema = z
 
 const toolsConfigSchema = z
   .object({
+    profile: z.enum(["minimal", "coding", "messaging", "full"]).optional(),
     exec: toolsExecSchema.optional(),
     web: toolsWebSchema.optional(),
   })

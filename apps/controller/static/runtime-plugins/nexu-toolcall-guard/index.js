@@ -45,8 +45,6 @@ const EMBEDDED_BROWSER_TOOLS = new Set([
   "browser_type",
 ]);
 const HOST_EXECUTION_TOOLS = new Set([
-  "exec",
-  "process",
   "gateway",
   "nodes",
   "cron",
@@ -969,7 +967,7 @@ const plugin = {
         return {
           block: true,
           blockReason: HOST_EXECUTION_TOOLS.has(event?.toolName)
-            ? "出于本机安全考虑，外部渠道、子会话和来源不明的调用不能执行主机命令。请让用户在 Nexu 桌面主会话中完成需要本机执行的操作。"
+            ? "外部渠道、子会话和来源不明的调用不能直接操作 Nexu 运行时控制面。请让用户在 Nexu 桌面主会话中完成节点、网关或定时任务管理。"
             : "本机浏览器和桌面控制只允许从 Nexu 桌面主会话调用。外部渠道、子会话和来源不明的调用默认被拒绝。请让用户在桌面端打开对应机器人的主会话后重试。",
         };
       }

@@ -1472,6 +1472,18 @@ export type GetApiV1ChannelsResponses = {
                 groupPolicy?: 'open' | 'allowlist' | 'disabled';
                 allowFrom?: Array<string>;
             };
+            slackCapabilities?: {
+                replyToMode?: 'off' | 'first' | 'all' | 'batched';
+                streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+                nativeTaskCards?: boolean;
+            };
+            feishuCapabilities?: {
+                streaming?: boolean;
+                renderMode?: 'auto' | 'raw' | 'card';
+                replyInThread?: boolean;
+                voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+                mediaMaxMb?: number;
+            };
         }>;
     };
 };
@@ -1563,6 +1575,18 @@ export type PostApiV1ChannelsSlackConnectResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
@@ -1647,6 +1671,18 @@ export type PostApiV1ChannelsDiscordConnectResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
@@ -1696,6 +1732,18 @@ export type PostApiV1ChannelsFeishuConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+        };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
         };
     };
 };
@@ -1777,6 +1825,18 @@ export type PostApiV1ChannelsTelegramConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+        };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
         };
     };
 };
@@ -1860,6 +1920,18 @@ export type PostApiV1ChannelsDingtalkConnectResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
@@ -1941,6 +2013,18 @@ export type PostApiV1ChannelsQqbotConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+        };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
         };
     };
 };
@@ -2024,6 +2108,18 @@ export type PostApiV1ChannelsWecomConnectResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
@@ -2103,6 +2199,18 @@ export type GetApiV1ChannelsByChannelIdStatusResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+        };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
         };
     };
 };
@@ -2206,6 +2314,18 @@ export type PatchApiV1ChannelsByChannelIdResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
@@ -2263,10 +2383,102 @@ export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
 export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponse = PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses[keyof PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses];
+
+export type PatchApiV1ChannelsByChannelIdCapabilitiesData = {
+    body?: {
+        channelType: 'slack';
+        settings: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+    } | {
+        channelType: 'feishu';
+        settings: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
+    };
+    path: {
+        channelId: string;
+    };
+    query?: never;
+    url: '/api/v1/channels/{channelId}/capabilities';
+};
+
+export type PatchApiV1ChannelsByChannelIdCapabilitiesErrors = {
+    /**
+     * Capability type does not match the channel
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Channel not found
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdCapabilitiesError = PatchApiV1ChannelsByChannelIdCapabilitiesErrors[keyof PatchApiV1ChannelsByChannelIdCapabilitiesErrors];
+
+export type PatchApiV1ChannelsByChannelIdCapabilitiesResponses = {
+    /**
+     * Updated channel delivery capabilities
+     */
+    200: {
+        id: string;
+        botId: string;
+        channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
+        accountId: string;
+        status: 'pending' | 'connected' | 'disconnected' | 'error';
+        teamName: string;
+        appId?: string;
+        botUserId?: string;
+        createdAt: string;
+        updatedAt: string;
+        feishuPermissions?: {
+            requireMention?: boolean;
+            dmPolicy?: 'open' | 'allowlist' | 'disabled';
+            groupPolicy?: 'open' | 'allowlist' | 'disabled';
+            allowFrom?: Array<string>;
+        };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
+    };
+};
+
+export type PatchApiV1ChannelsByChannelIdCapabilitiesResponse = PatchApiV1ChannelsByChannelIdCapabilitiesResponses[keyof PatchApiV1ChannelsByChannelIdCapabilitiesResponses];
 
 export type PostApiV1ChannelsWhatsappQrStartData = {
     body?: never;
@@ -2374,6 +2586,18 @@ export type PostApiV1ChannelsWhatsappConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+        };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
         };
     };
 };
@@ -2486,6 +2710,18 @@ export type PostApiV1ChannelsWechatConnectResponses = {
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
         };
+        slackCapabilities?: {
+            replyToMode?: 'off' | 'first' | 'all' | 'batched';
+            streamingMode?: 'off' | 'partial' | 'block' | 'progress';
+            nativeTaskCards?: boolean;
+        };
+        feishuCapabilities?: {
+            streaming?: boolean;
+            renderMode?: 'auto' | 'raw' | 'card';
+            replyInThread?: boolean;
+            voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
+            mediaMaxMb?: number;
+        };
     };
 };
 
@@ -2592,6 +2828,21 @@ export type GetApiV1ChatSessionResponses = {
             };
             createdAt: string;
             updatedAt: string;
+            category?: string;
+            pinned?: boolean;
+            unread?: boolean;
+            archived?: boolean;
+            archivedAt?: string;
+            checkpointCount?: number;
+            runState?: 'idle' | 'running' | 'failed';
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            totalTokensFresh?: boolean;
+            contextTokens?: number;
+            estimatedCostUsd?: number;
+            modelProvider?: string;
+            model?: string;
         };
     };
 };
@@ -2732,6 +2983,21 @@ export type PostApiV1ChatLocalStartResponses = {
             };
             createdAt: string;
             updatedAt: string;
+            category?: string;
+            pinned?: boolean;
+            unread?: boolean;
+            archived?: boolean;
+            archivedAt?: string;
+            checkpointCount?: number;
+            runState?: 'idle' | 'running' | 'failed';
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            totalTokensFresh?: boolean;
+            contextTokens?: number;
+            estimatedCostUsd?: number;
+            modelProvider?: string;
+            model?: string;
         };
         message: {
             id: string;
@@ -2811,6 +3077,21 @@ export type PostApiV1ChatLocalResponses = {
             };
             createdAt: string;
             updatedAt: string;
+            category?: string;
+            pinned?: boolean;
+            unread?: boolean;
+            archived?: boolean;
+            archivedAt?: string;
+            checkpointCount?: number;
+            runState?: 'idle' | 'running' | 'failed';
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            totalTokensFresh?: boolean;
+            contextTokens?: number;
+            estimatedCostUsd?: number;
+            modelProvider?: string;
+            model?: string;
         };
         message: {
             id: string;
@@ -2941,6 +3222,21 @@ export type PostApiInternalSessionsResponses = {
         };
         createdAt: string;
         updatedAt: string;
+        category?: string;
+        pinned?: boolean;
+        unread?: boolean;
+        archived?: boolean;
+        archivedAt?: string;
+        checkpointCount?: number;
+        runState?: 'idle' | 'running' | 'failed';
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        totalTokensFresh?: boolean;
+        contextTokens?: number;
+        estimatedCostUsd?: number;
+        modelProvider?: string;
+        model?: string;
     };
 };
 
@@ -2993,6 +3289,21 @@ export type PatchApiInternalSessionsByIdResponses = {
         };
         createdAt: string;
         updatedAt: string;
+        category?: string;
+        pinned?: boolean;
+        unread?: boolean;
+        archived?: boolean;
+        archivedAt?: string;
+        checkpointCount?: number;
+        runState?: 'idle' | 'running' | 'failed';
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        totalTokensFresh?: boolean;
+        contextTokens?: number;
+        estimatedCostUsd?: number;
+        modelProvider?: string;
+        model?: string;
     };
 };
 
@@ -3005,11 +3316,29 @@ export type GetApiV1SessionsData = {
         botId?: string;
         channelType?: string;
         status?: string;
+        search?: string;
+        archived?: 'exclude' | 'include' | 'only';
+        category?: string;
+        kind?: 'conversations' | 'scheduled';
+        runState?: 'idle' | 'running' | 'failed';
+        pinned?: 'true' | 'false';
+        unread?: 'true' | 'false';
         limit?: number;
         offset?: number;
     };
     url: '/api/v1/sessions';
 };
+
+export type GetApiV1SessionsErrors = {
+    /**
+     * Session data temporarily unavailable
+     */
+    503: {
+        message: string;
+    };
+};
+
+export type GetApiV1SessionsError = GetApiV1SessionsErrors[keyof GetApiV1SessionsErrors];
 
 export type GetApiV1SessionsResponses = {
     /**
@@ -3031,6 +3360,21 @@ export type GetApiV1SessionsResponses = {
             };
             createdAt: string;
             updatedAt: string;
+            category?: string;
+            pinned?: boolean;
+            unread?: boolean;
+            archived?: boolean;
+            archivedAt?: string;
+            checkpointCount?: number;
+            runState?: 'idle' | 'running' | 'failed';
+            inputTokens?: number;
+            outputTokens?: number;
+            totalTokens?: number;
+            totalTokensFresh?: boolean;
+            contextTokens?: number;
+            estimatedCostUsd?: number;
+            modelProvider?: string;
+            model?: string;
         }>;
         total: number;
         limit: number;
@@ -3099,6 +3443,21 @@ export type GetApiV1SessionsByIdResponses = {
         };
         createdAt: string;
         updatedAt: string;
+        category?: string;
+        pinned?: boolean;
+        unread?: boolean;
+        archived?: boolean;
+        archivedAt?: string;
+        checkpointCount?: number;
+        runState?: 'idle' | 'running' | 'failed';
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        totalTokensFresh?: boolean;
+        contextTokens?: number;
+        estimatedCostUsd?: number;
+        modelProvider?: string;
+        model?: string;
     };
 };
 
@@ -3143,6 +3502,21 @@ export type PostApiV1SessionsByIdResetResponses = {
         };
         createdAt: string;
         updatedAt: string;
+        category?: string;
+        pinned?: boolean;
+        unread?: boolean;
+        archived?: boolean;
+        archivedAt?: string;
+        checkpointCount?: number;
+        runState?: 'idle' | 'running' | 'failed';
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+        totalTokensFresh?: boolean;
+        contextTokens?: number;
+        estimatedCostUsd?: number;
+        modelProvider?: string;
+        model?: string;
     };
 };
 
@@ -3182,6 +3556,7 @@ export type GetApiV1SessionsByIdMessagesResponses = {
             timestamp: number;
             createdAt: string;
             aborted?: boolean;
+            failed?: boolean;
             toolName?: string;
             toolCallId?: string;
         }>;
@@ -3190,6 +3565,224 @@ export type GetApiV1SessionsByIdMessagesResponses = {
 };
 
 export type GetApiV1SessionsByIdMessagesResponse = GetApiV1SessionsByIdMessagesResponses[keyof GetApiV1SessionsByIdMessagesResponses];
+
+export type PostApiV1SessionsByIdMessagesByMessageIdBranchData = {
+    body?: never;
+    path: {
+        id: string;
+        messageId: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/messages/{messageId}/branch';
+};
+
+export type PostApiV1SessionsByIdMessagesByMessageIdBranchErrors = {
+    /**
+     * Session or message not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Branch rejected while the session is running
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1SessionsByIdMessagesByMessageIdBranchError = PostApiV1SessionsByIdMessagesByMessageIdBranchErrors[keyof PostApiV1SessionsByIdMessagesByMessageIdBranchErrors];
+
+export type PostApiV1SessionsByIdMessagesByMessageIdBranchResponses = {
+    /**
+     * Fork the session and select this message as its active leaf
+     */
+    200: {
+        id: string;
+        botId: string;
+        sessionKey: string;
+        title: string;
+        messageId: string;
+    };
+};
+
+export type PostApiV1SessionsByIdMessagesByMessageIdBranchResponse = PostApiV1SessionsByIdMessagesByMessageIdBranchResponses[keyof PostApiV1SessionsByIdMessagesByMessageIdBranchResponses];
+
+export type PostApiV1SessionsByIdMessagesByMessageIdRollbackData = {
+    body?: never;
+    path: {
+        id: string;
+        messageId: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/messages/{messageId}/rollback';
+};
+
+export type PostApiV1SessionsByIdMessagesByMessageIdRollbackErrors = {
+    /**
+     * Session or message not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Rollback rejected while the session is running
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1SessionsByIdMessagesByMessageIdRollbackError = PostApiV1SessionsByIdMessagesByMessageIdRollbackErrors[keyof PostApiV1SessionsByIdMessagesByMessageIdRollbackErrors];
+
+export type PostApiV1SessionsByIdMessagesByMessageIdRollbackResponses = {
+    /**
+     * Select this message as the current session's active leaf
+     */
+    200: {
+        ok: true;
+        id: string;
+        sessionKey: string;
+        messageId: string;
+    };
+};
+
+export type PostApiV1SessionsByIdMessagesByMessageIdRollbackResponse = PostApiV1SessionsByIdMessagesByMessageIdRollbackResponses[keyof PostApiV1SessionsByIdMessagesByMessageIdRollbackResponses];
+
+export type PatchApiV1SessionsByIdOrganizationData = {
+    body?: {
+        category?: string;
+        clearCategory?: boolean;
+        pinned?: boolean;
+        unread?: boolean;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/organization';
+};
+
+export type PatchApiV1SessionsByIdOrganizationErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Update rejected by OpenClaw
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PatchApiV1SessionsByIdOrganizationError = PatchApiV1SessionsByIdOrganizationErrors[keyof PatchApiV1SessionsByIdOrganizationErrors];
+
+export type PatchApiV1SessionsByIdOrganizationResponses = {
+    /**
+     * Updated session organization state
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PatchApiV1SessionsByIdOrganizationResponse = PatchApiV1SessionsByIdOrganizationResponses[keyof PatchApiV1SessionsByIdOrganizationResponses];
+
+export type GetApiV1SessionsByIdCheckpointsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/checkpoints';
+};
+
+export type GetApiV1SessionsByIdCheckpointsErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Checkpoint list unavailable
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type GetApiV1SessionsByIdCheckpointsError = GetApiV1SessionsByIdCheckpointsErrors[keyof GetApiV1SessionsByIdCheckpointsErrors];
+
+export type GetApiV1SessionsByIdCheckpointsResponses = {
+    /**
+     * Durable compaction checkpoints for a session
+     */
+    200: {
+        checkpoints: Array<{
+            id: string;
+            createdAt: string;
+            reason: 'manual' | 'auto-threshold' | 'overflow-retry' | 'timeout-retry';
+            tokensBefore?: number;
+            tokensAfter?: number;
+            summary?: string;
+        }>;
+    };
+};
+
+export type GetApiV1SessionsByIdCheckpointsResponse = GetApiV1SessionsByIdCheckpointsResponses[keyof GetApiV1SessionsByIdCheckpointsResponses];
+
+export type PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchData = {
+    body?: never;
+    path: {
+        id: string;
+        checkpointId: string;
+    };
+    query?: never;
+    url: '/api/v1/sessions/{id}/checkpoints/{checkpointId}/branch';
+};
+
+export type PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchErrors = {
+    /**
+     * Not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * Recovery branch rejected
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchError = PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchErrors[keyof PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchErrors];
+
+export type PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchResponses = {
+    /**
+     * Non-destructive recovery branch
+     */
+    200: {
+        id: string;
+        botId: string;
+        sessionKey: string;
+        title: string;
+        checkpoint: {
+            id: string;
+            createdAt: string;
+            reason: 'manual' | 'auto-threshold' | 'overflow-retry' | 'timeout-retry';
+            tokensBefore?: number;
+            tokensAfter?: number;
+            summary?: string;
+        };
+    };
+};
+
+export type PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchResponse = PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchResponses[keyof PostApiV1SessionsByIdCheckpointsByCheckpointIdBranchResponses];
 
 export type PostApiV1SessionsByIdArchiveData = {
     body?: {
@@ -3559,6 +4152,7 @@ export type PostApiV1ModelProvidersInstancesValidateData = {
     body?: {
         apiKey?: string;
         baseUrl?: string;
+        modelId?: string;
         instanceKey: string;
     };
     path?: never;
@@ -3588,6 +4182,7 @@ export type PostApiV1ModelProvidersByProviderIdValidateData = {
     body?: {
         apiKey?: string;
         baseUrl?: string;
+        modelId?: string;
     };
     path: {
         providerId: string;
@@ -3686,6 +4281,7 @@ export type PostApiV1ProvidersByProviderIdVerifyData = {
     body?: {
         apiKey?: string;
         baseUrl?: string;
+        modelId?: string;
     };
     path: {
         providerId: 'anthropic' | 'openai' | 'google' | 'ollama' | 'siliconflow' | 'ppio' | 'nvidia' | 'stepfun' | 'amazon-bedrock' | 'deepseek' | 'openrouter' | 'mistral' | 'xai' | 'together' | 'huggingface' | 'qwen' | 'volcengine' | 'qianfan' | 'vllm' | 'byteplus' | 'venice' | 'github-copilot' | 'xiaomi' | 'chutes' | 'minimax' | 'kimi' | 'glm' | 'moonshot' | 'zai';
@@ -5266,6 +5862,7 @@ export type GetApiV1TeamsByIdBoardResponses = {
      */
     200: {
         boardId: string;
+        available: boolean;
         cards: Array<{
             id: string;
             title: string;
@@ -5273,6 +5870,9 @@ export type GetApiV1TeamsByIdBoardResponses = {
             agentId: string;
             assigneeName: string;
             output: string;
+            sessionKey?: string;
+            parentIds?: Array<string>;
+            childIds?: Array<string>;
         }>;
     };
 };
@@ -6274,6 +6874,550 @@ export type PostApiV1TtsSpeakResponses = {
 
 export type PostApiV1TtsSpeakResponse = PostApiV1TtsSpeakResponses[keyof PostApiV1TtsSpeakResponses];
 
+export type GetApiV1RuntimeOperationsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        sessionKey?: string;
+        agentId?: string;
+    };
+    url: '/api/v1/runtime/operations';
+};
+
+export type GetApiV1RuntimeOperationsResponses = {
+    /**
+     * Sanitized desktop operation status
+     */
+    200: {
+        connected: boolean;
+        approvalsAvailable: boolean;
+        tasksAvailable: boolean;
+        usageAvailable: boolean;
+        providerUsageAvailable: boolean;
+        modelAuth: {
+            status: 'ready' | 'needs-attention' | 'unavailable';
+            availableModels: number;
+            configuredModels: number;
+        };
+        approvals: Array<{
+            id: string;
+            kind: 'exec' | 'plugin';
+            category: 'controlled-terminal' | 'browser' | 'computer-use' | 'sensitive-tool';
+            title: string;
+            description?: string;
+            command?: string;
+            cwd?: string;
+            host?: string;
+            warning?: string;
+            riskKinds: Array<string>;
+            allowedDecisions: Array<'allow-once' | 'allow-always' | 'deny'>;
+            agentId?: string;
+            sessionKey?: string;
+            createdAtMs: number;
+            expiresAtMs: number;
+        }>;
+        tasks: Array<{
+            id: string;
+            taskId?: string;
+            kind?: string;
+            runtime?: string;
+            status: 'queued' | 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled';
+            title?: string;
+            agentId?: string;
+            sessionKey?: string;
+            childSessionKey?: string;
+            ownerKey?: string;
+            parentTaskId?: string;
+            runId?: string;
+            flowId?: string;
+            sourceId?: string;
+            createdAt?: string | number;
+            updatedAt?: string | number;
+            startedAt?: string | number;
+            endedAt?: string | number;
+            progressSummary?: string;
+            terminalSummary?: string;
+            error?: string;
+        }>;
+        taskGraph: {
+            available: boolean;
+            partial: boolean;
+            truncated: boolean;
+            totalNodes: number;
+            sources: {
+                openclaw: boolean;
+                team: boolean;
+            };
+            nodes: Array<{
+                id: string;
+                source: 'openclaw' | 'team';
+                sourceId: string;
+                kind: string;
+                groupId: string;
+                title: string;
+                lifecycle: 'queued' | 'running' | 'waiting' | 'blocked' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'unknown';
+                rawStatus: string;
+                taskId?: string;
+                runId?: string;
+                flowId?: string;
+                sessionKey?: string;
+                teamId?: string;
+                teamName?: string;
+                cardId?: string;
+                agentId?: string;
+                createdAt?: string | number;
+                updatedAt?: string | number;
+                startedAt?: string | number;
+                endedAt?: string | number;
+                output?: string;
+                error?: string;
+                cancellable: boolean;
+            }>;
+            edges: Array<{
+                id: string;
+                from: string;
+                to: string;
+                kind: 'depends_on' | 'parent_child' | 'executes';
+            }>;
+        };
+        usage?: {
+            input: number;
+            output: number;
+            cacheRead: number;
+            cacheWrite: number;
+            totalTokens: number;
+            totalCost: number;
+            missingCostEntries: number;
+        };
+        providers: Array<{
+            provider: string;
+            displayName: string;
+            windows: Array<{
+                label: string;
+                usedPercent: number;
+                resetAt?: number;
+            }>;
+            billing?: Array<{
+                type: 'balance' | 'spend' | 'budget';
+                label?: string;
+                amount?: number;
+                used?: number;
+                limit?: number;
+                unit: string;
+                period?: string;
+                resetAt?: number;
+            }>;
+            summary?: string;
+            plan?: string;
+            error?: string;
+        }>;
+        nextTaskCursor?: string;
+    };
+};
+
+export type GetApiV1RuntimeOperationsResponse = GetApiV1RuntimeOperationsResponses[keyof GetApiV1RuntimeOperationsResponses];
+
+export type GetApiV1RuntimeApprovalsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime/approvals';
+};
+
+export type GetApiV1RuntimeApprovalsResponses = {
+    /**
+     * Pending sanitized runtime approvals
+     */
+    200: {
+        connected: boolean;
+        available: boolean;
+        approvals: Array<{
+            id: string;
+            kind: 'exec' | 'plugin';
+            category: 'controlled-terminal' | 'browser' | 'computer-use' | 'sensitive-tool';
+            title: string;
+            description?: string;
+            command?: string;
+            cwd?: string;
+            host?: string;
+            warning?: string;
+            riskKinds: Array<string>;
+            allowedDecisions: Array<'allow-once' | 'allow-always' | 'deny'>;
+            agentId?: string;
+            sessionKey?: string;
+            createdAtMs: number;
+            expiresAtMs: number;
+        }>;
+    };
+};
+
+export type GetApiV1RuntimeApprovalsResponse = GetApiV1RuntimeApprovalsResponses[keyof GetApiV1RuntimeApprovalsResponses];
+
+export type PostApiV1RuntimeApprovalsByApprovalIdResolveData = {
+    body?: {
+        kind: 'exec' | 'plugin';
+        decision: 'allow-once' | 'allow-always' | 'deny';
+    };
+    path: {
+        approvalId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtime/approvals/{approvalId}/resolve';
+};
+
+export type PostApiV1RuntimeApprovalsByApprovalIdResolveErrors = {
+    /**
+     * Runtime unavailable or approval expired
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1RuntimeApprovalsByApprovalIdResolveError = PostApiV1RuntimeApprovalsByApprovalIdResolveErrors[keyof PostApiV1RuntimeApprovalsByApprovalIdResolveErrors];
+
+export type PostApiV1RuntimeApprovalsByApprovalIdResolveResponses = {
+    /**
+     * Approval resolved
+     */
+    200: {
+        ok: true;
+    };
+};
+
+export type PostApiV1RuntimeApprovalsByApprovalIdResolveResponse = PostApiV1RuntimeApprovalsByApprovalIdResolveResponses[keyof PostApiV1RuntimeApprovalsByApprovalIdResolveResponses];
+
+export type GetApiV1RuntimeAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        sessionKey?: string;
+        agentId?: string;
+        limit?: number;
+        cursor?: string;
+    };
+    url: '/api/v1/runtime/audit';
+};
+
+export type GetApiV1RuntimeAuditResponses = {
+    /**
+     * Persistent approval history and metadata-only runtime audit
+     */
+    200: {
+        connected: boolean;
+        historyAvailable: boolean;
+        runtimeAuditAvailable: boolean;
+        approvalHistory: Array<{
+            id: string;
+            approvalId: string;
+            source: 'openclaw' | 'team';
+            kind: 'exec' | 'plugin' | 'team';
+            status: 'pending' | 'approved' | 'denied' | 'expired' | 'interrupted' | 'failed';
+            decision?: 'allow-once' | 'allow-always' | 'deny' | 'approved' | 'rejected' | 'expired' | 'interrupted';
+            title: string;
+            description?: string;
+            reviewer?: string;
+            agentId?: string;
+            sessionKey?: string;
+            runId?: string;
+            teamId?: string;
+            workflowId?: string;
+            stepId?: string;
+            cardId?: string;
+            requestedAt: number;
+            expiresAt?: number;
+            resolvedAt?: number;
+        }>;
+        events: Array<{
+            eventId: string;
+            sequence: number;
+            sourceSequence: number;
+            occurredAt: number;
+            kind: 'agent_run' | 'tool_action';
+            action: 'agent.run.started' | 'agent.run.finished' | 'tool.action.started' | 'tool.action.finished';
+            status: 'started' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'blocked' | 'unknown';
+            errorCode?: string;
+            actor: {
+                type: 'agent' | 'system';
+                id: string;
+            };
+            agentId: string;
+            sessionKey?: string;
+            sessionId?: string;
+            runId: string;
+            toolCallId?: string;
+            toolName?: string;
+            redaction: 'metadata_only';
+        }>;
+        nextCursor?: string;
+    };
+};
+
+export type GetApiV1RuntimeAuditResponse = GetApiV1RuntimeAuditResponses[keyof GetApiV1RuntimeAuditResponses];
+
+export type GetApiV1RuntimeRecoveryData = {
+    body?: never;
+    path?: never;
+    query?: {
+        sessionKey?: string;
+        agentId?: string;
+    };
+    url: '/api/v1/runtime/recovery';
+};
+
+export type GetApiV1RuntimeRecoveryResponses = {
+    /**
+     * Persistent delivery, isolation, and snapshot recovery state
+     */
+    200: {
+        connected: boolean;
+        healthAvailable: boolean;
+        deadLettersAvailable: boolean;
+        deadLetterReplayAvailable: false;
+        stateIsolationAvailable: boolean;
+        quarantineClearAvailable: false;
+        snapshotsAvailable: boolean;
+        deadLetters: Array<{
+            queueName: string;
+            count: number;
+            oldestFailedAt?: number;
+        }>;
+        quarantined: Array<{
+            engineId: string;
+            owner?: string;
+            operation: string;
+            reason: string;
+            failedAt: number;
+        }>;
+        checkpoints: Array<{
+            checkpointId: string;
+            sessionKey: string;
+            sessionId: string;
+            createdAt: number;
+            reason: 'manual' | 'auto-threshold' | 'overflow-retry' | 'timeout-retry';
+            tokensBefore?: number;
+            tokensAfter?: number;
+            summary?: string;
+        }>;
+    };
+};
+
+export type GetApiV1RuntimeRecoveryResponse = GetApiV1RuntimeRecoveryResponses[keyof GetApiV1RuntimeRecoveryResponses];
+
+export type PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreData = {
+    body?: {
+        sessionKey: string;
+        agentId?: string;
+        confirm: true;
+    };
+    path: {
+        checkpointId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtime/recovery/checkpoints/{checkpointId}/restore';
+};
+
+export type PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreErrors = {
+    /**
+     * Runtime unavailable, session active, or restore failed
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreError = PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreErrors[keyof PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreErrors];
+
+export type PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreResponses = {
+    /**
+     * Session restored to the selected durable checkpoint
+     */
+    200: {
+        ok: true;
+        key: string;
+        sessionId: string;
+        checkpoint: {
+            checkpointId: string;
+            sessionKey: string;
+            sessionId: string;
+            createdAt: number;
+            reason: 'manual' | 'auto-threshold' | 'overflow-retry' | 'timeout-retry';
+            tokensBefore?: number;
+            tokensAfter?: number;
+            summary?: string;
+        };
+        entry: {
+            sessionId: string;
+            updatedAt: number;
+        };
+    };
+};
+
+export type PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreResponse = PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreResponses[keyof PostApiV1RuntimeRecoveryCheckpointsByCheckpointIdRestoreResponses];
+
+export type PostApiV1RuntimeTasksByTaskIdCancelData = {
+    body?: {
+        reason?: string;
+    };
+    path: {
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/v1/runtime/tasks/{taskId}/cancel';
+};
+
+export type PostApiV1RuntimeTasksByTaskIdCancelErrors = {
+    /**
+     * Runtime unavailable
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1RuntimeTasksByTaskIdCancelError = PostApiV1RuntimeTasksByTaskIdCancelErrors[keyof PostApiV1RuntimeTasksByTaskIdCancelErrors];
+
+export type PostApiV1RuntimeTasksByTaskIdCancelResponses = {
+    /**
+     * Task cancellation result
+     */
+    200: {
+        found: boolean;
+        cancelled: boolean;
+        reason?: string;
+    };
+};
+
+export type PostApiV1RuntimeTasksByTaskIdCancelResponse = PostApiV1RuntimeTasksByTaskIdCancelResponses[keyof PostApiV1RuntimeTasksByTaskIdCancelResponses];
+
+export type GetApiV1MemoryStatusData = {
+    body?: never;
+    path?: never;
+    query?: {
+        agentId?: string;
+    };
+    url: '/api/v1/memory/status';
+};
+
+export type GetApiV1MemoryStatusResponses = {
+    /**
+     * Memory search index status
+     */
+    200: {
+        connected: boolean;
+        available: boolean;
+        enabled: boolean;
+        lastSyncAtMs?: number;
+        indexedItems?: number;
+        promotedItems?: number;
+        mode?: 'semantic' | 'fts-only';
+        reasonCode?: 'embedding-auth-missing' | 'embedding-provider-unavailable' | 'fts-unavailable' | 'probe-timeout' | 'invalid-status' | 'runtime-unavailable';
+        status: 'ready' | 'sync-needed' | 'disabled' | 'unavailable';
+    };
+};
+
+export type GetApiV1MemoryStatusResponse = GetApiV1MemoryStatusResponses[keyof GetApiV1MemoryStatusResponses];
+
+export type GetApiV1MemorySettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/memory/settings';
+};
+
+export type GetApiV1MemorySettingsResponses = {
+    /**
+     * Memory search settings
+     */
+    200: {
+        memory: {
+            enabled?: boolean;
+            sources?: Array<'memory' | 'sessions'>;
+            extraPaths?: Array<string>;
+            syncIntervalMinutes?: number;
+            provider?: string;
+            model?: string;
+        };
+    };
+};
+
+export type GetApiV1MemorySettingsResponse = GetApiV1MemorySettingsResponses[keyof GetApiV1MemorySettingsResponses];
+
+export type PatchApiV1MemorySettingsData = {
+    body?: {
+        enabled?: boolean;
+        sources?: Array<'memory' | 'sessions'>;
+        extraPaths?: Array<string>;
+        syncIntervalMinutes?: number;
+        provider?: string;
+        model?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/memory/settings';
+};
+
+export type PatchApiV1MemorySettingsErrors = {
+    /**
+     * Memory settings could not be applied
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PatchApiV1MemorySettingsError = PatchApiV1MemorySettingsErrors[keyof PatchApiV1MemorySettingsErrors];
+
+export type PatchApiV1MemorySettingsResponses = {
+    /**
+     * Updated memory search settings
+     */
+    200: {
+        memory: {
+            enabled?: boolean;
+            sources?: Array<'memory' | 'sessions'>;
+            extraPaths?: Array<string>;
+            syncIntervalMinutes?: number;
+            provider?: string;
+            model?: string;
+        };
+    };
+};
+
+export type PatchApiV1MemorySettingsResponse = PatchApiV1MemorySettingsResponses[keyof PatchApiV1MemorySettingsResponses];
+
+export type PostApiV1MemoryRebuildData = {
+    body?: {
+        agentId?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/memory/rebuild';
+};
+
+export type PostApiV1MemoryRebuildErrors = {
+    /**
+     * Memory is disabled or rebuilding failed
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PostApiV1MemoryRebuildError = PostApiV1MemoryRebuildErrors[keyof PostApiV1MemoryRebuildErrors];
+
+export type PostApiV1MemoryRebuildResponses = {
+    /**
+     * Memory index rebuilt
+     */
+    200: {
+        ok: true;
+        rebuiltAt: string;
+    };
+};
+
+export type PostApiV1MemoryRebuildResponse = PostApiV1MemoryRebuildResponses[keyof PostApiV1MemoryRebuildResponses];
+
 export type GetApiV1WorkspaceTemplatesData = {
     body?: never;
     path?: never;
@@ -6842,10 +7986,26 @@ export type GetApiV1SchedulesResponses = {
             channelId?: string;
             description?: string;
             modelId?: string;
+            onlyNotifyOnChange?: boolean;
+            failureAlertEnabled?: boolean;
+            failureAlertAfter?: number;
             id: string;
             createdAt: string;
             updatedAt: string;
             externalId?: string;
+            nextRunAtMs?: number;
+            lastRunAtMs?: number;
+            lastDurationMs?: number;
+            lastRunStatus?: 'ok' | 'error' | 'skipped';
+            lastDeliveryStatus?: 'delivered' | 'not-delivered' | 'unknown' | 'not-requested';
+            deliveryMode?: 'none' | 'announce' | 'webhook';
+            deliveryChannel?: string;
+            deliveryTo?: string;
+            deliveryAccountId?: string;
+            lastOutputFingerprint?: string;
+            lastOutputObservedAt?: string;
+            lastOutputNotificationStatus?: 'delivered' | 'suppressed' | 'failed';
+            lastOutputNotificationError?: string;
         }>;
     };
 };
@@ -6866,11 +8026,31 @@ export type PostApiV1SchedulesData = {
         channelId?: string;
         description?: string;
         modelId?: string;
+        onlyNotifyOnChange?: boolean;
+        failureAlertEnabled?: boolean;
+        failureAlertAfter?: number;
     };
     path?: never;
     query?: never;
     url: '/api/v1/schedules';
 };
+
+export type PostApiV1SchedulesErrors = {
+    /**
+     * Notification delivery target unavailable
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * OpenClaw schedule registration failed
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type PostApiV1SchedulesError = PostApiV1SchedulesErrors[keyof PostApiV1SchedulesErrors];
 
 export type PostApiV1SchedulesResponses = {
     /**
@@ -6889,10 +8069,26 @@ export type PostApiV1SchedulesResponses = {
         channelId?: string;
         description?: string;
         modelId?: string;
+        onlyNotifyOnChange?: boolean;
+        failureAlertEnabled?: boolean;
+        failureAlertAfter?: number;
         id: string;
         createdAt: string;
         updatedAt: string;
         externalId?: string;
+        nextRunAtMs?: number;
+        lastRunAtMs?: number;
+        lastDurationMs?: number;
+        lastRunStatus?: 'ok' | 'error' | 'skipped';
+        lastDeliveryStatus?: 'delivered' | 'not-delivered' | 'unknown' | 'not-requested';
+        deliveryMode?: 'none' | 'announce' | 'webhook';
+        deliveryChannel?: string;
+        deliveryTo?: string;
+        deliveryAccountId?: string;
+        lastOutputFingerprint?: string;
+        lastOutputObservedAt?: string;
+        lastOutputNotificationStatus?: 'delivered' | 'suppressed' | 'failed';
+        lastOutputNotificationError?: string;
     };
 };
 
@@ -6931,6 +8127,9 @@ export type PatchApiV1SchedulesByScheduleIdData = {
         channelId?: string;
         description?: string;
         modelId?: string;
+        onlyNotifyOnChange?: boolean;
+        failureAlertEnabled?: boolean;
+        failureAlertAfter?: number;
     };
     path: {
         scheduleId: string;
@@ -6941,9 +8140,21 @@ export type PatchApiV1SchedulesByScheduleIdData = {
 
 export type PatchApiV1SchedulesByScheduleIdErrors = {
     /**
+     * Notification delivery target unavailable
+     */
+    400: {
+        message: string;
+    };
+    /**
      * Not found
      */
     404: {
+        message: string;
+    };
+    /**
+     * OpenClaw schedule update failed
+     */
+    502: {
         message: string;
     };
 };
@@ -6967,10 +8178,26 @@ export type PatchApiV1SchedulesByScheduleIdResponses = {
         channelId?: string;
         description?: string;
         modelId?: string;
+        onlyNotifyOnChange?: boolean;
+        failureAlertEnabled?: boolean;
+        failureAlertAfter?: number;
         id: string;
         createdAt: string;
         updatedAt: string;
         externalId?: string;
+        nextRunAtMs?: number;
+        lastRunAtMs?: number;
+        lastDurationMs?: number;
+        lastRunStatus?: 'ok' | 'error' | 'skipped';
+        lastDeliveryStatus?: 'delivered' | 'not-delivered' | 'unknown' | 'not-requested';
+        deliveryMode?: 'none' | 'announce' | 'webhook';
+        deliveryChannel?: string;
+        deliveryTo?: string;
+        deliveryAccountId?: string;
+        lastOutputFingerprint?: string;
+        lastOutputObservedAt?: string;
+        lastOutputNotificationStatus?: 'delivered' | 'suppressed' | 'failed';
+        lastOutputNotificationError?: string;
     };
 };
 

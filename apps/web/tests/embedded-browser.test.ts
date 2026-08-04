@@ -1,4 +1,14 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildArrowPath,
   clampAnnotationFontSize,
@@ -20,6 +30,8 @@ import {
   observePreviewArtifact,
 } from "../src/lib/browser/browser-preview-auto-open";
 import {
+  EmbeddedBrowser,
+  adoptSharedBrowserTab,
   isPreviewArtifactActive,
   normalizeBrowserUrl,
   pushBrowserHistory,
@@ -28,7 +40,192 @@ import {
   sortPreviewArtifacts,
 } from "../src/lib/browser/embedded-browser";
 
+const toastMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  info: vi.fn(),
+}));
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock("../lib/api/sdk.gen", () => ({
+  getApiV1Artifacts: vi.fn(async () => ({ data: { artifacts: [] } })),
+}));
+
+vi.mock("../src/lib/browser/agent-browser-relay", () => ({
+  useAgentBrowserTabRequest: () => null,
+}));
+
+vi.mock("../src/lib/desktop-links", () => ({
+  openExternalUrl: vi.fn(async () => undefined),
+}));
+
+vi.mock("sonner", () => ({
+  toast: toastMocks,
+}));
+
+afterEach(() => {
+  cleanup();
+  toastMocks.error.mockReset();
+  toastMocks.info.mockReset();
+  Reflect.deleteProperty(window, "nexuHost");
+});
+
+function renderEmbeddedBrowser() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(EmbeddedBrowser, {
+        sessionKey: "agent:bot:session",
+        navigationRequest: null,
+        maximized: false,
+        onToggleMaximize: vi.fn(),
+        onClose: vi.fn(),
+      }),
+    ),
+  );
+}
+
 describe("embedded browser helpers", () => {
+  it("shows an unavailable state and retries a failed browser-center RPC", async () => {
+    let centerAttempts = 0;
+    const invoke = vi.fn(async (_channel: string, payload: unknown) => {
+      const action =
+        typeof payload === "object" && payload !== null
+          ? Reflect.get(payload, "action")
+          : null;
+      if (action !== "center-state") return { kind: "ok" };
+      centerAttempts += 1;
+      if (centerAttempts === 1) {
+        throw new Error("Browser host disconnected");
+      }
+      return {
+        kind: "center-state",
+        agentSharingEnabled: false,
+        tabs: [],
+        downloads: [],
+      };
+    });
+    Object.defineProperty(window, "nexuHost", {
+      configurable: true,
+      value: { invoke },
+    });
+    renderEmbeddedBrowser();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "browser.controlCenter" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain(
+        "browser.controlCenterUnavailable",
+      );
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "browser.retryControlCenter" }),
+    );
+
+    await waitFor(() => {
+      expect(centerAttempts).toBe(2);
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByText("browser.agentControlRevoked")).toBeTruthy();
+    });
+  });
+
+  it("keeps the last known sharing state when revoking agent control fails", async () => {
+    const invoke = vi.fn(async (_channel: string, payload: unknown) => {
+      const action =
+        typeof payload === "object" && payload !== null
+          ? Reflect.get(payload, "action")
+          : null;
+      if (action === "center-state") {
+        return {
+          kind: "center-state",
+          agentSharingEnabled: true,
+          tabs: [
+            {
+              id: "agent-tab",
+              title: "Agent tab",
+              url: "https://example.test/",
+              loading: false,
+              agentControlled: true,
+            },
+          ],
+          downloads: [],
+        };
+      }
+      if (action === "revoke-agent") {
+        throw new Error("Desktop browser host rejected the request");
+      }
+      return { kind: "ok" };
+    });
+    Object.defineProperty(window, "nexuHost", {
+      configurable: true,
+      value: { invoke },
+    });
+    renderEmbeddedBrowser();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "browser.controlCenter" }),
+    );
+    await screen.findByText("browser.agentControlActive");
+    fireEvent.click(
+      screen.getByRole("button", { name: "browser.revokeControl" }),
+    );
+
+    await waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalledWith(
+        "browser.controlUpdateFailed",
+      );
+    });
+    expect(screen.getByText("browser.agentControlActive")).toBeTruthy();
+  });
+
+  it("adopts a main-process shared tab without evicting the agent tab", () => {
+    const tabs = Array.from({ length: 8 }, (_, index) => ({
+      id: index === 0 ? "agent" : `user-${index}`,
+      title: `Tab ${index}`,
+      url: `https://tab-${index}.test/`,
+      address: `https://tab-${index}.test/`,
+      loading: false,
+      canGoBack: false,
+      canGoForward: false,
+      history: {
+        entries: [`https://tab-${index}.test/`],
+        index: 0,
+      },
+    }));
+
+    const adopted = adoptSharedBrowserTab(
+      tabs,
+      {
+        id: "shared-after-remount",
+        title: "Recovered shared tab",
+        url: "https://shared.test/",
+        loading: true,
+        agentControlled: false,
+      },
+      "user-3",
+      "agent",
+    );
+
+    expect(adopted).toHaveLength(8);
+    expect(adopted[0]?.id).toBe("agent");
+    expect(adopted.find((tab) => tab.id === "user-3")).toBeUndefined();
+    expect(
+      adopted.find((tab) => tab.id === "shared-after-remount"),
+    ).toMatchObject({
+      title: "Recovered shared tab",
+      address: "https://shared.test/",
+      loading: true,
+    });
+  });
+
   it("normalizes public and local addresses while rejecting unsafe protocols", () => {
     expect(normalizeBrowserUrl("example.com/demo")).toBe(
       "https://example.com/demo",

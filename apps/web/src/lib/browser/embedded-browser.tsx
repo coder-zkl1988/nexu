@@ -1,10 +1,12 @@
 import { publishExternalChatInput } from "@/lib/chat/external-chat-input";
 import { openExternalUrl } from "@/lib/desktop-links";
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Download,
   ExternalLink,
   Globe2,
   History,
@@ -15,6 +17,8 @@ import {
   PenLine,
   Plus,
   RefreshCw,
+  ShieldCheck,
+  ShieldOff,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,6 +56,12 @@ type BrowserTab = {
   canGoForward: boolean;
   history: BrowserHistoryState;
 };
+
+type BrowserCenterState = Extract<
+  DesktopBrowserControlResult,
+  { kind: "center-state" }
+>;
+type BrowserCenterStatus = "loading" | "ready" | "unavailable";
 
 const MAX_TABS = 8;
 
@@ -100,6 +110,42 @@ function createBrowserTab(
     canGoForward: false,
     history: url ? { entries: [url], index: 0 } : { entries: [], index: -1 },
   };
+}
+
+export function adoptSharedBrowserTab(
+  tabs: BrowserTab[],
+  sharedTab: BrowserCenterState["tabs"][number],
+  activeTabId: string,
+  protectedTabId: string | null,
+): BrowserTab[] {
+  const update = (tab: BrowserTab): BrowserTab => ({
+    ...tab,
+    title: sharedTab.title,
+    url: sharedTab.url,
+    address: sharedTab.url,
+    loading: sharedTab.loading,
+    history: sharedTab.url
+      ? pushBrowserHistory(tab.history, sharedTab.url)
+      : tab.history,
+  });
+  if (tabs.some((tab) => tab.id === sharedTab.id)) {
+    return tabs.map((tab) => (tab.id === sharedTab.id ? update(tab) : tab));
+  }
+
+  const adopted = createBrowserTab(
+    sharedTab.url,
+    sharedTab.title,
+    sharedTab.id,
+  );
+  adopted.loading = sharedTab.loading;
+  if (tabs.length < MAX_TABS) return [...tabs, adopted];
+
+  const replacement =
+    tabs.find((tab) => tab.id === activeTabId && tab.id !== protectedTabId) ??
+    tabs.find((tab) => tab.id !== protectedTabId);
+  return replacement
+    ? tabs.map((tab) => (tab.id === replacement.id ? adopted : tab))
+    : tabs;
 }
 
 export function normalizeBrowserUrl(value: string): string | null {
@@ -211,6 +257,12 @@ export function EmbeddedBrowser({
   const [selectingElement, setSelectingElement] = useState(false);
   const [capturingAnnotation, setCapturingAnnotation] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [browserCenterOpen, setBrowserCenterOpen] = useState(false);
+  const [browserCenter, setBrowserCenter] = useState<BrowserCenterState | null>(
+    null,
+  );
+  const [browserCenterStatus, setBrowserCenterStatus] =
+    useState<BrowserCenterStatus>("loading");
   const contentRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const historyPanelRef = useRef<HTMLElement>(null);
@@ -219,6 +271,28 @@ export function EmbeddedBrowser({
   const desktopBrowser = hasDesktopBrowserHost();
   const agentTabRequest = useAgentBrowserTabRequest();
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+
+  const refreshBrowserCenter = useCallback(async (): Promise<void> => {
+    if (!desktopBrowser) return;
+    try {
+      const result = await controlDesktopBrowser({ action: "center-state" });
+      if (result?.kind !== "center-state") {
+        throw new Error("Browser control center is unavailable");
+      }
+      setBrowserCenter(result);
+      setBrowserCenterStatus("ready");
+    } catch {
+      setBrowserCenter(null);
+      setBrowserCenterStatus("unavailable");
+    }
+  }, [desktopBrowser]);
+
+  useEffect(() => {
+    if (!browserCenterOpen || !desktopBrowser) return;
+    void refreshBrowserCenter();
+    const timer = window.setInterval(() => void refreshBrowserCenter(), 1000);
+    return () => window.clearInterval(timer);
+  }, [browserCenterOpen, desktopBrowser, refreshBrowserCenter]);
 
   const updateTab = useCallback(
     (tabId: string, update: Partial<BrowserTab>): void => {
@@ -638,6 +712,12 @@ export function EmbeddedBrowser({
                   <span className="min-w-0 flex-1 truncate text-left">
                     {tab.title}
                   </span>
+                  {tab.id === agentTabRequest?.tabId && (
+                    <span
+                      className="size-1.5 shrink-0 rounded-full bg-[var(--color-success)]"
+                      title={t("browser.agentControlled")}
+                    />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -663,6 +743,20 @@ export function EmbeddedBrowser({
               <Plus size={15} />
             </button>
           </div>
+          <button
+            type="button"
+            disabled={!desktopBrowser}
+            onClick={() => {
+              setHistoryOpen(false);
+              setBrowserCenterOpen((current) => !current);
+            }}
+            title={t("browser.controlCenter")}
+            aria-label={t("browser.controlCenter")}
+            aria-expanded={browserCenterOpen}
+            className={`flex size-8 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 disabled:opacity-30 ${browserCenterOpen ? "bg-surface-2 text-text-primary" : ""}`}
+          >
+            <Download size={14} />
+          </button>
           <button
             type="button"
             onClick={onToggleMaximize}
@@ -917,6 +1011,246 @@ export function EmbeddedBrowser({
                 );
               })}
             </div>
+          </aside>
+        )}
+        {browserCenterOpen && (
+          <aside
+            data-browser-control-center="true"
+            className="flex w-72 min-w-56 max-w-[45%] shrink-0 flex-col border-l border-border bg-surface-0 p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-text-primary">
+                <ShieldCheck size={13} className="text-text-muted" />
+                {t("browser.controlCenter")}
+              </div>
+              <button
+                type="button"
+                onClick={() => setBrowserCenterOpen(false)}
+                aria-label={t("common.close")}
+                className="rounded p-1 text-text-muted hover:bg-surface-2"
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            {browserCenterStatus === "unavailable" ? (
+              <div
+                role="alert"
+                data-browser-control-center-unavailable="true"
+                className="mt-3 rounded-md border border-danger/30 bg-[var(--color-danger-subtle)] p-3"
+              >
+                <div className="text-[11px] font-medium text-text-primary">
+                  {t("browser.controlCenterUnavailable")}
+                </div>
+                <div className="mt-1 text-[9px] leading-4 text-text-muted">
+                  {t("browser.controlCenterUnavailableDescription")}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBrowserCenterStatus("loading");
+                    void refreshBrowserCenter();
+                  }}
+                  className="mt-3 inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-0 px-2.5 text-[10px] font-medium text-text-primary hover:bg-surface-2"
+                >
+                  <RefreshCw size={12} />
+                  {t("browser.retryControlCenter")}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="mt-3 rounded-md border border-border p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[11px] font-medium text-text-primary">
+                        {t("browser.agentControl")}
+                      </div>
+                      <div className="mt-0.5 text-[9px] text-text-muted">
+                        {browserCenterStatus === "loading" ||
+                        browserCenter === null
+                          ? t("common.loading")
+                          : browserCenter.agentSharingEnabled
+                            ? t("browser.agentControlActive")
+                            : t("browser.agentControlRevoked")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={browserCenterStatus !== "ready"}
+                      onClick={() => {
+                        if (!browserCenter) return;
+                        const action = browserCenter?.agentSharingEnabled
+                          ? "revoke-agent"
+                          : "resume-agent";
+                        void controlDesktopBrowser({ action })
+                          .then(() => {
+                            if (action === "revoke-agent") {
+                              const agentTabId =
+                                browserCenter.tabs.find(
+                                  (tab) => tab.agentControlled,
+                                )?.id ?? agentTabRequest?.tabId;
+                              setTabs((current) => {
+                                const remaining = current.filter(
+                                  (tab) => tab.id !== agentTabId,
+                                );
+                                if (remaining.length > 0) {
+                                  setActiveTabId(remaining[0]?.id ?? "");
+                                  return remaining;
+                                }
+                                const replacement = createBrowserTab();
+                                setActiveTabId(replacement.id);
+                                return [replacement];
+                              });
+                            }
+                            void refreshBrowserCenter();
+                          })
+                          .catch(() => {
+                            toast.error(t("browser.controlUpdateFailed"));
+                          });
+                      }}
+                      className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded-md border border-border",
+                        browserCenterStatus !== "ready"
+                          ? "text-text-muted opacity-50"
+                          : browserCenter?.agentSharingEnabled
+                            ? "text-danger hover:bg-[var(--color-danger-subtle)]"
+                            : "text-[var(--color-success)] hover:bg-surface-2",
+                      )}
+                      aria-label={
+                        browserCenter?.agentSharingEnabled
+                          ? t("browser.revokeControl")
+                          : t("browser.resumeControl")
+                      }
+                      title={
+                        browserCenter?.agentSharingEnabled
+                          ? t("browser.revokeControl")
+                          : t("browser.resumeControl")
+                      }
+                    >
+                      {browserCenter?.agentSharingEnabled ? (
+                        <ShieldOff size={14} />
+                      ) : (
+                        <ShieldCheck size={14} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 text-[10px] font-medium text-text-secondary">
+                  {t("browser.sharedTabs", {
+                    count: browserCenter?.tabs.length ?? tabs.length,
+                  })}
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  {(browserCenter?.tabs ?? []).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        const protectedTabId =
+                          browserCenter?.tabs.find(
+                            (candidate) => candidate.agentControlled,
+                          )?.id ?? null;
+                        setTabs((current) =>
+                          adoptSharedBrowserTab(
+                            current,
+                            tab,
+                            activeTabId,
+                            protectedTabId,
+                          ),
+                        );
+                        setActiveTabId(tab.id);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-surface-2"
+                    >
+                      {tab.loading ? (
+                        <Loader2 size={12} className="shrink-0 animate-spin" />
+                      ) : (
+                        <Globe2
+                          size={12}
+                          className="shrink-0 text-text-muted"
+                        />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[10px] font-medium text-text-primary">
+                          {tab.title}
+                        </span>
+                        <span className="block truncate text-[9px] text-text-muted">
+                          {tab.agentControlled
+                            ? t("browser.agentControlled")
+                            : tab.url}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-medium text-text-secondary">
+                    {t("browser.downloads")}
+                  </span>
+                  {(browserCenter?.downloads.length ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void controlDesktopBrowser({
+                          action: "clear-downloads",
+                        }).then(() => refreshBrowserCenter());
+                      }}
+                      className="text-[9px] text-text-muted hover:text-text-primary"
+                    >
+                      {t("browser.clearDownloads")}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+                  {(browserCenter?.downloads.length ?? 0) === 0 ? (
+                    <div className="rounded-md bg-surface-1 px-2.5 py-3 text-center text-[9px] text-text-muted">
+                      {t("browser.noDownloads")}
+                    </div>
+                  ) : (
+                    browserCenter?.downloads.map((download) => {
+                      const percent =
+                        download.totalBytes > 0
+                          ? Math.round(
+                              (download.receivedBytes / download.totalBytes) *
+                                100,
+                            )
+                          : 0;
+                      return (
+                        <button
+                          key={download.id}
+                          type="button"
+                          disabled={download.state !== "completed"}
+                          onClick={() => {
+                            void controlDesktopBrowser({
+                              action: "show-download",
+                              downloadId: download.id,
+                            });
+                          }}
+                          className="w-full rounded-md px-2 py-2 text-left hover:bg-surface-2 disabled:cursor-default"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Download
+                              size={12}
+                              className="shrink-0 text-text-muted"
+                            />
+                            <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-text-primary">
+                              {download.filename}
+                            </span>
+                            <span className="text-[9px] text-text-muted">
+                              {download.state === "progressing"
+                                ? `${percent}%`
+                                : t(`browser.downloadState.${download.state}`)}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
           </aside>
         )}
       </div>

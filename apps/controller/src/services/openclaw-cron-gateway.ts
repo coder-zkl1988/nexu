@@ -21,7 +21,36 @@ interface CronPayload {
   model?: string | null;
 }
 
-interface CronJob {
+interface CronDelivery {
+  mode: "none" | "announce" | "webhook";
+  channel?: string;
+  to?: string;
+  accountId?: string;
+}
+
+interface CronFailureAlert {
+  after?: number;
+  channel?: string;
+  to?: string;
+  cooldownMs?: number;
+  mode?: "announce" | "webhook";
+  accountId?: string;
+}
+
+interface CronJobState {
+  nextRunAtMs?: number;
+  lastRunAtMs?: number;
+  lastRunStatus?: "ok" | "error" | "skipped";
+  lastStatus?: "ok" | "error" | "skipped";
+  lastDurationMs?: number;
+  lastDeliveryStatus?:
+    | "delivered"
+    | "not-delivered"
+    | "unknown"
+    | "not-requested";
+}
+
+export interface CronJob {
   id: string;
   agentId?: string;
   sessionKey?: string;
@@ -32,6 +61,13 @@ interface CronJob {
   updatedAtMs: number;
   schedule: CronSchedule;
   payload: CronPayload;
+  delivery?: CronDelivery;
+  failureAlert?: CronFailureAlert | false;
+  state?: CronJobState;
+  nextRunAtMs?: number;
+  lastRunAtMs?: number;
+  lastRunStatus?: "ok" | "error" | "skipped";
+  lastDeliveryStatus?: CronJobState["lastDeliveryStatus"];
 }
 
 export interface CronJobCreateInput {
@@ -53,6 +89,9 @@ export interface CronJobCreateInput {
   scheduleId: string;
   /** Per-job model override; undefined/empty keeps the bot default. */
   modelId?: string;
+  onlyNotifyOnChange?: boolean;
+  failureAlertEnabled?: boolean;
+  failureAlertAfter?: number;
 }
 
 /** Derive an announce delivery target from a channel session key.
@@ -81,12 +120,19 @@ export function deliveryTargetFromSessionKey(
 interface CronListResult {
   jobs: CronJob[];
   total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number | null;
 }
 
 interface CronStoreFile {
   version: number;
   jobs: CronJob[];
 }
+
+const CRON_LIST_PAGE_SIZE = 200;
+const CRON_LIST_MAX_PAGES = 50;
 
 export interface CronRunEntry {
   ts: number;
@@ -107,6 +153,53 @@ export interface CronRunsResponse {
   limit: number;
   hasMore: boolean;
   nextOffset: number | null;
+}
+
+export interface CronEvent {
+  action: "added" | "updated" | "removed" | "started" | "finished";
+  jobId: string;
+  status?: "ok" | "error" | "skipped";
+  summary?: string;
+  error?: string;
+  runAtMs?: number;
+  durationMs?: number;
+  nextRunAtMs?: number;
+}
+
+type CronRuntimeFields = Partial<ScheduleResponse> &
+  Pick<ScheduleResponse, "failureAlertEnabled" | "failureAlertAfter">;
+
+function cronRuntimeFields(job: CronJob): CronRuntimeFields {
+  const state = job.state;
+  const failureAlert = job.failureAlert;
+  return {
+    nextRunAtMs: state?.nextRunAtMs ?? job.nextRunAtMs,
+    lastRunAtMs: state?.lastRunAtMs ?? job.lastRunAtMs,
+    lastDurationMs: state?.lastDurationMs,
+    lastRunStatus:
+      state?.lastRunStatus ??
+      state?.lastStatus ??
+      job.lastRunStatus ??
+      undefined,
+    lastDeliveryStatus:
+      state?.lastDeliveryStatus ?? job.lastDeliveryStatus ?? undefined,
+    deliveryMode: job.delivery?.mode,
+    deliveryChannel: job.delivery?.channel,
+    deliveryTo: job.delivery?.to,
+    deliveryAccountId: job.delivery?.accountId,
+    failureAlertEnabled: failureAlert !== undefined && failureAlert !== false,
+    failureAlertAfter:
+      failureAlert !== undefined && failureAlert !== false
+        ? (failureAlert.after ?? 3)
+        : 3,
+  };
+}
+
+export function mergeCronJobRuntimeState(
+  schedule: ScheduleResponse,
+  job: CronJob,
+): ScheduleResponse {
+  return { ...schedule, enabled: job.enabled, ...cronRuntimeFields(job) };
 }
 
 export function mapCronJobToScheduleItem(
@@ -133,6 +226,8 @@ export function mapCronJobToScheduleItem(
     sessionKey: job.sessionKey,
     description: job.description,
     modelId: job.payload.model ?? undefined,
+    onlyNotifyOnChange: false,
+    ...cronRuntimeFields(job),
     externalId: job.id,
     createdAt: new Date(job.createdAtMs).toISOString(),
     updatedAt: new Date(job.updatedAtMs).toISOString(),
@@ -182,15 +277,29 @@ export class OpenClawCronGateway {
   async listJobs(agentId?: string): Promise<CronJob[]> {
     if (this.wsClient.isConnected()) {
       try {
-        const result = await this.wsClient.request<CronListResult>(
-          "cron.list",
-          {
-            query: agentId,
-            includeDisabled: true,
-            limit: 200,
-          },
-        );
-        return result.jobs;
+        const jobs: CronJob[] = [];
+        let offset = 0;
+        for (let page = 0; page < CRON_LIST_MAX_PAGES; page += 1) {
+          const result = await this.wsClient.request<CronListResult>(
+            "cron.list",
+            {
+              includeDisabled: true,
+              limit: CRON_LIST_PAGE_SIZE,
+              offset,
+            },
+          );
+          jobs.push(...result.jobs);
+          if (!result.hasMore || result.nextOffset === null) {
+            return agentId
+              ? jobs.filter((job) => job.agentId === agentId)
+              : jobs;
+          }
+          if (result.nextOffset <= offset) {
+            throw new Error("cron.list pagination did not advance");
+          }
+          offset = result.nextOffset;
+        }
+        throw new Error("cron.list pagination exceeded maximum pages");
       } catch (err) {
         logger.warn(
           { error: err instanceof Error ? err.message : String(err) },
@@ -199,7 +308,8 @@ export class OpenClawCronGateway {
       }
     }
 
-    return this.fallbackReadFile();
+    const jobs = await this.fallbackReadFile();
+    return agentId ? jobs.filter((job) => job.agentId === agentId) : jobs;
   }
 
   async updateJob(
@@ -211,6 +321,7 @@ export class OpenClawCronGateway {
       schedule?: CronSchedule;
       payload?: CronPayload;
       delivery?: Record<string, unknown>;
+      failureAlert?: CronFailureAlert | false;
     },
   ): Promise<void> {
     await this.wsClient.request("cron.update", { id, patch });
@@ -222,11 +333,16 @@ export class OpenClawCronGateway {
   // Falling back to channel "last" here would leak delivery to another bot's
   // most-recent channel and fail every run with a misleading error.
   private buildDelivery(
-    input: Pick<CronJobCreateInput, "channelType" | "channelId" | "deliveryTo">,
+    input: Pick<
+      CronJobCreateInput,
+      "channelType" | "channelId" | "deliveryTo" | "onlyNotifyOnChange"
+    >,
   ): Record<string, unknown> {
     return input.channelType
       ? {
-          mode: "announce" as const,
+          mode: input.onlyNotifyOnChange
+            ? ("none" as const)
+            : ("announce" as const),
           // OpenClaw delivery wants the plugin channel key, e.g. WeChat's
           // "wechat" must become "openclaw-weixin" (Feishu stays "feishu").
           channel: resolveOpenClawChannelKey(input.channelType as ChannelType),
@@ -238,13 +354,36 @@ export class OpenClawCronGateway {
       : { mode: "none" as const };
   }
 
+  private buildFailureAlert(
+    input: Pick<
+      CronJobCreateInput,
+      "failureAlertEnabled" | "failureAlertAfter"
+    >,
+    delivery: Record<string, unknown>,
+  ): CronFailureAlert | false {
+    if (!input.failureAlertEnabled) return false;
+    return {
+      after: input.failureAlertAfter ?? 3,
+      mode: "announce",
+      ...(typeof delivery.channel === "string"
+        ? { channel: delivery.channel }
+        : {}),
+      ...(typeof delivery.to === "string" ? { to: delivery.to } : {}),
+      ...(typeof delivery.accountId === "string"
+        ? { accountId: delivery.accountId }
+        : {}),
+    };
+  }
+
   private buildJobFields(input: CronJobCreateInput): {
     name: string;
     enabled: boolean;
     schedule: CronSchedule;
     payload: CronPayload;
     delivery: Record<string, unknown>;
+    failureAlert: CronFailureAlert | false;
   } {
+    const delivery = this.buildDelivery(input);
     return {
       name: input.name,
       enabled: input.enabled,
@@ -260,8 +399,67 @@ export class OpenClawCronGateway {
         // override happens via the cron.update patch (updateJobFromSchedule).
         ...(input.modelId?.trim() ? { model: input.modelId } : {}),
       },
-      delivery: this.buildDelivery(input),
+      delivery,
+      failureAlert: this.buildFailureAlert(input, delivery),
     };
+  }
+
+  onEvent(handler: (event: CronEvent) => void): () => void {
+    const listener = (payload: unknown) => {
+      if (!payload || typeof payload !== "object") return;
+      const value = payload as Record<string, unknown>;
+      let action: CronEvent["action"];
+      switch (value.action) {
+        case "added":
+        case "updated":
+        case "removed":
+        case "started":
+        case "finished":
+          action = value.action;
+          break;
+        default:
+          return;
+      }
+      if (typeof value.jobId !== "string") return;
+
+      const status =
+        value.status === "ok" ||
+        value.status === "error" ||
+        value.status === "skipped"
+          ? value.status
+          : undefined;
+      handler({
+        action,
+        jobId: value.jobId,
+        ...(status ? { status } : {}),
+        ...(typeof value.summary === "string"
+          ? { summary: value.summary }
+          : {}),
+        ...(typeof value.error === "string" ? { error: value.error } : {}),
+        ...(typeof value.runAtMs === "number"
+          ? { runAtMs: value.runAtMs }
+          : {}),
+        ...(typeof value.durationMs === "number"
+          ? { durationMs: value.durationMs }
+          : {}),
+        ...(typeof value.nextRunAtMs === "number"
+          ? { nextRunAtMs: value.nextRunAtMs }
+          : {}),
+      });
+    };
+    this.wsClient.on("cron", listener);
+    return () => this.wsClient.off("cron", listener);
+  }
+
+  async sendOutput(input: {
+    channel: string;
+    to: string;
+    message: string;
+    accountId?: string;
+    sessionKey?: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    await this.wsClient.request("send", input);
   }
 
   async createJob(input: CronJobCreateInput): Promise<string> {
@@ -311,17 +509,16 @@ export class OpenClawCronGateway {
   }
 
   private async fallbackReadFile(): Promise<CronJob[]> {
-    try {
-      const storePath = path.join(
-        this.env.openclawStateDir,
-        "cron",
-        "jobs.json",
-      );
-      const raw = await readFile(storePath, "utf-8");
-      const store: CronStoreFile = JSON.parse(raw);
-      return store.jobs ?? [];
-    } catch {
-      return [];
+    const storePath = path.join(this.env.openclawStateDir, "cron", "jobs.json");
+    const raw = await readFile(storePath, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || !("jobs" in parsed)) {
+      throw new Error("OpenClaw cron snapshot has no jobs collection");
     }
+    const jobs = (parsed as { jobs: unknown }).jobs;
+    if (!Array.isArray(jobs)) {
+      throw new Error("OpenClaw cron snapshot jobs collection is invalid");
+    }
+    return jobs as CronStoreFile["jobs"];
   }
 }

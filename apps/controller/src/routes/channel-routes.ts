@@ -18,6 +18,7 @@ import {
   qqbotConnectivityResponseSchema,
   slackOAuthUrlResponseSchema,
   updateChannelBotSchema,
+  updateChannelCapabilitiesSchema,
   wechatQrStartResponseSchema,
   wechatQrWaitResponseSchema,
   wecomConnectivityResponseSchema,
@@ -998,6 +999,69 @@ export function registerChannelRoutes(
         logger.error(
           { channelId, error: message },
           "channel_update_feishu_permissions_failed",
+        );
+        throw error;
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/channels/{channelId}/capabilities",
+      tags: ["Channels"],
+      request: {
+        params: channelIdParamSchema,
+        body: {
+          content: {
+            "application/json": { schema: updateChannelCapabilitiesSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: channelResponseSchema } },
+          description: "Updated channel delivery capabilities",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Capability type does not match the channel",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Channel not found",
+        },
+      },
+    }),
+    async (c) => {
+      const { channelId } = c.req.valid("param");
+      const input = c.req.valid("json");
+      try {
+        const updated =
+          await container.channelService.updateChannelCapabilities(
+            channelId,
+            input,
+          );
+        return c.json(updated, 200);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to update channel capabilities";
+        if (/^Channel not found/i.test(message)) {
+          logger.warn({ channelId }, "channel_capabilities_not_found");
+          return c.json({ message }, 404);
+        }
+        if (/^Channel type mismatch/i.test(message)) {
+          logger.warn(
+            { channelId, requestedType: input.channelType },
+            "channel_capabilities_type_mismatch",
+          );
+          return c.json({ message }, 400);
+        }
+        logger.error(
+          { channelId, error: message },
+          "channel_capabilities_update_failed",
         );
         throw error;
       }

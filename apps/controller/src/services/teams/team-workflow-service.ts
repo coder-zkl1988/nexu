@@ -11,6 +11,7 @@ import type {
   WorkflowStep,
 } from "@nexu/shared";
 import { logger } from "../../lib/logger.js";
+import type { ApprovalAuditService } from "../approval-audit-service.js";
 import type { OpenClawGatewayService } from "../openclaw-gateway-service.js";
 import { TeamNotFoundError } from "./team-service.js";
 import type { TeamWorkflowLedgerStore } from "./team-workflow-ledger.js";
@@ -26,6 +27,31 @@ const MAX_PERSONA_CHARS = 3_000;
 const MAX_COMMENT_CHARS = 2_000;
 /** `{{variable}}` placeholder — same snake_case grammar as the schema. */
 const TEMPLATE_VAR_RE = /\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/g;
+
+type TeamApprovalAuditContext = {
+  operation: "requested" | "resolved";
+  approvalId: string;
+  teamId: string;
+  workflowId: string;
+  runId: string;
+  stepId: string;
+};
+
+function persistApprovalAuditBestEffort(
+  context: TeamApprovalAuditContext,
+  write: (() => Promise<unknown>) | undefined,
+) {
+  if (!write) return;
+  void write().catch((error: unknown) => {
+    logger.warn(
+      {
+        ...context,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      },
+      "team_workflow_approval_audit_persist_failed",
+    );
+  });
+}
 
 export class WorkflowNotFoundError extends Error {
   constructor(public readonly workflowId: string) {
@@ -111,6 +137,11 @@ export type TeamWorkflowServiceDeps = {
     team: TeamResponse,
     description: string,
   ) => Promise<ComposeTeamWorkflowResponse>;
+  approvalAudit?: Pick<
+    ApprovalAuditService,
+    "recordRequested" | "recordResolved"
+  >;
+  getReviewerName?: () => Promise<string>;
   genId: () => string;
 };
 
@@ -147,7 +178,11 @@ export class TeamWorkflowService {
    */
   private readonly pendingApprovals = new Map<
     string,
-    { info: PendingWorkflowApproval; resolve: () => void }
+    {
+      info: PendingWorkflowApproval;
+      resolve: () => void;
+      approval?: Promise<void>;
+    }
   >();
 
   constructor(
@@ -302,12 +337,50 @@ export class TeamWorkflowService {
     ) {
       throw new WorkflowApprovalNotFoundError(runId, stepId);
     }
-    this.pendingApprovals.delete(key);
-    await this.deps.gateway.workboardCardComplete({
-      id: pending.info.cardId,
-      summary: "approved",
-    });
-    pending.resolve();
+    if (!pending.approval) {
+      pending.approval = (async () => {
+        await this.deps.gateway.workboardCardComplete({
+          id: pending.info.cardId,
+          summary: "approved",
+        });
+        if (this.pendingApprovals.get(key) !== pending) return;
+        this.pendingApprovals.delete(key);
+        pending.resolve();
+        persistApprovalAuditBestEffort(
+          {
+            operation: "resolved",
+            approvalId: key,
+            teamId,
+            workflowId,
+            runId,
+            stepId,
+          },
+          this.deps.approvalAudit
+            ? async () =>
+                this.deps.approvalAudit?.recordResolved({
+                  approvalId: key,
+                  source: "team",
+                  kind: "team",
+                  status: "approved",
+                  decision: "approved",
+                  reviewer: await this.deps.getReviewerName?.(),
+                  teamId,
+                  workflowId,
+                  runId,
+                  stepId,
+                  cardId: pending.info.cardId,
+                })
+            : undefined,
+        );
+      })();
+    }
+    const approval = pending.approval;
+    try {
+      await approval;
+    } catch (error) {
+      if (pending.approval === approval) pending.approval = undefined;
+      throw error;
+    }
   }
 
   /**
@@ -391,13 +464,18 @@ export class TeamWorkflowService {
     });
     const { children } = await this.deps.gateway.workboardCardDecompose({
       id: parentCard.id,
-      children: workflow.steps.map((step) => ({
-        title: step.name ?? step.id,
-        boardId: team.boardId,
+      children: workflow.steps.map((step) => {
         // biome-ignore lint/style/noNonNullAssertion: validated against team members
-        agentId: memberBySlug.get(step.assigneeSlug)!.botId,
-        notes: "(waiting for upstream steps)",
-      })),
+        const botId = memberBySlug.get(step.assigneeSlug)!.botId;
+        const sessionKey = `agent:${botId}:subagent:wf-${runId}-${step.id}`;
+        return {
+          title: step.name ?? step.id,
+          boardId: team.boardId,
+          agentId: botId,
+          ...(step.type === "approval" ? {} : { sessionKey }),
+          notes: "(waiting for upstream steps)",
+        };
+      }),
     });
     const cardByStep = new Map<string, string>();
     workflow.steps.forEach((step, index) => {
@@ -509,10 +587,43 @@ export class TeamWorkflowService {
     } finally {
       // A run that ends (success, abort, or crash) leaves no dangling
       // approval entries behind.
+      const interrupted: PendingWorkflowApproval[] = [];
       for (const key of this.pendingApprovals.keys()) {
         if (key.startsWith(`${runId}:`)) {
+          const pending = this.pendingApprovals.get(key);
+          if (pending) interrupted.push(pending.info);
           this.pendingApprovals.delete(key);
         }
+      }
+      for (const info of interrupted) {
+        const approvalId = `${info.runId}:${info.stepId}`;
+        persistApprovalAuditBestEffort(
+          {
+            operation: "resolved",
+            approvalId,
+            teamId: info.teamId,
+            workflowId: info.workflowId,
+            runId: info.runId,
+            stepId: info.stepId,
+          },
+          this.deps.approvalAudit
+            ? () =>
+                // biome-ignore lint/style/noNonNullAssertion: guarded above
+                this.deps.approvalAudit!.recordResolved({
+                  approvalId,
+                  source: "team",
+                  kind: "team",
+                  status: "interrupted",
+                  decision: "interrupted",
+                  reviewer: "system",
+                  teamId: info.teamId,
+                  workflowId: info.workflowId,
+                  runId: info.runId,
+                  stepId: info.stepId,
+                  cardId: info.cardId,
+                })
+            : undefined,
+        );
       }
     }
   }
@@ -540,7 +651,8 @@ export class TeamWorkflowService {
         id: cardId,
         reason: "awaiting approval",
       });
-      await new Promise<void>((resolve) => {
+      const approvalId = `${runId}:${step.id}`;
+      const approvalGate = new Promise<void>((resolve) => {
         this.pendingApprovals.set(`${runId}:${step.id}`, {
           info: {
             teamId,
@@ -553,17 +665,46 @@ export class TeamWorkflowService {
           resolve,
         });
       });
+      persistApprovalAuditBestEffort(
+        {
+          operation: "requested",
+          approvalId,
+          teamId,
+          workflowId,
+          runId,
+          stepId: step.id,
+        },
+        this.deps.approvalAudit
+          ? () =>
+              // biome-ignore lint/style/noNonNullAssertion: guarded above
+              this.deps.approvalAudit!.recordRequested({
+                approvalId,
+                source: "team",
+                kind: "team",
+                title: "Team approval",
+                teamId,
+                workflowId,
+                runId,
+                stepId: step.id,
+                cardId,
+                requestedAt: Date.now(),
+              })
+          : undefined,
+      );
+      await approvalGate;
       return;
     }
 
     const persona = (
       (await this.deps.resolveExpertPersona(step.assigneeSlug)) ?? ""
     ).slice(0, MAX_PERSONA_CHARS);
+    const sessionKey = `agent:${botId}:subagent:wf-${runId}-${step.id}`;
 
     // Record the rendered task on the card (board UI) and mark it running —
     // the controller, not the dispatcher, owns this card's lifecycle.
     await this.deps.gateway.workboardCardUpdate({
       id: cardId,
+      sessionKey,
       notes: `[TASK]\n${task}`.slice(0, MAX_COMMENT_CHARS),
     });
     await this.deps.gateway.workboardCardMove({
@@ -571,7 +712,6 @@ export class TeamWorkflowService {
       status: "running",
     });
 
-    const sessionKey = `agent:${botId}:subagent:wf-${runId}-${step.id}`;
     const message = [
       persona.trim()
         ? `[PERSONA — follow this exactly for your entire reply]\n${persona.trim()}\n`

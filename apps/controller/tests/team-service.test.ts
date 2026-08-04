@@ -42,6 +42,7 @@ describe("TeamService", () => {
     workboardCardCreate: ReturnType<typeof vi.fn>;
     workboardCardDecompose: ReturnType<typeof vi.fn>;
     workboardCardMove: ReturnType<typeof vi.fn>;
+    workboardCardUpdate: ReturnType<typeof vi.fn>;
     workboardCardsList: ReturnType<typeof vi.fn>;
     workboardCardComment: ReturnType<typeof vi.fn>;
     workboardCardComplete: ReturnType<typeof vi.fn>;
@@ -124,6 +125,9 @@ describe("TeamService", () => {
         }),
       ),
       workboardCardMove: vi.fn(async () => ({
+        card: { id: "x", title: "t", status: "ready" },
+      })),
+      workboardCardUpdate: vi.fn(async () => ({
         card: { id: "x", title: "t", status: "ready" },
       })),
       workboardCardsList: vi.fn(async () => ({ cards: [] })),
@@ -331,6 +335,11 @@ describe("TeamService", () => {
       sessionKey: "agent:bot-reviewer:subagent:task-child-0",
       message: expect.stringContaining("Code Sentinel"),
     });
+    expect(gateway.workboardCardUpdate).toHaveBeenCalledWith({
+      id: "child-0",
+      sessionKey: "agent:bot-reviewer:subagent:task-child-0",
+      notes: expect.stringContaining("Code Sentinel"),
+    });
     // The subtask title is the primary task text — omitting it left the
     // worker with nothing to do but ask "what's the task?" (caught live).
     const [reviewerCall, writerCall] = sendChat.mock.calls as Array<
@@ -463,9 +472,13 @@ describe("TeamService", () => {
           title: "Review",
           status: "running",
           agentId: "bot-reviewer",
+          sessionKey: "agent:bot-reviewer:subagent:task-c1",
+          notes:
+            "[NEXU_EXECUTION_SESSION_KEY] agent:legacy:subagent:task-c1\n\n[TASK]\nReview",
           metadata: {
             // The deliverable is the longest comment; short summaries lose.
             comments: [{ body: "LONG DELIVERABLE OUTPUT" }, { body: "done" }],
+            links: [{ type: "parent", targetCardId: "p" }],
           },
         },
         { id: "c2", title: "Orphan", status: "ready", agentId: "bot-unknown" },
@@ -483,6 +496,7 @@ describe("TeamService", () => {
       boardId: team.boardId,
     });
     expect(board.boardId).toBe(team.boardId);
+    expect(board.available).toBe(true);
     expect(board.cards).toEqual([
       {
         id: "p",
@@ -491,6 +505,9 @@ describe("TeamService", () => {
         agentId: "bot-lead",
         assigneeName: null,
         output: null,
+        sessionKey: null,
+        parentIds: [],
+        childIds: [],
       },
       {
         id: "c1",
@@ -499,6 +516,9 @@ describe("TeamService", () => {
         agentId: "bot-reviewer",
         assigneeName: "Code Reviewer",
         output: "LONG DELIVERABLE OUTPUT",
+        sessionKey: "agent:bot-reviewer:subagent:task-c1",
+        parentIds: ["p"],
+        childIds: [],
       },
       {
         id: "c2",
@@ -507,11 +527,14 @@ describe("TeamService", () => {
         agentId: "bot-unknown",
         assigneeName: null,
         output: null,
+        sessionKey: null,
+        parentIds: [],
+        childIds: [],
       },
     ]);
   });
 
-  it("getBoard degrades to an empty board when the gateway errors", async () => {
+  it("getBoard reports an unavailable board when the gateway errors", async () => {
     gateway.workboardCardsList.mockRejectedValueOnce(new Error("offline"));
     const service = buildService();
     const team = await service.createTeam({
@@ -520,7 +543,11 @@ describe("TeamService", () => {
     });
 
     const board = await service.getBoard(team.id);
-    expect(board).toEqual({ boardId: team.boardId, cards: [] });
+    expect(board).toEqual({
+      boardId: team.boardId,
+      available: false,
+      cards: [],
+    });
   });
 
   it("deleteTeam cascades the team's board cards and the board itself", async () => {

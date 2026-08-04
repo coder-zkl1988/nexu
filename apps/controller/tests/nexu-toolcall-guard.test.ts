@@ -137,10 +137,22 @@ describe("nexu-toolcall-guard local automation policy", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("blocks external host control and defers desktop policy to config", async () => {
+  it("leaves exec/process open while isolating runtime control-plane tools", async () => {
     const beforeToolCall = await loadBeforeToolCallHook();
 
-    for (const toolName of ["exec", "process", "gateway", "nodes", "cron"]) {
+    for (const toolName of ["exec", "process"]) {
+      await expect(
+        beforeToolCall(
+          { toolName, params: { action: "status" } },
+          {
+            sessionKey: "agent:bot-1:slack:channel:C123",
+            channelId: "C123",
+          },
+        ),
+      ).resolves.toBeUndefined();
+    }
+
+    for (const toolName of ["gateway", "nodes", "cron"]) {
       await expect(
         beforeToolCall(
           { toolName, params: { action: "status" } },

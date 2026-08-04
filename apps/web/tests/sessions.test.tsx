@@ -1,7 +1,20 @@
+// @vitest-environment jsdom
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  postApiV1SessionsByIdMessagesByMessageIdBranch,
+  postApiV1SessionsByIdMessagesByMessageIdRollback,
+} from "../lib/api/sdk.gen";
 import { A2UISidebarProvider } from "../src/lib/a2ui/a2ui-sidebar-context";
 import { SessionsPage } from "../src/pages/sessions";
 
@@ -65,6 +78,18 @@ vi.mock("react-i18next", () => ({
       if (key === "sessions.chat.stopCurrentTask") {
         return "Stop current task";
       }
+      if (key === "sessions.chat.branchFromMessage") {
+        return "Branch from this message";
+      }
+      if (key === "sessions.chat.rollbackToMessage") {
+        return "Roll back to this message";
+      }
+      if (key === "sessions.chat.branchCreated") {
+        return "Message branch created";
+      }
+      if (key === "sessions.chat.branchFailed") {
+        return "Unable to create message branch";
+      }
       if (key in OPEN_IN_CHANNEL_LABELS) {
         return OPEN_IN_CHANNEL_LABELS[key];
       }
@@ -75,18 +100,39 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("../lib/api/sdk.gen", () => ({
   getApiV1Channels: vi.fn(async () => ({
-    data: undefined,
+    data: { channels: [] },
   })),
   getApiV1SessionsById: vi.fn(async () => ({
-    data: undefined,
+    data: {
+      id: "fetched-session",
+      channelId: null,
+      title: "Fetched conversation",
+      channelType: "web",
+      messageCount: 0,
+      lastMessageAt: null,
+      metadata: {},
+    },
   })),
   getApiV1SessionsByIdMessages: vi.fn(async () => ({
-    data: undefined,
+    data: { messages: [], sessionKey: "agent:fetched:main" },
   })),
   getApiV1Bots: vi.fn(async () => ({ data: { bots: [] } })),
   getApiV1BotsByBotId: vi.fn(async () => ({ data: undefined })),
   getApiV1ChatRunStatus: vi.fn(async () => ({ data: { busy: false } })),
+  postApiV1SessionsByIdMessagesByMessageIdBranch: vi.fn(),
+  postApiV1SessionsByIdMessagesByMessageIdRollback: vi.fn(),
 }));
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location-probe">{location.pathname}</output>;
+}
 
 function renderSessionsPage(options?: { busy?: boolean }): string {
   const queryClient = new QueryClient({
@@ -178,6 +224,17 @@ describe("SessionsPage", () => {
     expect(markup).not.toContain("[message_id:");
     expect(markup).toContain("google-calendar");
     expect(markup).toContain("Open in Slack");
+    expect(markup).toContain('data-session-operations-toggle="true"');
+    expect(markup).toContain('data-session-browser-toggle="true"');
+    expect(markup).toContain('data-session-canvas-toggle="true"');
+    expect(markup.indexOf("data-session-browser-toggle")).toBeLessThan(
+      markup.indexOf("data-session-canvas-toggle"),
+    );
+    expect(markup.indexOf("data-session-canvas-toggle")).toBeLessThan(
+      markup.indexOf("data-session-operations-toggle"),
+    );
+    expect(markup).toContain('aria-label="Branch from this message"');
+    expect(markup).toContain('aria-label="Roll back to this message"');
   });
 
   it("keeps one natural composer available while the session is busy", () => {
@@ -204,6 +261,160 @@ describe("SessionsPage", () => {
     expect(markup).not.toContain('data-chat-action="send"');
     expect(markup).not.toContain("Stop and redirect");
     expect(markup).not.toContain("Side question");
+    expect(markup).toMatch(/data-message-action="branch"[^>]*disabled/);
+    expect(markup).toMatch(/data-message-action="rollback"[^>]*disabled/);
+  });
+
+  it("branches from a message and navigates to the new session", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const branchMock = vi.mocked(
+      postApiV1SessionsByIdMessagesByMessageIdBranch,
+    );
+    branchMock.mockResolvedValueOnce({
+      data: {
+        id: "sess-branched",
+        botId: "bot-1",
+        sessionKey: "agent:bot-1:branch",
+        title: "Branched conversation",
+        messageId: "msg-branch-source",
+      },
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          staleTime: Number.POSITIVE_INFINITY,
+        },
+      },
+    });
+    queryClient.setQueryData(["session-meta", "sess-branch-source"], {
+      id: "sess-branch-source",
+      channelId: "channel-web-1",
+      title: "Source conversation",
+      channelType: "web",
+      messageCount: 1,
+      lastMessageAt: "2026-03-20T08:58:00.000Z",
+      metadata: {},
+    });
+    queryClient.setQueryData(["chat-history", "sess-branch-source"], {
+      messages: [
+        {
+          id: "msg-branch-source",
+          role: "user",
+          content: "Create an alternative from here",
+          timestamp: new Date("2026-03-20T08:58:00.000Z").getTime(),
+          createdAt: "2026-03-20T08:58:00.000Z",
+        },
+      ],
+    });
+    queryClient.setQueryData(["channels"], { channels: [] });
+    queryClient.setQueryData(["bots"], { bots: [] });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter
+            initialEntries={["/workspace/sessions/sess-branch-source"]}
+          >
+            <LocationProbe />
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Branch from this message" }),
+    );
+
+    await waitFor(() => {
+      expect(branchMock).toHaveBeenCalledWith({
+        path: {
+          id: "sess-branch-source",
+          messageId: "msg-branch-source",
+        },
+      });
+      expect(screen.getByTestId("location-probe").textContent).toBe(
+        "/workspace/sessions/sess-branched",
+      );
+    });
+  });
+
+  it("confirms and rolls the current session back to a message", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
+    const rollbackMock = vi.mocked(
+      postApiV1SessionsByIdMessagesByMessageIdRollback,
+    );
+    rollbackMock.mockResolvedValueOnce({
+      data: {
+        ok: true,
+        id: "sess-rollback",
+        sessionKey: "agent:bot-1:main",
+        messageId: "msg-rollback",
+      },
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      },
+    });
+    queryClient.setQueryData(["session-meta", "sess-rollback"], {
+      id: "sess-rollback",
+      channelId: "channel-web-1",
+      title: "Rollback conversation",
+      channelType: "web",
+      messageCount: 1,
+      lastMessageAt: "2026-03-20T08:58:00.000Z",
+      metadata: {},
+    });
+    queryClient.setQueryData(["chat-history", "sess-rollback"], {
+      messages: [
+        {
+          id: "msg-rollback",
+          role: "user",
+          content: "Return here",
+          timestamp: new Date("2026-03-20T08:58:00.000Z").getTime(),
+          createdAt: "2026-03-20T08:58:00.000Z",
+        },
+      ],
+    });
+    queryClient.setQueryData(["channels"], { channels: [] });
+    queryClient.setQueryData(["bots"], { bots: [] });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <A2UISidebarProvider>
+          <MemoryRouter initialEntries={["/workspace/sessions/sess-rollback"]}>
+            <Routes>
+              <Route
+                path="/workspace/sessions/:id"
+                element={<SessionsPage />}
+              />
+            </Routes>
+          </MemoryRouter>
+        </A2UISidebarProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Roll back to this message" }),
+    );
+
+    await waitFor(() => {
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(rollbackMock).toHaveBeenCalledWith({
+        path: { id: "sess-rollback", messageId: "msg-rollback" },
+      });
+    });
   });
 
   it("renders assistant tool activity as a compact execution group", () => {

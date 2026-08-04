@@ -39,7 +39,7 @@ describe("bundled Tabby media runner", () => {
       buildImageSkillArgs({
         prompt: "cat; $(touch /tmp/nope)",
         filename: "/state/out.png",
-        model: "tabby-image-free",
+        model: "tabby-image-flash",
         quality: "high",
         aspectRatio: "9:16",
         size: "2K",
@@ -51,7 +51,7 @@ describe("bundled Tabby media runner", () => {
       "--filename",
       "/state/out.png",
       "--model",
-      "tabby-image-free",
+      "tabby-image-flash",
       "--quality",
       "high",
       "--ratio",
@@ -121,7 +121,7 @@ describe("bundled Tabby media runner", () => {
       botId: "../bot-1",
       prompt: "cat",
       count: 1,
-      model: "tabby-image-free",
+      model: "tabby-image-flash",
       timeoutMs: 10_000,
     });
 
@@ -175,7 +175,7 @@ describe("bundled Tabby media runner", () => {
         botId: "bot-1",
         prompt: "cat",
         count: 1,
-        model: "tabby-image",
+        model: "tabby-image-pro",
         timeoutMs: 10_000,
       }),
     ).resolves.toHaveLength(1);

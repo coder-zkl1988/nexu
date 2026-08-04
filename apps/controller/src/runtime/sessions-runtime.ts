@@ -7,6 +7,7 @@ import {
   open,
   readFile,
   readdir,
+  realpath,
   rm,
   stat,
   truncate,
@@ -16,7 +17,9 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type {
   CreateSessionInput,
+  SessionArchiveFilter,
   SessionResponse,
+  SessionRunState,
   UpdateSessionInput,
 } from "@nexu/shared";
 import type { ControllerEnv } from "../app/env.js";
@@ -38,6 +41,8 @@ export type ChatMessage = {
   createdAt: string | null;
   /** Incomplete assistant output preserved when its run was interrupted. */
   aborted?: boolean;
+  /** The assistant turn ended with OpenClaw's explicit error stop reason. */
+  failed?: boolean;
   /** Present on toolResult messages — name of the tool that produced the result. */
   toolName?: string;
   /** Present on toolResult messages — correlates with the assistant toolCall block id. */
@@ -80,6 +85,23 @@ type SessionsIndexEntry = {
   sessionFile?: string;
   /** Set by OpenClaw >=2026.7.1 sessions.patch { archived: true }. */
   archivedAt?: number;
+  category?: string;
+  pinnedAt?: number;
+  lastReadAt?: number;
+  markedUnreadAt?: number;
+  lastActivityAt?: number;
+  lastInteractionAt?: number;
+  abortedLastRun?: boolean;
+  status?: "running" | "done" | "failed" | "killed" | "timeout";
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  totalTokensFresh?: boolean;
+  contextTokens?: number;
+  estimatedCostUsd?: number;
+  modelProvider?: string;
+  model?: string;
+  compactionCheckpoints?: Array<{ checkpointId?: string }>;
   lastChannel?: string;
   // Explicit or generated session names maintained by OpenClaw >=2026.7.1
   // (deriveSessionTitle precedence: label > displayName > subject). The
@@ -210,6 +232,331 @@ const HEARTBEAT_POLL_MESSAGE = "[OpenClaw heartbeat poll]";
 
 /** Trivial heartbeat ack the agent sends when there's nothing to report. */
 const HEARTBEAT_OK_REPLY = "HEARTBEAT_OK";
+
+function fileSystemErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return fileSystemErrorCode(error) === "ENOENT";
+}
+
+export class SessionsRuntimeUnavailableError extends Error {
+  constructor() {
+    super("Session data is temporarily unavailable");
+    this.name = "SessionsRuntimeUnavailableError";
+  }
+}
+
+export class SessionMessageNotFoundError extends Error {
+  constructor() {
+    super("Message not found in session");
+    this.name = "SessionMessageNotFoundError";
+  }
+}
+
+export class SessionTranscriptLockedError extends Error {
+  constructor() {
+    super("session file locked by an active OpenClaw writer");
+    this.name = "SessionTranscriptLockedError";
+  }
+}
+
+async function withSessionWriteLock<T>(
+  filePath: string,
+  action: (normalizedFilePath: string) => Promise<T>,
+): Promise<T> {
+  const normalizedFilePath = await realpath(filePath);
+  const lockPath = `${normalizedFilePath}.lock`;
+  const payload = `${JSON.stringify({
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    maxHoldMs: 30_000,
+    ownerId: crypto.randomUUID(),
+  })}\n`;
+  let lockHandle: Awaited<ReturnType<typeof open>>;
+  try {
+    lockHandle = await open(lockPath, "wx", 0o600);
+  } catch (error) {
+    if (fileSystemErrorCode(error) === "EEXIST") {
+      throw new SessionTranscriptLockedError();
+    }
+    throw error;
+  }
+
+  try {
+    await lockHandle.writeFile(payload, "utf8");
+    return await action(normalizedFilePath);
+  } finally {
+    try {
+      await lockHandle.close();
+    } catch (error) {
+      logger.warn(
+        { errorCode: fileSystemErrorCode(error) },
+        "sessions-runtime: session write lock close failed",
+      );
+    }
+    try {
+      const currentPayload = await readFile(lockPath, "utf8");
+      if (currentPayload === payload) {
+        await rm(lockPath, { force: true });
+      }
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        logger.warn(
+          { errorCode: fileSystemErrorCode(error) },
+          "sessions-runtime: session write lock cleanup failed",
+        );
+      }
+    }
+  }
+}
+
+function throwSessionsRuntimeUnavailable(
+  operation: string,
+  error: unknown,
+): never {
+  if (error instanceof SessionsRuntimeUnavailableError) {
+    throw error;
+  }
+  logger.error(
+    { operation, errorCode: fileSystemErrorCode(error) },
+    "sessions-runtime: session data scan failed",
+  );
+  throw new SessionsRuntimeUnavailableError();
+}
+
+type TranscriptTreeNode = {
+  id: string;
+  parentId: string | null;
+  rowIndex: number;
+  transparent: boolean;
+};
+
+type TranscriptRow = {
+  line: string;
+  record: Record<string, unknown> | null;
+};
+
+const CANONICAL_TRANSCRIPT_ENTRY_TYPES = new Set([
+  "message",
+  "thinking_level_change",
+  "model_change",
+  "compaction",
+  "branch_summary",
+  "custom",
+  "custom_message",
+  "label",
+  "session_info",
+]);
+
+function readTranscriptRecord(line: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(line) as unknown;
+    return typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readNonEmptyTranscriptId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readNullableTranscriptId(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return readNonEmptyTranscriptId(value) ?? undefined;
+}
+
+function resolveTranscriptLeafReference(
+  id: string | null,
+  nodes: Map<string, TranscriptTreeNode>,
+): string | null {
+  let currentId = id;
+  const seen = new Set<string>();
+  while (currentId !== null) {
+    if (seen.has(currentId)) return currentId;
+    seen.add(currentId);
+    const node = nodes.get(currentId);
+    if (!node?.transparent) return currentId;
+    currentId = node.parentId;
+  }
+  return null;
+}
+
+/**
+ * OpenClaw persists branch navigation as append-only `leaf` controls. Once a
+ * valid control exists, only the selected parent chain is active; transcripts
+ * without controls keep the historical flat-reader behavior.
+ */
+function selectActiveTranscriptLines(raw: string): string[] {
+  const rows: TranscriptRow[] = raw
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => ({ line, record: readTranscriptRecord(line) }));
+  const nodes = new Map<string, TranscriptTreeNode>();
+  const invalidLeafControlIds = new Set<string>();
+  let leafId: string | null = null;
+  let appendParentId: string | null = null;
+  let hasValidLeafControl = false;
+
+  for (const [rowIndex, row] of rows.entries()) {
+    const record = row.record;
+    if (!record) continue;
+    const id = readNonEmptyTranscriptId(record.id);
+    if (!id) continue;
+
+    if (record.type === "leaf") {
+      const parentId = Object.hasOwn(record, "parentId")
+        ? readNullableTranscriptId(record.parentId)
+        : undefined;
+      const targetId = Object.hasOwn(record, "targetId")
+        ? readNullableTranscriptId(record.targetId)
+        : undefined;
+      const requestedAppendParentId = Object.hasOwn(record, "appendParentId")
+        ? readNullableTranscriptId(record.appendParentId)
+        : targetId;
+      const validAppendMode =
+        record.appendMode === undefined || record.appendMode === "side";
+      if (
+        parentId === undefined ||
+        targetId === undefined ||
+        requestedAppendParentId === undefined ||
+        !validAppendMode
+      ) {
+        invalidLeafControlIds.add(id);
+        continue;
+      }
+      const isKnownReference = (referenceId: string | null): boolean =>
+        referenceId === null ||
+        (nodes.has(referenceId) && !invalidLeafControlIds.has(referenceId));
+      if (
+        !isKnownReference(targetId) ||
+        !isKnownReference(requestedAppendParentId)
+      ) {
+        invalidLeafControlIds.add(id);
+        continue;
+      }
+      const resolvedTargetId = resolveTranscriptLeafReference(targetId, nodes);
+      nodes.set(id, {
+        id,
+        parentId: resolvedTargetId,
+        rowIndex,
+        transparent: true,
+      });
+      leafId = resolvedTargetId;
+      appendParentId = resolveTranscriptLeafReference(
+        requestedAppendParentId,
+        nodes,
+      );
+      hasValidLeafControl = true;
+      continue;
+    }
+
+    const isCanonicalEntry =
+      typeof record.type === "string" &&
+      CANONICAL_TRANSCRIPT_ENTRY_TYPES.has(record.type);
+    if (!isCanonicalEntry) {
+      if (Object.hasOwn(record, "parentId")) {
+        const opaqueParentId = readNullableTranscriptId(record.parentId);
+        if (opaqueParentId !== undefined) {
+          nodes.set(id, {
+            id,
+            parentId: resolveTranscriptLeafReference(opaqueParentId, nodes),
+            rowIndex,
+            transparent: true,
+          });
+          appendParentId = id;
+        }
+      }
+      continue;
+    }
+
+    let parentId: string | null;
+    if (Object.hasOwn(record, "parentId")) {
+      const parsedParentId = readNullableTranscriptId(record.parentId);
+      if (parsedParentId === undefined) continue;
+      parentId = resolveTranscriptLeafReference(parsedParentId, nodes);
+    } else {
+      parentId = leafId;
+    }
+    if (
+      record.appendMode !== "side" &&
+      parentId === appendParentId &&
+      leafId !== appendParentId
+    ) {
+      parentId = leafId;
+    }
+    nodes.set(id, {
+      id,
+      parentId,
+      rowIndex,
+      transparent: false,
+    });
+    appendParentId = id;
+    if (record.appendMode !== "side") {
+      leafId = id;
+    }
+  }
+
+  if (!hasValidLeafControl) return rows.map((row) => row.line);
+
+  const selectedNodesByRow = new Map<number, TranscriptTreeNode>();
+  const seen = new Set<string>();
+  let currentId = leafId;
+  while (currentId !== null && !seen.has(currentId)) {
+    seen.add(currentId);
+    const node = nodes.get(currentId);
+    if (!node) break;
+    if (!node.transparent) selectedNodesByRow.set(node.rowIndex, node);
+    currentId = node.parentId;
+  }
+  return rows
+    .map((row, rowIndex) => {
+      const node = selectedNodesByRow.get(rowIndex);
+      if (!node || !row.record) return null;
+      return row.record.parentId === node.parentId
+        ? row.line
+        : JSON.stringify({ ...row.record, parentId: node.parentId });
+    })
+    .filter((line): line is string => line !== null);
+}
+
+function inspectTranscriptForMessage(
+  raw: string,
+  messageId: string,
+): {
+  found: boolean;
+  rawTailId: string | null;
+} {
+  let found = false;
+  let rawTailId: string | null = null;
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    const record = readTranscriptRecord(line);
+    if (!record) continue;
+    const id = readNonEmptyTranscriptId(record.id);
+    if (!id || record.type === "session") continue;
+    if (
+      (typeof record.type === "string" &&
+        CANONICAL_TRANSCRIPT_ENTRY_TYPES.has(record.type)) ||
+      (Object.hasOwn(record, "parentId") &&
+        readNullableTranscriptId(record.parentId) !== undefined)
+    ) {
+      rawTailId = id;
+    }
+    if (record.type === "message" && id === messageId) {
+      found = true;
+    }
+  }
+  return { found, rawTailId };
+}
 
 /** Plain concatenated text of a message content (string or text-block list). */
 function rawMessageText(content: unknown): string {
@@ -421,12 +768,15 @@ export class SessionsRuntime {
     });
   }
 
-  async listSessions(forceRefresh = false): Promise<SessionResponse[]> {
+  async listSessions(
+    forceRefresh = false,
+    archived: SessionArchiveFilter = "exclude",
+  ): Promise<SessionResponse[]> {
     // Check if cache is still valid
     if (!forceRefresh && this._sessionsCache !== null) {
       const elapsed = Date.now() - this._sessionsCacheMtime;
       if (elapsed < SessionsRuntime.SESSIONS_CACHE_TTL_MS) {
-        return this._sessionsCache;
+        return this.filterArchivedSessions(this._sessionsCache, archived);
       }
     }
 
@@ -438,7 +788,18 @@ export class SessionsRuntime {
     this._sessionsCache = sessions;
     this._sessionsCacheMtime = Date.now();
 
-    return sessions;
+    return this.filterArchivedSessions(sessions, archived);
+  }
+
+  private filterArchivedSessions(
+    sessions: SessionResponse[],
+    archived: SessionArchiveFilter,
+  ): SessionResponse[] {
+    if (archived === "include") return sessions;
+    if (archived === "only") {
+      return sessions.filter((session) => session.archived === true);
+    }
+    return sessions.filter((session) => session.archived !== true);
   }
 
   invalidateSessionsCache(): void {
@@ -524,8 +885,14 @@ export class SessionsRuntime {
         let files: Dirent[];
         try {
           files = await readdir(sessionsDir, { withFileTypes: true });
-        } catch {
-          continue;
+        } catch (error) {
+          if (isMissingPathError(error)) {
+            continue;
+          }
+          throwSessionsRuntimeUnavailable(
+            "read-agent-sessions-directory",
+            error,
+          );
         }
 
         for (const file of files) {
@@ -559,15 +926,11 @@ export class SessionsRuntime {
             fileNameToIndexKey.get(file.name) ??
             file.name.replace(/\.jsonl$/, "");
 
-          // Skip archived sessions (OpenClaw sessions.patch { archived }).
           const indexEntry = this.findSessionIndexEntry(
             sessionsIndex,
             filePath,
             sessionKey,
           )?.[1];
-          if (indexEntry?.archivedAt) {
-            continue;
-          }
 
           // Read the first user message metadata block and backfill exact
           // Feishu chat targets for existing sessions without touching
@@ -670,6 +1033,32 @@ export class SessionsRuntime {
             channelType,
           );
           const lastMsg = messages.at(-1);
+          let latestAssistantMessage: ChatMessage | undefined;
+          for (let index = messages.length - 1; index >= 0; index -= 1) {
+            const message = messages[index];
+            if (message?.role === "assistant") {
+              latestAssistantMessage = message;
+              break;
+            }
+          }
+          const runState: SessionRunState =
+            indexEntry?.status === "running"
+              ? "running"
+              : indexEntry?.status === "failed" ||
+                  indexEntry?.status === "killed" ||
+                  indexEntry?.status === "timeout" ||
+                  indexEntry?.abortedLastRun === true ||
+                  latestAssistantMessage?.failed === true
+                ? "failed"
+                : "idle";
+          const lastActivityAt = Math.max(
+            indexEntry?.lastInteractionAt ?? 0,
+            indexEntry?.lastActivityAt ?? 0,
+          );
+          const unread =
+            indexEntry?.markedUnreadAt !== undefined ||
+            (indexEntry?.lastReadAt !== undefined &&
+              lastActivityAt > indexEntry.lastReadAt);
 
           // Hint-less sessions (webchat/dashboard): prefer OpenClaw's
           // generated/explicit session name from sessions.json. Read live on
@@ -720,6 +1109,38 @@ export class SessionsRuntime {
             metadata: this.buildPublicMetadata(filePath, extra.metadata),
             createdAt: extra.createdAt ?? metadata.birthtime.toISOString(),
             updatedAt: extra.updatedAt ?? metadata.mtime.toISOString(),
+            category: indexEntry?.category ?? null,
+            pinned: indexEntry?.pinnedAt !== undefined,
+            unread,
+            archived: indexEntry?.archivedAt !== undefined,
+            archivedAt:
+              indexEntry?.archivedAt !== undefined
+                ? new Date(indexEntry.archivedAt).toISOString()
+                : null,
+            checkpointCount: indexEntry?.compactionCheckpoints?.length ?? 0,
+            runState,
+            ...(indexEntry?.inputTokens !== undefined
+              ? { inputTokens: indexEntry.inputTokens }
+              : {}),
+            ...(indexEntry?.outputTokens !== undefined
+              ? { outputTokens: indexEntry.outputTokens }
+              : {}),
+            ...(indexEntry?.totalTokens !== undefined
+              ? { totalTokens: indexEntry.totalTokens }
+              : {}),
+            ...(indexEntry?.totalTokensFresh !== undefined
+              ? { totalTokensFresh: indexEntry.totalTokensFresh }
+              : {}),
+            ...(indexEntry?.contextTokens !== undefined
+              ? { contextTokens: indexEntry.contextTokens }
+              : {}),
+            ...(indexEntry?.estimatedCostUsd !== undefined
+              ? { estimatedCostUsd: indexEntry.estimatedCostUsd }
+              : {}),
+            ...(indexEntry?.modelProvider
+              ? { modelProvider: indexEntry.modelProvider }
+              : {}),
+            ...(indexEntry?.model ? { model: indexEntry.model } : {}),
           });
         }
       }
@@ -727,8 +1148,11 @@ export class SessionsRuntime {
       return sessions.sort((left, right) =>
         right.updatedAt.localeCompare(left.updatedAt),
       );
-    } catch {
-      return [];
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        return [];
+      }
+      throwSessionsRuntimeUnavailable("scan-session-data", error);
     }
   }
 
@@ -912,6 +1336,74 @@ export class SessionsRuntime {
       ),
       sessionKey: session.sessionKey,
     };
+  }
+
+  async sessionContainsMessage(params: {
+    botId: string;
+    sessionKey: string;
+    messageId: string;
+  }): Promise<boolean> {
+    const filePath = await this.resolveManagedSessionFilePath(params);
+    try {
+      const raw = await readFile(filePath, "utf8");
+      return inspectTranscriptForMessage(raw, params.messageId).found;
+    } catch (error) {
+      if (isMissingPathError(error)) return false;
+      throw error;
+    }
+  }
+
+  async sessionContainsActiveMessage(params: {
+    botId: string;
+    sessionKey: string;
+    messageId: string;
+  }): Promise<boolean> {
+    const filePath = await this.resolveManagedSessionFilePath(params);
+    try {
+      const raw = await readFile(filePath, "utf8");
+      const activeTranscript = selectActiveTranscriptLines(raw).join("\n");
+      return inspectTranscriptForMessage(activeTranscript, params.messageId)
+        .found;
+    } catch (error) {
+      if (isMissingPathError(error)) return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Select a persisted message as the active transcript leaf without deleting
+   * later rows. OpenClaw will attach the next message to this selected branch.
+   */
+  async selectActiveMessage(params: {
+    botId: string;
+    sessionKey: string;
+    messageId: string;
+    sessionFile?: string;
+  }): Promise<void> {
+    const filePath = await this.resolveManagedSessionFilePath(params);
+    await withSessionWriteLock(filePath, async (normalizedFilePath) => {
+      let raw: string;
+      try {
+        raw = await readFile(normalizedFilePath, "utf8");
+      } catch (error) {
+        if (isMissingPathError(error)) throw new SessionMessageNotFoundError();
+        throw error;
+      }
+      const inspected = inspectTranscriptForMessage(raw, params.messageId);
+      if (!inspected.found) throw new SessionMessageNotFoundError();
+
+      const marker = JSON.stringify({
+        type: "leaf",
+        id: crypto.randomUUID(),
+        parentId: inspected.rawTailId,
+        timestamp: new Date().toISOString(),
+        targetId: params.messageId,
+        appendParentId: params.messageId,
+      });
+      const separator = raw.length > 0 && !raw.endsWith("\n") ? "\n" : "";
+      await appendFile(normalizedFilePath, `${separator}${marker}\n`, "utf8");
+    });
+    this.invalidateSessionsCache();
   }
 
   async getChatHistoryBySessionKey(
@@ -1155,7 +1647,7 @@ export class SessionsRuntime {
       strippedText: string;
       abortSnapshot: boolean;
     } | null = null;
-    for (const line of raw.split("\n")) {
+    for (const line of selectActiveTranscriptLines(raw)) {
       if (!line.trim()) continue;
       try {
         const entry = JSON.parse(line) as {
@@ -1239,6 +1731,7 @@ export class SessionsRuntime {
             entry.message.openclawAbort?.aborted === true;
           const aborted =
             abortSnapshot || entry.message.stopReason === "aborted";
+          const failed = entry.message.stopReason === "error";
 
           if (
             lastAssistant?.abortSnapshot === true &&
@@ -1284,6 +1777,7 @@ export class SessionsRuntime {
               timestamp: entry.message.timestamp ?? null,
               createdAt: entry.timestamp ?? null,
               ...(aborted ? { aborted: true } : {}),
+              ...(failed ? { failed: true } : {}),
             },
             channelType,
             { paths: mediaPaths, types: mediaTypes },
@@ -1869,8 +2363,14 @@ export class SessionsRuntime {
     };
   }
 
-  async getSession(id: string): Promise<SessionResponse | null> {
-    const sessions = await this.listSessions();
+  async getSession(
+    id: string,
+    includeArchived = false,
+  ): Promise<SessionResponse | null> {
+    const sessions = await this.listSessions(
+      false,
+      includeArchived ? "include" : "exclude",
+    );
     return sessions.find((session) => session.id === id) ?? null;
   }
 
@@ -1994,6 +2494,27 @@ export class SessionsRuntime {
     return this.getSessionFilePath(botId, sessionKey);
   }
 
+  private async resolveManagedSessionFilePath(params: {
+    botId: string;
+    sessionKey: string;
+    sessionFile?: string;
+  }): Promise<string> {
+    if (!params.sessionFile) {
+      return this.resolveSessionFilePath(params.botId, params.sessionKey);
+    }
+    const resolved = path.resolve(params.sessionFile);
+    const stateDir = path.resolve(this.env.openclawStateDir);
+    if (
+      resolved !== stateDir &&
+      !resolved.startsWith(`${stateDir}${path.sep}`)
+    ) {
+      throw new Error(
+        "Session transcript is outside the managed state directory",
+      );
+    }
+    return resolved;
+  }
+
   private async readSessionsIndex(
     sessionsDir: string,
   ): Promise<Record<string, SessionsIndexEntry>> {
@@ -2002,8 +2523,11 @@ export class SessionsRuntime {
       const raw = await readFile(indexPath, "utf8");
       const parsed = JSON.parse(raw) as Record<string, SessionsIndexEntry>;
       return parsed;
-    } catch {
-      return {};
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        return {};
+      }
+      throwSessionsRuntimeUnavailable("read-sessions-index", error);
     }
   }
 

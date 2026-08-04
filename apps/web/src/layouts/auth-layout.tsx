@@ -1,5 +1,6 @@
 import { authClient } from "@/lib/auth-client";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { ApprovalNotificationWatcher } from "../components/approval-notification-watcher";
 
 export function AuthLayout() {
   const location = useLocation();
@@ -15,5 +16,10 @@ export function AuthLayout() {
     return <Navigate to="/" replace state={{ from: location }} />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <ApprovalNotificationWatcher />
+      <Outlet />
+    </>
+  );
 }

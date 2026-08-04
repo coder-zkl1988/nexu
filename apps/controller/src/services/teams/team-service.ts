@@ -11,6 +11,7 @@ import type {
 import { logger } from "../../lib/logger.js";
 import type { ExpertLedger } from "../experthub/types.js";
 import type { OpenClawGatewayService } from "../openclaw-gateway-service.js";
+import { executionSessionKeyFromNotes } from "./team-execution-link.js";
 import type { TeamLedgerStore } from "./team-ledger.js";
 
 /** Cap the member persona block so notes stay within the worker-context budget. */
@@ -50,6 +51,7 @@ export type TeamServiceDeps = {
     | "workboardCardCreate"
     | "workboardCardDecompose"
     | "workboardCardMove"
+    | "workboardCardUpdate"
     | "workboardCardsList"
     | "workboardCardComment"
     | "workboardCardComplete"
@@ -194,9 +196,8 @@ export class TeamService {
   }
 
   /**
-   * Live snapshot of the team's Workboard for the Kanban view. Degrades to an
-   * empty board when the gateway is offline or the board has no cards yet, so
-   * the polling UI never error-spams.
+   * Live snapshot of the team's Workboard for the Kanban view. Availability is
+   * explicit so clients do not mistake an offline gateway for an empty board.
    */
   async getBoard(teamId: string): Promise<TeamBoardResponse> {
     const team = this.requireTeam(teamId);
@@ -207,11 +208,13 @@ export class TeamService {
       });
       return {
         boardId: team.boardId,
+        available: true,
         cards: cards.map((card) => {
           const agentId = card.agentId ?? null;
           // The workflow engine records the step reply as the FIRST comment
           // and the short completion summary after it — take the first.
           const output = card.metadata?.comments?.[0]?.body ?? null;
+          const links = card.metadata?.links ?? [];
           return {
             id: card.id,
             title: card.title,
@@ -221,6 +224,18 @@ export class TeamService {
               ? (memberByBotId.get(agentId)?.name ?? null)
               : null,
             output,
+            sessionKey:
+              card.sessionKey ?? executionSessionKeyFromNotes(card.notes),
+            parentIds: links.flatMap((link) =>
+              link.type === "parent" && link.targetCardId
+                ? [link.targetCardId]
+                : [],
+            ),
+            childIds: links.flatMap((link) =>
+              link.type === "child" && link.targetCardId
+                ? [link.targetCardId]
+                : [],
+            ),
           };
         }),
       };
@@ -234,7 +249,7 @@ export class TeamService {
         },
         "team board fetch failed; returning empty board",
       );
-      return { boardId: team.boardId, cards: [] };
+      return { boardId: team.boardId, available: false, cards: [] };
     }
   }
 
@@ -536,12 +551,19 @@ export class TeamService {
       .filter(Boolean)
       .join("\n");
 
-    await this.deps.gateway.workboardCardMove({
-      id: cardId,
-      status: "running",
-    });
-
     try {
+      await this.deps.gateway.workboardCardUpdate({
+        id: cardId,
+        sessionKey,
+        notes: this.buildCardNotes(persona, taskNotes).slice(
+          0,
+          MAX_NOTES_CHARS,
+        ),
+      });
+      await this.deps.gateway.workboardCardMove({
+        id: cardId,
+        status: "running",
+      });
       await this.deps.sendChat({ botId, sessionKey, message });
       const reply = await this.awaitLaneReply(botId, sessionKey);
       await this.deps.gateway.workboardCardComment({

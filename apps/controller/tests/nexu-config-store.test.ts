@@ -1329,6 +1329,40 @@ describe("NexuConfigStore", () => {
     expect(result.error?.length ?? 0).toBeLessThan(320);
   });
 
+  it("connectDesktopCloud returns a browser URL after registering the device", async () => {
+    const store = new NexuConfigStore(env);
+    let registeredDeviceId = "";
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://tabbyapi.picaso.studio/api/auth/device-register",
+      );
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(String(init?.body)) as {
+        deviceId: string;
+        deviceSecretHash: string;
+      };
+      registeredDeviceId = body.deviceId;
+      expect(body.deviceId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(body.deviceSecretHash).toMatch(/^[0-9a-f]{64}$/);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await store.connectDesktopCloud({
+      source: "welcome_page",
+    });
+
+    expect(result).toEqual({
+      browserUrl: `https://tabby.picaso.studio/auth?desktop=1&device_id=${registeredDeviceId}&source=welcome_page`,
+      error: undefined,
+    });
+    expect((await store.getDesktopCloudStatus()).polling).toBe(true);
+
+    await store.disconnectDesktopCloud();
+  });
+
   it("connectDesktopCloud truncates long non-challenge registration errors", async () => {
     const store = new NexuConfigStore(env);
     const fetchMock = vi.fn(
@@ -1541,5 +1575,100 @@ describe("NexuConfigStore", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("persists schedule output audit without changing configuration time", async () => {
+    const store = new NexuConfigStore(env);
+    const schedule = await store.createSchedule({
+      botId: "bot-1",
+      name: "Daily report",
+      cron: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+      prompt: "Summarize the project",
+      enabled: true,
+      source: "ui",
+      onlyNotifyOnChange: true,
+      failureAlertEnabled: false,
+      failureAlertAfter: 3,
+    });
+
+    await store.recordScheduleOutputNotification(schedule.id, {
+      fingerprint: "sha256-output-fingerprint",
+      observedAt: "2026-08-03T09:00:00.000Z",
+      status: "suppressed",
+    });
+
+    await expect(store.getSchedule(schedule.id)).resolves.toMatchObject({
+      updatedAt: schedule.updatedAt,
+      lastOutputFingerprint: "sha256-output-fingerprint",
+      lastOutputObservedAt: "2026-08-03T09:00:00.000Z",
+      lastOutputNotificationStatus: "suppressed",
+    });
+  });
+
+  it("keeps a newer schedule output cursor when an older run is recorded later", async () => {
+    const store = new NexuConfigStore(env);
+    const schedule = await store.createSchedule({
+      botId: "bot-1",
+      name: "Daily report",
+      cron: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+      prompt: "Summarize the project",
+      enabled: true,
+      source: "ui",
+      onlyNotifyOnChange: true,
+      failureAlertEnabled: false,
+      failureAlertAfter: 3,
+    });
+
+    await store.recordScheduleOutputNotification(schedule.id, {
+      fingerprint: "newer-fingerprint",
+      observedAt: "2026-08-03T10:00:00.000Z",
+      status: "delivered",
+    });
+    await store.recordScheduleOutputNotification(schedule.id, {
+      fingerprint: "older-fingerprint",
+      observedAt: "2026-08-03T09:00:00.000Z",
+      status: "suppressed",
+    });
+
+    await expect(store.getSchedule(schedule.id)).resolves.toMatchObject({
+      lastOutputFingerprint: "newer-fingerprint",
+      lastOutputObservedAt: "2026-08-03T10:00:00.000Z",
+      lastOutputNotificationStatus: "delivered",
+    });
+  });
+
+  it("clears optional schedule fields when an update sends empty strings", async () => {
+    const store = new NexuConfigStore(env);
+    const schedule = await store.createSchedule({
+      botId: "bot-1",
+      name: "Daily report",
+      cron: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+      prompt: "Summarize the project",
+      source: "ui",
+      sessionKey: "agent:bot-1:feishu:group:oc_report",
+      channelType: "feishu",
+      channelId: "feishu-account",
+      description: "Original description",
+      modelId: "openai/gpt-5",
+    });
+
+    await store.updateSchedule(schedule.id, {
+      sessionKey: "",
+      channelType: "",
+      channelId: "",
+      description: "",
+      modelId: "",
+    });
+
+    await expect(store.getSchedule(schedule.id)).resolves.toMatchObject({
+      sessionKey: undefined,
+      channelType: undefined,
+      channelId: undefined,
+      description: undefined,
+      modelId: undefined,
+    });
   });
 });

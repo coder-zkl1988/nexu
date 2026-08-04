@@ -28,7 +28,7 @@ describe("XHS image generation", () => {
     await expect(
       generateXhsImages({
         prompt: "  羽毛球拍产品摄影  ",
-        model: "tabby-image",
+        model: "tabby-image-pro",
         quality: "high",
         aspectRatio: "3:4",
         size: "2K",
@@ -40,7 +40,7 @@ describe("XHS image generation", () => {
     expect(apiMocks.postApiV1MediaGenerateImage).toHaveBeenCalledWith({
       body: {
         prompt: "羽毛球拍产品摄影",
-        model: "tabby-image",
+        model: "tabby-image-pro",
         quality: "high",
         aspectRatio: "3:4",
         size: "2K",

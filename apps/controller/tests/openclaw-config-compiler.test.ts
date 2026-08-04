@@ -159,13 +159,18 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
-  it("denies host shell execution outside an explicit sandbox", () => {
+  it("allows host shell and process execution by default", () => {
     const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
     Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
     try {
       const result = compileOpenClawConfig(createConfig(), createEnv());
-      expect(result.tools?.exec?.security).toBe("deny");
-      expect(result.tools?.deny).toEqual(["exec", "process"]);
+      expect(result.tools?.profile).toBe("full");
+      expect(result.tools?.exec).toEqual({
+        security: "full",
+        ask: "off",
+        host: "gateway",
+      });
+      expect(result.tools?.deny).toBeUndefined();
     } finally {
       if (previousSandboxEnabled === undefined) {
         Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
@@ -187,13 +192,84 @@ describe("compileOpenClawConfig", () => {
     ).toBe(false);
   });
 
+  it("compiles memory scope, cross-session recall, and sync settings", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        memory: {
+          enabled: true,
+          sources: ["memory", "sessions"],
+          extraPaths: ["docs/knowledge"],
+          syncIntervalMinutes: 15,
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(result.agents.defaults.memorySearch).toEqual({
+      enabled: true,
+      sources: ["memory", "sessions"],
+      experimental: { sessionMemory: true },
+      provider: "none",
+      fallback: "none",
+      extraPaths: ["docs/knowledge"],
+      store: {
+        fts: { tokenizer: "trigram" },
+        vector: { enabled: false },
+      },
+      sync: { intervalMinutes: 15 },
+    });
+  });
+
+  it("keeps session transcript indexing disabled outside cross-session memory", () => {
+    const result = compileOpenClawConfig(createConfig(), createEnv());
+
+    expect(result.agents.defaults.memorySearch).toMatchObject({
+      sources: ["memory"],
+      experimental: { sessionMemory: false },
+      provider: "none",
+      fallback: "none",
+      store: {
+        fts: { tokenizer: "trigram" },
+        vector: { enabled: false },
+      },
+    });
+  });
+
+  it("reuses a compiled model provider for semantic memory embeddings", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        memory: {
+          enabled: true,
+          sources: ["memory", "sessions"],
+          extraPaths: [],
+          syncIntervalMinutes: 5,
+          provider: "link",
+          model: "Qwen/Qwen3-Embedding-4B",
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(result.agents.defaults.memorySearch).toMatchObject({
+      provider: "link",
+      model: "Qwen/Qwen3-Embedding-4B",
+      fallback: "none",
+      store: {
+        fts: { tokenizer: "trigram" },
+        vector: { enabled: true },
+      },
+    });
+    expect(result.models?.providers?.link?.apiKey).toBe("link-key");
+  });
+
   it("keeps local automation absent when the persisted config predates it", () => {
     const result = compileOpenClawConfig(createConfig(), createEnv());
 
     expect(result.mcp).toBeUndefined();
-    expect(result.tools?.exec?.security).toBe("deny");
-    expect(result.tools?.deny).toEqual(["exec", "process"]);
-    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.tools?.exec?.security).toBe("full");
+    expect(result.tools?.deny).toBeUndefined();
+    expect(result.plugins?.allow).toBeUndefined();
+    expect(result.plugins?.deny).toBeUndefined();
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
   });
 
@@ -234,11 +310,11 @@ describe("compileOpenClawConfig", () => {
     // carries no session the user did not open in it. The top-level `browser`
     // block is gone from OpenClawConfig entirely, so the type — not this test —
     // is what stops it coming back.
-    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.browser).toBeUndefined();
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
-    expect(result.tools?.exec?.security).toBe("deny");
-    expect(result.tools?.deny).toEqual(["exec", "process"]);
+    expect(result.tools?.exec?.security).toBe("full");
+    expect(result.tools?.deny).toBeUndefined();
   });
 
   it("withholds the embedded browser tools while the switch is off", () => {
@@ -273,13 +349,13 @@ describe("compileOpenClawConfig", () => {
     );
 
     expect(result.mcp).toBeUndefined();
-    expect(result.plugins?.allow).not.toContain("browser");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.browser).toBeUndefined();
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(
       "cua-driver__click",
     );
-    expect(result.tools?.exec?.security).toBe("deny");
+    expect(result.tools?.exec?.security).toBe("full");
   });
 
   it("fails closed when the local automation preview flag is missing", () => {
@@ -336,7 +412,7 @@ describe("compileOpenClawConfig", () => {
     expect(server?.toolFilter).not.toMatchObject({
       include: expect.arrayContaining(["agent"]),
     });
-    expect(result.tools?.exec?.security).toBe("deny");
+    expect(result.tools?.exec?.security).toBe("full");
   });
 
   it("registers cua-driver on Windows and omits a missing sidecar", () => {
@@ -378,8 +454,8 @@ describe("compileOpenClawConfig", () => {
       },
     });
     expect(unavailable.mcp).toBeUndefined();
-    expect(available.tools?.exec?.security).toBe("deny");
-    expect(available.tools?.deny).toEqual(["exec", "process"]);
+    expect(available.tools?.exec?.security).toBe("full");
+    expect(available.tools?.deny).toBeUndefined();
   });
 
   it("keeps command execution inside an explicitly enabled sandbox", () => {
@@ -390,9 +466,12 @@ describe("compileOpenClawConfig", () => {
 
       expect(result.tools?.exec).toMatchObject({
         security: "full",
+        ask: "off",
         host: "sandbox",
       });
       expect(result.tools?.deny).toBeUndefined();
+      expect(result.tools?.sandbox?.tools?.allow).toBeUndefined();
+      expect(result.tools?.sandbox?.tools?.deny).toEqual(["gateway"]);
     } finally {
       if (previousSandboxEnabled === undefined) {
         Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
@@ -599,6 +678,32 @@ describe("compileOpenClawConfig", () => {
     ]);
   });
 
+  it("compiles Tabby Codex aliases with a 258K context window", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        desktop: {
+          selectedModelId: "link/tabby-ultra",
+          cloud: {
+            linkUrl: "https://link.example.com",
+            apiKey: "link-key",
+            models: [
+              { id: "tabby-ultra", name: "tabby-ultra", provider: "openai" },
+              { id: "tabby-pro", name: "tabby-pro", provider: "openai" },
+              { id: "tabby-mini", name: "tabby-mini", provider: "openai" },
+            ],
+          },
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(result.models?.providers.link?.models).toMatchObject([
+      { id: "tabby-ultra", contextWindow: 258000, maxTokens: 128000 },
+      { id: "tabby-pro", contextWindow: 258000, maxTokens: 128000 },
+      { id: "tabby-mini", contextWindow: 258000, maxTokens: 32768 },
+    ]);
+  });
+
   it("does not allow/enable openclaw-weixin without a connected wechat channel", () => {
     // The empty-config prewarm was removed because always-loading the channel
     // plugins (plus the placeholder channels) blocked controller readiness for
@@ -612,7 +717,7 @@ describe("compileOpenClawConfig", () => {
       createEnv(),
     );
 
-    expect(result.plugins?.allow).not.toContain("openclaw-weixin");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.["openclaw-weixin"]).toBeUndefined();
   });
 
@@ -658,7 +763,7 @@ describe("compileOpenClawConfig", () => {
         accountId: "default",
       },
     });
-    expect(result.plugins?.allow).toContain("openclaw-qqbot");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.["openclaw-qqbot"]?.enabled).toBe(true);
   });
 
@@ -703,7 +808,7 @@ describe("compileOpenClawConfig", () => {
         accountId: "default",
       },
     });
-    expect(result.plugins?.allow).toContain("wecom");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.wecom?.enabled).toBe(true);
   });
 
@@ -806,7 +911,7 @@ describe("compileOpenClawConfig", () => {
         accountId: "__default__",
       },
     });
-    expect(result.plugins?.allow).toContain("dingtalk-connector");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.["dingtalk-connector"]?.enabled).toBe(true);
   });
 
@@ -1661,6 +1766,72 @@ describe("compileOpenClawConfig", () => {
     expect(result.models?.providers.openai).not.toHaveProperty("apiKey");
     expect(result.models?.providers.openai?.models[0]?.id).toBe("gpt-5.4");
   });
+
+  it("compiles Bedrock with AWS SDK auth without emitting legacy discovery", () => {
+    const result = compileOpenClawConfig(
+      createConfig({
+        models: {
+          mode: "merge",
+          bedrockDiscovery: {
+            enabled: true,
+            region: "us-west-2",
+            providerFilter: ["anthropic"],
+          },
+          providers: {
+            "amazon-bedrock": {
+              enabled: true,
+              auth: "aws-sdk",
+              api: "bedrock-converse-stream",
+              baseUrl: "https://bedrock-runtime.us-west-2.amazonaws.com",
+              models: [
+                {
+                  id: "us.anthropic.claude-opus-4-6-v1:0",
+                  name: "Claude Opus 4.6 (Bedrock)",
+                  reasoning: true,
+                  input: ["text", "image"],
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                  },
+                  contextWindow: 200_000,
+                  maxTokens: 8_192,
+                },
+              ],
+            },
+          },
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(result.models).not.toHaveProperty("bedrockDiscovery");
+    expect(result.models?.providers["amazon-bedrock"]).toMatchObject({
+      auth: "aws-sdk",
+      api: "bedrock-converse-stream",
+      baseUrl: "https://bedrock-runtime.us-west-2.amazonaws.com",
+      models: [
+        expect.objectContaining({
+          id: "us.anthropic.claude-opus-4-6-v1:0",
+          contextWindow: 200_000,
+          maxTokens: 8_192,
+        }),
+      ],
+    });
+    expect(result.models?.providers["amazon-bedrock"]?.apiKey).toBeUndefined();
+    expect(result.plugins.allow).toBeUndefined();
+    expect(result.plugins.entries["amazon-bedrock"]).toEqual({
+      enabled: true,
+      config: {
+        discovery: {
+          enabled: true,
+          region: "us-west-2",
+          providerFilter: ["anthropic"],
+        },
+      },
+    });
+  });
 });
 
 /**
@@ -1699,7 +1870,7 @@ describe("resolveControlUiRoot", () => {
 describe("compileOpenClawConfig > workboard (teams) gating", () => {
   it("omits the workboard plugin when no teams exist (hasTeams unset)", () => {
     const result = compileOpenClawConfig(createConfig(), createEnv());
-    expect(result.plugins?.allow).not.toContain("workboard");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.workboard).toBeUndefined();
   });
 
@@ -1712,7 +1883,7 @@ describe("compileOpenClawConfig > workboard (teams) gating", () => {
       undefined,
       true,
     );
-    expect(result.plugins?.allow).toContain("workboard");
+    expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.entries?.workboard).toEqual({ enabled: true });
   });
 });

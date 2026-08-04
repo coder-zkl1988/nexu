@@ -2,7 +2,9 @@ import * as Sentry from "@sentry/electron/main";
 import {
   BrowserWindow,
   app,
+  clipboard,
   crashReporter,
+  desktopCapturer,
   dialog,
   ipcMain,
   screen,
@@ -33,6 +35,7 @@ import {
   updateDesktopShellPreferences,
 } from "./services/desktop-shell-preferences";
 import { embeddedBrowserManager } from "./services/embedded-browser-manager";
+import { consumeQuickChatSelection } from "./services/quick-chat-selection";
 import {
   type QuitHandlerOptions,
   runTeardownAndExit,
@@ -400,6 +403,7 @@ function showPrimaryWindow(sender: Electron.WebContents): void {
 async function startDeskpetChat(
   runtimeConfig: DesktopRuntimeConfig,
   text: string,
+  attachments: HostInvokePayloadMap["desktop:deskpet-start-chat"]["attachments"] = [],
 ): Promise<HostInvokeResultMap["desktop:deskpet-start-chat"]> {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -426,6 +430,7 @@ async function startDeskpetChat(
         message: {
           type: "text",
           content: trimmed,
+          ...(attachments.length > 0 ? { attachments } : {}),
         },
       }),
     },
@@ -546,6 +551,7 @@ function pauseDeskpetCurrentReply(
 async function replyDeskpetCurrentChat(
   runtimeConfig: DesktopRuntimeConfig,
   text: string,
+  attachments: HostInvokePayloadMap["desktop:deskpet-reply-current-chat"]["attachments"] = [],
 ): Promise<HostInvokeResultMap["desktop:deskpet-reply-current-chat"]> {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -568,6 +574,7 @@ async function replyDeskpetCurrentChat(
         message: {
           type: "text",
           content: trimmed,
+          ...(attachments.length > 0 ? { attachments } : {}),
         },
       }),
     },
@@ -597,15 +604,98 @@ async function replyDeskpetCurrentChat(
 async function sendDeskpetMessage(
   runtimeConfig: DesktopRuntimeConfig,
   text: string,
+  attachments: HostInvokePayloadMap["desktop:deskpet-send-message"]["attachments"] = [],
 ): Promise<HostInvokeResultMap["desktop:deskpet-send-message"]> {
   if (!deskpetCurrentChatTarget) {
-    const result = await startDeskpetChat(runtimeConfig, text);
+    const result = await startDeskpetChat(runtimeConfig, text, attachments);
     return { ...result, mode: "started" };
   }
 
   const path = getDeskpetCurrentChatPath() ?? "/workspace";
-  await replyDeskpetCurrentChat(runtimeConfig, text);
+  await replyDeskpetCurrentChat(runtimeConfig, text, attachments);
   return { ok: true, mode: "replied", path };
+}
+
+async function getQuickChatContext(
+  input: HostInvokePayloadMap["desktop:get-quick-chat-context"],
+): Promise<HostInvokeResultMap["desktop:get-quick-chat-context"]> {
+  let selectedText: string | null = null;
+  let selectedTextSource: "selection" | "clipboard" | null = null;
+  if (input.includeSelectedText) {
+    selectedText = consumeQuickChatSelection();
+    if (selectedText) selectedTextSource = "selection";
+
+    const primaryWindow = BrowserWindow.getAllWindows().find(
+      (window) =>
+        !window.isDestroyed() && window.getTitle() !== "Tabby Deskpet",
+    );
+    if (!selectedText && primaryWindow && !primaryWindow.isDestroyed()) {
+      const selected = await primaryWindow.webContents
+        .executeJavaScript(
+          `(() => {
+            const selection = window.getSelection()?.toString().trim();
+            if (selection) return selection;
+            const active = document.activeElement;
+            if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+              const start = active.selectionStart ?? 0;
+              const end = active.selectionEnd ?? start;
+              return active.value.slice(start, end).trim();
+            }
+            return "";
+          })()`,
+          true,
+        )
+        .catch(() => "");
+      if (typeof selected === "string" && selected.trim()) {
+        selectedText = selected.trim().slice(0, 8000);
+        selectedTextSource = "selection";
+      }
+    }
+    if (!selectedText) {
+      const selectionClipboard = clipboard.readText("selection").trim();
+      const regularClipboard = clipboard.readText().trim();
+      const clipboardText = selectionClipboard || regularClipboard;
+      if (clipboardText) {
+        selectedText = clipboardText.slice(0, 8000);
+        selectedTextSource = selectionClipboard ? "selection" : "clipboard";
+      }
+    }
+  }
+
+  let screenshot: HostInvokeResultMap["desktop:get-quick-chat-context"]["screenshot"] =
+    null;
+  if (input.includeScreenshot) {
+    const display = screen.getDisplayNearestPoint(
+      screen.getCursorScreenPoint(),
+    );
+    const maxWidth = 1600;
+    const scale = Math.min(1, maxWidth / Math.max(1, display.size.width));
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: {
+        width: Math.max(1, Math.round(display.size.width * scale)),
+        height: Math.max(1, Math.round(display.size.height * scale)),
+      },
+    });
+    const source =
+      sources.find(
+        (candidate) => candidate.display_id === String(display.id),
+      ) ?? sources[0];
+    if (source && !source.thumbnail.isEmpty()) {
+      const png = source.thumbnail.toPNG();
+      screenshot = {
+        type: "image",
+        content: png.toString("base64"),
+        metadata: {
+          mimeType: "image/png",
+          filename: `quick-chat-screenshot-${Date.now()}.png`,
+          size: png.byteLength,
+        },
+      };
+    }
+  }
+
+  return { selectedText, selectedTextSource, screenshot };
 }
 
 const nativeCrashTestTitles = {
@@ -686,6 +776,7 @@ export function registerIpcHandlers(
   coldStartReady?: Promise<void>,
   onDeskpetActivity?: (mood: DesktopDeskpetMood) => void,
   openclawStateDir?: string,
+  getQuickChatContextSenderId?: () => number | null,
 ): () => void {
   ensureDesktopDevRendererLogTracking();
 
@@ -1019,6 +1110,7 @@ export function registerIpcHandlers(
           const result = await sendDeskpetMessage(
             runtimeConfig,
             typedPayload.text,
+            typedPayload.attachments,
           );
           broadcastDesktopCommand({
             type: "deskpet:set-mood",
@@ -1035,6 +1127,7 @@ export function registerIpcHandlers(
           const result = await startDeskpetChat(
             runtimeConfig,
             typedPayload.text,
+            typedPayload.attachments,
           );
           broadcastDesktopCommand({
             type: "deskpet:set-mood",
@@ -1057,6 +1150,7 @@ export function registerIpcHandlers(
           const result = await replyDeskpetCurrentChat(
             runtimeConfig,
             typedPayload.text,
+            typedPayload.attachments,
           );
           broadcastDesktopCommand({
             type: "deskpet:set-mood",
@@ -1153,6 +1247,17 @@ export function registerIpcHandlers(
           return { ok: true };
         }
 
+        case "desktop:get-quick-chat-context": {
+          if (_event.sender.id !== getQuickChatContextSenderId?.()) {
+            throw new Error(
+              "Quick Chat context is unavailable for this window.",
+            );
+          }
+          return getQuickChatContext(
+            payload as HostInvokePayloadMap["desktop:get-quick-chat-context"],
+          );
+        }
+
         case "desktop:report-error": {
           const errorPayload =
             payload as HostInvokePayloadMap["desktop:report-error"];
@@ -1209,12 +1314,9 @@ export function registerIpcHandlers(
         case "shell:open-external": {
           const typedPayload =
             payload as HostInvokePayloadMap["shell:open-external"];
-          console.info("[host:invoke:shell-open-external]", typedPayload.url);
+          console.info("[host:invoke:shell-open-external]");
           await shell.openExternal(typedPayload.url);
-          console.info(
-            "[host:invoke:shell-open-external:done]",
-            typedPayload.url,
-          );
+          console.info("[host:invoke:shell-open-external:done]");
 
           const result: HostInvokeResultMap["shell:open-external"] = {
             ok: true,

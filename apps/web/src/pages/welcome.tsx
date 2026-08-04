@@ -4,6 +4,7 @@ import {
 } from "@/hooks/use-desktop-cloud-status";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowRight,
   Check,
   ChevronLeft,
@@ -320,55 +321,78 @@ export function WelcomePage() {
                           </div>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void handleAccountLogin();
-                          }}
-                          disabled={cloudConnecting}
-                          className={`group w-full rounded-[28px] border p-5 text-left transition-all duration-300 ${
-                            cloudConnecting
-                              ? "opacity-40 cursor-not-allowed"
-                              : "cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(0,0,0,0.16)]"
-                          } ${"border-black/12 bg-[linear-gradient(135deg,#18181b_0%,#232327_100%)] text-white"}`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl shrink-0 bg-white/[0.08] text-white">
-                                <loginOption.icon size={18} />
+                        <div className="space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleAccountLogin();
+                            }}
+                            disabled={cloudConnecting}
+                            className={`group w-full rounded-[28px] border p-5 text-left transition-all duration-300 ${
+                              cloudConnecting
+                                ? "opacity-40 cursor-not-allowed"
+                                : "cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(0,0,0,0.16)]"
+                            } ${"border-black/12 bg-[linear-gradient(135deg,#18181b_0%,#232327_100%)] text-white"}`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl shrink-0 bg-white/[0.08] text-white">
+                                  <loginOption.icon size={18} />
+                                </div>
+                                <div
+                                  className="text-[22px] leading-none tracking-tight text-white"
+                                  style={{
+                                    fontFamily:
+                                      "Georgia, Times New Roman, serif",
+                                  }}
+                                >
+                                  {loginOption.title}
+                                </div>
                               </div>
-                              <div
-                                className="text-[22px] leading-none tracking-tight text-white"
-                                style={{
-                                  fontFamily: "Georgia, Times New Roman, serif",
-                                }}
-                              >
-                                {loginOption.title}
+                              <span className="rounded-full bg-white/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/75 shrink-0">
+                                {loginOption.badge}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 flex items-start justify-between gap-4">
+                              <div>
+                                <p className="mt-3 max-w-[430px] text-[13px] leading-[1.75] text-white/64">
+                                  {loginOption.description}
+                                </p>
+                              </div>
+                              <ArrowRight
+                                size={16}
+                                className="mt-4 shrink-0 text-white/55"
+                              />
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/44">
+                              {loginOption.meta.map((item) => (
+                                <span key={item}>{item}</span>
+                              ))}
+                            </div>
+                          </button>
+
+                          {loginError && (
+                            <div
+                              role="alert"
+                              className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-900"
+                            >
+                              <AlertCircle
+                                size={16}
+                                className="mt-0.5 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-[12px] font-semibold">
+                                  {t("welcome.loginUnavailable")}
+                                </p>
+                                <p className="mt-1 break-words text-[11px] leading-relaxed text-red-800/80">
+                                  {loginError}
+                                </p>
                               </div>
                             </div>
-                            <span className="rounded-full bg-white/[0.08] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/75 shrink-0">
-                              {loginOption.badge}
-                            </span>
-                          </div>
-
-                          <div className="mt-4 flex items-start justify-between gap-4">
-                            <div>
-                              <p className="mt-3 max-w-[430px] text-[13px] leading-[1.75] text-white/64">
-                                {loginOption.description}
-                              </p>
-                            </div>
-                            <ArrowRight
-                              size={16}
-                              className="mt-4 shrink-0 text-white/55"
-                            />
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/44">
-                            {loginOption.meta.map((item) => (
-                              <span key={item}>{item}</span>
-                            ))}
-                          </div>
-                        </button>
+                          )}
+                        </div>
                       )}
                     </FadeIn>
 

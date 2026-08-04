@@ -85,6 +85,73 @@ describe("openclawConfigSchema local automation", () => {
   });
 });
 
+describe("openclawConfigSchema memory search", () => {
+  it("accepts the OpenClaw 2026.7.1 FTS-only contract", () => {
+    const result = openclawConfigSchema.safeParse(
+      createMinimalConfig({
+        agents: {
+          defaults: {
+            model: { primary: "test-model" },
+            memorySearch: {
+              enabled: true,
+              sources: ["memory", "sessions"],
+              experimental: { sessionMemory: true },
+              provider: "none",
+              fallback: "none",
+              store: {
+                fts: { tokenizer: "trigram" },
+                vector: { enabled: false },
+              },
+              chunking: { tokens: 400, overlap: 80 },
+            },
+          },
+          list: [{ id: "bot-1", name: "Bot" }],
+        },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agents.defaults?.memorySearch).toMatchObject({
+        provider: "none",
+        experimental: { sessionMemory: true },
+        store: {
+          fts: { tokenizer: "trigram" },
+          vector: { enabled: false },
+        },
+      });
+    }
+  });
+
+  it("accepts custom embedding providers and secret references", () => {
+    const result = openclawConfigSchema.safeParse(
+      createMinimalConfig({
+        agents: {
+          defaults: {
+            model: { primary: "test-model" },
+            memorySearch: {
+              provider: "custom-embedding-adapter",
+              model: "embedding-v1",
+              remote: {
+                baseUrl: "https://embedding.example/v1",
+                apiKey: {
+                  source: "env",
+                  provider: "default",
+                  id: "EMBEDDING_API_KEY",
+                },
+                nonBatchConcurrency: 2,
+              },
+            },
+          },
+          list: [{ id: "bot-1", name: "Bot" }],
+        },
+      }),
+    );
+
+    expect(result.success).toBe(true);
+  });
+});
+
 function createMinimalConfig(overrides: Record<string, unknown> = {}) {
   return {
     gateway: {

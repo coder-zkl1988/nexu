@@ -98,7 +98,8 @@ describe("compileOpenClawConfig", () => {
     expect(compiled.plugins?.entries?.feishu).toBeUndefined();
     expect(compiled.plugins?.entries?.["openclaw-lark"]).toBeUndefined();
     expect(compiled.plugins?.entries?.["openclaw-weixin"]).toBeUndefined();
-    expect(compiled.plugins?.allow).toContain("langfuse-tracer");
+    expect(compiled.plugins?.allow).toBeUndefined();
+    expect(compiled.plugins?.deny).toBeUndefined();
     expect(compiled.channels?.feishu).toBeUndefined();
     expect(compiled.bindings).toEqual([]);
   });
@@ -109,7 +110,7 @@ describe("compileOpenClawConfig", () => {
       createEnv(),
     );
 
-    expect(defaultCompiled.plugins?.allow).toContain("langfuse-tracer");
+    expect(defaultCompiled.plugins?.allow).toBeUndefined();
     expect(defaultCompiled.plugins?.entries?.["langfuse-tracer"]).toEqual({
       enabled: true,
     });
@@ -121,9 +122,8 @@ describe("compileOpenClawConfig", () => {
 
     const disabledCompiled = compileOpenClawConfig(disabledConfig, createEnv());
 
-    // langfuse-tracer is always in plugins.allow to avoid gateway restarts;
-    // only the entries.enabled flag toggles it.
-    expect(disabledCompiled.plugins?.allow).toContain("langfuse-tracer");
+    // Discovery remains open; only the managed entry flag changes.
+    expect(disabledCompiled.plugins?.allow).toBeUndefined();
     expect(disabledCompiled.plugins?.entries?.["langfuse-tracer"]).toEqual({
       enabled: false,
     });

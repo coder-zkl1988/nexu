@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
   type Model,
   type ModelProviderConfig,
@@ -24,6 +27,10 @@ import type { OpenClawProcessManager } from "../runtime/openclaw-process.js";
 import { getOpenClawCommandSpec } from "../runtime/slimclaw-runtime-resolution.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 import type { OpenClawAuthService } from "./openclaw-auth-service.js";
+import type {
+  OpenClawGatewayService,
+  OpenClawModelCatalogEntry,
+} from "./openclaw-gateway-service.js";
 import type { OpenClawSyncService } from "./openclaw-sync-service.js";
 
 export interface ModelAutoSelectResult {
@@ -95,8 +102,89 @@ const MINI_MAX_MAX_POLL_INTERVAL_MS = 10000;
 const MINI_MAX_OAUTH_REQUEST_TIMEOUT_MS = 15000;
 const MINI_MAX_OAUTH_TOKEN_REQUEST_TIMEOUT_MS = 15000;
 const OPENCLAW_COMMAND_TIMEOUT_MS = 30000;
+const BEDROCK_LIVE_PROBE_TIMEOUT_MS = 15000;
+const BEDROCK_MAX_PROBE_MODELS = 3;
+const BEDROCK_PROVIDER_ID = "amazon-bedrock";
+const BEDROCK_PROBE_TARGET_MARKER = "nexu-bedrock-live-probe-target";
 const NEXU_OFFICIAL_PROVIDER_ID = "nexu";
 const OLLAMA_DUMMY_API_KEY = "ollama-local";
+
+type BedrockProbeResult = {
+  provider: string;
+  status: string;
+  model?: string;
+};
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseBedrockProbeResults(stdout: string): BedrockProbeResult[] {
+  const payload = JSON.parse(stdout) as unknown;
+  if (!isUnknownRecord(payload) || !isUnknownRecord(payload.auth)) {
+    return [];
+  }
+
+  const probes = payload.auth.probes;
+  if (!isUnknownRecord(probes) || !Array.isArray(probes.results)) {
+    return [];
+  }
+
+  return probes.results.flatMap((entry) => {
+    if (
+      !isUnknownRecord(entry) ||
+      typeof entry.provider !== "string" ||
+      typeof entry.status !== "string"
+    ) {
+      return [];
+    }
+
+    return [
+      {
+        provider: entry.provider,
+        status: entry.status,
+        ...(typeof entry.model === "string" ? { model: entry.model } : {}),
+      },
+    ];
+  });
+}
+
+function describeBedrockProbeFailure(status: string | undefined): string {
+  switch (status) {
+    case "auth":
+      return "AWS Bedrock rejected the configured credentials. Check AWS_PROFILE or AWS access key credentials and retry.";
+    case "billing":
+      return "AWS Bedrock account access or billing is unavailable. Check the account status, model access, and quota.";
+    case "format":
+      return "AWS Bedrock returned an incompatible response. Check the selected region and model configuration.";
+    case "timeout":
+      return "AWS Bedrock connection timed out. Check network or proxy access to the regional Bedrock endpoint and retry.";
+    case "rate_limit":
+      return "AWS Bedrock is rate limited or overloaded. Wait briefly and retry.";
+    case "no_model":
+      return "No Bedrock model is available for a live probe. Check the AWS region and model access, then retry.";
+    case "unknown":
+      return "AWS Bedrock live probe failed. Check credentials, region, model access, and runtime logs.";
+    default:
+      return "OpenClaw did not return a Bedrock live-probe result. Check credentials, region, and model access, then retry.";
+  }
+}
+
+function openClawModelRef(model: OpenClawModelCatalogEntry): string {
+  return `${model.provider}/${model.id}`;
+}
+
+function normalizeBedrockModelId(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const prefix = `${BEDROCK_PROVIDER_ID}/`;
+  const modelId = trimmed.startsWith(prefix)
+    ? trimmed.slice(prefix.length).trim()
+    : trimmed;
+  return modelId || null;
+}
 
 function durationSecondsToMs(valueInSeconds: number): number {
   return valueInSeconds * 1000;
@@ -323,8 +411,20 @@ function sleep(ms: number): Promise<void> {
 // Providers that support OAuth login (no API key needed).
 const OAUTH_PROVIDER_IDS = new Set(["openai"]);
 
+const INTERNAL_MANAGED_MODEL_IDS = new Set(["qwen/qwen3-embedding-4b"]);
+
+function isUserVisibleManagedModel(model: Model): boolean {
+  const normalizedId = model.id
+    .trim()
+    .toLowerCase()
+    .replace(/^link\//u, "");
+  return !INTERNAL_MANAGED_MODEL_IDS.has(normalizedId);
+}
+
 export class ModelProviderService {
   private openclawAuthService: OpenClawAuthService | null = null;
+
+  private openclawGatewayService: OpenClawGatewayService | null = null;
 
   private miniMaxOauthAbortController: AbortController | null = null;
 
@@ -364,6 +464,11 @@ export class ModelProviderService {
     this.openclawAuthService = authService;
   }
 
+  /** Inject the gateway after construction to keep container wiring acyclic. */
+  setGatewayService(gatewayService: OpenClawGatewayService): void {
+    this.openclawGatewayService = gatewayService;
+  }
+
   async listModels() {
     await this.refreshMiniMaxOauthModelsIfNeeded();
 
@@ -377,7 +482,7 @@ export class ModelProviderService {
     );
 
     return {
-      models: [...cloudModels, ...byokModels],
+      models: [...cloudModels.filter(isUserVisibleManagedModel), ...byokModels],
     };
   }
 
@@ -651,6 +756,25 @@ export class ModelProviderService {
       return { valid: false, error: "Unsupported provider" };
     }
 
+    if (providerId === BEDROCK_PROVIDER_ID) {
+      const requestedModelId = normalizeBedrockModelId(input.modelId);
+      if (input.modelId !== undefined && requestedModelId === null) {
+        return { valid: false, error: "AWS Bedrock model ID required" };
+      }
+      const baseUrl =
+        input.baseUrl?.trim() ||
+        storedProvider?.baseUrl ||
+        getDefaultProviderBaseUrls(providerId)[0];
+      if (!baseUrl) {
+        return { valid: false, error: "AWS Bedrock region endpoint required" };
+      }
+      return this.verifyAmazonBedrock(
+        baseUrl,
+        requestedModelId,
+        storedProvider,
+      );
+    }
+
     const apiKey =
       input.apiKey !== undefined
         ? input.apiKey.trim()
@@ -783,6 +907,254 @@ export class ModelProviderService {
         error: error instanceof Error ? error.message : "Request failed",
       };
     }
+  }
+
+  private async verifyAmazonBedrock(
+    baseUrl: string,
+    requestedModelId: string | null,
+    storedProvider: Awaited<ReturnType<NexuConfigStore["getProvider"]>>,
+  ): Promise<VerifyProviderResponse> {
+    const gatewayService = this.openclawGatewayService;
+
+    try {
+      const configuredModels: OpenClawModelCatalogEntry[] = (
+        storedProvider?.models ?? []
+      ).flatMap((storedModelId) => {
+        const id = normalizeBedrockModelId(storedModelId);
+        return id
+          ? [
+              {
+                id,
+                name: id,
+                provider: BEDROCK_PROVIDER_ID,
+                api: "bedrock-converse-stream",
+              },
+            ]
+          : [];
+      });
+      const catalogModels =
+        requestedModelId === null && gatewayService?.isConnected()
+          ? await gatewayService
+              .listModels("all")
+              .then(({ models }) =>
+                models.filter(
+                  (entry) => entry.provider === BEDROCK_PROVIDER_ID,
+                ),
+              )
+              .catch(() => [])
+          : [];
+      const availableCatalogModels = catalogModels.filter(
+        (entry) => entry.available === true,
+      );
+      const otherCatalogModels = catalogModels.filter(
+        (entry) => entry.available !== true,
+      );
+      const knownModels = [
+        ...configuredModels,
+        ...availableCatalogModels,
+        ...otherCatalogModels,
+      ];
+      const requestedModel: OpenClawModelCatalogEntry | null = requestedModelId
+        ? (knownModels.find((entry) => entry.id === requestedModelId) ?? {
+            id: requestedModelId,
+            name: requestedModelId,
+            provider: BEDROCK_PROVIDER_ID,
+            api: "bedrock-converse-stream",
+          })
+        : null;
+      const seenModelIds = new Set<string>();
+      const probeModels = (requestedModel ? [requestedModel] : knownModels)
+        .filter((entry) => {
+          if (seenModelIds.has(entry.id)) {
+            return false;
+          }
+          seenModelIds.add(entry.id);
+          return true;
+        })
+        .slice(0, BEDROCK_MAX_PROBE_MODELS);
+
+      if (probeModels.length === 0) {
+        return {
+          valid: false,
+          error:
+            "No Bedrock model is available for a live probe. Enter a model ID available in the selected AWS region and retry.",
+        };
+      }
+
+      const pluginLoadPaths = await this.resolveBedrockPluginLoadPaths();
+      if (pluginLoadPaths.length === 0) {
+        return {
+          valid: false,
+          error:
+            "The Amazon Bedrock provider plugin is not installed in this OpenClaw runtime.",
+        };
+      }
+
+      let firstFailureStatus: string | undefined;
+      let probeProcessFailed = false;
+
+      for (const probeModel of probeModels) {
+        let probeResults: BedrockProbeResult[];
+        try {
+          probeResults = parseBedrockProbeResults(
+            await this.runBedrockLiveProbe(
+              baseUrl,
+              probeModel,
+              pluginLoadPaths,
+            ),
+          ).filter((entry) => entry.provider === BEDROCK_PROVIDER_ID);
+        } catch {
+          probeProcessFailed = true;
+          continue;
+        }
+
+        const successfulProbe = probeResults.find(
+          (entry) =>
+            entry.status === "ok" &&
+            entry.model === openClawModelRef(probeModel),
+        );
+        if (!successfulProbe) {
+          firstFailureStatus ??= probeResults[0]?.status;
+          continue;
+        }
+
+        const contextWindow = firstPositive(probeModel.contextWindow);
+        return {
+          valid: true,
+          models: [probeModel.id],
+          modelDetails: [
+            {
+              id: probeModel.id,
+              ...(contextWindow !== undefined ? { contextWindow } : {}),
+            },
+          ],
+        };
+      }
+
+      return {
+        valid: false,
+        error:
+          firstFailureStatus !== undefined
+            ? describeBedrockProbeFailure(firstFailureStatus)
+            : probeProcessFailed
+              ? "OpenClaw could not run the AWS Bedrock live probe. Check the embedded runtime, credentials, region, and network access, then retry."
+              : describeBedrockProbeFailure(undefined),
+      };
+    } catch {
+      return {
+        valid: false,
+        error:
+          "OpenClaw could not run the AWS Bedrock live probe. Check the embedded runtime, credentials, region, and network access, then retry.",
+      };
+    }
+  }
+
+  private async runBedrockLiveProbe(
+    baseUrl: string,
+    model: OpenClawModelCatalogEntry,
+    pluginLoadPaths: string[],
+  ): Promise<string> {
+    const modelRef = openClawModelRef(model);
+    const probeRoot = await mkdtemp(
+      path.join(os.tmpdir(), "nexu-bedrock-probe-"),
+    );
+    const stateDir = path.join(probeRoot, "state");
+    const agentDir = path.join(stateDir, "agents", "main", "agent");
+    const configPath = path.join(probeRoot, "openclaw.json");
+
+    await mkdir(agentDir, { recursive: true });
+
+    // OpenClaw 2026.7.1's probe planner does not create a target for an
+    // aws-sdk provider without an apiKey field. The non-secret marker only
+    // makes that target selectable; auth:"aws-sdk" still forces the actual
+    // request through the AWS SDK default credential chain.
+    const config = {
+      models: {
+        mode: "merge",
+        providers: {
+          [BEDROCK_PROVIDER_ID]: {
+            baseUrl,
+            apiKey: BEDROCK_PROBE_TARGET_MARKER,
+            auth: "aws-sdk",
+            api: "bedrock-converse-stream",
+            models: [
+              {
+                id: model.id,
+                name: model.name,
+                reasoning: model.reasoning ?? false,
+                input: model.input?.length ? model.input : ["text"],
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                },
+                contextWindow: firstPositive(model.contextWindow) ?? 32_000,
+                maxTokens: 4_096,
+              },
+            ],
+          },
+        },
+      },
+      agents: {
+        defaults: {
+          model: { primary: modelRef },
+          models: { [modelRef]: {} },
+        },
+      },
+      plugins: {
+        load: { paths: pluginLoadPaths },
+        allow: [BEDROCK_PROVIDER_ID],
+        entries: {
+          [BEDROCK_PROVIDER_ID]: { enabled: true },
+        },
+      },
+    };
+
+    try {
+      await writeFile(configPath, JSON.stringify(config), {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      return await this.execOpenClawCommandWithOutput(
+        [
+          "models",
+          "status",
+          "--probe",
+          "--probe-provider",
+          BEDROCK_PROVIDER_ID,
+          "--json",
+          "--probe-max-tokens",
+          "1",
+          "--probe-timeout",
+          String(BEDROCK_LIVE_PROBE_TIMEOUT_MS),
+        ],
+        { cwd: stateDir, configPath, stateDir, agentDir },
+      );
+    } finally {
+      await rm(probeRoot, { recursive: true, force: true });
+    }
+  }
+
+  private async resolveBedrockPluginLoadPaths(): Promise<string[]> {
+    const roots = [
+      this.env.openclawExtensionsDir,
+      ...(this.env.openclawBuiltinExtensionsDir
+        ? [this.env.openclawBuiltinExtensionsDir]
+        : []),
+    ];
+    const availableRoots: string[] = [];
+    for (const root of roots) {
+      try {
+        await access(
+          path.join(root, BEDROCK_PROVIDER_ID, "openclaw.plugin.json"),
+        );
+        availableRoots.push(root);
+      } catch {
+        // The official provider is optional; callers receive an actionable error.
+      }
+    }
+    return availableRoots;
   }
 
   async getMiniMaxOauthStatus(): Promise<MiniMaxOauthStatus> {
@@ -1172,27 +1544,48 @@ export class ModelProviderService {
   }
 
   private async execOpenClawCommand(args: string[]): Promise<void> {
+    await this.execOpenClawCommandWithOutput(args);
+  }
+
+  private async execOpenClawCommandWithOutput(
+    args: string[],
+    options?: {
+      cwd?: string;
+      configPath?: string;
+      stateDir?: string;
+      agentDir?: string;
+    },
+  ): Promise<string> {
     const spec = getOpenClawCommandSpec(this.env);
-    await new Promise<void>((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
+      const stateDir = options?.stateDir ?? this.env.openclawStateDir;
       execFile(
         spec.command,
         [...spec.argsPrefix, ...args],
         {
-          cwd: this.env.openclawStateDir,
+          cwd: options?.cwd ?? stateDir,
+          encoding: "utf8",
           env: {
             ...process.env,
             ...spec.extraEnv,
-            OPENCLAW_CONFIG_PATH: this.env.openclawConfigPath,
-            OPENCLAW_STATE_DIR: this.env.openclawStateDir,
+            OPENCLAW_CONFIG_PATH:
+              options?.configPath ?? this.env.openclawConfigPath,
+            OPENCLAW_STATE_DIR: stateDir,
+            ...(options?.agentDir
+              ? {
+                  OPENCLAW_AGENT_DIR: options.agentDir,
+                  PI_CODING_AGENT_DIR: options.agentDir,
+                }
+              : {}),
           },
           timeout: OPENCLAW_COMMAND_TIMEOUT_MS,
         },
-        (error) => {
+        (error, stdout) => {
           if (error) {
             reject(error);
             return;
           }
-          resolve();
+          resolve(stdout);
         },
       );
     });

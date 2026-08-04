@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { getApiV1Channels } from "../../../lib/api/sdk.gen";
 import { BotPicker } from "./bot-picker";
+import { ChannelCapabilitiesPanel } from "./channel-capabilities-panel";
 import {
   type FeishuPermissionsDraft,
   FeishuPermissionsPanel,
@@ -31,6 +32,18 @@ export type ChannelInstance = {
   status: string;
   channelType?: string;
   feishuPermissions?: FeishuPermissionsDraft | null;
+  slackCapabilities?: {
+    replyToMode?: "off" | "first" | "all" | "batched";
+    streamingMode?: "off" | "partial" | "block" | "progress";
+    nativeTaskCards?: boolean;
+  } | null;
+  feishuCapabilities?: {
+    streaming?: boolean;
+    renderMode?: "auto" | "raw" | "card";
+    replyInThread?: boolean;
+    voiceReplyMode?: "off" | "always" | "tagged" | "inbound";
+    mediaMaxMb?: number;
+  } | null;
 };
 
 type Props = {
@@ -179,9 +192,22 @@ export function ChannelInstanceCard({ channel, botName, liveStatus }: Props) {
       )}
 
       {channel.channelType === "feishu" ? (
-        <FeishuPermissionsPanel
+        <>
+          <ChannelCapabilitiesPanel
+            channelId={channel.id}
+            channelType="feishu"
+            initial={channel.feishuCapabilities ?? null}
+          />
+          <FeishuPermissionsPanel
+            channelId={channel.id}
+            initial={channel.feishuPermissions ?? null}
+          />
+        </>
+      ) : channel.channelType === "slack" ? (
+        <ChannelCapabilitiesPanel
           channelId={channel.id}
-          initial={channel.feishuPermissions ?? null}
+          channelType="slack"
+          initial={channel.slackCapabilities ?? null}
         />
       ) : null}
     </div>

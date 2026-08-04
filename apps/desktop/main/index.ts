@@ -9,6 +9,7 @@ import {
   type MenuItemConstructorOptions,
   Tray,
   app,
+  clipboard,
   crashReporter,
   dialog,
   globalShortcut,
@@ -98,6 +99,10 @@ import {
 import { AGENT_TAB_ID } from "./services/embedded-browser-manager";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
+import {
+  captureExternalQuickChatSelection,
+  stageQuickChatSelection,
+} from "./services/quick-chat-selection";
 import {
   isTelemetryActive,
   setCrashReportsConsentApplier,
@@ -1160,7 +1165,18 @@ function installApplicationMenu(): void {
           },
         ] satisfies MenuItemConstructorOptions[])
       : []),
-    { role: "fileMenu" },
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "Quick Chat",
+          accelerator: "CommandOrControl+Shift+Space",
+          click: () => openDesktopQuickChat(),
+        },
+        { type: "separator" },
+        { role: "close" },
+      ],
+    },
     { role: "editMenu" },
     {
       label: "View",
@@ -1593,6 +1609,29 @@ function showDeskpetWindow(): void {
   deskpetWindow.showInactive();
 }
 
+function openDesktopQuickChat(): void {
+  stageQuickChatSelection(
+    captureExternalQuickChatSelection({
+      readClipboardText: () =>
+        clipboard.readText("selection").trim() || clipboard.readText().trim(),
+    }),
+  );
+  const window = createDeskpetWindow();
+  const openComposer = (): void => {
+    if (window.isDestroyed()) return;
+    window.show();
+    window.focus();
+    window.webContents.send("host:desktop-command", {
+      type: "deskpet:open-composer",
+    } satisfies HostDesktopCommand);
+  };
+  if (window.webContents.isLoadingMainFrame() || !window.webContents.getURL()) {
+    window.webContents.once("did-finish-load", openComposer);
+    return;
+  }
+  openComposer();
+}
+
 function applyDeskpetPreference(preferences: DesktopShellPreferences): void {
   if (preferences.deskpetEnabled) {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -1627,6 +1666,11 @@ function updateSystemTrayMenu(): void {
 
   systemTray.setContextMenu(
     Menu.buildFromTemplate([
+      {
+        label: "快捷对话",
+        click: () => openDesktopQuickChat(),
+      },
+      { type: "separator" },
       {
         label: isVisible ? trayStrings.hide : trayStrings.show,
         click: () => {
@@ -1720,6 +1764,11 @@ function updateResidentTrayMenu(): void {
 
   residentTray.setContextMenu(
     Menu.buildFromTemplate([
+      {
+        label: "Quick Chat",
+        click: () => openDesktopQuickChat(),
+      },
+      { type: "separator" },
       {
         label: "Open Tabby",
         click: () => {
@@ -2376,6 +2425,9 @@ app.whenReady().then(async () => {
     productionDebugMode = !productionDebugMode;
     installApplicationMenu();
   });
+  globalShortcut.register("CommandOrControl+Shift+Space", () => {
+    openDesktopQuickChat();
+  });
   diagnosticsReporter = new DesktopDiagnosticsReporter(orchestrator);
   await refreshProxyDiagnostics();
   diagnosticsReporter.recordStartupProbe({
@@ -2420,6 +2472,10 @@ app.whenReady().then(async () => {
       currentDeskpetMood = mood;
     },
     runtimeRoots.openclawStateDir,
+    () =>
+      deskpetWindow && !deskpetWindow.isDestroyed()
+        ? deskpetWindow.webContents.id
+        : null,
   );
   unsubscribeDeskpetRuntime = orchestrator.subscribe(handleDeskpetRuntimeEvent);
   // Provide orchestrator-mode quit fallback for app:quit IPC when launchd

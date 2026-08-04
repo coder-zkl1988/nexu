@@ -244,6 +244,17 @@ export class AgentBrowserRelay {
   ): Promise<AgentBrowserOutcome> {
     const owner = this.options.getWindow();
     if (!owner || owner.isDestroyed()) return { ok: false, error: NO_WINDOW };
+    const sharingAllowed =
+      typeof embeddedBrowserManager.isAgentSharingAllowed === "function"
+        ? embeddedBrowserManager.isAgentSharingAllowed(owner)
+        : true;
+    if (!sharingAllowed) {
+      return {
+        ok: false,
+        error:
+          "browser sharing was revoked by the user — ask them to resume agent control in the Browser panel",
+      };
+    }
 
     /**
      * Gets the panel to host the view before acting on it.

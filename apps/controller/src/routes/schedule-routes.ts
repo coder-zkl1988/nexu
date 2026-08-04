@@ -53,6 +53,14 @@ export function registerScheduleRoutes(
           },
           description: "Created",
         },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Notification delivery target unavailable",
+        },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "OpenClaw schedule registration failed",
+        },
       },
     }),
     async (c) =>
@@ -83,6 +91,14 @@ export function registerScheduleRoutes(
         404: {
           content: { "application/json": { schema: errorSchema } },
           description: "Not found",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Notification delivery target unavailable",
+        },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "OpenClaw schedule update failed",
         },
       },
     }),
