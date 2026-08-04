@@ -1,7 +1,9 @@
-import { BrowserWindow, WebContentsView, shell } from "electron";
+import { BrowserWindow, Menu, WebContentsView, shell } from "electron";
 import type {
   DesktopBrowserControl,
   DesktopBrowserControlResult,
+  DesktopBrowserHistoryItem,
+  DesktopBrowserViewportMode,
 } from "../../shared/host";
 import {
   BrowserRefTable,
@@ -37,6 +39,89 @@ type ManagedDownload = {
 const DEFAULT_SNAPSHOT_NODES = 400;
 
 const TAB_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+export function normalizeBrowserZoomFactor(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0.25, value));
+}
+
+function chooseBrowserViewportMode(
+  owner: BrowserWindow,
+  currentMode: DesktopBrowserViewportMode,
+  anchor: { x: number; y: number },
+): Promise<DesktopBrowserControlResult> {
+  return new Promise((resolve) => {
+    let selectedMode = currentMode;
+    const options: Array<{
+      mode: DesktopBrowserViewportMode;
+      label: string;
+      sublabel?: string;
+    }> = [
+      { mode: "responsive", label: "响应式" },
+      { mode: "mobile", label: "手机", sublabel: "375 × 812" },
+      { mode: "tablet", label: "平板", sublabel: "768 × 1024" },
+    ];
+    const menu = Menu.buildFromTemplate(
+      options.map((option) => ({
+        type: "radio" as const,
+        label: option.label,
+        sublabel: option.sublabel,
+        checked: option.mode === currentMode,
+        click: () => {
+          selectedMode = option.mode;
+        },
+      })),
+    );
+    const content = owner.getContentBounds();
+    menu.popup({
+      window: owner,
+      x: Math.max(0, Math.min(Math.round(anchor.x), content.width)),
+      y: Math.max(0, Math.min(Math.round(anchor.y), content.height)),
+      positioningItem: Math.max(
+        0,
+        options.findIndex((option) => option.mode === currentMode),
+      ),
+      callback: () => resolve({ kind: "viewport", mode: selectedMode }),
+    });
+  });
+}
+
+function chooseBrowserHistoryArtifact(
+  owner: BrowserWindow,
+  items: DesktopBrowserHistoryItem[],
+  anchor: { x: number; y: number },
+): Promise<DesktopBrowserControlResult> {
+  if (items.length === 0) {
+    return Promise.resolve({ kind: "history", artifactId: null });
+  }
+
+  return new Promise((resolve) => {
+    let selectedArtifactId: string | null = null;
+    const menu = Menu.buildFromTemplate(
+      items.map((item) => ({
+        type: "radio" as const,
+        label: item.label,
+        sublabel: item.sublabel,
+        checked: item.selected,
+        click: () => {
+          selectedArtifactId = item.id;
+        },
+      })),
+    );
+    const content = owner.getContentBounds();
+    menu.popup({
+      window: owner,
+      x: Math.max(0, Math.min(Math.round(anchor.x), content.width)),
+      y: Math.max(0, Math.min(Math.round(anchor.y), content.height)),
+      positioningItem: Math.max(
+        0,
+        items.findIndex((item) => item.selected),
+      ),
+      callback: () =>
+        resolve({ kind: "history", artifactId: selectedArtifactId }),
+    });
+  });
+}
 
 /**
  * The tab the agent drives. Fixed rather than generated so the panel can adopt
@@ -463,12 +548,21 @@ export class EmbeddedBrowserManager {
     }
 
     const tab = this.ensureTab(owner, input.tabId);
+    if (input.action === "choose-history") {
+      return chooseBrowserHistoryArtifact(owner, input.items, input.anchor);
+    }
+    if (input.action === "choose-viewport") {
+      return chooseBrowserViewportMode(owner, input.currentMode, input.anchor);
+    }
     if (input.action === "show") {
       if (!isSafeBrowserUrl(input.url)) throw new Error("Invalid browser URL.");
       for (const candidate of this.tabs.values()) {
         if (candidate.owner === owner)
           candidate.view.setVisible(candidate === tab);
       }
+      tab.view.webContents.setZoomFactor(
+        normalizeBrowserZoomFactor(input.zoomFactor),
+      );
       tab.view.setBounds(clampBounds(owner, input.bounds));
       this.markPanelHosted(owner, input.tabId === AGENT_TAB_ID);
       await this.loadTab(tab, input.url);

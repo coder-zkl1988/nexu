@@ -43,14 +43,26 @@ if (typeof globalThis.localStorage === "undefined") {
   } as Storage;
 }
 
-// Mock the SDK module before import — vi.mock is hoisted to the top of the file.
-// Path is relative to the TEST file (apps/web/tests/ → apps/web/lib/api/sdk.gen).
-vi.mock("../lib/api/sdk.gen", () => ({
+const apiMocks = vi.hoisted(() => ({
   postApiV1MediaGenerateImage: vi.fn(),
   postApiV1MediaGenerateVideo: vi.fn(),
   postApiV1MediaGenerateAudio: vi.fn(),
   postApiV1MediaEnhanceImage: vi.fn(),
   postApiV1MediaDescribeImage: vi.fn(),
+}));
+
+// Keep the existing generation-seam assertions focused on node behavior. The
+// task client's submit/poll contract has its own tests below this layer.
+vi.mock("../lib/api/sdk.gen", () => apiMocks);
+vi.mock("../src/lib/media/image-generation-jobs", () => ({
+  generateImageViaJob: vi.fn(async (body: Record<string, unknown>) => {
+    const response = await apiMocks.postApiV1MediaGenerateImage({ body });
+    if (!response?.data || response.error) {
+      const message = response?.error?.message;
+      throw new Error(typeof message === "string" ? message : "生成失败");
+    }
+    return response.data;
+  }),
 }));
 
 // Import the mocked SDK so tests can configure it per-scenario

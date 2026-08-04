@@ -41,6 +41,7 @@ import {
   useCanvas,
 } from "@/lib/canvas/canvas-store";
 import { getChannelChatUrl } from "@/lib/channel-links";
+import { coalesceInlineA2UISurfaces } from "@/lib/chat/chat-a2ui-surfaces";
 import {
   A2UI_TOOL_NAMES,
   CANVAS_OP_TOOL_NAMES,
@@ -2790,101 +2791,105 @@ export function SessionsPage() {
   }
 
   // Detect sidebar-bound surfaces (surfaceId starts with "sidebar:")
-  const enrichedMessages = displayMessages
-    .map((msg) => {
-      const rm = msg as unknown as Record<string, unknown>;
-      const extracted = extractMessage(rm);
+  const enrichedMessages = coalesceInlineA2UISurfaces(
+    displayMessages
+      .map((msg) => {
+        const rm = msg as unknown as Record<string, unknown>;
+        const extracted = extractMessage(rm);
 
-      // Inject A2UI from matching render_a2ui toolResult
-      if (rm.role === "assistant" && !extracted.hasA2UI) {
-        const content = rm.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (
-              block?.type === "toolCall" &&
-              A2UI_TOOL_NAMES.has(String(block?.name))
-            ) {
-              const a2uiFromResult = a2uiFromToolResults.get(
-                String(block.id ?? ""),
-              );
-              if (a2uiFromResult?.length) {
-                const createMsg = a2uiFromResult.find(
-                  (m) => "createSurface" in m,
+        // Inject A2UI from matching render_a2ui toolResult
+        if (rm.role === "assistant" && !extracted.hasA2UI) {
+          const content = rm.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (
+                block?.type === "toolCall" &&
+                A2UI_TOOL_NAMES.has(String(block?.name))
+              ) {
+                const a2uiFromResult = a2uiFromToolResults.get(
+                  String(block.id ?? ""),
                 );
-                const sid = (
-                  createMsg as
-                    | { createSurface: { surfaceId: string } }
-                    | undefined
-                )?.createSurface?.surfaceId;
-                if (sid && isSidebarBoundSurface(sid, a2uiFromResult)) {
-                  // Sidebar-bound surface: render a jump button in the
-                  // thread; opening happens on click (or automatically the
-                  // first time the surface arrives — see effect below).
-                  extracted.sidebarA2UI = {
-                    surfaceId: sid,
-                    messages: a2uiFromResult,
-                  };
-                } else {
-                  extracted.hasA2UI = true;
-                  extracted.a2uiMessages = a2uiFromResult;
+                if (a2uiFromResult?.length) {
+                  const createMsg = a2uiFromResult.find(
+                    (m) => "createSurface" in m,
+                  );
+                  const sid = (
+                    createMsg as
+                      | { createSurface: { surfaceId: string } }
+                      | undefined
+                  )?.createSurface?.surfaceId;
+                  if (sid && isSidebarBoundSurface(sid, a2uiFromResult)) {
+                    // Sidebar-bound surface: render a jump button in the
+                    // thread; opening happens on click (or automatically the
+                    // first time the surface arrives — see effect below).
+                    extracted.sidebarA2UI = {
+                      surfaceId: sid,
+                      messages: a2uiFromResult,
+                    };
+                  } else {
+                    extracted.hasA2UI = true;
+                    extracted.a2uiMessages = a2uiFromResult;
+                  }
+                  break;
                 }
-                break;
               }
             }
           }
         }
-      }
 
-      // S8: inject the canvas-op batch from the matching canvas_op toolResult
-      // onto the assistant message that called it (parallel to the a2ui path).
-      if (rm.role === "assistant" && !extracted.canvasOpBatch) {
-        const content = rm.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (
-              block?.type === "toolCall" &&
-              CANVAS_OP_TOOL_NAMES.has(String(block?.name))
-            ) {
-              const batch = canvasOpFromToolResults.get(String(block.id ?? ""));
-              if (batch) {
-                extracted.canvasOpBatch = batch;
-                break;
+        // S8: inject the canvas-op batch from the matching canvas_op toolResult
+        // onto the assistant message that called it (parallel to the a2ui path).
+        if (rm.role === "assistant" && !extracted.canvasOpBatch) {
+          const content = rm.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (
+                block?.type === "toolCall" &&
+                CANVAS_OP_TOOL_NAMES.has(String(block?.name))
+              ) {
+                const batch = canvasOpFromToolResults.get(
+                  String(block.id ?? ""),
+                );
+                if (batch) {
+                  extracted.canvasOpBatch = batch;
+                  break;
+                }
               }
             }
           }
         }
-      }
 
-      return { msg, extracted };
-    })
-    .filter(({ msg, extracted }) => {
-      const rm = msg as unknown as Record<string, unknown>;
-      // Hide A2UI toolResults — their payload shows on the parent assistant msg
-      if (
-        rm.role === "toolResult" &&
-        A2UI_TOOL_NAMES.has(String(rm.toolName))
-      ) {
+        return { msg, extracted };
+      })
+      .filter(({ msg, extracted }) => {
+        const rm = msg as unknown as Record<string, unknown>;
+        // Hide A2UI toolResults — their payload shows on the parent assistant msg
+        if (
+          rm.role === "toolResult" &&
+          A2UI_TOOL_NAMES.has(String(rm.toolName))
+        ) {
+          return false;
+        }
+        // Hide canvas_op toolResults — the confirm card shows on the parent msg.
+        if (
+          rm.role === "toolResult" &&
+          CANVAS_OP_TOOL_NAMES.has(String(rm.toolName))
+        ) {
+          return false;
+        }
+        if (extracted.text.trim().length > 0) return true;
+        if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
+        if (extracted.hasToolCall) return true;
+        if (extracted.reasoning.length > 0) return true;
+        if (extracted.sidebarA2UI) return true;
+        if (extracted.a2uiAction) return true;
+        if (extracted.canvasOpBatch) return true;
+        if (extracted.canvasOpResult) return true;
+        if (extracted.images.length > 0) return true;
+        if (extracted.fileCards.length > 0) return true;
         return false;
-      }
-      // Hide canvas_op toolResults — the confirm card shows on the parent msg.
-      if (
-        rm.role === "toolResult" &&
-        CANVAS_OP_TOOL_NAMES.has(String(rm.toolName))
-      ) {
-        return false;
-      }
-      if (extracted.text.trim().length > 0) return true;
-      if ((extracted.replyContextText?.trim().length ?? 0) > 0) return true;
-      if (extracted.hasToolCall) return true;
-      if (extracted.reasoning.length > 0) return true;
-      if (extracted.sidebarA2UI) return true;
-      if (extracted.a2uiAction) return true;
-      if (extracted.canvasOpBatch) return true;
-      if (extracted.canvasOpResult) return true;
-      if (extracted.images.length > 0) return true;
-      if (extracted.fileCards.length > 0) return true;
-      return false;
-    });
+      }),
+  );
   const transcriptItems = buildTranscriptItems(enrichedMessages);
 
   // Auto-open the sidebar when a NEW sidebar surface arrives during a live

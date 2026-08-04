@@ -36,6 +36,10 @@ vi.mock("../lib/api/sdk.gen", () => ({
   postApiV1MediaGenerateImage: vi.fn(),
   postApiV1MediaGenerateVideo: vi.fn(),
   postApiV1MediaGenerateAudio: vi.fn(),
+  postApiV1MediaGenerateText: vi.fn(),
+}));
+vi.mock("../src/lib/media/image-generation-jobs", () => ({
+  generateImageViaJob: vi.fn(),
 }));
 
 // Minimal localStorage polyfill (plain Node env, same as sibling canvas tests).
@@ -99,6 +103,8 @@ describe("PromptPanel controls per mode", () => {
     expect(markup).not.toContain("data-canvas-image-settings-panel");
     // reference-parity textarea placeholder
     expect(markup).toContain("描述要生成的图片内容");
+    expect(markup).toContain("data-canvas-optimize-image-prompt");
+    expect(markup).toContain("优化为 GPT-image-2 更容易理解的提示词");
     // model picker: default + capability-filtered options — image nodes only
     // offer the image backends, never chat/video models
     expect(markup).toContain("模型");
@@ -137,6 +143,7 @@ describe("PromptPanel controls per mode", () => {
     expect(markup).toContain("121帧 · 5s · 720p · 16:9");
     expect(markup).not.toContain("data-canvas-image-settings-panel");
     expect(markup).toContain("描述要生成的视频内容");
+    expect(markup).not.toContain("data-canvas-optimize-image-prompt");
     expect(markup).toContain("模型");
     expect(markup).toContain("默认模型");
     // video nodes only offer the video backend

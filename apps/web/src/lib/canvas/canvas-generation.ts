@@ -11,10 +11,10 @@ import {
   postApiV1MediaDescribeImage,
   postApiV1MediaEnhanceImage,
   postApiV1MediaGenerateAudio,
-  postApiV1MediaGenerateImage,
   postApiV1MediaGenerateText,
   postApiV1MediaGenerateVideo,
 } from "../../../lib/api/sdk.gen";
+import { generateImageViaJob } from "../media/image-generation-jobs";
 import { attachBatchChildren } from "./canvas-batch";
 import { getCanvasState, setNodeTask, updateNode } from "./canvas-store";
 import type { VideoAspectRatio } from "./video-generation-params";
@@ -77,43 +77,32 @@ export async function generateImageIntoNode(
   setNodeTask(nodeId, { status: "generating", retry });
 
   try {
-    const { data, error } = await postApiV1MediaGenerateImage({
-      body: {
-        prompt,
-        ...(opts?.referenceImages !== undefined
-          ? { referenceImages: opts.referenceImages }
-          : {}),
-        ...(opts?.count !== undefined ? { count: opts.count } : {}),
-        ...(opts?.sourceImage !== undefined
-          ? { sourceImage: opts.sourceImage }
-          : {}),
-        ...(opts?.maskDataUrl !== undefined
-          ? { maskDataUrl: opts.maskDataUrl }
-          : {}),
-        ...(opts?.model !== undefined ? { model: opts.model } : {}),
-        ...(opts?.quality !== undefined ? { quality: opts.quality } : {}),
-        ...(opts?.aspectRatio !== undefined
-          ? { aspectRatio: opts.aspectRatio }
-          : {}),
-        ...(opts?.size !== undefined ? { size: opts.size } : {}),
-        ...(opts?.transparentBackground !== undefined
-          ? { transparentBackground: opts.transparentBackground }
-          : {}),
-      },
+    const data = await generateImageViaJob({
+      prompt,
+      ...(opts?.referenceImages !== undefined
+        ? { referenceImages: opts.referenceImages }
+        : {}),
+      ...(opts?.count !== undefined ? { count: opts.count } : {}),
+      ...(opts?.sourceImage !== undefined
+        ? { sourceImage: opts.sourceImage }
+        : {}),
+      ...(opts?.maskDataUrl !== undefined
+        ? { maskDataUrl: opts.maskDataUrl }
+        : {}),
+      ...(opts?.model !== undefined ? { model: opts.model } : {}),
+      ...(opts?.quality !== undefined ? { quality: opts.quality } : {}),
+      ...(opts?.aspectRatio !== undefined
+        ? { aspectRatio: opts.aspectRatio }
+        : {}),
+      ...(opts?.size !== undefined ? { size: opts.size } : {}),
+      ...(opts?.transparentBackground !== undefined
+        ? { transparentBackground: opts.transparentBackground }
+        : {}),
     });
 
     // Check if the node still exists (may have been deleted during the async call).
     const stillExists = getCanvasState().nodes.some((n) => n.id === nodeId);
     if (!stillExists) return false;
-
-    if (!data || error) {
-      setNodeTask(nodeId, {
-        status: "error",
-        error: readMediaErrorMessage(error, "生成失败，请重试"),
-        retry,
-      });
-      return false;
-    }
 
     // T6: batch fan-out — image only. attachBatchChildren owns root content
     // and child creation for multi-item results; single-item path is preserved.

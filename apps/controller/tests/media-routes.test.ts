@@ -93,6 +93,58 @@ describe("media route error mapping", () => {
   });
 });
 
+describe("asynchronous image generation routes", () => {
+  it("accepts immediately and exposes the generated result through polling", async () => {
+    const generated = {
+      path: "/state/media/out.png",
+      url: "/api/v1/media/state-file?path=out.png",
+      items: [
+        {
+          path: "/state/media/out.png",
+          url: "/api/v1/media/state-file?path=out.png",
+        },
+      ],
+    };
+    const generateImage = vi.fn(async () => generated);
+    const app = buildApp({ generateImage });
+
+    const accepted = await app.request("/api/v1/media/image-jobs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "cat" }),
+    });
+    expect(accepted.status).toBe(202);
+    const submitted = (await accepted.json()) as {
+      jobId: string;
+      status: string;
+    };
+    expect(submitted.jobId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(["queued", "running"]).toContain(submitted.status);
+
+    await vi.waitFor(async () => {
+      const response = await app.request(
+        `/api/v1/media/image-jobs/${submitted.jobId}`,
+      );
+      expect(response.status).toBe(200);
+      const job = (await response.json()) as {
+        status: string;
+        result?: typeof generated;
+      };
+      expect(job.status).toBe("succeeded");
+      expect(job.result).toEqual(generated);
+    });
+    expect(generateImage).toHaveBeenCalledWith({ prompt: "cat" });
+  });
+
+  it("returns 404 for an unknown job", async () => {
+    const app = buildApp({ generateImage: vi.fn() });
+    const response = await app.request(
+      "/api/v1/media/image-jobs/99999999-9999-4999-8999-999999999999",
+    );
+    expect(response.status).toBe(404);
+  });
+});
+
 describe("video generation request validation", () => {
   it("accepts the documented Agnes parameter surface", async () => {
     const generateVideo = vi.fn(async () => ({

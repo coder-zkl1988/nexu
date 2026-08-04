@@ -96,12 +96,22 @@ export type DiagnosticsUploadResult = {
   errorMessage?: string;
 };
 
+export type DesktopBrowserViewportMode = "responsive" | "mobile" | "tablet";
+
+export type DesktopBrowserHistoryItem = {
+  id: string;
+  label: string;
+  sublabel: string;
+  selected: boolean;
+};
+
 export type DesktopBrowserControl =
   | {
       action: "show";
       tabId: string;
       url: string;
       bounds: { x: number; y: number; width: number; height: number };
+      zoomFactor?: number;
     }
   | { action: "hide" | "dispose" }
   | {
@@ -112,6 +122,18 @@ export type DesktopBrowserControl =
         | "resume-agent";
     }
   | { action: "show-download"; downloadId: string }
+  | {
+      action: "choose-viewport";
+      tabId: string;
+      currentMode: DesktopBrowserViewportMode;
+      anchor: { x: number; y: number };
+    }
+  | {
+      action: "choose-history";
+      tabId: string;
+      items: DesktopBrowserHistoryItem[];
+      anchor: { x: number; y: number };
+    }
   | {
       action: "close-tab" | "state" | "select-element" | "capture";
       tabId: string;
@@ -137,6 +159,8 @@ export type DesktopBrowserControl =
 
 export type DesktopBrowserControlResult =
   | { kind: "ok" }
+  | { kind: "viewport"; mode: DesktopBrowserViewportMode }
+  | { kind: "history"; artifactId: string | null }
   | {
       kind: "center-state";
       agentSharingEnabled: boolean;

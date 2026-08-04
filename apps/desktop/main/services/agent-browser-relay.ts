@@ -293,16 +293,15 @@ export class AgentBrowserRelay {
     if (command.action === "open") {
       const url = normalizeUrl(command.url);
       if (!url) return { ok: false, error: "invalid web address" };
-      // Reading a page needs no hit-testing, so `open` works whether or not the
-      // panel ever shows up. Ask for it anyway — the point of this browser is
-      // that the user can watch it.
       embeddedBrowserManager.ensureAgentTab(owner);
       await embeddedBrowserManager.controlWindow(owner, {
         action: "navigate",
         tabId: AGENT_TAB_ID,
         url,
       });
-      this.options.onOpen(url);
+      if (!(await ensureHosted(url))) {
+        return { ok: false, error: NO_PANEL };
+      }
       return { ok: true, snapshot: await snapshot() };
     }
     if (command.action === "snapshot") {

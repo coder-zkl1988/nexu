@@ -15,6 +15,7 @@ import {
   generateTextResponseSchema,
   generateVideoRequestSchema,
   generateVideoResponseSchema,
+  imageGenerationJobSchema,
 } from "@nexu/shared";
 import type { ControllerContainer } from "../app/container.js";
 import { logger } from "../lib/logger.js";
@@ -23,6 +24,10 @@ import {
   mediaCachePathFor,
   resolveMediaFileWithinRoot,
 } from "../lib/media-cache.js";
+import {
+  ImageGenerationJobService,
+  ImageGenerationQueueFullError,
+} from "../services/image-generation-job-service.js";
 import {
   ImageGenerationFailedError,
   InvalidMediaReferenceError,
@@ -104,6 +109,83 @@ export function registerMediaRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
+  const imageGenerationJobs = new ImageGenerationJobService({
+    generateImage: (input) =>
+      container.mediaGenerationService.generateImage(input),
+  });
+
+  // The desktop uses this task API so slow image generation no longer keeps a
+  // renderer request open. The synchronous endpoint below remains available
+  // for compatibility with older clients and prompt-cover generation.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/media/image-jobs",
+      tags: ["Media"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: generateImageRequestSchema },
+          },
+        },
+      },
+      responses: {
+        202: {
+          content: {
+            "application/json": { schema: imageGenerationJobSchema },
+          },
+          description: "Image generation job accepted",
+        },
+        429: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "Image generation queue is full",
+        },
+      },
+    }),
+    (c) => {
+      try {
+        return c.json(imageGenerationJobs.submit(c.req.valid("json")), 202);
+      } catch (error) {
+        if (error instanceof ImageGenerationQueueFullError) {
+          return c.json({ message: error.message }, 429);
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/media/image-jobs/{jobId}",
+      tags: ["Media"],
+      request: {
+        params: z.object({ jobId: z.string().uuid() }),
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: imageGenerationJobSchema },
+          },
+          description: "Current image generation job state",
+        },
+        404: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "Image generation job not found or expired",
+        },
+      },
+    }),
+    (c) => {
+      const job = imageGenerationJobs.get(c.req.valid("param").jobId);
+      if (!job) return c.json({ message: "图片生成任务不存在或已过期" }, 404);
+      return c.json(job, 200);
+    },
+  );
+
   // POST /api/v1/media/generate-image — prompt-to-image for the canvas
   // workbench (S7). Drives the OpenClaw image_generate agent tool over a
   // utility subagent lane; the result is served by /media/state-file below.

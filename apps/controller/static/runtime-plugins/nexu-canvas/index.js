@@ -130,7 +130,9 @@ const CANVAS_READ_DESCRIPTION = `Read a compact snapshot of the Nexu canvas (the
 
 ALWAYS call this before canvas_op so you target real node ids and place new nodes where they fit. Returns a short "canvas unavailable" line if the canvas can't be read (then skip canvas edits).`;
 
-const CANVAS_OP_DESCRIPTION = `Emit a batch of canvas operations to edit the Nexu canvas (structural edits, image editing, and asset-library save/insert). The batch is PROPOSED to the user as a confirm card and, once confirmed, applied as ONE undoable step.
+export const CANVAS_OP_DESCRIPTION = `Emit a batch of canvas operations to edit the Nexu canvas (structural edits, image editing, and asset-library save/insert). The batch is PROPOSED to the user as a confirm card and, once confirmed, applied as ONE undoable step.
+
+SCOPE BOUNDARY: use this only when the user explicitly wants to edit the canvas or refers to canvas nodes. A chat XHSEditor or XHSBatchTable is NOT a canvas node. To add a generated image to one of those chat components, call image_generate, wait for the real media path, then call render_a2ui with the SAME surfaceId and updated images. NEVER use canvas_read or canvas_op for that workflow.
 
 READ FIRST: call canvas_read to get current node ids (and saved asset ids) before referencing them.
 WIRING NEW NODES: give each add_node (or insert_asset) a client-chosen "ref" handle; later ops in the SAME batch target that new node with "ref:<name>" (e.g. add_node ref "a", then connect from "ref:a" to an existing node id). target / from / to accept a real node id OR "ref:<name>".

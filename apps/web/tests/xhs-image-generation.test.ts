@@ -1,28 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
-  postApiV1MediaGenerateImage: vi.fn(),
+  generateImageViaJob: vi.fn(),
 }));
 
-vi.mock("../lib/api/sdk.gen", () => apiMocks);
+vi.mock("../src/lib/media/image-generation-jobs", () => apiMocks);
 
 import { generateXhsImages } from "../src/lib/a2ui/custom-components/xhs-image-generation";
 
 describe("XHS image generation", () => {
   beforeEach(() => {
-    apiMocks.postApiV1MediaGenerateImage.mockReset();
+    apiMocks.generateImageViaJob.mockReset();
   });
 
   it("forwards the selected parameters and returns every generated image", async () => {
-    apiMocks.postApiV1MediaGenerateImage.mockResolvedValue({
-      data: {
-        url: "/generated/one.png",
-        path: "/tmp/one.png",
-        items: [
-          { url: "/generated/one.png", path: "/tmp/one.png" },
-          { url: "/generated/two.png", path: "/tmp/two.png" },
-        ],
-      },
+    apiMocks.generateImageViaJob.mockResolvedValue({
+      url: "/generated/one.png",
+      path: "/tmp/one.png",
+      items: [
+        { url: "/generated/one.png", path: "/tmp/one.png" },
+        { url: "/generated/two.png", path: "/tmp/two.png" },
+      ],
     });
 
     await expect(
@@ -37,26 +35,22 @@ describe("XHS image generation", () => {
       }),
     ).resolves.toEqual(["/generated/one.png", "/generated/two.png"]);
 
-    expect(apiMocks.postApiV1MediaGenerateImage).toHaveBeenCalledWith({
-      body: {
-        prompt: "羽毛球拍产品摄影",
-        model: "tabby-image-pro",
-        quality: "high",
-        aspectRatio: "3:4",
-        size: "2K",
-        count: 2,
-        transparentBackground: true,
-      },
+    expect(apiMocks.generateImageViaJob).toHaveBeenCalledWith({
+      prompt: "羽毛球拍产品摄影",
+      model: "tabby-image-pro",
+      quality: "high",
+      aspectRatio: "3:4",
+      size: "2K",
+      count: 2,
+      transparentBackground: true,
     });
   });
 
   it("uses the single-result fallback and rejects an empty response", async () => {
-    apiMocks.postApiV1MediaGenerateImage.mockResolvedValueOnce({
-      data: {
-        url: "/generated/fallback.png",
-        path: "/tmp/fallback.png",
-        items: [],
-      },
+    apiMocks.generateImageViaJob.mockResolvedValueOnce({
+      url: "/generated/fallback.png",
+      path: "/tmp/fallback.png",
+      items: [],
     });
     await expect(
       generateXhsImages({
@@ -70,8 +64,10 @@ describe("XHS image generation", () => {
       }),
     ).resolves.toEqual(["/generated/fallback.png"]);
 
-    apiMocks.postApiV1MediaGenerateImage.mockResolvedValueOnce({
-      data: { url: "", path: "", items: [] },
+    apiMocks.generateImageViaJob.mockResolvedValueOnce({
+      url: "",
+      path: "",
+      items: [],
     });
     await expect(
       generateXhsImages({

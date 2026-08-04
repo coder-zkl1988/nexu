@@ -13,12 +13,15 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  MonitorSmartphone,
   MousePointer2,
   PenLine,
   Plus,
   RefreshCw,
   ShieldCheck,
   ShieldOff,
+  Smartphone,
+  Tablet,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +30,7 @@ import { toast } from "sonner";
 import type {
   DesktopBrowserControl,
   DesktopBrowserControlResult,
+  DesktopBrowserHistoryItem,
 } from "../../../../desktop/shared/host";
 import { getApiV1Artifacts } from "../../../lib/api/sdk.gen";
 import { useAgentBrowserTabRequest } from "./agent-browser-relay";
@@ -64,6 +68,51 @@ type BrowserCenterState = Extract<
 type BrowserCenterStatus = "loading" | "ready" | "unavailable";
 
 const MAX_TABS = 8;
+
+export type BrowserViewportMode = "responsive" | "mobile" | "tablet";
+
+export const BROWSER_VIEWPORT_PRESETS = {
+  mobile: { width: 375, height: 812 },
+  tablet: { width: 768, height: 1024 },
+} as const;
+
+export type BrowserViewportLayout = {
+  bounds: { x: number; y: number; width: number; height: number };
+  zoomFactor: number;
+};
+
+export function resolveBrowserViewportLayout(
+  container: { x: number; y: number; width: number; height: number },
+  mode: BrowserViewportMode,
+): BrowserViewportLayout {
+  if (mode === "responsive") {
+    return {
+      bounds: container,
+      zoomFactor: 1,
+    };
+  }
+
+  const preset = BROWSER_VIEWPORT_PRESETS[mode];
+  const inset = 16;
+  const availableWidth = Math.max(1, container.width - inset * 2);
+  const availableHeight = Math.max(1, container.height - inset * 2);
+  const zoomFactor = Math.max(
+    0.25,
+    Math.min(1, availableWidth / preset.width, availableHeight / preset.height),
+  );
+  const width = preset.width * zoomFactor;
+  const height = preset.height * zoomFactor;
+
+  return {
+    bounds: {
+      x: container.x + (container.width - width) / 2,
+      y: container.y + (container.height - height) / 2,
+      width,
+      height,
+    },
+    zoomFactor,
+  };
+}
 
 type BrowserNavigationTarget =
   | { kind: "existing"; tabId: string }
@@ -214,6 +263,29 @@ export function isPreviewArtifactActive(
   return comparable(previewUrl) === comparable(currentUrl);
 }
 
+export function formatPreviewArtifactCreatedAt(createdAt: string): string {
+  const value = Date.parse(createdAt);
+  if (Number.isNaN(value)) return "生成时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+export function buildDesktopBrowserHistoryItems(
+  artifacts: PreviewArtifact[],
+  activeUrl: string,
+): DesktopBrowserHistoryItem[] {
+  return artifacts.map((artifact) => ({
+    id: artifact.id,
+    label: artifact.title,
+    sublabel: formatPreviewArtifactCreatedAt(artifact.createdAt),
+    selected: isPreviewArtifactActive(artifact, activeUrl),
+  }));
+}
+
 function hasDesktopBrowserHost(): boolean {
   if (typeof window === "undefined") return false;
   const host = (window as Window & { nexuHost?: unknown }).nexuHost;
@@ -263,9 +335,13 @@ export function EmbeddedBrowser({
   );
   const [browserCenterStatus, setBrowserCenterStatus] =
     useState<BrowserCenterStatus>("loading");
+  const [viewportMode, setViewportMode] =
+    useState<BrowserViewportMode>("responsive");
+  const [viewportMenuOpen, setViewportMenuOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const historyPanelRef = useRef<HTMLElement>(null);
+  const viewportMenuRef = useRef<HTMLDivElement>(null);
   const lastAutoArtifactIdRef = useRef<string | null>(null);
   const lastNavigationRequestIdRef = useRef<number | null>(null);
   const desktopBrowser = hasDesktopBrowserHost();
@@ -350,6 +426,24 @@ export function EmbeddedBrowser({
       document.removeEventListener("keydown", closeHistoryOnEscape);
     };
   }, [historyOpen]);
+
+  useEffect(() => {
+    if (!viewportMenuOpen) return;
+    const closeViewportMenu = (event: MouseEvent): void => {
+      if (!viewportMenuRef.current?.contains(event.target as Node)) {
+        setViewportMenuOpen(false);
+      }
+    };
+    const closeViewportMenuOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setViewportMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeViewportMenu);
+    document.addEventListener("keydown", closeViewportMenuOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeViewportMenu);
+      document.removeEventListener("keydown", closeViewportMenuOnEscape);
+    };
+  }, [viewportMenuOpen]);
 
   const navigateTab = useCallback(
     (tabId: string, value: string, title?: string): boolean => {
@@ -498,16 +592,21 @@ export function EmbeddedBrowser({
     if (!element) return;
     const sync = (): void => {
       const rect = element.getBoundingClientRect();
-      void controlDesktopBrowser({
-        action: "show",
-        tabId: activeTab.id,
-        url: activeTab.url,
-        bounds: {
+      const layout = resolveBrowserViewportLayout(
+        {
           x: rect.left,
           y: rect.top,
           width: rect.width,
           height: rect.height,
         },
+        viewportMode,
+      );
+      void controlDesktopBrowser({
+        action: "show",
+        tabId: activeTab.id,
+        url: activeTab.url,
+        bounds: layout.bounds,
+        zoomFactor: layout.zoomFactor,
       })
         .then(() => setNavigationError(null))
         .catch(() => setNavigationError("Could not open this page"));
@@ -521,7 +620,13 @@ export function EmbeddedBrowser({
       window.removeEventListener("resize", sync);
       void controlDesktopBrowser({ action: "hide" });
     };
-  }, [activeTab?.id, activeTab?.url, annotationImage, desktopBrowser]);
+  }, [
+    activeTab?.id,
+    activeTab?.url,
+    annotationImage,
+    desktopBrowser,
+    viewportMode,
+  ]);
 
   useEffect(() => {
     if (!desktopBrowser || !activeTab?.url || annotationImage) return;
@@ -841,7 +946,41 @@ export function EmbeddedBrowser({
             <button
               type="button"
               disabled={previewArtifacts.length === 0}
-              onClick={() => setHistoryOpen((current) => !current)}
+              onClick={(event) => {
+                setViewportMenuOpen(false);
+                if (!desktopBrowser || !activeTab) {
+                  setHistoryOpen((current) => !current);
+                  return;
+                }
+                const rect = event.currentTarget.getBoundingClientRect();
+                setHistoryOpen(true);
+                void controlDesktopBrowser({
+                  action: "choose-history",
+                  tabId: activeTab.id,
+                  items: buildDesktopBrowserHistoryItems(
+                    previewArtifacts,
+                    activeTab.url,
+                  ),
+                  anchor: { x: rect.right, y: rect.bottom },
+                })
+                  .then((result) => {
+                    if (result?.kind !== "history" || !result.artifactId) {
+                      return;
+                    }
+                    const artifact = previewArtifacts.find(
+                      (candidate) => candidate.id === result.artifactId,
+                    );
+                    if (artifact?.previewUrl) {
+                      navigateTab(
+                        activeTab.id,
+                        artifact.previewUrl,
+                        artifact.title,
+                      );
+                    }
+                  })
+                  .catch(() => toast.error("无法切换页面版本"))
+                  .finally(() => setHistoryOpen(false));
+              }}
               title="页面版本历史"
               aria-label="页面版本历史"
               aria-haspopup="menu"
@@ -850,6 +989,96 @@ export function EmbeddedBrowser({
             >
               <History size={14} />
             </button>
+          </div>
+          <div ref={viewportMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              disabled={!activeTab?.url}
+              onClick={(event) => {
+                setHistoryOpen(false);
+                if (!desktopBrowser || !activeTab) {
+                  setViewportMenuOpen((current) => !current);
+                  return;
+                }
+                const rect = event.currentTarget.getBoundingClientRect();
+                void controlDesktopBrowser({
+                  action: "choose-viewport",
+                  tabId: activeTab.id,
+                  currentMode: viewportMode,
+                  anchor: { x: rect.right, y: rect.bottom },
+                })
+                  .then((result) => {
+                    if (result?.kind === "viewport") {
+                      setViewportMode(result.mode);
+                    }
+                  })
+                  .catch(() => toast.error("无法切换响应式视口"));
+              }}
+              title="选择响应式视口"
+              aria-label="选择响应式视口"
+              aria-haspopup="menu"
+              aria-expanded={viewportMenuOpen}
+              className={`flex size-7 items-center justify-center rounded-md transition-colors disabled:opacity-30 ${viewportMenuOpen || viewportMode !== "responsive" ? "bg-surface-3 text-text-primary shadow-sm ring-1 ring-border" : "text-text-secondary hover:bg-surface-2"}`}
+            >
+              <MonitorSmartphone size={14} />
+            </button>
+            {!desktopBrowser && viewportMenuOpen && (
+              <div
+                role="menu"
+                aria-label="响应式视口"
+                className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 overflow-hidden rounded-md border border-border bg-surface-0 p-1 shadow-lg"
+              >
+                {(
+                  [
+                    {
+                      value: "responsive",
+                      label: "响应式",
+                      dimensions: null,
+                      icon: MonitorSmartphone,
+                    },
+                    {
+                      value: "mobile",
+                      label: "手机",
+                      dimensions: "375 × 812",
+                      icon: Smartphone,
+                    },
+                    {
+                      value: "tablet",
+                      label: "平板",
+                      dimensions: "768 × 1024",
+                      icon: Tablet,
+                    },
+                  ] as const
+                ).map((option) => {
+                  const Icon = option.icon;
+                  const selected = viewportMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        setViewportMode(option.value);
+                        setViewportMenuOpen(false);
+                      }}
+                      className={`flex h-9 w-full items-center gap-2 rounded px-2 text-left text-xs transition-colors ${selected ? "bg-surface-2 text-text-primary" : "text-text-secondary hover:bg-surface-2 hover:text-text-primary"}`}
+                    >
+                      <Icon size={14} className="shrink-0" />
+                      <span className="flex-1 font-medium">{option.label}</span>
+                      {option.dimensions ? (
+                        <span className="text-[11px] text-text-muted">
+                          {option.dimensions}
+                        </span>
+                      ) : null}
+                      {selected ? (
+                        <Check size={13} className="shrink-0" />
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -904,7 +1133,8 @@ export function EmbeddedBrowser({
         <div
           ref={contentRef}
           data-browser-content-viewport="true"
-          className="relative min-w-0 flex-1 bg-white"
+          data-browser-viewport-mode={viewportMode}
+          className={`relative flex min-w-0 flex-1 items-center justify-center overflow-hidden ${viewportMode === "responsive" ? "bg-white" : "bg-surface-2"}`}
         >
           {!desktopBrowser && activeTab?.url ? (
             <iframe
@@ -914,7 +1144,16 @@ export function EmbeddedBrowser({
               allow="clipboard-read; clipboard-write; fullscreen"
               referrerPolicy="strict-origin-when-cross-origin"
               onLoad={() => updateTab(activeTab.id, { loading: false })}
-              className="size-full border-0 bg-white"
+              className={
+                viewportMode === "responsive"
+                  ? "size-full border-0 bg-white"
+                  : "max-h-full max-w-full border-0 bg-white shadow-md"
+              }
+              style={
+                viewportMode === "responsive"
+                  ? undefined
+                  : BROWSER_VIEWPORT_PRESETS[viewportMode]
+              }
             />
           ) : !activeTab?.url ? (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
@@ -952,7 +1191,7 @@ export function EmbeddedBrowser({
           )}
         </div>
 
-        {historyOpen && (
+        {!desktopBrowser && historyOpen && (
           <aside
             ref={historyPanelRef}
             role="menu"
@@ -970,7 +1209,6 @@ export function EmbeddedBrowser({
                   artifact,
                   activeTab?.url ?? "",
                 );
-                const createdAt = Date.parse(artifact.createdAt);
                 return (
                   <button
                     key={artifact.id}
@@ -994,14 +1232,7 @@ export function EmbeddedBrowser({
                         {artifact.title}
                       </span>
                       <span className="mt-0.5 block text-[10px] text-text-muted">
-                        {Number.isNaN(createdAt)
-                          ? "生成时间未知"
-                          : new Intl.DateTimeFormat("zh-CN", {
-                              month: "2-digit",
-                              day: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }).format(createdAt)}
+                        {formatPreviewArtifactCreatedAt(artifact.createdAt)}
                       </span>
                     </span>
                     {active && (

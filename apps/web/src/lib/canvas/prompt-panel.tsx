@@ -14,7 +14,14 @@
  */
 
 import { isImeComposing } from "@/lib/keyboard";
-import { ArrowUp, BookOpen, SlidersHorizontal } from "lucide-react";
+import { optimizeImagePrompt } from "@/lib/media/image-prompt-optimization";
+import {
+  ArrowUp,
+  BookOpen,
+  LoaderCircle,
+  SlidersHorizontal,
+  WandSparkles,
+} from "lucide-react";
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -22,6 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import { openCanvasDialog } from "./canvas-dialogs";
 import {
   generateAudioIntoNode,
@@ -104,6 +112,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
   const [imageAspect, setImageAspect] = useState<string>("");
   const [imageSize, setImageSize] = useState<string>("");
   const [imageTransparent, setImageTransparent] = useState(false);
+  const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false);
   // Image settings popover (reference-parity: params live behind a summary
   // chip, not inline). Closed on node switch via the keyed state below.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -371,6 +380,19 @@ export function PromptPanel({ node }: PromptPanelProps) {
     audioInstructions,
   ]);
 
+  const handleOptimizePrompt = useCallback(async () => {
+    if (!prompt.trim() || isOptimizingPrompt) return;
+    setIsOptimizingPrompt(true);
+    try {
+      updatePrompt(await optimizeImagePrompt(prompt));
+      toast.success("提示词已优化");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "提示词优化失败");
+    } finally {
+      setIsOptimizingPrompt(false);
+    }
+  }, [isOptimizingPrompt, prompt, updatePrompt]);
+
   const placeholder =
     node.type === "image"
       ? "描述要生成的图片内容"
@@ -428,7 +450,7 @@ export function PromptPanel({ node }: PromptPanelProps) {
       <div className="relative">
         <textarea
           ref={textareaRef}
-          className="w-full select-text resize-none rounded-xl border-0 bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-text-tertiary"
+          className={`w-full select-text resize-none rounded-xl border-0 bg-surface-2 px-3 py-2.5 text-sm outline-none placeholder:text-text-tertiary ${isImageNode ? "pr-24" : ""}`}
           rows={3}
           placeholder={placeholder}
           value={prompt}
@@ -438,6 +460,25 @@ export function PromptPanel({ node }: PromptPanelProps) {
           onKeyDown={handleKeyDown}
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         />
+
+        {isImageNode ? (
+          <button
+            type="button"
+            data-canvas-optimize-image-prompt="true"
+            title="优化为 GPT-image-2 更容易理解的提示词"
+            disabled={!prompt.trim() || isOptimizingPrompt}
+            onClick={() => void handleOptimizePrompt()}
+            onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+            className="absolute right-2 top-2 flex h-7 items-center gap-1 rounded-md border border-border bg-surface-1 px-2 text-xs font-medium text-text-secondary shadow-sm transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isOptimizingPrompt ? (
+              <LoaderCircle size={13} className="animate-spin" />
+            ) : (
+              <WandSparkles size={13} />
+            )}
+            {isOptimizingPrompt ? "优化中" : "优化"}
+          </button>
+        ) : null}
 
         {/* @-mention dropdown */}
         {mentionActive && filteredCandidates.length > 0 ? (

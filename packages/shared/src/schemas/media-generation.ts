@@ -71,6 +71,28 @@ export const generateImageResponseSchema = z.object({
   items: z.array(generatedMediaItemSchema).min(1),
 });
 
+export const imageGenerationJobStatusSchema = z.enum([
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+]);
+
+/**
+ * Controller-owned asynchronous image-generation job. The submission route
+ * returns this shape immediately; clients poll the same resource until it
+ * reaches a terminal status.
+ */
+export const imageGenerationJobSchema = z.object({
+  jobId: z.string().uuid(),
+  status: imageGenerationJobStatusSchema,
+  createdAt: z.string().datetime(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().optional(),
+  result: generateImageResponseSchema.optional(),
+  error: z.string().optional(),
+});
+
 export const generateVideoRequestSchema = z
   .object({
     prompt: z.string().min(1).max(2_000),
@@ -225,6 +247,10 @@ export type GenerateTextResponse = z.infer<typeof generateTextResponseSchema>;
 export type GeneratedMediaItem = z.infer<typeof generatedMediaItemSchema>;
 export type GenerateImageRequest = z.infer<typeof generateImageRequestSchema>;
 export type GenerateImageResponse = z.infer<typeof generateImageResponseSchema>;
+export type ImageGenerationJobStatus = z.infer<
+  typeof imageGenerationJobStatusSchema
+>;
+export type ImageGenerationJob = z.infer<typeof imageGenerationJobSchema>;
 export type GenerateVideoRequest = z.infer<typeof generateVideoRequestSchema>;
 export type GenerateVideoResponse = z.infer<typeof generateVideoResponseSchema>;
 export type GenerateAudioRequest = z.infer<typeof generateAudioRequestSchema>;

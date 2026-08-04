@@ -148,39 +148,42 @@ describe("bundled Tabby media runner", () => {
     );
   });
 
-  it("retries one transient gateway timeout before accepting the image", async () => {
-    let attempts = 0;
-    const runTrustedScript: RunTrustedScript = vi.fn(async (input) => {
-      attempts += 1;
-      if (attempts === 1) {
-        throw new Error(
-          "Error from tabby-image gateway (504): <!DOCTYPE html>",
-        );
-      }
-      const filenameIndex = input.args.indexOf("--filename");
-      const filename = input.args[filenameIndex + 1];
-      if (!filename) throw new Error("missing filename fixture argument");
-      writeFileSync(filename, "png");
-    });
-    const runner = new BundledTabbyMediaRunner({
-      staticSkillsDir,
-      openclawStateDir,
-      genId: () => "retry-image-id",
-      runTrustedScript,
-      imageRetryDelayMs: 0,
-    });
+  it.each(["504", "524"])(
+    "retries one transient gateway timeout with status %s before accepting the image",
+    async (status) => {
+      let attempts = 0;
+      const runTrustedScript: RunTrustedScript = vi.fn(async (input) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error(
+            `Error from tabby-image gateway (${status}): <!DOCTYPE html>`,
+          );
+        }
+        const filenameIndex = input.args.indexOf("--filename");
+        const filename = input.args[filenameIndex + 1];
+        if (!filename) throw new Error("missing filename fixture argument");
+        writeFileSync(filename, "png");
+      });
+      const runner = new BundledTabbyMediaRunner({
+        staticSkillsDir,
+        openclawStateDir,
+        genId: () => "retry-image-id",
+        runTrustedScript,
+        imageRetryDelayMs: 0,
+      });
 
-    await expect(
-      runner.generateImage({
-        botId: "bot-1",
-        prompt: "cat",
-        count: 1,
-        model: "tabby-image-pro",
-        timeoutMs: 10_000,
-      }),
-    ).resolves.toHaveLength(1);
-    expect(runTrustedScript).toHaveBeenCalledTimes(2);
-  });
+      await expect(
+        runner.generateImage({
+          botId: "bot-1",
+          prompt: "cat",
+          count: 1,
+          model: "tabby-image-pro",
+          timeoutMs: 10_000,
+        }),
+      ).resolves.toHaveLength(1);
+      expect(runTrustedScript).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("does not retry request validation failures", async () => {
     const runTrustedScript: RunTrustedScript = vi.fn(async () => {
@@ -205,13 +208,16 @@ describe("bundled Tabby media runner", () => {
     expect(runTrustedScript).toHaveBeenCalledTimes(1);
   });
 
-  it("collapses an HTML 504 page into a readable final error", () => {
-    const error = new Error(
-      "Error from tabby-image gateway (504): <!DOCTYPE html><html>huge page</html>",
-    );
-    expect(isRetryableTabbyImageError(error)).toBe(true);
-    expect(readableTabbyImageError(error).message).toBe(
-      "tabby-image 中转站响应超时，已自动重试，请稍后再试",
-    );
-  });
+  it.each(["504", "524"])(
+    "collapses an HTML gateway timeout page with status %s into a readable final error",
+    (status) => {
+      const error = new Error(
+        `Error from tabby-image gateway (${status}): <!DOCTYPE html><html>huge page</html>`,
+      );
+      expect(isRetryableTabbyImageError(error)).toBe(true);
+      expect(readableTabbyImageError(error).message).toBe(
+        "tabby-image 中转站响应超时，已自动重试，请稍后再试",
+      );
+    },
+  );
 });

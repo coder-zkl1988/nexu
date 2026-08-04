@@ -95,7 +95,7 @@ layouts/workspace-layout.tsx       右侧栏渲染 InfiniteCanvas
 
 - **选型**：gateway 无直接图像 API（排除）；复用 §10.3 执行原语——`MediaGenerationService` 向 utility 子代理 lane（`agent:<botId>:subagent:imagegen-<uuid>`，botId=默认 agent）发一条严格合同消息（调 `image_generate` 一次、只回文件绝对路径、工具不可用则只回 `UNAVAILABLE`、禁 UI/技能/shell 变通），轮询 session 完成后提取路径。
 - **安全**：路径必须落在 `<stateDir>/media` 内（防逃逸/防幻觉路径）+ 文件存在性校验；产物经既有 `GET /api/v1/media/state-file` 服务。
-- **端点**：`POST /api/v1/media/generate-image {prompt} → {url, path}`（502 = 失败/超时/未配置后端）。
+- **端点**：桌面端使用异步任务合同：`POST /api/v1/media/image-jobs {prompt, ...}` 立即返回 `202 + {jobId, status}`，再轮询 `GET /api/v1/media/image-jobs/{jobId}`，终态为 `succeeded + result` 或 `failed + error`。Controller 以单并发串行执行任务，进行中与排队任务合计最多 8 个，终态结果保留 30 分钟。旧 `POST /api/v1/media/generate-image {prompt} → {url, path}` 仅保留给旧客户端兼容（502 = 失败/超时/未配置后端）。
 - **前端**：画布空图片节点新增「描述要生成的图片… + 生成」（与上传并列），成功后 `metadata.content = url`，可直接连线喂给 XHS 编辑器（复用 connection-effects）。
 - **环境依赖与实测**：`image_generate` 工具需图像模型 provider 才注册；合入 main 的 **tabby-image 官方 skill**（走已登录 Tabby 云账号，零配置）后，生成合同更新为「优先 image_generate 工具 → 其次 tabby-image skill → 都不可用只回 UNAVAILABLE」。**真机全通**：POST 生图 108s 返回 200，产物 1536×1024 PNG 落 `media/outbound/<botId>/tabby-image/`，servable URL 直接可取（2.1MB）。超时上限 240s（skill 链路叠加 agent 开销：读 SKILL→起脚本→轮询）。弱模型可能无视 UNAVAILABLE 合同而空转至超时兜底。
 
