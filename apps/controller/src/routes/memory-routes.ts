@@ -4,6 +4,7 @@ import { type OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import type { ControllerContainer } from "../app/container.js";
 import type { ControllerEnv } from "../app/env.js";
+import { logger } from "../lib/logger.js";
 import { getOpenClawCommandSpec } from "../runtime/slimclaw-runtime-resolution.js";
 import { memoryConfigSchema } from "../store/schemas.js";
 import type { ControllerBindings } from "../types.js";
@@ -405,9 +406,26 @@ export function registerMemoryRoutes(
       });
       try {
         await container.openclawSyncService.syncAll();
-      } catch {
+      } catch (error) {
+        logger.warn(
+          { errorName: error instanceof Error ? error.name : "UnknownError" },
+          "memory_settings_sync_failed",
+        );
         await container.configStore.setMemoryConfig(previous);
-        await container.openclawSyncService.syncAll().catch(() => undefined);
+        // A rollback that cannot be synced leaves the stored config and the
+        // runtime disagreeing, which is worse than the original failure and
+        // must not be swallowed.
+        await container.openclawSyncService.syncAll().catch((rollbackError) => {
+          logger.error(
+            {
+              errorName:
+                rollbackError instanceof Error
+                  ? rollbackError.name
+                  : "UnknownError",
+            },
+            "memory_settings_rollback_sync_failed",
+          );
+        });
         throw new HTTPException(409, {
           message: "Memory settings could not be applied",
         });
@@ -454,18 +472,42 @@ export function registerMemoryRoutes(
         });
       }
 
+      // Split the two awaits so a failure names the stage it came from. The
+      // subprocess error message itself stays out of the log: it carries
+      // OpenClaw stderr, which is not a vetted logging surface.
       try {
         await container.openclawSyncService.syncAll();
-        await rebuildIndex(container.env, agentId);
-        return c.json(
-          { ok: true as const, rebuiltAt: now().toISOString() },
-          200,
+      } catch (error) {
+        logger.warn(
+          {
+            ...(agentId ? { agentId } : {}),
+            stage: "sync",
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+          "memory_index_rebuild_failed",
         );
-      } catch {
         throw new HTTPException(409, {
           message: "Memory index rebuild failed",
         });
       }
+
+      try {
+        await rebuildIndex(container.env, agentId);
+      } catch (error) {
+        logger.warn(
+          {
+            ...(agentId ? { agentId } : {}),
+            stage: "rebuild",
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+          "memory_index_rebuild_failed",
+        );
+        throw new HTTPException(409, {
+          message: "Memory index rebuild failed",
+        });
+      }
+
+      return c.json({ ok: true as const, rebuiltAt: now().toISOString() }, 200);
     },
   );
 }

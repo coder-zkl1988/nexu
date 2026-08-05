@@ -4,12 +4,35 @@ import type { ControllerContainer } from "../src/app/container.js";
 import { registerRuntimeOperationsRoutes } from "../src/routes/runtime-operations-routes.js";
 import type { ControllerBindings } from "../src/types.js";
 
+// The container always carries these services in production, so the default
+// mock carries them too. A test that omits one would otherwise exercise a
+// shape the app can never be in.
+function createContainerDefaults(): Partial<ControllerContainer> {
+  return {
+    teamService: {
+      listTeams: vi.fn(() => []),
+    } as unknown as ControllerContainer["teamService"],
+    approvalAuditService: {
+      list: vi.fn(async () => []),
+      recordRequested: vi.fn(async () => undefined),
+      recordResolved: vi.fn(async () => undefined),
+    } as unknown as ControllerContainer["approvalAuditService"],
+    configStore: {
+      getLocalProfile: vi.fn(async () => ({ name: "Local User" })),
+    } as unknown as ControllerContainer["configStore"],
+    sessionRunRegistry: {
+      isBusy: vi.fn(() => false),
+    } as unknown as ControllerContainer["sessionRunRegistry"],
+  };
+}
+
 function createOperationsApp(
   gatewayService: Partial<ControllerContainer["gatewayService"]>,
   overrides: Partial<ControllerContainer> = {},
 ) {
   const app = new OpenAPIHono<ControllerBindings>();
   registerRuntimeOperationsRoutes(app, {
+    ...createContainerDefaults(),
     ...overrides,
     gatewayService,
   } as unknown as ControllerContainer);
@@ -665,6 +688,30 @@ describe("runtime operations routes", () => {
         } as unknown as ControllerContainer["sessionRunRegistry"],
       },
     );
+
+    const response = await app.request(
+      "/api/v1/runtime/recovery/checkpoints/checkpoint-1/restore",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          sessionKey: "agent:agent-1:main",
+          confirm: true,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.text()).resolves.toBe("Checkpoint restore failed");
+  });
+
+  it("rejects a checkpoint restore the gateway refuses", async () => {
+    const app = createOperationsApp({
+      isConnected: vi.fn(() => true),
+      sessionsCompactionRestore: vi.fn(async () => {
+        throw new Error("checkpoint not found");
+      }),
+    });
 
     const response = await app.request(
       "/api/v1/runtime/recovery/checkpoints/checkpoint-1/restore",

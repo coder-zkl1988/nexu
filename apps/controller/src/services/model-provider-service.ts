@@ -1003,7 +1003,14 @@ export class ModelProviderService {
               pluginLoadPaths,
             ),
           ).filter((entry) => entry.provider === BEDROCK_PROVIDER_ID);
-        } catch {
+        } catch (error) {
+          logger.warn(
+            {
+              modelId: probeModel.id,
+              errorName: error instanceof Error ? error.name : "UnknownError",
+            },
+            "bedrock_live_probe_run_failed",
+          );
           probeProcessFailed = true;
           continue;
         }
@@ -1040,7 +1047,11 @@ export class ModelProviderService {
               ? "OpenClaw could not run the AWS Bedrock live probe. Check the embedded runtime, credentials, region, and network access, then retry."
               : describeBedrockProbeFailure(undefined),
       };
-    } catch {
+    } catch (error) {
+      logger.warn(
+        { errorName: error instanceof Error ? error.name : "UnknownError" },
+        "bedrock_validation_failed",
+      );
       return {
         valid: false,
         error:

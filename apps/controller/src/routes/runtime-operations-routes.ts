@@ -327,6 +327,27 @@ const rawCheckpointRestoreSchema = z
   })
   .passthrough();
 
+// A restore that lands on a different session, checkpoint, or session id than
+// the one that was asked for is a broken runtime contract, not a rejected
+// request. Name the failing field so the two are distinguishable in a log.
+function findCheckpointRestoreIdentityMismatch(
+  data: z.infer<typeof rawCheckpointRestoreSchema>,
+  expected: { sessionKey: string; checkpointId: string },
+): string | null {
+  if (data.key !== expected.sessionKey) return "key";
+  if (data.checkpoint.checkpointId !== expected.checkpointId) {
+    return "checkpoint.checkpointId";
+  }
+  if (data.checkpoint.sessionKey !== expected.sessionKey) {
+    return "checkpoint.sessionKey";
+  }
+  if (data.checkpoint.sessionId !== data.sessionId) {
+    return "checkpoint.sessionId";
+  }
+  if (data.entry.sessionId !== data.sessionId) return "entry.sessionId";
+  return null;
+}
+
 const recoveryResponseSchema = z.object({
   connected: z.boolean(),
   healthAvailable: z.boolean(),
@@ -755,7 +776,7 @@ export function registerRuntimeOperationsRoutes(
         );
       }
 
-      const teams = container.teamService?.listTeams?.() ?? [];
+      const teams = container.teamService.listTeams();
       const scopedTasksRequest = container.gatewayService.listTasks({
         ...(sessionKey ? { sessionKey } : {}),
         ...(agentId ? { agentId } : {}),
@@ -980,17 +1001,26 @@ export function registerRuntimeOperationsRoutes(
           kind: body.kind,
           decision: body.decision,
         });
-      } catch {
+      } catch (error) {
+        logger.warn(
+          {
+            approvalId,
+            kind: body.kind,
+            decision: body.decision,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+          "approval_resolve_failed",
+        );
         throw new HTTPException(409, {
           message: "Approval expired or could not be resolved",
         });
       }
       try {
         const reviewer = await container.configStore
-          ?.getLocalProfile?.()
+          .getLocalProfile()
           .then((profile) => profile.name)
           .catch(() => undefined);
-        await container.approvalAuditService?.recordResolved({
+        await container.approvalAuditService.recordResolved({
           approvalId,
           source: "openclaw",
           kind: body.kind,
@@ -1039,9 +1069,7 @@ export function registerRuntimeOperationsRoutes(
       const { sessionKey, agentId, limit, cursor } = c.req.valid("query");
       const connected = container.gatewayService.isConnected();
       const [history, runtimeAudit] = await Promise.allSettled([
-        container.approvalAuditService
-          ? container.approvalAuditService.list({ limit })
-          : Promise.reject(new Error("approval history unavailable")),
+        container.approvalAuditService.list({ limit }),
         connected
           ? container.gatewayService.listAudit({
               ...(sessionKey ? { sessionKey } : {}),
@@ -1225,48 +1253,63 @@ export function registerRuntimeOperationsRoutes(
       }
       const { checkpointId } = c.req.valid("param");
       const { sessionKey, agentId } = c.req.valid("json");
-      if (container.sessionRunRegistry?.isBusy?.(sessionKey)) {
+      if (container.sessionRunRegistry.isBusy(sessionKey)) {
         throw new HTTPException(409, {
           message: "Cannot restore a session while a run is active",
         });
       }
+
+      let restored: unknown;
       try {
-        const result = await container.gatewayService.sessionsCompactionRestore(
+        restored = await container.gatewayService.sessionsCompactionRestore({
+          key: sessionKey,
+          ...(agentId ? { agentId } : {}),
+          checkpointId,
+        });
+      } catch (error) {
+        logger.warn(
           {
-            key: sessionKey,
-            ...(agentId ? { agentId } : {}),
             checkpointId,
+            sessionKey,
+            errorName: error instanceof Error ? error.name : "UnknownError",
           },
+          "checkpoint_restore_gateway_call_failed",
         );
-        const parsed = rawCheckpointRestoreSchema.safeParse(result);
-        if (
-          !parsed.success ||
-          parsed.data.key !== sessionKey ||
-          parsed.data.checkpoint.checkpointId !== checkpointId ||
-          parsed.data.checkpoint.sessionKey !== sessionKey ||
-          parsed.data.checkpoint.sessionId !== parsed.data.sessionId ||
-          parsed.data.entry.sessionId !== parsed.data.sessionId
-        ) {
-          throw new Error("checkpoint restore returned an invalid identity");
-        }
-        return c.json(
-          {
-            ok: true as const,
-            key: parsed.data.key,
-            sessionId: parsed.data.sessionId,
-            checkpoint: checkpointSchema.parse(parsed.data.checkpoint),
-            entry: {
-              sessionId: parsed.data.entry.sessionId,
-              updatedAt: parsed.data.entry.updatedAt,
-            },
-          },
-          200,
-        );
-      } catch {
         throw new HTTPException(409, {
           message: "Checkpoint restore failed",
         });
       }
+
+      const parsed = rawCheckpointRestoreSchema.safeParse(restored);
+      const mismatch = parsed.success
+        ? findCheckpointRestoreIdentityMismatch(parsed.data, {
+            sessionKey,
+            checkpointId,
+          })
+        : "unparseable-response";
+      if (!parsed.success || mismatch) {
+        logger.warn(
+          { checkpointId, sessionKey, reason: mismatch },
+          "checkpoint_restore_identity_mismatch",
+        );
+        throw new HTTPException(409, {
+          message: "Checkpoint restore failed",
+        });
+      }
+
+      return c.json(
+        {
+          ok: true as const,
+          key: parsed.data.key,
+          sessionId: parsed.data.sessionId,
+          checkpoint: checkpointSchema.parse(parsed.data.checkpoint),
+          entry: {
+            sessionId: parsed.data.entry.sessionId,
+            updatedAt: parsed.data.entry.updatedAt,
+          },
+        },
+        200,
+      );
     },
   );
 
