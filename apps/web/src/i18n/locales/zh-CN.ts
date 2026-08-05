@@ -2019,6 +2019,24 @@ const zhCN = {
   "memory.updated": "记忆设置已更新。",
   "memory.updateFailed": "无法更新记忆设置。",
   "memory.intervalInvalid": "同步周期必须在 1 到 1440 分钟之间。",
+
+  // ── Host command execution ──
+  "hostExecution.title": "本机命令执行",
+  "hostExecution.description":
+    "你在桌面端亲自发起的运行始终保有本机执行权限，且永远不会弹窗。这两个开关只管别人能发起的运行——渠道入站消息和无人值守的自动化。",
+  "hostExecution.channels": "允许渠道消息执行",
+  "hostExecution.channelsHint":
+    "任何能在 Slack、飞书、企业微信等渠道给这个机器人发消息的人，都可能在这台机器上执行命令。",
+  "hostExecution.automations": "允许定时任务和自动化执行",
+  "hostExecution.automationsHint":
+    "定时任务、心跳等无人值守的运行会在没人看着的情况下执行命令。",
+  "hostExecution.loading": "正在加载机器人…",
+  "hostExecution.loadFailed": "无法加载机器人列表。",
+  "hostExecution.updateFailed": "设置保存失败。",
+  "hostExecution.updated": "已保存，运行时将重启以生效。",
+  "hostExecution.noBots": "还没有机器人。",
+  "automations.detail.hostExecutionBlocked":
+    "这次运行需要在本机执行命令（{{tool}}），但该机器人的「定时任务和自动化执行」是关闭的。可在 设置 → 本机命令执行 中开启。",
 } as const;
 
 export default zhCN;

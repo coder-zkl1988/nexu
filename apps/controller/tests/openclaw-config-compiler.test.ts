@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
 import {
@@ -271,6 +273,111 @@ describe("compileOpenClawConfig", () => {
     expect(result.plugins?.allow).toBeUndefined();
     expect(result.plugins?.deny).toBeUndefined();
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
+  });
+
+  it("hands the tool call guard its write-fence roots", () => {
+    const env = createEnv();
+    const result = compileOpenClawConfig(createConfig(), env);
+
+    // openclaw.json is controller-written and itself fenced, so it is the one
+    // delivery path for guard policy that a tool call cannot forge.
+    expect(result.plugins?.entries?.["nexu-toolcall-guard"]).toMatchObject({
+      enabled: true,
+      config: {
+        fence: {
+          stateDir: env.openclawStateDir,
+          nexuHome: env.nexuHomeDir,
+        },
+      },
+    });
+  });
+
+  // The manifest is `additionalProperties: false`, so a key the compiler emits
+  // or the plugin reads but the manifest omits is rejected at plugin load —
+  // silently disarming the guard rather than failing loudly.
+  it("emits guard config the plugin's own manifest accepts", async () => {
+    const manifest = JSON.parse(
+      await readFile(
+        path.resolve(
+          process.cwd(),
+          "static/runtime-plugins/nexu-toolcall-guard/openclaw.plugin.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      configSchema: {
+        properties: Record<string, { properties?: Record<string, unknown> }>;
+      };
+    };
+
+    const base = createConfig();
+    const config = {
+      ...base,
+      bots: [
+        {
+          ...base.bots[0],
+          hostExecution: {
+            channels: "host" as const,
+            automations: "restricted" as const,
+          },
+        },
+      ],
+    };
+    const emitted = (
+      compileOpenClawConfig(config, createEnv()).plugins?.entries?.[
+        "nexu-toolcall-guard"
+      ] as { config?: Record<string, unknown> }
+    )?.config;
+
+    expect(emitted).toBeDefined();
+    for (const key of Object.keys(emitted ?? {})) {
+      expect(
+        Object.keys(manifest.configSchema.properties),
+        `guard config key "${key}" is missing from the plugin manifest`,
+      ).toContain(key);
+    }
+    for (const key of Object.keys(
+      (emitted?.fence as Record<string, unknown>) ?? {},
+    )) {
+      expect(
+        Object.keys(manifest.configSchema.properties.fence?.properties ?? {}),
+        `guard fence key "${key}" is missing from the plugin manifest`,
+      ).toContain(key);
+    }
+  });
+
+  it("emits only the bots that opted out of the host-execution default", () => {
+    const base = createConfig();
+    const config = {
+      ...base,
+      bots: [
+        {
+          ...base.bots[0],
+          id: "bot-default",
+          hostExecution: {
+            channels: "restricted" as const,
+            automations: "restricted" as const,
+          },
+        },
+        {
+          ...base.bots[0],
+          id: "bot-opened",
+          hostExecution: {
+            channels: "host" as const,
+            automations: "restricted" as const,
+          },
+        },
+      ],
+    };
+
+    const guardEntry = compileOpenClawConfig(config, createEnv()).plugins
+      ?.entries?.["nexu-toolcall-guard"] as
+      | { config?: { hostExecution?: Record<string, unknown> } }
+      | undefined;
+
+    expect(guardEntry?.config?.hostExecution).toEqual({
+      "bot-opened": { channels: "host", automations: "restricted" },
+    });
   });
 
   it("does not grant external command ownership or channel restarts", () => {

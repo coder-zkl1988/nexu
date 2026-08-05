@@ -378,7 +378,11 @@ export async function createContainer(): Promise<ControllerContainer> {
 
   // AgentService is used by both the return block and the experthub install
   // flow. Construct it once so both paths share the same cache/syncAll semantics.
-  const agentService = new AgentService(configStore, openclawSyncService);
+  const agentService = new AgentService(
+    configStore,
+    openclawSyncService,
+    openclawProcess,
+  );
 
   const teamWorkflowLedgerStore = new TeamWorkflowLedgerStore(
     env.teamWorkflowDbPath,

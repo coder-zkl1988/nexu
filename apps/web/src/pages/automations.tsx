@@ -74,6 +74,7 @@ interface ScheduleItem {
   lastOutputObservedAt?: string;
   lastOutputNotificationStatus?: "delivered" | "suppressed" | "failed";
   lastOutputNotificationError?: string;
+  lastHostExecutionBlock?: { at: string; toolName: string; reason: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -1006,6 +1007,7 @@ export function AutomationsPage() {
           lastOutputObservedAt: s.lastOutputObservedAt,
           lastOutputNotificationStatus: s.lastOutputNotificationStatus,
           lastOutputNotificationError: s.lastOutputNotificationError,
+          lastHostExecutionBlock: s.lastHostExecutionBlock,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt,
         })),
@@ -1316,6 +1318,17 @@ export function AutomationsPage() {
                         })}
                       </span>
                     )}
+                  </div>
+                )}
+
+                {schedule.lastHostExecutionBlock && (
+                  <div
+                    data-host-execution-blocked={schedule.id}
+                    className="mb-3 rounded-md border border-[var(--color-warning)] bg-[var(--color-warning-subtle)] px-2.5 py-2 text-[11px] leading-4 text-[var(--color-warning)]"
+                  >
+                    {t("automations.detail.hostExecutionBlocked", {
+                      tool: schedule.lastHostExecutionBlock.toolName,
+                    })}
                   </div>
                 )}
 

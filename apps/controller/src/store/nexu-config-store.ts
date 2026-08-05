@@ -70,6 +70,7 @@ import {
   nexuConfigSchema,
   type storedProviderResponseSchema,
 } from "./schemas.js";
+import { SecretBox } from "./secret-box.js";
 
 const DEFAULT_MANAGED_CHANNEL_ACCOUNT_ID = "default";
 
@@ -664,7 +665,10 @@ export class NexuConfigStore {
   /** Callback fired when cloud state changes (connect/disconnect). */
   onCloudStateChanged?: (change: DesktopCloudStateChange) => Promise<void>;
 
+  private readonly secretBox: SecretBox;
+
   constructor(private readonly env: ControllerEnv) {
+    this.secretBox = new SecretBox(path.join(env.nexuHomeDir, "secret.key"));
     this.store = new LowDbStore<NexuConfig>(
       env.nexuConfigPath,
       nexuConfigSchema,
@@ -711,6 +715,35 @@ export class NexuConfigStore {
         schedules: [],
         secrets: {},
       }),
+      {
+        // Credentials are encrypted at rest and the file is owner-only. This
+        // does not stop the agent (same OS user, see SecretBox), it stops the
+        // config being readable by other accounts and being usable when the
+        // file alone is copied into a bug report or a backup.
+        fileMode: 0o600,
+        transform: {
+          onWrite: (config) => ({
+            ...config,
+            secrets: Object.fromEntries(
+              Object.entries(config.secrets).map(([key, value]) => [
+                key,
+                SecretBox.isEncrypted(value)
+                  ? value
+                  : this.secretBox.encrypt(value),
+              ]),
+            ),
+          }),
+          onRead: (config) => ({
+            ...config,
+            secrets: Object.fromEntries(
+              Object.entries(config.secrets).map(([key, value]) => [
+                key,
+                this.secretBox.decrypt(value),
+              ]),
+            ),
+          }),
+        },
+      },
     );
     this.cloudProfilesStore = new LowDbStore<CloudProfilesFile>(
       path.join(env.nexuHomeDir, "cloud-profiles.json"),
@@ -1029,6 +1062,9 @@ export class NexuConfigStore {
       name: input.name,
       slug: input.slug,
       poolId: input.poolId ?? null,
+      // Host execution for channel- and automation-driven runs is opt-in per
+      // bot; a newly created bot never starts with it open.
+      hostExecution: { channels: "restricted", automations: "restricted" },
       status: "active",
       modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
       systemPrompt: input.systemPrompt ?? null,
@@ -1062,6 +1098,7 @@ export class NexuConfigStore {
       name?: string;
       systemPrompt?: string;
       modelId?: string;
+      hostExecution?: Partial<BotResponse["hostExecution"]>;
     },
   ): Promise<BotResponse | null> {
     let updatedBot: BotResponse | null = null;
@@ -1078,6 +1115,12 @@ export class NexuConfigStore {
           name: input.name ?? bot.name,
           systemPrompt: input.systemPrompt ?? bot.systemPrompt,
           modelId: input.modelId ?? bot.modelId,
+          hostExecution: {
+            channels:
+              input.hostExecution?.channels ?? bot.hostExecution.channels,
+            automations:
+              input.hostExecution?.automations ?? bot.hostExecution.automations,
+          },
           updatedAt: now(),
         };
         return updatedBot;
@@ -1245,6 +1288,28 @@ export class NexuConfigStore {
       }),
     }));
 
+    return updated;
+  }
+
+  /**
+   * Record that a scheduled run was refused host command execution.
+   *
+   * Kept separate from the output-notification fields: those describe whether
+   * an output was delivered, this describes work that could not happen at all.
+   */
+  async recordScheduleHostExecutionBlock(
+    id: string,
+    input: { at: string; toolName: string; reason: string },
+  ): Promise<ScheduleResponse | null> {
+    let updated: ScheduleResponse | null = null;
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((schedule) => {
+        if (schedule.id !== id) return schedule;
+        updated = { ...schedule, lastHostExecutionBlock: input };
+        return updated;
+      }),
+    }));
     return updated;
   }
 

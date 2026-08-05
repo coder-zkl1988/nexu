@@ -105,6 +105,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
+import { HostExecutionSettingsSection } from "./host-execution-settings-section";
 import { LocalAutomationSettingsSection } from "./local-automation-settings-section";
 import { MemorySettingsSection } from "./memory-settings-section";
 import { markSetupComplete } from "./welcome";
@@ -1157,6 +1158,8 @@ function _GeneralSettings() {
       ) : null}
 
       <LocalAutomationSettingsSection />
+
+      <HostExecutionSettingsSection />
 
       <MemorySettingsSection />
 

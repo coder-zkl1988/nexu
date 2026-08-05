@@ -26,10 +26,33 @@ export const createBotSchema = z.object({
     .optional(),
 });
 
+/**
+ * Whether runs this bot did not start itself may execute host commands.
+ *
+ * The desktop user is never gated: `exec`/`process`/`code_execution` stay
+ * prompt-free for runs they drive. These two switches only cover the origins
+ * the runtime guard refuses by default — inbound channel messages and
+ * unattended automation — because both can be driven by someone other than the
+ * person at the machine. Both default to "restricted"; opening one is an
+ * explicit, per-bot decision.
+ */
+export const hostExecutionModeSchema = z.enum(["restricted", "host"]);
+
+export const botHostExecutionSchema = z.object({
+  channels: hostExecutionModeSchema.default("restricted"),
+  automations: hostExecutionModeSchema.default("restricted"),
+});
+
+const DEFAULT_HOST_EXECUTION = {
+  channels: "restricted",
+  automations: "restricted",
+} as const;
+
 export const updateBotSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   systemPrompt: z.string().optional(),
   modelId: z.string().optional(),
+  hostExecution: botHostExecutionSchema.partial().optional(),
 });
 
 export const botResponseSchema = z.object({
@@ -42,6 +65,8 @@ export const botResponseSchema = z.object({
   systemPrompt: z.string().nullable(),
   expertSlug: z.string().nullable().default(null),
   origin: botOriginSchema.default("user"),
+  // Defaulted so bots persisted before this field existed keep parsing.
+  hostExecution: botHostExecutionSchema.default(DEFAULT_HOST_EXECUTION),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

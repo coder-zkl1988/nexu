@@ -22,6 +22,10 @@ export type GetApiV1BotsResponses = {
             systemPrompt: string;
             expertSlug?: string;
             origin?: 'user' | 'system';
+            hostExecution?: {
+                channels?: 'restricted' | 'host';
+                automations?: 'restricted' | 'host';
+            };
             createdAt: string;
             updatedAt: string;
         }>;
@@ -58,6 +62,10 @@ export type PostApiV1BotsResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -97,6 +105,10 @@ export type GetApiV1BotsDefaultResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -144,6 +156,10 @@ export type PutApiV1BotsDefaultResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -205,6 +221,10 @@ export type GetApiV1BotsByBotIdResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -217,6 +237,10 @@ export type PatchApiV1BotsByBotIdData = {
         name?: string;
         systemPrompt?: string;
         modelId?: string;
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
     };
     path: {
         botId: string;
@@ -250,6 +274,10 @@ export type PatchApiV1BotsByBotIdResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -291,6 +319,10 @@ export type PostApiV1BotsByBotIdPauseResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -332,6 +364,10 @@ export type PostApiV1BotsByBotIdResumeResponses = {
         systemPrompt: string;
         expertSlug?: string;
         origin?: 'user' | 'system';
+        hostExecution?: {
+            channels?: 'restricted' | 'host';
+            automations?: 'restricted' | 'host';
+        };
         createdAt: string;
         updatedAt: string;
     };
@@ -7961,6 +7997,28 @@ export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses = {
 
 export type DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponse = DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses[keyof DeleteApiV1DevicesByDeviceIdTasksByTaskIdResponses];
 
+export type PostApiInternalRuntimeHostExecutionBlockedData = {
+    body?: {
+        sessionKey: string;
+        toolName: string;
+        reason: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/internal/runtime/host-execution-blocked';
+};
+
+export type PostApiInternalRuntimeHostExecutionBlockedResponses = {
+    /**
+     * Block recorded against the owning schedule, if any
+     */
+    200: {
+        recorded: boolean;
+    };
+};
+
+export type PostApiInternalRuntimeHostExecutionBlockedResponse = PostApiInternalRuntimeHostExecutionBlockedResponses[keyof PostApiInternalRuntimeHostExecutionBlockedResponses];
+
 export type GetApiV1SchedulesData = {
     body?: never;
     path?: never;
@@ -8006,6 +8064,11 @@ export type GetApiV1SchedulesResponses = {
             lastOutputObservedAt?: string;
             lastOutputNotificationStatus?: 'delivered' | 'suppressed' | 'failed';
             lastOutputNotificationError?: string;
+            lastHostExecutionBlock?: {
+                at: string;
+                toolName: string;
+                reason: string;
+            };
         }>;
     };
 };
@@ -8089,6 +8152,11 @@ export type PostApiV1SchedulesResponses = {
         lastOutputObservedAt?: string;
         lastOutputNotificationStatus?: 'delivered' | 'suppressed' | 'failed';
         lastOutputNotificationError?: string;
+        lastHostExecutionBlock?: {
+            at: string;
+            toolName: string;
+            reason: string;
+        };
     };
 };
 
@@ -8198,6 +8266,11 @@ export type PatchApiV1SchedulesByScheduleIdResponses = {
         lastOutputObservedAt?: string;
         lastOutputNotificationStatus?: 'delivered' | 'suppressed' | 'failed';
         lastOutputNotificationError?: string;
+        lastHostExecutionBlock?: {
+            at: string;
+            toolName: string;
+            reason: string;
+        };
     };
 };
 

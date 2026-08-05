@@ -30,6 +30,10 @@
  * to self-correct before the brake engages.
  */
 
+import { realpathSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 const DEFAULT_THRESHOLD = 3;
 const MAX_TRACKED_RUNS = 500;
 const LOCAL_AUTOMATION_TOOL_PREFIXES = ["peekaboo__", "cua-driver__"];
@@ -867,10 +871,663 @@ function assistantMessageHasToolCall(message) {
 }
 
 function isLocalInteractiveSession(ctx) {
-  if (ctx?.channelId) return false;
+  // `webchat` and friends are the runtime's internal surfaces, not channels.
+  if (remoteChannelId(ctx)) return false;
   return /^agent:[^:]+:(?:main|[0-9a-f]{8}-[0-9a-f-]{27})$/i.test(
     ctx?.sessionKey ?? "",
   );
+}
+
+// ---------------------------------------------------------------------------
+// Host execution tiering
+//
+// `exec`/`process` stay prompt-free for the person sitting at the desktop app —
+// that is a product requirement, not an oversight. What is gated is the run
+// whose *driver* is not that person.
+//
+// The discriminator is a positively observed remote signal, never the absence
+// of one. `ctx.channelId` is populated by OpenClaw 2026.7.1 for every
+// channel-originated run (see buildToolContext in
+// dist/agent-tools.before-tool-call-*.js) regardless of what the session key
+// looks like, so it survives the key-shaping paths that would otherwise
+// launder a channel conversation into desktop shape.
+//
+// Sub-sessions are intentionally NOT restricted here. Their lineage is not
+// present in the tool context, and most bundled skills are shell-driven, so
+// judging them on session-key shape alone would break the user's own team,
+// workflow, and media flows. Tightening them requires run-provenance tracking
+// (before_agent_start), which is deliberately a separate change.
+// ---------------------------------------------------------------------------
+const AUTOMATION_SESSION_KEY_PATTERN =
+  /^agent:[^:]+:(?:cron(?::|$)|schedule[-:])/i;
+
+const HOST_EXECUTION_TIER = "host";
+const RESTRICTED_EXECUTION_TIER = "restricted";
+
+// Triggers that start a run with nobody at the keyboard. `user` is excluded on
+// purpose, and so are the mid-run continuations (`budget`, `overflow`,
+// `timeout_recovery`): those resume a run a human already started, and
+// restricting them would revoke host execution halfway through the desktop
+// user's own turn.
+const UNATTENDED_TRIGGERS = new Set(["cron", "heartbeat", "memory"]);
+
+const MAX_TRACKED_ORIGINS = 500;
+
+// `channelId` on the agent hook context is NOT a conversation id. OpenClaw
+// derives it as `messageChannel ?? provider` (dist/hook-agent-context-*.js),
+// so a plain desktop `chat.send` turn arrives with `channelId: "webchat"` —
+// INTERNAL_MESSAGE_CHANNEL, the desktop's own surface. Treating that as a
+// remote channel refuses host execution to the person sitting at the app.
+// These are the runtime's own internal surface names.
+const INTERNAL_CHANNEL_IDS = new Set([
+  "webchat",
+  "heartbeat",
+  "cron",
+  "webhook",
+  "voice",
+  "sessions_send",
+]);
+
+/**
+ * The conversation id of a genuinely remote channel, or null.
+ *
+ * Two things are not remote: one of the runtime's internal surface names, and
+ * a value that merely echoes the message provider — that is the derivation's
+ * "no conversation ref available" fallback, not a conversation. A real inbound
+ * Slack turn carries the channel id (`C123`), never the string `slack`.
+ */
+function remoteChannelId(ctx) {
+  const raw = ctx?.channelId;
+  if (typeof raw !== "string" || !raw) return null;
+  const normalized = raw.toLowerCase();
+  if (INTERNAL_CHANNEL_IDS.has(normalized)) return null;
+  const provider =
+    typeof ctx.messageProvider === "string"
+      ? ctx.messageProvider.toLowerCase()
+      : null;
+  if (provider && normalized === provider) return null;
+  return raw;
+}
+
+// runId -> { trigger, channelId, sessionKey, agentId }, observed on the agent
+// lifecycle hooks where OpenClaw populates them. The tool context carries
+// neither `trigger` nor any lineage, so this is the only way to tell an
+// unattended run from a user's.
+const runOrigins = new Map();
+
+// sessionKey -> { reason, agentId }, for sessions restricted by their own
+// nature (channel conversations) and for sub-sessions that inherit from one.
+//
+// Deliberately NOT populated from trigger-based restrictions: heartbeat runs on
+// `agent:<bot>:main`, the same key the desktop user types into, so marking the
+// key would revoke the desktop user's own host execution from the next turn on.
+const restrictedSessions = new Map();
+
+// sessionKey -> runId for the run currently executing on that session.
+//
+// `subagent_spawned` reports the requester's session key but not its run id,
+// and a trigger restriction lives on the run. This index is the join between
+// the two, so a child can inherit from its parent's *run* rather than from a
+// second copy of the restriction kept per session. OpenClaw serializes runs
+// per session (and Nexu's SessionRunRegistry gates the desktop path), so a
+// session has at most one active run. Cleared at `agent_end`.
+const activeRunBySession = new Map();
+
+/**
+ * Bounded insert with LRU semantics.
+ *
+ * A restriction is meant to be forgotten when its session ends, not because
+ * other sessions showed up: plain FIFO eviction lets a restricted run flood the
+ * map with new sessions until its own entry is dropped, which un-restricts it.
+ * Lifecycle teardown (`session_end` / `subagent_ended` / `agent_end`) is the
+ * real reclaim path; this bound is only a memory backstop, and it says so out
+ * loud when it drops something load-bearing.
+ */
+function rememberBounded(map, key, value, limit, onEvict) {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size <= limit) return;
+  const oldest = map.keys().next().value;
+  if (oldest === undefined) return;
+  const evicted = map.get(oldest);
+  map.delete(oldest);
+  if (onEvict) onEvict(oldest, evicted);
+}
+
+/** Move a live entry to the back of the queue so lookups keep it warm. */
+function touchBounded(map, key) {
+  const value = map.get(key);
+  if (value === undefined) return value;
+  map.delete(key);
+  map.set(key, value);
+  return value;
+}
+
+// One predicate per reason family, shared by the escape hatch and the block
+// message so the two cannot drift into telling the user different stories.
+function isAutomationReason(reason) {
+  const base = reason?.startsWith("inherited:") ? reason.slice(10) : reason;
+  return (
+    base === "automation-origin" ||
+    base === "cron-origin" ||
+    base === "heartbeat-origin" ||
+    base === "memory-origin"
+  );
+}
+
+function isChannelReason(reason) {
+  const base = reason?.startsWith("inherited:") ? reason.slice(10) : reason;
+  return base === "channel-origin";
+}
+
+/** Reason this origin is restricted, or null when it is not. */
+function restrictedOriginReason(origin) {
+  if (!origin) return null;
+  // Trigger first: an unattended run that also carries a delivery channel is
+  // still an automation, and must be governed by the `automations` switch
+  // rather than the `channels` one.
+  if (origin.trigger && UNATTENDED_TRIGGERS.has(origin.trigger)) {
+    return `${origin.trigger}-origin`;
+  }
+  if (origin.channelId) return "channel-origin";
+  return null;
+}
+
+/**
+ * Record what started a run. Called from several lifecycle hooks because the
+ * runtime marks some of them deprecated; recording is idempotent and can only
+ * ever restrict, so observing the same run more than once is harmless.
+ */
+function recordRunOrigin(ctx) {
+  const runId = ctx?.runId;
+  if (!runId) return;
+  const origin = {
+    trigger: ctx.trigger,
+    channelId: remoteChannelId(ctx),
+    sessionKey: ctx.sessionKey,
+    agentId: ctx.agentId,
+  };
+  rememberBounded(runOrigins, runId, origin, MAX_TRACKED_ORIGINS);
+  if (ctx.sessionKey) {
+    rememberBounded(
+      activeRunBySession,
+      ctx.sessionKey,
+      runId,
+      MAX_TRACKED_ORIGINS,
+    );
+  }
+
+  const reason = restrictedOriginReason(origin);
+  if (!reason || !ctx.sessionKey) return;
+
+  if (reason === "channel-origin") {
+    // Intrinsic to the session: a channel conversation never serves desktop
+    // runs, so remembering it by key is safe.
+    rememberBounded(
+      restrictedSessions,
+      ctx.sessionKey,
+      { reason, agentId: ctx.agentId },
+      MAX_TRACKED_ORIGINS,
+    );
+    return;
+  }
+
+}
+
+/** Drop everything scoped to a finished run. */
+function forgetRun(runId, sessionKey) {
+  if (runId) runOrigins.delete(runId);
+  if (!sessionKey) return;
+  const active = activeRunBySession.get(sessionKey);
+  if (active === undefined || !runId || active === runId) {
+    activeRunBySession.delete(sessionKey);
+  }
+}
+
+// Blocks already reported, keyed by session+tool, so a model that retries the
+// same refused call does not turn into a notification storm.
+const reportedBlocks = new Set();
+const MAX_REPORTED_BLOCKS = 200;
+
+/**
+ * Tell the controller an automation run lost its shell.
+ *
+ * Fire-and-forget on purpose: the block itself must not depend on the
+ * controller being reachable. Without this the user finds out from a missing
+ * artifact instead of an error — the run "succeeded", it just could not do the
+ * work.
+ */
+function reportAutomationBlock(api, controllerUrl, ctx, toolName, reason) {
+  if (!controllerUrl || !ctx?.sessionKey) return;
+  const dedupeKey = `${ctx.sessionKey}:${toolName}`;
+  if (reportedBlocks.has(dedupeKey)) return;
+
+  // Marked as reported only after the controller accepts it. Marking up front
+  // makes a failed report permanent: the retry is suppressed and nothing ever
+  // surfaces, which is the same silent outcome this reporter exists to remove.
+  const url = `${controllerUrl.replace(/\/+$/, "")}/api/internal/runtime/host-execution-blocked`;
+  void (async () => {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionKey: ctx.sessionKey, toolName, reason }),
+      });
+      if (!response.ok) {
+        try {
+          api.logger.warn(
+            `[nexu-toolcall-guard] automation block report rejected: HTTP ${response.status}`,
+          );
+        } catch {}
+        return;
+      }
+      reportedBlocks.add(dedupeKey);
+      if (reportedBlocks.size > MAX_REPORTED_BLOCKS) {
+        const oldest = reportedBlocks.values().next().value;
+        if (oldest !== undefined) reportedBlocks.delete(oldest);
+      }
+    } catch (error) {
+      try {
+        api.logger.warn(
+          `[nexu-toolcall-guard] could not report automation block: ${error?.message ?? String(error)}`,
+        );
+      } catch {}
+    }
+  })();
+}
+
+// OpenClaw's own `group:runtime`. `code_execution` belongs here too — gating
+// only exec/process would leave a third door to the same place.
+const HOST_COMMAND_TOOLS = new Set(["exec", "process", "code_execution"]);
+
+/**
+ * Resolve the execution tier for a run, plus the signal that decided it.
+ * `reason` is null for the host tier so callers can log a single shape.
+ */
+function resolveExecutionTier(ctx) {
+  // Observed provenance first. It can only ever restrict: a run we did not
+  // observe falls through to the signals below rather than being refused, so a
+  // guard that loads mid-run or an OpenClaw restart cannot strand the desktop
+  // user without host execution.
+  const observed = ctx?.runId ? runOrigins.get(ctx.runId) : undefined;
+  const observedReason = restrictedOriginReason(observed);
+  if (observedReason) {
+    return {
+      tier: RESTRICTED_EXECUTION_TIER,
+      reason: observedReason,
+      originAgentId: observed?.agentId,
+    };
+  }
+
+  const inherited = ctx?.sessionKey
+    ? touchBounded(restrictedSessions, ctx.sessionKey)
+    : undefined;
+  if (inherited) {
+    return {
+      tier: RESTRICTED_EXECUTION_TIER,
+      reason: inherited.reason,
+      originAgentId: inherited.agentId,
+    };
+  }
+
+  if (remoteChannelId(ctx)) {
+    return {
+      tier: RESTRICTED_EXECUTION_TIER,
+      reason: "channel-origin",
+      originAgentId: ctx?.agentId,
+    };
+  }
+  if (AUTOMATION_SESSION_KEY_PATTERN.test(ctx?.sessionKey ?? "")) {
+    return {
+      tier: RESTRICTED_EXECUTION_TIER,
+      reason: "automation-origin",
+      originAgentId: ctx?.agentId,
+    };
+  }
+  return { tier: HOST_EXECUTION_TIER, reason: null, originAgentId: undefined };
+}
+
+/**
+ * A sub-session is never more trusted than the run that asked for it.
+ * `subagent_spawned` is the supported observation point — `subagent_spawning`
+ * is deprecated in 2026.7.1 and scheduled for removal.
+ */
+function inheritSubagentRestriction(event, ctx) {
+  const childSessionKey = ctx?.childSessionKey || event?.childSessionKey;
+  const requesterSessionKey = ctx?.requesterSessionKey;
+  if (!childSessionKey || !requesterSessionKey) return null;
+
+  // Intrinsic restriction, an in-flight trigger restriction (the only join
+  // available: the spawn hook gives the requester's session key, not its run
+  // id), then the requester's key shape.
+  const requesterRunId = touchBounded(activeRunBySession, requesterSessionKey);
+  const requesterOrigin = requesterRunId
+    ? runOrigins.get(requesterRunId)
+    : undefined;
+  const requesterRunReason = restrictedOriginReason(requesterOrigin);
+
+  const source =
+    touchBounded(restrictedSessions, requesterSessionKey) ??
+    (requesterRunReason
+      ? { reason: requesterRunReason, agentId: requesterOrigin?.agentId }
+      : null) ??
+    (AUTOMATION_SESSION_KEY_PATTERN.test(requesterSessionKey)
+      ? { reason: "automation-origin", agentId: event?.agentId }
+      : null);
+  if (!source) return null;
+
+  const reason = source.reason.startsWith("inherited:")
+    ? source.reason
+    : `inherited:${source.reason}`;
+  rememberBounded(
+    restrictedSessions,
+    childSessionKey,
+    // The escape hatch stays bound to the bot that owns the restricted origin,
+    // never the one the child happens to run as: `sessions_spawn` lets a
+    // restricted run choose the child's agentId, which would otherwise let it
+    // borrow another bot's opt-out.
+    { reason, agentId: source.agentId },
+    MAX_TRACKED_ORIGINS,
+  );
+  return reason;
+}
+
+// ---------------------------------------------------------------------------
+// Write fence
+//
+// A tier that only covers `exec` is wrapped around the wrong thing: `write`
+// reaches the same outcomes without a shell. These paths are the ones where a
+// single file write converts into persistent code execution or silently
+// disables this guard, and none of them has a legitimate agent-tool writer —
+// SkillHub installs, plugin materialization, and schedule writes all go through
+// the controller process. So the fence applies to EVERY tier, desktop included.
+// ---------------------------------------------------------------------------
+const FILE_MUTATION_TOOLS = new Set(["write", "edit", "apply_patch"]);
+
+// The agent's own instruction files. Rewriting one is how a single injected
+// turn becomes permanent: `workspace-template-writer` is strict seed-if-missing
+// and never overwrites, so the poisoned copy survives every resync. HEARTBEAT.md
+// is the sharpest of them — OpenClaw reads it on a timer, in the main session,
+// with nobody watching, so a write there converts one message into a recurring
+// unattended run. Restricted origins cannot touch them; the desktop user can,
+// because editing your own assistant's instructions is the product working.
+const AGENT_INSTRUCTION_FILES = new Set([
+  "agents.md",
+  "bootstrap.md",
+  "heartbeat.md",
+  "identity.md",
+  "schedule.md",
+  "soul.md",
+  "tools.md",
+  "user.md",
+]);
+
+// What a run that Nexu did not trust may call at all.
+//
+// Built from OpenClaw's own builtin tool groups minus the execution, control
+// plane, and lateral-movement surfaces, plus Nexu's own reviewed plugin tools.
+// It is an ALLOWlist on purpose: PR #17 removed `plugins.allow`, so OpenClaw
+// now discovers every installed plugin and a user-installed MCP server that
+// shells out would otherwise be arbitrary execution under a different name.
+// Unknown tool ⇒ refused for restricted origins.
+const RESTRICTED_ORIGIN_TOOL_ALLOWLIST = new Set([
+  // fs — still subject to the write fence and the read fence
+  "read",
+  "write",
+  "edit",
+  "apply_patch",
+  // web
+  "web_search",
+  "web_fetch",
+  "x_search",
+  // memory
+  "memory_search",
+  "memory_get",
+  // conversation
+  "message",
+  "heartbeat_respond",
+  "sessions_list",
+  "sessions_history",
+  "session_status",
+  "sessions_yield",
+  "sessions_spawn",
+  "subagents",
+  "agents_list",
+  "update_plan",
+  // media
+  "image",
+  "image_generate",
+  "music_generate",
+  "video_generate",
+  "tts",
+  // Nexu's own reviewed plugin tools
+  "canvas",
+  "canvas_op",
+  "canvas_read",
+  "render_a2ui",
+  "find_expert",
+]);
+
+// Deliberately absent from the allowlist above, and worth naming: `sessions_send`
+// injects a message into another session. From a restricted origin that is a
+// direct escalation — it would hand attacker text to the desktop main session,
+// which then runs at the host tier.
+
+// Read fence. Blocking execution and persistence still leaves exfiltration:
+// a restricted run needs no shell to `read` a credential file and hand it to
+// `web_fetch`. These roots hold secrets in plain text and nothing an agent
+// legitimately answers with, so restricted origins cannot read them at all.
+// The desktop tier is NOT fenced here — the user asking their own assistant
+// about their own config is the product working.
+const FILE_READ_TOOLS = new Set(["read"]);
+const PATH_PARAM_KEYS = new Set([
+  "path",
+  "file_path",
+  "filePath",
+  "target",
+  "targetPath",
+  "dest",
+  "destination",
+]);
+
+/**
+ * Collect candidate paths from a tool call. `derivedPaths` is the host's
+ * cwd-aware extraction; its own docs call it a lenient hint rather than an
+ * authoritative parse, so the params walk is unioned in rather than trusted
+ * alone. Values are collected by KEY name only: collecting every path-shaped
+ * string would fence a write whose *content* merely mentions a fenced path.
+ */
+function collectCandidatePaths(event) {
+  const found = new Set();
+  for (const derived of event?.derivedPaths ?? []) {
+    if (typeof derived === "string" && derived) found.add(derived);
+  }
+
+  const visit = (value, key, depth) => {
+    if (depth > 6 || value === null || value === undefined) return;
+    if (typeof value === "string") {
+      if (key !== null && PATH_PARAM_KEYS.has(key) && value) found.add(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, key, depth + 1);
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [childKey, childValue] of Object.entries(value)) {
+        visit(childValue, childKey, depth + 1);
+      }
+    }
+  };
+  visit(event?.params, null, 0);
+
+  return [...found];
+}
+
+/**
+ * Resolve as far as the filesystem allows. A fenced target that does not exist
+ * yet still resolves through its nearest existing ancestor, so a symlinked
+ * parent cannot be used to step around the fence.
+ *
+ * `baseDir` resolves relative candidates. `write` and `edit` accept "relative
+ * or absolute" paths and the host only derives paths for `apply_patch`, so
+ * dropping non-absolute candidates would leave the fence trivially bypassable
+ * with `../../openclaw.json`.
+ */
+function resolveFenceCandidate(candidate, baseDir = null) {
+  const expanded = candidate.startsWith("~/")
+    ? path.join(os.homedir(), candidate.slice(2))
+    : candidate;
+
+  let absolute = expanded;
+  if (!path.isAbsolute(absolute)) {
+    // Without the run's workspace there is nothing to resolve against.
+    // Blocking every relative write instead would break ordinary desktop work,
+    // which is the more severe failure; the gap is logged at registration.
+    if (!baseDir) return null;
+    absolute = path.resolve(baseDir, absolute);
+  }
+
+  let current = path.resolve(absolute);
+  const trailing = [];
+  for (let depth = 0; depth < 64; depth += 1) {
+    try {
+      return path.join(realpathSync(current), ...trailing);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(absolute);
+      trailing.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+  return path.resolve(absolute);
+}
+
+// macOS and Windows default to case-insensitive filesystems, so a
+// case-sensitive containment test is bypassable with `.../Extensions/...`.
+const CASE_INSENSITIVE_FS =
+  process.platform === "darwin" || process.platform === "win32";
+
+function normalizeForCompare(value) {
+  return CASE_INSENSITIVE_FS ? value.toLowerCase() : value;
+}
+
+function isWithin(root, target) {
+  if (!root || !path.isAbsolute(root)) return false;
+  const resolvedRoot = normalizeForCompare(
+    resolveFenceCandidate(root) ?? path.resolve(root),
+  );
+  const resolvedTarget = normalizeForCompare(target);
+  return (
+    resolvedTarget === resolvedRoot ||
+    resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`)
+  );
+}
+
+/** Build the fence from plugin config, falling back to runtime env. */
+function resolveFence(pluginConfig) {
+  const stateDir =
+    pluginConfig?.fence?.stateDir || process.env.OPENCLAW_STATE_DIR || "";
+  const nexuHome = pluginConfig?.fence?.nexuHome || process.env.NEXU_HOME || "";
+  const userSkillsDir =
+    pluginConfig?.fence?.userSkillsDir ||
+    path.join(os.homedir(), ".agents", "skills");
+  const extra = Array.isArray(pluginConfig?.fence?.extraRoots)
+    ? pluginConfig.fence.extraRoots.filter(
+        (entry) => typeof entry === "string" && entry,
+      )
+    : [];
+
+  const roots = [...extra];
+  if (stateDir) {
+    // The guard's own source, the compiled runtime config, and the hot-reloaded
+    // skills directory: writing any of them survives the current turn.
+    roots.push(path.join(stateDir, "extensions"));
+    roots.push(path.join(stateDir, "openclaw.json"));
+    roots.push(path.join(stateDir, "skills"));
+  }
+  if (nexuHome) roots.push(nexuHome);
+  if (userSkillsDir) roots.push(userSkillsDir);
+
+  // The agent workspace is `<stateDir>/agents/<agentId>` and OPENCLAW_STATE_DIR
+  // is nested INSIDE NEXU_HOME under `pnpm start` and under the controller's
+  // own default. Without this carve-out the nexuHome root swallows the entire
+  // workspace and the desktop user cannot write a single file into their own
+  // bot — the worst failure this policy can have. Allow-roots win over fence
+  // roots, so ordering of the two lists does not matter.
+  const workspaceRoot = stateDir ? path.join(stateDir, "agents") : "";
+  const allowRoots = workspaceRoot ? [workspaceRoot] : [];
+
+  // Secret-bearing roots. `<nexuHome>/config.json` holds channel app secrets in
+  // plain text; the rest are the usual credential stores.
+  const home = os.homedir();
+  const readRoots = [
+    nexuHome,
+    stateDir ? path.join(stateDir, "openclaw.json") : "",
+    path.join(home, ".ssh"),
+    path.join(home, ".aws"),
+    path.join(home, "Library", "Keychains"),
+  ].filter((root) => root && path.isAbsolute(root));
+
+  return {
+    roots: roots.filter((root) => root && path.isAbsolute(root)),
+    allowRoots,
+    readRoots,
+    workspaceRoot,
+  };
+}
+
+/**
+ * Per-bot opt-out, delivered through the controller-written plugin config.
+ *
+ * `reason` decides which switch applies: a channel-driven run is governed by
+ * `channels`, an unattended one by `automations`. Anything else (an inherited
+ * restriction whose root is unknown) stays refused — an escape hatch that
+ * fires on reasons it was not written for is not an escape hatch.
+ */
+function isHostExecutionAllowed(hostExecution, originAgentId, reason) {
+  if (!originAgentId || !reason) return false;
+  const setting = hostExecution?.[originAgentId];
+  if (!setting) return false;
+  if (isAutomationReason(reason)) return setting.automations === "host";
+  if (isChannelReason(reason)) return setting.channels === "host";
+  return false;
+}
+
+/** The run's own workspace, used to resolve relative candidates. */
+function resolveWorkspaceDir(ctx, fence) {
+  if (!fence.workspaceRoot || !ctx?.agentId) return null;
+  return path.join(fence.workspaceRoot, ctx.agentId);
+}
+
+/** Instruction files inside this run's own workspace, if any. */
+function findFencedInstructionFile(event, ctx, fence) {
+  if (!FILE_MUTATION_TOOLS.has(event?.toolName)) return null;
+  const baseDir = resolveWorkspaceDir(ctx, fence);
+  for (const candidate of collectCandidatePaths(event)) {
+    const resolved = resolveFenceCandidate(candidate, baseDir);
+    if (!resolved) continue;
+    if (AGENT_INSTRUCTION_FILES.has(path.basename(resolved).toLowerCase())) {
+      return { candidate, file: path.basename(resolved) };
+    }
+  }
+  return null;
+}
+
+function findFencedPath(event, ctx, fence, roots) {
+  const baseDir = resolveWorkspaceDir(ctx, fence);
+
+  for (const candidate of collectCandidatePaths(event)) {
+    const resolved = resolveFenceCandidate(candidate, baseDir);
+    if (!resolved) continue;
+    if (fence.allowRoots.some((allowed) => isWithin(allowed, resolved))) {
+      continue;
+    }
+    for (const root of roots) {
+      if (isWithin(root, resolved)) return { candidate, root };
+    }
+  }
+  return null;
 }
 
 const plugin = {
@@ -885,9 +1542,22 @@ const plugin = {
         ? Math.floor(configured)
         : DEFAULT_THRESHOLD;
 
+    const fence = resolveFence(api.pluginConfig);
+    const controllerUrl =
+      typeof api.pluginConfig?.controllerUrl === "string"
+        ? api.pluginConfig.controllerUrl
+        : "";
+    const hostExecution =
+      api.pluginConfig?.hostExecution &&
+      typeof api.pluginConfig.hostExecution === "object"
+        ? api.pluginConfig.hostExecution
+        : {};
+
     try {
       api.logger.info(
-        `[nexu-toolcall-guard] loaded — tripping after ${threshold} consecutive validation failures`,
+        `[nexu-toolcall-guard] loaded — tripping after ${threshold} consecutive validation failures; ` +
+          `write fence covers ${fence.roots.length} root(s), workspace ${fence.workspaceRoot || "<unknown>"} exempt; ` +
+            `automation block reporting ${controllerUrl ? `-> ${controllerUrl}` : "DISABLED (no controllerUrl in plugin config)"}`,
       );
     } catch {}
 
@@ -934,6 +1604,130 @@ const plugin = {
 
     // Phase 2: once tripped, block further no-progress calls to the same tool.
     api.on("before_tool_call", async (event, ctx) => {
+      const fenced = FILE_MUTATION_TOOLS.has(event?.toolName)
+        ? findFencedPath(event, ctx, fence, fence.roots)
+        : null;
+      if (fenced) {
+        try {
+          api.logger.warn(
+            `[nexu-toolcall-guard] BLOCKING fenced write via "${event.toolName}" to ${fenced.candidate} (fence root ${fenced.root})`,
+          );
+        } catch {}
+        return {
+          block: true,
+          blockReason:
+            "该路径属于 Nexu 运行时的受保护区域（运行时插件、运行时配置、技能目录或 Nexu 主目录），任何会话都不能通过文件工具写入。请改用 Nexu 桌面端对应的设置或管理入口。",
+        };
+      }
+
+      // Everything below is scoped to runs Nexu did not trust.
+      const restricted = resolveExecutionTier(ctx);
+      const restrictedAndNotOptedIn =
+        restricted.tier === RESTRICTED_EXECUTION_TIER &&
+        !isHostExecutionAllowed(
+          hostExecution,
+          restricted.originAgentId,
+          restricted.reason,
+        );
+
+      if (restrictedAndNotOptedIn) {
+        const instructionFile = findFencedInstructionFile(event, ctx, fence);
+        if (instructionFile) {
+          try {
+            api.logger.warn(
+              `[nexu-toolcall-guard] BLOCKING instruction-file write via "${event.toolName}" to ${instructionFile.file} ` +
+                `(reason=${restricted.reason})`,
+            );
+          } catch {}
+          return {
+            block: true,
+            blockReason:
+              "外部渠道和无人值守的运行不能修改机器人的行为说明文件（AGENTS.md、HEARTBEAT.md 等）。这类修改会长期改变机器人的行为，请由用户在 Nexu 桌面端完成。",
+          };
+        }
+
+        if (
+          event?.toolName &&
+          !RESTRICTED_ORIGIN_TOOL_ALLOWLIST.has(event.toolName) &&
+          !isLocalAutomationTool(event.toolName) &&
+          !HOST_COMMAND_TOOLS.has(event.toolName) &&
+          !HOST_EXECUTION_TOOLS.has(event.toolName)
+        ) {
+          // Unknown tool: an MCP server or third-party plugin. Since PR #17
+          // removed `plugins.allow`, the compiled config no longer enumerates
+          // the tool surface, so anything not on the reviewed list fails closed
+          // rather than becoming execution under a different name.
+          try {
+            api.logger.warn(
+              `[nexu-toolcall-guard] BLOCKING unreviewed tool "${event.toolName}" for a restricted origin ` +
+                `(reason=${restricted.reason})`,
+            );
+          } catch {}
+          return {
+            block: true,
+            blockReason:
+              "该工具不在 Nexu 为外部渠道和自动化审核过的能力清单中（例如用户自行安装的 MCP 工具）。请让用户在 Nexu 桌面主会话中完成这一步。",
+          };
+        }
+      }
+
+      if (FILE_READ_TOOLS.has(event?.toolName)) {
+        const { tier } = resolveExecutionTier(ctx);
+        if (tier === RESTRICTED_EXECUTION_TIER) {
+          const secret = findFencedPath(event, ctx, fence, fence.readRoots);
+          if (secret) {
+            try {
+              api.logger.warn(
+                `[nexu-toolcall-guard] BLOCKING fenced read via "${event.toolName}" to ${secret.candidate} (read root ${secret.root})`,
+              );
+            } catch {}
+            return {
+              block: true,
+              blockReason:
+                "外部渠道和无人值守的运行不能读取 Nexu 的配置与凭据目录。请让用户在 Nexu 桌面主会话中处理这类内容。",
+            };
+          }
+        }
+      }
+
+      if (HOST_COMMAND_TOOLS.has(event?.toolName)) {
+        const { tier, reason, originAgentId } = resolveExecutionTier(ctx);
+        if (
+          tier === RESTRICTED_EXECUTION_TIER &&
+          isHostExecutionAllowed(hostExecution, originAgentId, reason)
+        ) {
+          try {
+            api.logger.info(
+              `[nexu-toolcall-guard] host execution allowed for "${event.toolName}" by per-bot setting ` +
+                `(originAgentId=${originAgentId ?? "<none>"} reason=${reason})`,
+            );
+          } catch {}
+        } else if (tier === RESTRICTED_EXECUTION_TIER) {
+          try {
+            api.logger.warn(
+              `[nexu-toolcall-guard] BLOCKING host execution tool "${event.toolName}" — tier=${tier} reason=${reason} ` +
+                `(sessionKey=${ctx?.sessionKey ?? "<none>"} channelId=${ctx?.channelId ?? "<none>"})`,
+            );
+          } catch {}
+          if (isAutomationReason(reason)) {
+            reportAutomationBlock(
+              api,
+              controllerUrl,
+              ctx,
+              event.toolName,
+              reason,
+            );
+          }
+          return {
+            block: true,
+            blockReason:
+              isAutomationReason(reason)
+                ? "定时任务、心跳和其他无人值守的运行不能在本机执行命令。请让用户在 Nexu 桌面主会话中手动执行这一步。"
+                : "外部渠道的消息不能在用户本机执行命令。请让用户在 Nexu 桌面主会话中完成需要本机执行的操作。",
+          };
+        }
+      }
+
       if (
         isLocalAutomationTool(event?.toolName) &&
         !isApprovedLocalAutomationTool(event?.toolName)
@@ -1062,10 +1856,56 @@ const plugin = {
       };
     });
 
+    // Run provenance. The tool context carries neither `trigger` nor lineage,
+    // so what started a run is observed here and looked up at tool-call time.
+    // Several hooks are registered because the runtime marks some of them
+    // deprecated (`before_agent_start` is already flagged for removal) and
+    // because recording is idempotent and can only restrict — observing the
+    // same run twice costs nothing, missing it entirely would silently drop
+    // the heartbeat and cron gates.
+    for (const hookName of [
+      "before_model_resolve",
+      "before_prompt_build",
+      "before_agent_start",
+    ]) {
+      api.on(hookName, async (_event, ctx) => {
+        recordRunOrigin(ctx);
+      });
+    }
+
+    // Sessions that end release their restriction; the size bound is only a
+    // backstop for sessions that never report an end.
+    api.on("subagent_ended", async (event, ctx) => {
+      const key = event?.targetSessionKey || ctx?.childSessionKey;
+      if (key) {
+        restrictedSessions.delete(key);
+        activeRunBySession.delete(key);
+      }
+    });
+
+    api.on("session_end", async (event, ctx) => {
+      const key = ctx?.sessionKey || event?.sessionKey;
+      if (key) {
+        restrictedSessions.delete(key);
+        activeRunBySession.delete(key);
+      }
+    });
+
+    api.on("subagent_spawned", async (event, ctx) => {
+      const inherited = inheritSubagentRestriction(event, ctx);
+      if (!inherited) return;
+      try {
+        api.logger.warn(
+          `[nexu-toolcall-guard] sub-session ${ctx?.childSessionKey ?? "<unknown>"} inherits ${inherited} from ${ctx?.requesterSessionKey ?? "<unknown>"}`,
+        );
+      } catch {}
+    });
+
     // Phase 3: clean up when the run ends.
     api.on("agent_end", async (event, ctx) => {
       const runId = ctx?.runId || event?.runId;
       if (runId) runFailures.delete(runId);
+      forgetRun(runId, ctx?.sessionKey);
       const key = completionStateKey(ctx);
       if (key) pendingComputerRuns.delete(key);
     });

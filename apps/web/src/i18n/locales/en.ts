@@ -2160,6 +2160,24 @@ const en = {
   "memory.updated": "Memory settings updated.",
   "memory.updateFailed": "Memory settings could not be updated.",
   "memory.intervalInvalid": "Sync interval must be between 1 and 1440 minutes.",
+
+  // ── Host command execution ──
+  "hostExecution.title": "Host command execution",
+  "hostExecution.description":
+    "Runs you drive from the desktop app always keep host execution and never prompt. These switches only cover runs someone else can start — inbound channel messages and unattended automation.",
+  "hostExecution.channels": "Allow from channel messages",
+  "hostExecution.channelsHint":
+    "Anyone who can message this bot on Slack, Feishu, WeCom and the like could run commands on this machine.",
+  "hostExecution.automations": "Allow from schedules and automations",
+  "hostExecution.automationsHint":
+    "Scheduled tasks, heartbeats and other unattended runs execute with nobody watching.",
+  "hostExecution.loading": "Loading bots…",
+  "hostExecution.loadFailed": "Could not load bots.",
+  "hostExecution.updateFailed": "Could not update the setting.",
+  "hostExecution.updated": "Saved. The runtime restarts to pick this up.",
+  "hostExecution.noBots": "No bots yet.",
+  "automations.detail.hostExecutionBlocked":
+    "This run needed to execute a command on this machine ({{tool}}), but host execution for schedules is off for this bot. Turn it on in Settings → Host command execution.",
 } as const;
 
 export default en;

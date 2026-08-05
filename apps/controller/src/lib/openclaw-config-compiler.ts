@@ -621,6 +621,30 @@ function compilePlugins(
         hooks: {
           allowConversationAccess: true,
         },
+        // openclaw.json is written only by the controller and is itself fenced,
+        // so it is the one channel that can hand the guard its policy without
+        // being forgeable by a tool call.
+        config: {
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+          fence: {
+            stateDir: env.openclawStateDir,
+            nexuHome: env.nexuHomeDir,
+          },
+          // Per-bot escape hatch. Only bots that opted out of a default are
+          // emitted, so the common case stays a small object. A bot record
+          // without the field is read as fully restricted rather than throwing:
+          // a compiler that crashes here leaves the runtime with no config at
+          // all, which is a worse outcome than a conservative default.
+          hostExecution: Object.fromEntries(
+            config.bots
+              .filter(
+                (bot) =>
+                  bot.hostExecution?.channels === "host" ||
+                  bot.hostExecution?.automations === "host",
+              )
+              .map((bot) => [bot.id, bot.hostExecution]),
+          ),
+        },
       },
       ...(hasTeams
         ? {

@@ -131,4 +131,29 @@ describe("AgentService default bot & system-bot guards", () => {
     expect(await service.deleteBot(userBot.id)).toBe(true);
     expect(await store.getBot(userBot.id)).toBeNull();
   });
+
+  // The guard captures its plugin config once at registration, so a
+  // host-execution change that only rewrites openclaw.json is a silent no-op
+  // until something else restarts OpenClaw.
+  it("restarts OpenClaw when host execution changes, and not otherwise", async () => {
+    const openclawProcess = {
+      restart: vi.fn(async () => {}),
+    } as unknown as ConstructorParameters<typeof AgentService>[2];
+    const restarting = new AgentService(store, syncService, openclawProcess);
+    const bot = await store.createBot({ name: "Runner", slug: "runner" });
+
+    await restarting.updateBot(bot.id, { name: "Renamed" });
+    expect(openclawProcess?.restart).not.toHaveBeenCalled();
+
+    const updated = await restarting.updateBot(bot.id, {
+      hostExecution: { channels: "host" },
+    });
+    expect(updated?.hostExecution).toEqual({
+      channels: "host",
+      automations: "restricted",
+    });
+    expect(openclawProcess?.restart).toHaveBeenCalledWith(
+      "host-execution-changed",
+    );
+  });
 });

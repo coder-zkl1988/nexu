@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   CreateSessionInput,
   SessionArchiveFilter,
@@ -8,6 +7,7 @@ import type {
   SessionRunState,
   UpdateSessionInput,
 } from "@nexu/shared";
+import { mintDerivedSessionKey } from "../lib/desktop-session-key.js";
 import { logger } from "../lib/logger.js";
 import {
   SessionMessageNotFoundError,
@@ -274,7 +274,11 @@ export class SessionService {
     if (!this.gatewayService?.isConnected()) {
       throw new Error("OpenClaw gateway is not connected");
     }
-    const forkKey = `agent:${session.botId}:${randomUUID()}`;
+    const forkKey = mintDerivedSessionKey(
+      session.botId,
+      session.sessionKey,
+      "fork",
+    );
     const created = await this.gatewayService.sessionsCreate({
       key: forkKey,
       agentId: session.botId,
@@ -311,7 +315,11 @@ export class SessionService {
       });
     if (!sourceContainsMessage) throw new SessionMessageNotFoundError();
 
-    const branchKey = `agent:${session.botId}:${randomUUID()}`;
+    const branchKey = mintDerivedSessionKey(
+      session.botId,
+      session.sessionKey,
+      "branch",
+    );
     const created = await this.gatewayService.sessionsCreate({
       key: branchKey,
       agentId: session.botId,

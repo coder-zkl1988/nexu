@@ -1,5 +1,6 @@
 import type { SessionResponse } from "@nexu/shared";
 import { describe, expect, it, vi } from "vitest";
+import { isDesktopSessionKey } from "../src/lib/desktop-session-key.js";
 import {
   SessionMessageNotFoundError,
   type SessionsRuntime,
@@ -202,6 +203,46 @@ describe("SessionService organization and recovery", () => {
       title: "Release review · recovery",
     });
   });
+
+  // The parity test covers the minting helper in isolation; this covers the
+  // call site. Without it, reverting session-service to a bare randomUUID()
+  // leaves every other test green while a channel conversation can again be
+  // forked into the desktop-shaped key that unlocks browser control and the
+  // runtime control plane.
+  it.each([
+    {
+      name: "channel parent",
+      parentKey: "agent:bot-1:slack:channel:C123",
+      desktopShaped: false,
+    },
+    {
+      name: "desktop parent",
+      parentKey: "agent:bot-1:main",
+      desktopShaped: true,
+    },
+  ])(
+    "never mints a more-trusted key than its parent ($name)",
+    async ({ parentKey, desktopShaped }) => {
+      const runtime = createRuntimeStub([session({ sessionKey: parentKey })]);
+      const gateway = createGatewayStub();
+      vi.mocked(gateway.sessionsCreate).mockResolvedValue({
+        ok: true,
+        key: "agent:bot-1:forked",
+        sessionId: "forked",
+        entry: { sessionId: "forked", sessionFile: "/tmp/forked.jsonl" },
+      });
+      const service = new SessionService(runtime, gateway);
+
+      await service.forkSession("session-1.jsonl");
+
+      const mintedKey = vi.mocked(gateway.sessionsCreate).mock.calls[0]?.[0]
+        ?.key as string;
+      expect(isDesktopSessionKey(mintedKey)).toBe(desktopShaped);
+      if (!desktopShaped) {
+        expect(mintedKey).toMatch(/^agent:bot-1:fork:/);
+      }
+    },
+  );
 
   it("uses OpenClaw's real fork mode for whole-session and message branches", async () => {
     const runtime = createRuntimeStub([session()]);

@@ -68,6 +68,31 @@
                             ],
                             "default": "user"
                           },
+                          "hostExecution": {
+                            "type": "object",
+                            "properties": {
+                              "channels": {
+                                "type": "string",
+                                "enum": [
+                                  "restricted",
+                                  "host"
+                                ],
+                                "default": "restricted"
+                              },
+                              "automations": {
+                                "type": "string",
+                                "enum": [
+                                  "restricted",
+                                  "host"
+                                ],
+                                "default": "restricted"
+                              }
+                            },
+                            "default": {
+                              "channels": "restricted",
+                              "automations": "restricted"
+                            }
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -192,6 +217,31 @@
                       ],
                       "default": "user"
                     },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -270,6 +320,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -384,6 +459,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -510,6 +610,31 @@
                       ],
                       "default": "user"
                     },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -582,6 +707,27 @@
                   },
                   "modelId": {
                     "type": "string"
+                  },
+                  "hostExecution": {
+                    "type": "object",
+                    "properties": {
+                      "channels": {
+                        "type": "string",
+                        "enum": [
+                          "restricted",
+                          "host"
+                        ],
+                        "default": "restricted"
+                      },
+                      "automations": {
+                        "type": "string",
+                        "enum": [
+                          "restricted",
+                          "host"
+                        ],
+                        "default": "restricted"
+                      }
+                    }
                   }
                 }
               }
@@ -636,6 +782,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -779,6 +950,31 @@
                       ],
                       "default": "user"
                     },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -885,6 +1081,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -24873,6 +25094,62 @@
         }
       }
     },
+    "/api/internal/runtime/host-execution-blocked": {
+      "post": {
+        "tags": [
+          "Runtime Operations",
+          "Internal"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "toolName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "sessionKey",
+                  "toolName",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Block recorded against the owning schedule, if any",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recorded": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "recorded"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedules": {
       "get": {
         "tags": [
@@ -25022,6 +25299,25 @@
                           },
                           "lastOutputNotificationError": {
                             "type": "string"
+                          },
+                          "lastHostExecutionBlock": {
+                            "type": "object",
+                            "properties": {
+                              "at": {
+                                "type": "string"
+                              },
+                              "toolName": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "at",
+                              "toolName",
+                              "reason"
+                            ]
                           }
                         },
                         "required": [
@@ -25264,6 +25560,25 @@
                     },
                     "lastOutputNotificationError": {
                       "type": "string"
+                    },
+                    "lastHostExecutionBlock": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "toolName": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "toolName",
+                        "reason"
+                      ]
                     }
                   },
                   "required": [
@@ -25533,6 +25848,25 @@
                     },
                     "lastOutputNotificationError": {
                       "type": "string"
+                    },
+                    "lastHostExecutionBlock": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "toolName": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "toolName",
+                        "reason"
+                      ]
                     }
                   },
                   "required": [

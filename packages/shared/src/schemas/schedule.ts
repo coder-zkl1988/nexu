@@ -73,6 +73,20 @@ export const scheduleResponseSchema = createScheduleSchema
     lastOutputObservedAt: z.string().optional(),
     lastOutputNotificationStatus: scheduleNotificationStatusSchema.optional(),
     lastOutputNotificationError: z.string().optional(),
+    /**
+     * Last time this schedule's run was refused host command execution.
+     *
+     * Without this the user finds out from a missing artifact rather than from
+     * an error: the runtime guard refuses the tool, the agent reports it could
+     * not do the work, and the schedule still looks like it ran.
+     */
+    lastHostExecutionBlock: z
+      .object({
+        at: z.string(),
+        toolName: z.string(),
+        reason: z.string(),
+      })
+      .optional(),
   })
   .extend(scheduleNotificationSettingsSchema.shape);
 
