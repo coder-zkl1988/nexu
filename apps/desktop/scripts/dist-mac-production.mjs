@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   access,
   copyFile,
@@ -238,6 +239,61 @@ function findCodeSignBundles(rootPath) {
     .filter((targetPath) => targetPath && targetPath !== rootPath);
 }
 
+/**
+ * The Computer Use driver ships as an app bundle signed and notarized by its
+ * upstream vendor, and staging records its per-file SHA-256 digests in
+ * vendor.json. The packaged runtime verifies those digests before it will hand
+ * the driver path to the controller, so re-signing the bundle here rewrites the
+ * Mach-O signature blob, breaks the digests, and makes the shipped app report
+ * Computer Use as missing. Leave it exactly as staged.
+ */
+const VENDOR_SIGNED_SIDECAR_SEGMENT =
+  "/Contents/Resources/runtime/computer-use/";
+
+function isVendorSignedSidecarPath(targetPath) {
+  return targetPath.includes(VENDOR_SIGNED_SIDECAR_SEGMENT);
+}
+
+/**
+ * Fails the build if signing changed the vendor sidecar anyway. Without this
+ * the damage is invisible until a user opens the settings page and sees
+ * Computer Use reported as not included in this build.
+ */
+async function verifyVendorSignedSidecarDigests(appPath) {
+  const sidecarRoot = resolve(
+    appPath,
+    "Contents",
+    "Resources",
+    "runtime",
+    "computer-use",
+  );
+
+  let vendor;
+  try {
+    vendor = JSON.parse(await readFile(resolve(sidecarRoot, "vendor.json")));
+  } catch {
+    console.log("    no Computer Use sidecar staged, skipping digest check");
+    return;
+  }
+
+  const digests = vendor?.fileSha256 ?? {};
+  for (const [fileName, expected] of Object.entries(digests)) {
+    const filePath = resolve(sidecarRoot, ...fileName.split("/"));
+    const actual = createHash("sha256")
+      .update(await readFile(filePath))
+      .digest("hex");
+    if (actual !== expected) {
+      throw new Error(
+        `Computer Use sidecar digest changed for ${fileName} (expected ${expected}, got ${actual}). The packaged runtime verifies these digests, so this build would ship with Computer Use unavailable.`,
+      );
+    }
+  }
+
+  console.log(
+    `    Computer Use sidecar intact (${Object.keys(digests).length} digest(s) verified)`,
+  );
+}
+
 function sortCodeSignTargets(filePaths) {
   return [...filePaths].sort((a, b) => {
     const depthDiff = b.split("/").length - a.split("/").length;
@@ -459,9 +515,16 @@ async function main() {
   await step("4/9 签名 .app 内全部 Mach-O 文件和应用包", async () => {
     const rootExecutable = resolve(appPath, "Contents", "MacOS", productName);
     const allMachO = sortCodeSignTargets(
-      findMachOFiles(appPath).filter((filePath) => filePath !== rootExecutable),
+      findMachOFiles(appPath).filter(
+        (filePath) =>
+          filePath !== rootExecutable && !isVendorSignedSidecarPath(filePath),
+      ),
     );
-    const codeBundles = sortCodeSignTargets(findCodeSignBundles(appPath));
+    const codeBundles = sortCodeSignTargets(
+      findCodeSignBundles(appPath).filter(
+        (bundlePath) => !isVendorSignedSidecarPath(bundlePath),
+      ),
+    );
     console.log(`    found ${allMachO.length} Mach-O files in .app`);
 
     for (const [i, filePath] of allMachO.entries()) {
@@ -497,8 +560,10 @@ async function main() {
       ]);
     }
 
+    // No --deep: everything nested was just signed inside-out, and --deep
+    // --force would re-sign the vendor-signed Computer Use driver along with
+    // it, which is exactly what this step skips above.
     await run("codesign", [
-      "--deep",
       "--force",
       "--sign",
       resolvedSigningIdentity,
@@ -509,6 +574,8 @@ async function main() {
       entitlements,
       appPath,
     ]);
+
+    await verifyVendorSignedSidecarDigests(appPath);
   });
 
   await step("5/9 公证并 stapling .app", async () => {
