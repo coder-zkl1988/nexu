@@ -11,6 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  BellRing,
+  CalendarClock,
   ChevronDown,
   Clock,
   Edit3,
@@ -18,11 +20,16 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
+  Send,
   Sparkles,
+  Timer,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import {
   deleteApiV1SchedulesByScheduleId,
   getApiV1Bots,
@@ -32,12 +39,7 @@ import {
   patchApiV1SchedulesByScheduleId,
   postApiV1Schedules,
 } from "../../lib/api/sdk.gen";
-import type {
-  GetApiV1BotsResponse,
-  GetApiV1ChannelsResponse,
-  GetApiV1SchedulesByScheduleIdRunsResponse,
-  GetApiV1SchedulesResponse,
-} from "../../lib/api/types.gen";
+import type { GetApiV1SchedulesByScheduleIdRunsResponse } from "../../lib/api/types.gen";
 
 interface ScheduleItem {
   id: string;
@@ -53,6 +55,26 @@ interface ScheduleItem {
   channelId?: string;
   /** Per-job model override; empty = bot default. */
   modelId?: string;
+  onlyNotifyOnChange: boolean;
+  failureAlertEnabled: boolean;
+  failureAlertAfter: number;
+  nextRunAtMs?: number;
+  lastRunAtMs?: number;
+  lastDurationMs?: number;
+  lastRunStatus?: "ok" | "error" | "skipped";
+  lastDeliveryStatus?:
+    | "delivered"
+    | "not-delivered"
+    | "unknown"
+    | "not-requested";
+  deliveryMode?: "none" | "announce" | "webhook";
+  deliveryChannel?: string;
+  deliveryTo?: string;
+  deliveryAccountId?: string;
+  lastOutputObservedAt?: string;
+  lastOutputNotificationStatus?: "delivered" | "suppressed" | "failed";
+  lastOutputNotificationError?: string;
+  lastHostExecutionBlock?: { at: string; toolName: string; reason: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +87,36 @@ type ScheduleMode = "daily" | "interval";
 interface IntervalConfig {
   value: number;
   unit: "minutes" | "hours";
+}
+
+export function formatAutomationDuration(durationMs?: number): string {
+  if (durationMs === undefined) return "--";
+  if (durationMs < 1_000) return `${durationMs} ms`;
+  if (durationMs < 60_000) return `${(durationMs / 1_000).toFixed(1)} s`;
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = Math.round((durationMs % 60_000) / 1_000);
+  return `${minutes}m ${seconds}s`;
+}
+
+export function formatAutomationDestination(
+  schedule: Pick<
+    ScheduleItem,
+    "channelType" | "deliveryChannel" | "deliveryTo"
+  >,
+): string {
+  const channel = schedule.deliveryChannel ?? schedule.channelType;
+  if (!channel) return "--";
+  return schedule.deliveryTo ? `${channel} · ${schedule.deliveryTo}` : channel;
+}
+
+function formatNextRun(nextRunAtMs?: number): string {
+  if (nextRunAtMs === undefined) return "--";
+  return new Date(nextRunAtMs).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function parseIntervalCron(cron: string): IntervalConfig | null {
@@ -208,10 +260,14 @@ function AutomationModal({
 
   const [bots, setBots] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingBots, setLoadingBots] = useState(false);
+  const [botsLoadError, setBotsLoadError] = useState(false);
   const [channels, setChannels] = useState<
     Array<{ channelType: string; accountId?: string; botId?: string }>
   >([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [channelsLoadError, setChannelsLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [botId, setBotId] = useState("");
@@ -227,43 +283,65 @@ function AutomationModal({
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [onlyNotifyOnChange, setOnlyNotifyOnChange] = useState(false);
+  const [failureAlertEnabled, setFailureAlertEnabled] = useState(false);
+  const [failureAlertAfter, setFailureAlertAfter] = useState(3);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  useEffect(() => {
-    if (open) {
-      setLoadingBots(true);
-      getApiV1Bots()
-        .then((res: { data?: GetApiV1BotsResponse }) => {
-          if (res.data?.bots) {
-            const seen = new Map<string, string>();
-            const activeBots: Array<{ id: string; name: string }> = [];
-            for (const b of res.data.bots) {
-              if (b.status !== "active") continue;
-              if (seen.has(b.name)) continue;
-              seen.set(b.name, b.id);
-              activeBots.push({ id: b.id, name: b.name });
-            }
-            setBots(activeBots);
-          }
-        })
-        .finally(() => setLoadingBots(false));
+  const loadBots = useCallback(async () => {
+    setLoadingBots(true);
+    setBotsLoadError(false);
+    try {
+      const response = await getApiV1Bots();
+      if (response.error || !response.data) {
+        throw new Error("Bot list unavailable");
+      }
 
-      getApiV1Channels()
-        .then((res: { data?: GetApiV1ChannelsResponse }) => {
-          if (res.data?.channels) {
-            const connected = res.data.channels
-              .filter((ch) => ch.status === "connected")
-              .map((ch) => ({
-                channelType: ch.channelType,
-                accountId: ch.accountId as string | undefined,
-                botId: ch.botId,
-              }));
-            setChannels(connected);
-          }
-        })
-        .catch(() => {});
+      const seen = new Map<string, string>();
+      const activeBots: Array<{ id: string; name: string }> = [];
+      for (const bot of response.data.bots) {
+        if (bot.status !== "active" || seen.has(bot.name)) continue;
+        seen.set(bot.name, bot.id);
+        activeBots.push({ id: bot.id, name: bot.name });
+      }
+      setBots(activeBots);
+    } catch {
+      setBotsLoadError(true);
+    } finally {
+      setLoadingBots(false);
     }
-  }, [open]);
+  }, []);
+
+  const loadChannels = useCallback(async () => {
+    setLoadingChannels(true);
+    setChannelsLoadError(false);
+    try {
+      const response = await getApiV1Channels();
+      if (response.error || !response.data) {
+        throw new Error("Channel list unavailable");
+      }
+
+      setChannels(
+        response.data.channels
+          .filter((channel) => channel.status === "connected")
+          .map((channel) => ({
+            channelType: channel.channelType,
+            accountId: channel.accountId as string | undefined,
+            botId: channel.botId,
+          })),
+      );
+    } catch {
+      setChannelsLoadError(true);
+    } finally {
+      setLoadingChannels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadBots();
+    void loadChannels();
+  }, [loadBots, loadChannels, open]);
 
   useEffect(() => {
     if (editingSchedule) {
@@ -274,6 +352,9 @@ function AutomationModal({
       setPrompt(editingSchedule.prompt);
       setEnabled(editingSchedule.enabled);
       setModelId(editingSchedule.modelId ?? "");
+      setOnlyNotifyOnChange(editingSchedule.onlyNotifyOnChange);
+      setFailureAlertEnabled(editingSchedule.failureAlertEnabled);
+      setFailureAlertAfter(editingSchedule.failureAlertAfter);
 
       const interval = parseIntervalCron(editingSchedule.cron);
       if (interval) {
@@ -296,6 +377,9 @@ function AutomationModal({
       setPrompt("");
       setModelId("");
       setEnabled(true);
+      setOnlyNotifyOnChange(false);
+      setFailureAlertEnabled(false);
+      setFailureAlertAfter(3);
       setScheduleMode("daily");
       setTime("09:00");
       setSelectedDays(new Set());
@@ -317,10 +401,16 @@ function AutomationModal({
     setPrompt("");
     setModelId("");
     setEnabled(true);
+    setOnlyNotifyOnChange(false);
+    setFailureAlertEnabled(false);
+    setFailureAlertAfter(3);
   }
 
   function handleOpenChange(val: boolean) {
-    if (!val) resetForm();
+    if (!val) {
+      resetForm();
+      setSaveError(null);
+    }
     onOpenChange(val);
   }
 
@@ -337,8 +427,12 @@ function AutomationModal({
   }
 
   async function handleSubmit() {
-    if (saving) return;
+    const createResourcesUnavailable =
+      !isEditing &&
+      (loadingBots || loadingChannels || botsLoadError || channelsLoadError);
+    if (saving || createResourcesUnavailable || (!isEditing && !botId)) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const cron =
         scheduleMode === "interval"
@@ -347,22 +441,34 @@ function AutomationModal({
             : `0 */${intervalValue} * * *`
           : buildCronExpression(time, selectedDays);
       if (isEditing && editingSchedule) {
-        await patchApiV1SchedulesByScheduleId({
+        const response = await patchApiV1SchedulesByScheduleId({
           body: {
             name,
             cron,
             timezone,
             prompt,
             enabled,
-            channelType: channelType || undefined,
-            channelId: channelId || undefined,
+            // Empty strings explicitly clear a previously configured target.
+            channelType,
+            channelId: channelId ?? "",
             // Empty string clears the per-job override back to bot default.
             modelId,
+            ...(editingSchedule.source === "ui"
+              ? {
+                  onlyNotifyOnChange,
+                  failureAlertEnabled,
+                  failureAlertAfter,
+                }
+              : {}),
           },
           path: { scheduleId: editingSchedule.id },
         });
+        if (response.error) {
+          setSaveError(response.error.message);
+          return;
+        }
       } else {
-        await postApiV1Schedules({
+        const response = await postApiV1Schedules({
           body: {
             botId,
             name,
@@ -373,11 +479,24 @@ function AutomationModal({
             channelType: channelType || undefined,
             channelId: channelId || undefined,
             modelId: modelId || undefined,
+            onlyNotifyOnChange,
+            failureAlertEnabled,
+            failureAlertAfter,
           },
         });
+        if (response.error) {
+          setSaveError(response.error.message);
+          return;
+        }
       }
       onSaved();
       handleOpenChange(false);
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : t("automations.modal.saveFailed"),
+      );
     } finally {
       setSaving(false);
     }
@@ -385,7 +504,7 @@ function AutomationModal({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[600px] h-[640px] flex flex-col p-0 bg-white rounded-xl">
+      <DialogContent className="w-[min(600px,calc(100vw-32px))] h-[min(720px,calc(100vh-32px))] flex flex-col p-0 bg-white rounded-lg">
         <div className="px-8 pt-8 pb-5">
           <DialogTitle className="text-[18px] font-semibold leading-tight text-[var(--color-tabby-foreground)]">
             {isEditing
@@ -424,6 +543,8 @@ function AutomationModal({
                   if (!isEditing) {
                     setChannelType("");
                     setChannelId(undefined);
+                    setOnlyNotifyOnChange(false);
+                    setFailureAlertEnabled(false);
                   }
                 }}
                 disabled={loadingBots || isEditing}
@@ -448,6 +569,24 @@ function AutomationModal({
                 )}
               </div>
             </div>
+            {botsLoadError && (
+              <div
+                role="alert"
+                className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2"
+              >
+                <span className="text-[11px] text-amber-900">
+                  {t("automations.modal.botsLoadError")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void loadBots()}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-50"
+                >
+                  <RefreshCw size={11} />
+                  {t("automations.modal.retryBots")}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Per-job model override (OpenClaw >=2026.7.1 cron payload.model) */}
@@ -479,6 +618,30 @@ function AutomationModal({
           </div>
 
           {/* Delivery channel — only show channels bound to the selected bot */}
+          {channelsLoadError && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2"
+            >
+              <span className="text-[11px] text-amber-900">
+                {t("automations.modal.channelsLoadError")}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadChannels()}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-50"
+              >
+                <RefreshCw size={11} />
+                {t("automations.modal.retryChannels")}
+              </button>
+            </div>
+          )}
+          {loadingChannels && !channelsLoadError && (
+            <div className="flex items-center gap-2 text-[11px] text-[var(--color-tabby-muted)]">
+              <Loader2 size={12} className="animate-spin" />
+              {t("automations.modal.loadingChannels")}
+            </div>
+          )}
           {!isEditing && botId && channels.some((ch) => ch.botId === botId) && (
             <div>
               <Label className="block text-[13px] font-medium text-[var(--color-tabby-foreground)] mb-1.5">
@@ -498,6 +661,10 @@ function AutomationModal({
                       const [type, ...rest] = val.split(":");
                       setChannelType(type ?? "");
                       setChannelId(rest.join(":") || undefined);
+                    }
+                    if (!val) {
+                      setOnlyNotifyOnChange(false);
+                      setFailureAlertEnabled(false);
                     }
                   }}
                   className="block w-full pl-3 pr-10 py-2 text-[13px] border border-[var(--color-tabby-border)] rounded-lg bg-white text-[var(--color-tabby-foreground)] focus:ring-1 focus:ring-[var(--color-tabby-foreground)] focus:border-[var(--color-tabby-foreground)] appearance-none"
@@ -521,6 +688,93 @@ function AutomationModal({
                 </select>
                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[var(--color-tabby-muted)]">
                   <ChevronDown size={16} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Controller-owned delivery policy. Agent jobs remain OpenClaw-managed. */}
+          {(!isEditing || editingSchedule.source === "ui") && (
+            <div>
+              <Label className="block text-[13px] font-medium text-[var(--color-tabby-foreground)] mb-2.5">
+                {t("automations.modal.notifications")}
+              </Label>
+              <div className="divide-y divide-[var(--color-tabby-border)] border-y border-[var(--color-tabby-border)]">
+                <div className="flex items-center justify-between gap-4 py-3">
+                  <div className="min-w-0">
+                    <Label
+                      htmlFor="automation-only-on-change"
+                      className="text-[13px] font-medium text-[var(--color-tabby-foreground)] cursor-pointer"
+                    >
+                      {t("automations.modal.onlyNotifyOnChange")}
+                    </Label>
+                    <p className="mt-0.5 text-[11px] leading-4 text-[var(--color-tabby-muted)]">
+                      {channelType
+                        ? t("automations.modal.onlyNotifyOnChangeHint")
+                        : t("automations.modal.notificationNeedsChannel")}
+                    </p>
+                  </div>
+                  <Switch
+                    id="automation-only-on-change"
+                    size="sm"
+                    checked={onlyNotifyOnChange}
+                    disabled={!channelType}
+                    onCheckedChange={setOnlyNotifyOnChange}
+                  />
+                </div>
+
+                <div className="py-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <Label
+                        htmlFor="automation-failure-alert"
+                        className="text-[13px] font-medium text-[var(--color-tabby-foreground)] cursor-pointer"
+                      >
+                        {t("automations.modal.failureAlert")}
+                      </Label>
+                      <p className="mt-0.5 text-[11px] leading-4 text-[var(--color-tabby-muted)]">
+                        {channelType
+                          ? t("automations.modal.failureAlertHint")
+                          : t("automations.modal.notificationNeedsChannel")}
+                      </p>
+                    </div>
+                    <Switch
+                      id="automation-failure-alert"
+                      size="sm"
+                      checked={failureAlertEnabled}
+                      disabled={!channelType}
+                      onCheckedChange={setFailureAlertEnabled}
+                    />
+                  </div>
+                  {failureAlertEnabled && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <Label
+                        htmlFor="automation-failure-threshold"
+                        className="text-[12px] text-[var(--color-tabby-muted)]"
+                      >
+                        {t("automations.modal.failureAlertAfter")}
+                      </Label>
+                      <Input
+                        id="automation-failure-threshold"
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={failureAlertAfter}
+                        onChange={(event) =>
+                          setFailureAlertAfter(
+                            Math.max(
+                              1,
+                              Math.min(100, Number(event.target.value) || 1),
+                            ),
+                          )
+                        }
+                        className="h-8 w-20 text-center text-[12px]"
+                      />
+                      <span className="text-[12px] text-[var(--color-tabby-muted)]">
+                        {t("automations.modal.failures")}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -661,26 +915,43 @@ function AutomationModal({
           </div>
         </div>
 
-        <div className="px-8 py-5 flex justify-end gap-3 border-t border-[var(--color-tabby-border)]">
-          <button
-            type="button"
-            onClick={() => handleOpenChange(false)}
-            className="px-5 py-2 text-[13px] font-medium text-[var(--color-tabby-muted)] bg-white border border-[var(--color-tabby-border)] rounded-lg hover:bg-[var(--color-tabby-surface-2)] transition-colors"
+        <div className="px-8 py-5 flex items-center justify-between gap-4 border-t border-[var(--color-tabby-border)]">
+          <p
+            role={saveError ? "alert" : undefined}
+            className="min-w-0 flex-1 truncate text-[12px] text-red-600"
+            title={saveError ?? undefined}
           >
-            {t("automations.modal.cancel")}
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={saving}
-            className="px-5 py-2 text-[13px] font-medium text-white bg-black rounded-lg hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 disabled:opacity-50"
-          >
-            {saving
-              ? t("automations.modal.saving")
-              : isEditing
-                ? t("automations.modal.save")
-                : t("automations.modal.create")}
-          </button>
+            {saveError}
+          </p>
+          <div className="flex shrink-0 gap-3">
+            <button
+              type="button"
+              onClick={() => handleOpenChange(false)}
+              className="px-5 py-2 text-[13px] font-medium text-[var(--color-tabby-muted)] bg-white border border-[var(--color-tabby-border)] rounded-lg hover:bg-[var(--color-tabby-surface-2)] transition-colors"
+            >
+              {t("automations.modal.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={
+                saving ||
+                (!isEditing &&
+                  (!botId ||
+                    loadingBots ||
+                    loadingChannels ||
+                    botsLoadError ||
+                    channelsLoadError))
+              }
+              className="px-5 py-2 text-[13px] font-medium text-white bg-black rounded-lg hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 disabled:opacity-50"
+            >
+              {saving
+                ? t("automations.modal.saving")
+                : isEditing
+                  ? t("automations.modal.save")
+                  : t("automations.modal.create")}
+            </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -696,12 +967,17 @@ export function AutomationsPage() {
   );
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const fetchSchedules = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await getApiV1Schedules();
-      const data = res.data as GetApiV1SchedulesResponse | undefined;
-      const list = data?.schedules ?? [];
+      if (res.error || !res.data) {
+        throw new Error("Schedule list unavailable");
+      }
+      const data = res.data;
+      const list = data.schedules;
       setSchedules(
         list.map((s) => ({
           id: s.id,
@@ -716,10 +992,29 @@ export function AutomationsPage() {
           channelType: s.channelType as string | undefined,
           channelId: s.channelId as string | undefined,
           modelId: s.modelId as string | undefined,
+          onlyNotifyOnChange: s.onlyNotifyOnChange ?? false,
+          failureAlertEnabled: s.failureAlertEnabled ?? false,
+          failureAlertAfter: s.failureAlertAfter ?? 3,
+          nextRunAtMs: s.nextRunAtMs,
+          lastRunAtMs: s.lastRunAtMs,
+          lastDurationMs: s.lastDurationMs,
+          lastRunStatus: s.lastRunStatus,
+          lastDeliveryStatus: s.lastDeliveryStatus,
+          deliveryMode: s.deliveryMode,
+          deliveryChannel: s.deliveryChannel,
+          deliveryTo: s.deliveryTo,
+          deliveryAccountId: s.deliveryAccountId,
+          lastOutputObservedAt: s.lastOutputObservedAt,
+          lastOutputNotificationStatus: s.lastOutputNotificationStatus,
+          lastOutputNotificationError: s.lastOutputNotificationError,
+          lastHostExecutionBlock: s.lastHostExecutionBlock,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt,
         })),
       );
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -749,60 +1044,86 @@ export function AutomationsPage() {
   }
 
   async function handleToggleStatus(schedule: ScheduleItem) {
-    await patchApiV1SchedulesByScheduleId({
-      body: { enabled: !schedule.enabled },
-      path: { scheduleId: schedule.id },
-    });
-    fetchSchedules();
+    try {
+      const { error } = await patchApiV1SchedulesByScheduleId({
+        body: { enabled: !schedule.enabled },
+        path: { scheduleId: schedule.id },
+      });
+      if (error) throw new Error("Schedule update failed");
+      await fetchSchedules();
+    } catch {
+      toast.error(t("automations.updateFailed"));
+    }
   }
 
   async function handleDelete(schedule: ScheduleItem) {
-    await deleteApiV1SchedulesByScheduleId({
-      path: { scheduleId: schedule.id },
-    });
-    fetchSchedules();
+    try {
+      const { error } = await deleteApiV1SchedulesByScheduleId({
+        path: { scheduleId: schedule.id },
+      });
+      if (error) throw new Error("Schedule deletion failed");
+      await fetchSchedules();
+    } catch {
+      toast.error(t("automations.deleteFailed"));
+    }
   }
 
   const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
   const [runsData, setRunsData] = useState<
-    Record<string, GetApiV1SchedulesByScheduleIdRunsResponse | null>
+    Record<string, GetApiV1SchedulesByScheduleIdRunsResponse>
   >({});
   const [runsLoading, setRunsLoading] = useState<Set<string>>(new Set());
+  const [runsErrors, setRunsErrors] = useState<Set<string>>(new Set());
 
-  async function toggleRuns(scheduleId: string) {
-    setExpandedRuns((prev) => {
-      const next = new Set(prev);
-      if (next.has(scheduleId)) {
+  const fetchRuns = useCallback(async (scheduleId: string) => {
+    setRunsLoading((current) => new Set(current).add(scheduleId));
+    setRunsErrors((current) => {
+      const next = new Set(current);
+      next.delete(scheduleId);
+      return next;
+    });
+    try {
+      const response = await getApiV1SchedulesByScheduleIdRuns({
+        path: { scheduleId },
+        query: { limit: 20 },
+      });
+      if (response.error || !response.data) {
+        throw new Error("Schedule history unavailable");
+      }
+      setRunsData((current) => ({
+        ...current,
+        [scheduleId]: response.data,
+      }));
+    } catch {
+      setRunsErrors((current) => new Set(current).add(scheduleId));
+    } finally {
+      setRunsLoading((current) => {
+        const next = new Set(current);
+        next.delete(scheduleId);
+        return next;
+      });
+    }
+  }, []);
+
+  function toggleRuns(scheduleId: string) {
+    const wasExpanded = expandedRuns.has(scheduleId);
+    setExpandedRuns((current) => {
+      const next = new Set(current);
+      if (wasExpanded) {
         next.delete(scheduleId);
       } else {
         next.add(scheduleId);
-        if (!(scheduleId in runsData)) {
-          setRunsLoading((s) => new Set(s).add(scheduleId));
-          getApiV1SchedulesByScheduleIdRuns({
-            path: { scheduleId },
-            query: { limit: 20 },
-          })
-            .then((res) => {
-              setRunsData((d) => ({
-                ...d,
-                [scheduleId]:
-                  res.data as GetApiV1SchedulesByScheduleIdRunsResponse,
-              }));
-            })
-            .catch(() => {
-              setRunsData((d) => ({ ...d, [scheduleId]: null }));
-            })
-            .finally(() => {
-              setRunsLoading((s) => {
-                const ns = new Set(s);
-                ns.delete(scheduleId);
-                return ns;
-              });
-            });
-        }
       }
       return next;
     });
+    if (
+      !wasExpanded &&
+      !(scheduleId in runsData) &&
+      !runsErrors.has(scheduleId) &&
+      !runsLoading.has(scheduleId)
+    ) {
+      void fetchRuns(scheduleId);
+    }
   }
 
   return (
@@ -881,6 +1202,24 @@ export function AutomationsPage() {
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-[var(--color-tabby-muted)]" />
           </div>
+        ) : loadError ? (
+          <div
+            role="alert"
+            className="flex flex-col items-center justify-center py-20 text-center"
+          >
+            <TriangleAlert className="mb-3 h-8 w-8 text-amber-600" />
+            <p className="text-sm font-medium text-[var(--color-tabby-foreground)]">
+              {t("automations.loadError")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void fetchSchedules()}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-[var(--color-tabby-border)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--color-tabby-foreground)] hover:bg-neutral-50"
+            >
+              <RefreshCw size={13} />
+              {t("automations.retry")}
+            </button>
+          </div>
         ) : filtered.length > 0 ? (
           <div className="grid gap-4 items-start [grid-template-columns:repeat(auto-fill,minmax(max(220px,calc(33.333%-11px)),1fr))]">
             {filtered.map((schedule) => (
@@ -930,7 +1269,91 @@ export function AutomationsPage() {
                       {cronToTriggerText(schedule.cron, schedule.timezone)}
                     </span>
                   </div>
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <CalendarClock className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
+                    <span className="shrink-0 text-[var(--color-tabby-muted)]">
+                      {t("automations.detail.nextRun")}
+                    </span>
+                    <span className="min-w-0 truncate text-[var(--color-tabby-foreground)]">
+                      {formatNextRun(schedule.nextRunAtMs)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <Send className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
+                    <span className="shrink-0 text-[var(--color-tabby-muted)]">
+                      {t("automations.detail.destination")}
+                    </span>
+                    <span
+                      className="min-w-0 truncate text-[var(--color-tabby-foreground)]"
+                      title={formatAutomationDestination(schedule)}
+                    >
+                      {formatAutomationDestination(schedule)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[12px]">
+                    <Timer className="w-3.5 h-3.5 text-[var(--color-tabby-muted)] shrink-0" />
+                    <span className="shrink-0 text-[var(--color-tabby-muted)]">
+                      {t("automations.detail.lastDuration")}
+                    </span>
+                    <span className="text-[var(--color-tabby-foreground)]">
+                      {formatAutomationDuration(schedule.lastDurationMs)}
+                    </span>
+                  </div>
                 </div>
+
+                {(schedule.onlyNotifyOnChange ||
+                  schedule.failureAlertEnabled) && (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {schedule.onlyNotifyOnChange && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-700">
+                        <BellRing size={11} />
+                        {t("automations.detail.onlyChanges")}
+                      </span>
+                    )}
+                    {schedule.failureAlertEnabled && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[10px] font-medium text-red-700">
+                        <BellRing size={11} />
+                        {t("automations.detail.failureAlert", {
+                          count: schedule.failureAlertAfter,
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {schedule.lastHostExecutionBlock && (
+                  <div
+                    data-host-execution-blocked={schedule.id}
+                    className="mb-3 rounded-md border border-[var(--color-warning)] bg-[var(--color-warning-subtle)] px-2.5 py-2 text-[11px] leading-4 text-[var(--color-warning)]"
+                  >
+                    {t("automations.detail.hostExecutionBlocked", {
+                      tool: schedule.lastHostExecutionBlock.toolName,
+                    })}
+                  </div>
+                )}
+
+                {schedule.onlyNotifyOnChange &&
+                  schedule.lastOutputNotificationStatus && (
+                    <div
+                      className="mb-3 flex items-center gap-2 text-[11px] text-[var(--color-tabby-muted)]"
+                      title={schedule.lastOutputNotificationError}
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 shrink-0 rounded-full",
+                          schedule.lastOutputNotificationStatus === "delivered"
+                            ? "bg-green-500"
+                            : schedule.lastOutputNotificationStatus ===
+                                "suppressed"
+                              ? "bg-neutral-400"
+                              : "bg-red-500",
+                        )}
+                      />
+                      {t(
+                        `automations.detail.outputNotification.${schedule.lastOutputNotificationStatus}`,
+                      )}
+                    </div>
+                  )}
 
                 {/* Run history toggle */}
                 <button
@@ -959,9 +1382,22 @@ export function AutomationsPage() {
                           className="animate-spin text-[var(--color-tabby-muted)]"
                         />
                       </div>
-                    ) : runsData[schedule.id] === null ? (
-                      <div className="text-[11px] text-[var(--color-tabby-muted)] text-center py-4">
-                        {t("automations.detail.historyError")}
+                    ) : runsErrors.has(schedule.id) ? (
+                      <div
+                        role="alert"
+                        className="flex flex-col items-center gap-2 px-3 py-4 text-center"
+                      >
+                        <span className="text-[11px] text-red-600">
+                          {t("automations.detail.historyError")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void fetchRuns(schedule.id)}
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--color-tabby-border)] bg-white px-2 py-1 text-[11px] font-medium text-[var(--color-tabby-foreground)] hover:bg-neutral-50"
+                        >
+                          <RefreshCw size={11} />
+                          {t("automations.detail.historyRetry")}
+                        </button>
                       </div>
                     ) : (runsData[schedule.id]?.entries?.length ?? 0) === 0 ? (
                       <div className="text-[11px] text-[var(--color-tabby-muted)] text-center py-4">
@@ -1029,7 +1465,17 @@ export function AutomationsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleToggleStatus(schedule)}
+                      onClick={() => void handleToggleStatus(schedule)}
+                      aria-label={
+                        schedule.enabled
+                          ? t("automations.pause")
+                          : t("automations.resume")
+                      }
+                      title={
+                        schedule.enabled
+                          ? t("automations.pause")
+                          : t("automations.resume")
+                      }
                       className={cn(
                         "p-1.5 rounded-md transition-colors",
                         schedule.enabled
@@ -1045,7 +1491,9 @@ export function AutomationsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(schedule)}
+                      onClick={() => void handleDelete(schedule)}
+                      aria-label={t("automations.detail.delete")}
+                      title={t("automations.detail.delete")}
                       className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 size={14} />

@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControllerContainer } from "../src/app/container.js";
 import { createApp } from "../src/app/create-app.js";
 import type { ControllerEnv } from "../src/app/env.js";
-import { SessionsRuntime } from "../src/runtime/sessions-runtime.js";
+import {
+  SessionMessageNotFoundError,
+  SessionsRuntime,
+  SessionsRuntimeUnavailableError,
+} from "../src/runtime/sessions-runtime.js";
 import { createRuntimeState } from "../src/runtime/state.js";
 import { SessionService } from "../src/services/session-service.js";
 
@@ -116,6 +120,54 @@ describe("session routes", () => {
       await rm(rootDir, { recursive: true, force: true });
       rootDir = null;
     }
+  });
+
+  it("normalizes pinned and unread query filters to booleans", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-session-routes-"));
+    const container = createTestContainer(rootDir);
+    const listSessions = vi.fn(async () => ({
+      sessions: [],
+      total: 0,
+      limit: 7,
+      offset: 2,
+    }));
+    container.sessionService = {
+      listSessions,
+    } as unknown as ControllerContainer["sessionService"];
+    const app = createApp(container);
+
+    const response = await app.request(
+      "/api/v1/sessions?pinned=true&unread=false&archived=include&limit=7&offset=2",
+    );
+
+    expect(response.status).toBe(200);
+    expect(listSessions).toHaveBeenCalledWith({
+      archived: "include",
+      limit: 7,
+      offset: 2,
+      pinned: true,
+      unread: false,
+    });
+  });
+
+  it("returns a sanitized unavailable response when session storage cannot be read", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-session-routes-"));
+    const container = createTestContainer(rootDir);
+    container.sessionService = {
+      listSessions: vi.fn(async () => {
+        throw new SessionsRuntimeUnavailableError();
+      }),
+    } as unknown as ControllerContainer["sessionService"];
+    const app = createApp(container);
+
+    const response = await app.request("/api/v1/sessions");
+    const responseText = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(JSON.parse(responseText)).toEqual({
+      message: "Session data is temporarily unavailable",
+    });
+    expect(responseText).not.toContain(rootDir);
   });
 
   it("serves cleaned chat history through the session messages API", async () => {
@@ -289,5 +341,81 @@ describe("session routes", () => {
         ],
       },
     ]);
+  });
+
+  it("exposes message-level branch and rollback operations", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-session-routes-"));
+    const container = createTestContainer(rootDir);
+    const branchAtMessage = vi.fn(async () => ({
+      id: "branch.jsonl",
+      botId: "bot-1",
+      sessionKey: "agent:bot-1:branch",
+      title: "Review · branch",
+      messageId: "message-1",
+    }));
+    const rollbackToMessage = vi.fn(async () => ({
+      ok: true as const,
+      id: "source.jsonl",
+      sessionKey: "agent:bot-1:source",
+      messageId: "message-1",
+    }));
+    container.sessionService = {
+      branchAtMessage,
+      rollbackToMessage,
+    } as unknown as ControllerContainer["sessionService"];
+    const app = createApp(container);
+
+    const branchResponse = await app.request(
+      "/api/v1/sessions/source.jsonl/messages/message-1/branch",
+      { method: "POST" },
+    );
+    const rollbackResponse = await app.request(
+      "/api/v1/sessions/source.jsonl/messages/message-1/rollback",
+      { method: "POST" },
+    );
+
+    expect(branchResponse.status).toBe(200);
+    expect(await branchResponse.json()).toMatchObject({
+      id: "branch.jsonl",
+      messageId: "message-1",
+    });
+    expect(rollbackResponse.status).toBe(200);
+    expect(await rollbackResponse.json()).toMatchObject({
+      ok: true,
+      messageId: "message-1",
+    });
+    expect(branchAtMessage).toHaveBeenCalledWith("source.jsonl", "message-1");
+    expect(rollbackToMessage).toHaveBeenCalledWith("source.jsonl", "message-1");
+  });
+
+  it("returns 404 for an unknown message and 409 for a running session", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-session-routes-"));
+    const container = createTestContainer(rootDir);
+    container.sessionService = {
+      branchAtMessage: vi.fn(async () => {
+        throw new SessionMessageNotFoundError();
+      }),
+      rollbackToMessage: vi.fn(async () => {
+        throw new Error(
+          "Cannot switch message branches while the session is running",
+        );
+      }),
+    } as unknown as ControllerContainer["sessionService"];
+    const app = createApp(container);
+
+    const missingResponse = await app.request(
+      "/api/v1/sessions/source.jsonl/messages/missing/branch",
+      { method: "POST" },
+    );
+    const runningResponse = await app.request(
+      "/api/v1/sessions/source.jsonl/messages/message-1/rollback",
+      { method: "POST" },
+    );
+
+    expect(missingResponse.status).toBe(404);
+    expect(await missingResponse.json()).toEqual({
+      message: "Message not found in session",
+    });
+    expect(runningResponse.status).toBe(409);
   });
 });

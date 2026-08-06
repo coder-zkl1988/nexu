@@ -15,6 +15,54 @@ export function registerScheduleRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
+  // Reported by nexu-toolcall-guard when it refuses host execution to an
+  // automation run. The guard knows the tool was blocked; only the controller
+  // knows which schedule that session belongs to and how to surface it.
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/internal/runtime/host-execution-blocked",
+      tags: ["Runtime Operations", "Internal"],
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                sessionKey: z.string().min(1),
+                toolName: z.string().min(1),
+                reason: z.string().min(1),
+              }),
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({ recorded: z.boolean() }),
+            },
+          },
+          description: "Block recorded against the owning schedule, if any",
+        },
+      },
+    }),
+    async (c) => {
+      const { sessionKey, toolName, reason } = c.req.valid("json");
+      // openclaw-cron-gateway mints `agent:<botId>:schedule-<scheduleId>`.
+      const match = /^agent:[^:]+:schedule-(.+)$/.exec(sessionKey);
+      if (!match?.[1]) return c.json({ recorded: false }, 200);
+
+      const updated =
+        await container.configStore.recordScheduleHostExecutionBlock(match[1], {
+          at: new Date().toISOString(),
+          toolName,
+          reason,
+        });
+      return c.json({ recorded: updated !== null }, 200);
+    },
+  );
+
   app.openapi(
     createRoute({
       method: "get",
@@ -53,6 +101,14 @@ export function registerScheduleRoutes(
           },
           description: "Created",
         },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Notification delivery target unavailable",
+        },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "OpenClaw schedule registration failed",
+        },
       },
     }),
     async (c) =>
@@ -83,6 +139,14 @@ export function registerScheduleRoutes(
         404: {
           content: { "application/json": { schema: errorSchema } },
           description: "Not found",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Notification delivery target unavailable",
+        },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "OpenClaw schedule update failed",
         },
       },
     }),

@@ -1,4 +1,11 @@
-import { LoaderCircle, SendHorizontal, X } from "lucide-react";
+import {
+  Camera,
+  FileImage,
+  LoaderCircle,
+  SendHorizontal,
+  TextSelect,
+  X,
+} from "lucide-react";
 import {
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
@@ -11,6 +18,7 @@ import {
 import type {
   DesktopDeskpetMood,
   DesktopDeskpetSize,
+  DesktopQuickChatAttachment,
   RuntimeEvent,
   RuntimeState,
   RuntimeUnitPhase,
@@ -32,6 +40,7 @@ import {
   resolveDeskpetTaskDurationMs,
 } from "../lib/deskpet-state";
 import {
+  getQuickChatContext,
   getRuntimeState,
   moveDeskpetWindow,
   onDesktopCommand,
@@ -329,6 +338,12 @@ export function DesktopDeskpetApp() {
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
+  const [quickChatAttachments, setQuickChatAttachments] = useState<
+    DesktopQuickChatAttachment[]
+  >([]);
+  const [quickChatContextLoading, setQuickChatContextLoading] = useState<
+    "selection" | "screenshot" | null
+  >(null);
   const [lastInteractionAt, setLastInteractionAt] = useState(() => Date.now());
   const [replyPreviewText, setReplyPreviewText] = useState<string | null>(null);
   const [isDialogueDismissed, setIsDialogueDismissed] = useState(false);
@@ -626,9 +641,29 @@ export function DesktopDeskpetApp() {
 
       if (command.type === "deskpet:set-size") {
         setSize(command.size);
+        return;
+      }
+
+      if (command.type === "deskpet:open-composer") {
+        if (taskMood === "working" || taskMood === "lobster-replying") {
+          showTemporaryMessage("Tabby 正在回复，请稍后再发");
+          return;
+        }
+        clearMessageTimer();
+        setInteractionMessage(null);
+        setChatError(null);
+        setIsDialogueDismissed(true);
+        setIsChatComposerOpen(true);
       }
     });
-  }, [clearChatIdleTimer, clearTaskTimer, setMousePassthrough]);
+  }, [
+    clearChatIdleTimer,
+    clearMessageTimer,
+    clearTaskTimer,
+    setMousePassthrough,
+    showTemporaryMessage,
+    taskMood,
+  ]);
 
   const baseMood = runtimeMood ?? resolveMoodFromRuntime(runtimeState);
   const effectiveInactivityMood =
@@ -767,6 +802,7 @@ export function DesktopDeskpetApp() {
     clearChatIdleTimer();
     setIsChatComposerOpen(false);
     setChatError(null);
+    setQuickChatAttachments([]);
     setMousePassthrough(true);
   }, [clearChatIdleTimer, isSendingChat, setMousePassthrough]);
 
@@ -793,8 +829,9 @@ export function DesktopDeskpetApp() {
     setChatError(null);
     setIsSendingChat(true);
     try {
-      await sendDeskpetMessage(text);
+      await sendDeskpetMessage(text, quickChatAttachments);
       setChatDraft("");
+      setQuickChatAttachments([]);
       setIsChatComposerOpen(false);
       setIsDialogueDismissed(false);
     } catch (error) {
@@ -1005,6 +1042,96 @@ export function DesktopDeskpetApp() {
                 <SendHorizontal aria-hidden="true" size={18} />
               )}
             </button>
+          </div>
+          <div className="deskpet-chat-context-row">
+            <button
+              aria-label="加入选中文本"
+              className="deskpet-chat-context-button"
+              disabled={isSendingChat || quickChatContextLoading !== null}
+              onClick={() => {
+                setQuickChatContextLoading("selection");
+                setChatError(null);
+                void getQuickChatContext({
+                  includeSelectedText: true,
+                  includeScreenshot: false,
+                })
+                  .then((context) => {
+                    if (!context.selectedText) {
+                      throw new Error("没有可用的选中文本或剪贴板文本。");
+                    }
+                    setChatDraft((current) =>
+                      [current.trim(), `引用内容：\n${context.selectedText}`]
+                        .filter(Boolean)
+                        .join("\n\n"),
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    setChatError(
+                      error instanceof Error
+                        ? error.message
+                        : "无法读取选中文本。",
+                    );
+                  })
+                  .finally(() => setQuickChatContextLoading(null));
+              }}
+              title="加入选中文本或剪贴板文本"
+              type="button"
+            >
+              {quickChatContextLoading === "selection" ? (
+                <LoaderCircle className="deskpet-chat-spinner" size={14} />
+              ) : (
+                <TextSelect size={14} />
+              )}
+              选中文本
+            </button>
+            <button
+              aria-label="截取当前屏幕"
+              className="deskpet-chat-context-button"
+              disabled={isSendingChat || quickChatContextLoading !== null}
+              onClick={() => {
+                setQuickChatContextLoading("screenshot");
+                setChatError(null);
+                void getQuickChatContext({
+                  includeSelectedText: false,
+                  includeScreenshot: true,
+                })
+                  .then((context) => {
+                    if (!context.screenshot) {
+                      throw new Error("无法截取当前屏幕，请检查录屏权限。");
+                    }
+                    setQuickChatAttachments([context.screenshot]);
+                  })
+                  .catch((error: unknown) => {
+                    setChatError(
+                      error instanceof Error ? error.message : "截图失败。",
+                    );
+                  })
+                  .finally(() => setQuickChatContextLoading(null));
+              }}
+              title="截取当前屏幕并随消息发送"
+              type="button"
+            >
+              {quickChatContextLoading === "screenshot" ? (
+                <LoaderCircle className="deskpet-chat-spinner" size={14} />
+              ) : (
+                <Camera size={14} />
+              )}
+              截图
+            </button>
+            {quickChatAttachments.length > 0 ? (
+              <span className="deskpet-chat-context-chip">
+                <FileImage size={13} />
+                已加入截图
+                <button
+                  aria-label="移除截图"
+                  disabled={isSendingChat}
+                  onClick={() => setQuickChatAttachments([])}
+                  type="button"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ) : null}
           </div>
           {chatError ? (
             <p className="deskpet-chat-error" role="alert">

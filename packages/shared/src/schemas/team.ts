@@ -143,10 +143,17 @@ export const teamBoardCardSchema = z.object({
   assigneeName: z.string().nullable(),
   /** Latest recorded output (workflow step reply), when any. */
   output: z.string().nullable(),
+  /** OpenClaw lane that executes this card, when the card has a runtime step. */
+  sessionKey: z.string().nullable().optional(),
+  /** Upstream Workboard cards that must complete before this card. */
+  parentIds: z.array(z.string()).default([]),
+  /** Downstream Workboard cards unlocked by this card. */
+  childIds: z.array(z.string()).default([]),
 });
 
 export const teamBoardResponseSchema = z.object({
   boardId: z.string(),
+  available: z.boolean(),
   cards: z.array(teamBoardCardSchema),
 });
 

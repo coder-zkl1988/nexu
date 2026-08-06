@@ -1,5 +1,6 @@
 import type {
   AppInfo,
+  DesktopQuickChatAttachment,
   DesktopRuntimeConfig,
   DesktopUpdateCapability,
   DiagnosticsExportResult,
@@ -186,8 +187,14 @@ export async function cancelMiniMaxOauth() {
   return getHostBridge().invoke("desktop:cancel-minimax-oauth", undefined);
 }
 
-export async function sendDeskpetMessage(text: string) {
-  return getHostBridge().invoke("desktop:deskpet-send-message", { text });
+export async function sendDeskpetMessage(
+  text: string,
+  attachments: DesktopQuickChatAttachment[] = [],
+) {
+  return getHostBridge().invoke("desktop:deskpet-send-message", {
+    text,
+    attachments,
+  });
 }
 
 export async function startDeskpetChat(text: string) {
@@ -206,6 +213,13 @@ export async function replyDeskpetCurrentChat(text: string) {
   return getHostBridge().invoke("desktop:deskpet-reply-current-chat", {
     text,
   });
+}
+
+export async function getQuickChatContext(input: {
+  includeSelectedText: boolean;
+  includeScreenshot: boolean;
+}) {
+  return getHostBridge().invoke("desktop:get-quick-chat-context", input);
 }
 
 export async function openDeskpetCurrentChat(input?: {

@@ -5,6 +5,7 @@ import {
   type RunMessageMode,
 } from "@/components/chat-input-area";
 import { PlatformIcon } from "@/components/platform-icons";
+import { SessionOperationsPanel } from "@/components/session-operations-panel";
 import { ChatMarkdown } from "@/components/ui/chat-markdown";
 import { A2UIRenderer } from "@/lib/a2ui";
 import type { A2UIMessage } from "@/lib/a2ui";
@@ -15,6 +16,7 @@ import {
 import { createLocalStreamSSEClient } from "@/lib/api/event-source";
 import {
   closeBrowserPanel,
+  closeBrowserPanelForRouting,
   openBrowserPanel,
   openUrlInBrowserPanel,
   useBrowserPanel,
@@ -90,6 +92,8 @@ import {
   FileType2,
   FileVideo,
   FolderOpen,
+  Gauge,
+  GitBranch,
   Globe,
   Loader2,
   type LucideIcon,
@@ -97,6 +101,7 @@ import {
   MessageSquare,
   PanelRight,
   Presentation,
+  RotateCcw,
   Shapes,
   Square,
   Terminal,
@@ -107,7 +112,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { toast } from "sonner";
 import {
   getApiV1Artifacts,
@@ -122,6 +132,8 @@ import {
   postApiV1ChatLocal,
   postApiV1ChatSideQuestion,
   postApiV1ChatSteer,
+  postApiV1SessionsByIdMessagesByMessageIdBranch,
+  postApiV1SessionsByIdMessagesByMessageIdRollback,
   postApiV1SessionsByIdReset,
   postApiV1TtsSpeak,
 } from "../../lib/api/sdk.gen";
@@ -1096,6 +1108,10 @@ function ChatBubble({
   showAvatar = true,
   presentation = "full",
   onOpenLink,
+  onBranch,
+  onRollback,
+  messageAction = null,
+  actionsDisabled = false,
 }: {
   msg: ChatMessageData;
   extracted?: ExtractedMessage;
@@ -1106,7 +1122,12 @@ function ChatBubble({
   showAvatar?: boolean;
   presentation?: "full" | "artifacts-only";
   onOpenLink?: (url: string) => void;
+  onBranch?: (messageId: string) => void;
+  onRollback?: (messageId: string) => void;
+  messageAction?: "branch" | "rollback" | null;
+  actionsDisabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const resolvedExtracted =
     extracted ?? extractMessage(msg as unknown as Record<string, unknown>);
   const {
@@ -1211,6 +1232,48 @@ function ChatBubble({
           <div className="flex items-center gap-1 pl-1">
             {time && <div className="text-[10px] text-text-muted">{time}</div>}
             {isBot && hasText && <SpeakButton text={text} />}
+            {onBranch && (
+              <button
+                type="button"
+                data-message-action="branch"
+                aria-label={t("sessions.chat.branchFromMessage", {
+                  defaultValue: "Branch from this message",
+                })}
+                title={t("sessions.chat.branchFromMessage", {
+                  defaultValue: "Branch from this message",
+                })}
+                disabled={actionsDisabled}
+                onClick={() => onBranch(msg.id)}
+                className="inline-flex rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface-2 hover:text-text-primary focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-30 group-hover/bubble:opacity-100"
+              >
+                {messageAction === "branch" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <GitBranch className="size-3" />
+                )}
+              </button>
+            )}
+            {onRollback && (
+              <button
+                type="button"
+                data-message-action="rollback"
+                aria-label={t("sessions.chat.rollbackToMessage", {
+                  defaultValue: "Roll back to this message",
+                })}
+                title={t("sessions.chat.rollbackToMessage", {
+                  defaultValue: "Roll back to this message",
+                })}
+                disabled={actionsDisabled}
+                onClick={() => onRollback(msg.id)}
+                className="inline-flex rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-surface-2 hover:text-text-primary focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-30 group-hover/bubble:opacity-100"
+              >
+                {messageAction === "rollback" ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <RotateCcw className="size-3" />
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1341,6 +1404,7 @@ export function SessionsPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [deskpetReplyFocusToken, setDeskpetReplyFocusToken] = useState<
     string | null
@@ -1349,6 +1413,7 @@ export function SessionsPage() {
   const queryClient = useQueryClient();
   const { openWith } = useA2UISidebar();
   const browserPanel = useBrowserPanel();
+  const [operationsOpen, setOperationsOpen] = useState(false);
 
   useEffect(() => {
     if (id) track("session_detail_view");
@@ -1398,6 +1463,7 @@ export function SessionsPage() {
     if (!observation.shouldOpen || !sessionKey) return;
     if (browserPanel.isOpen && browserPanel.sessionKey === sessionKey) return;
 
+    setOperationsOpen(false);
     setPanelOpen(false);
     openBrowserPanel(sessionKey);
   }, [
@@ -2402,6 +2468,118 @@ export function SessionsPage() {
   const sessionBusy = runStatus?.busy === true;
   const replyInProgress =
     waitingForReply || sessionBusy || streamingText.trim().length > 0;
+  const [messageHistoryAction, setMessageHistoryAction] = useState<{
+    messageId: string;
+    type: "branch" | "rollback";
+  } | null>(null);
+
+  const handleBranchFromMessage = useCallback(
+    async (messageId: string) => {
+      if (!id || replyInProgress || messageHistoryAction) return;
+
+      setMessageHistoryAction({ messageId, type: "branch" });
+      try {
+        const { data, error } =
+          await postApiV1SessionsByIdMessagesByMessageIdBranch({
+            path: { id, messageId },
+          });
+        if (error || !data?.id) {
+          throw new Error(
+            (error as { message?: string } | undefined)?.message ??
+              t("sessions.chat.branchFailed", {
+                defaultValue: "Unable to create message branch",
+              }),
+          );
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["chat-history", id] }),
+          queryClient.invalidateQueries({ queryKey: ["session-meta", id] }),
+          queryClient.invalidateQueries({
+            queryKey: ["chat-history", data.id],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: ["session-meta", data.id],
+          }),
+          queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] }),
+          queryClient.invalidateQueries({ queryKey: ["sessions-recent"] }),
+        ]);
+        toast.success(
+          t("sessions.chat.branchCreated", {
+            defaultValue: "Message branch created",
+          }),
+        );
+        navigate(`/workspace/sessions/${data.id}`);
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t("sessions.chat.branchFailed", {
+                defaultValue: "Unable to create message branch",
+              }),
+        );
+      } finally {
+        setMessageHistoryAction(null);
+      }
+    },
+    [id, messageHistoryAction, navigate, queryClient, replyInProgress, t],
+  );
+
+  const handleRollbackToMessage = useCallback(
+    async (messageId: string) => {
+      if (!id || replyInProgress || messageHistoryAction) return;
+      if (
+        !window.confirm(
+          t("sessions.chat.rollbackConfirm", {
+            defaultValue:
+              "Roll back this conversation to the selected message? Later messages remain in history and can be reached from another branch.",
+          }),
+        )
+      ) {
+        return;
+      }
+
+      setMessageHistoryAction({ messageId, type: "rollback" });
+      try {
+        const { error } =
+          await postApiV1SessionsByIdMessagesByMessageIdRollback({
+            path: { id, messageId },
+          });
+        if (error) {
+          throw new Error(
+            (error as { message?: string }).message ??
+              t("sessions.chat.rollbackFailed", {
+                defaultValue: "Unable to roll back conversation",
+              }),
+          );
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["chat-history", id] }),
+          queryClient.invalidateQueries({ queryKey: ["session-meta", id] }),
+          queryClient.invalidateQueries({ queryKey: ["chat-run-status", id] }),
+          queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] }),
+          queryClient.invalidateQueries({ queryKey: ["sessions-recent"] }),
+        ]);
+        toast.success(
+          t("sessions.chat.rollbackComplete", {
+            defaultValue: "Conversation rolled back",
+          }),
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t("sessions.chat.rollbackFailed", {
+                defaultValue: "Unable to roll back conversation",
+              }),
+        );
+      } finally {
+        setMessageHistoryAction(null);
+      }
+    },
+    [id, messageHistoryAction, queryClient, replyInProgress, t],
+  );
 
   useEffect(() => {
     if (!replyInProgress) setPendingRunMessageChoice(null);
@@ -2723,6 +2901,17 @@ export function SessionsPage() {
   // Canvas workbench state: panelOpen drives the header entry button; nodes
   // feed the expired-a2ui self-heal below.
   const { panelOpen: canvasPanelOpen, nodes: canvasNodes } = useCanvas();
+  useEffect(() => {
+    if (browserPanel.isOpen || canvasPanelOpen) {
+      setOperationsOpen(false);
+    }
+  }, [browserPanel.isOpen, canvasPanelOpen]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: navigating to a different session must close its local inspector state
+  useEffect(() => {
+    setOperationsOpen(false);
+  }, [id]);
+
   const browserSelected =
     browserPanel.isOpen && browserPanel.sessionKey === session?.sessionKey;
   const canvasSelected = !browserPanel.isOpen && canvasPanelOpen;
@@ -2840,6 +3029,31 @@ export function SessionsPage() {
     renderedAssistantTextsSinceLatestUser,
   );
 
+  const operationTools = enrichedMessages.flatMap(({ msg, extracted }) =>
+    extracted.toolCalls.map((tool, index) => ({
+      id: `${msg.id}:${tool.id ?? index}`,
+      name: formatToolCallSummary(tool.name) ?? tool.name,
+      summary: summarizeToolArguments(tool.arguments),
+    })),
+  );
+  const operationFileCount = enrichedMessages.reduce(
+    (count, entry) => count + entry.extracted.fileCards.length,
+    0,
+  );
+  const operationImageCount = enrichedMessages.reduce(
+    (count, entry) => count + entry.extracted.images.length,
+    0,
+  );
+  let operationRetryMessage: string | null = null;
+  for (let index = enrichedMessages.length - 1; index >= 0; index -= 1) {
+    const entry = enrichedMessages[index];
+    if (entry?.msg.role !== "user") continue;
+    const text = entry.extracted.text.trim();
+    if (!text) continue;
+    operationRetryMessage = text;
+    break;
+  }
+
   if (!id) {
     return <EmptyState />;
   }
@@ -2889,11 +3103,26 @@ export function SessionsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className={cn(
+        "relative flex h-full min-w-0 flex-col",
+        operationsOpen && "sm:pr-[360px]",
+      )}
+    >
       {/* Chat Header */}
-      <div className="shrink-0 border-b border-border px-6 py-2 md:pt-3">
+      <div
+        className={cn(
+          "shrink-0 border-b border-border py-2 md:pt-3",
+          operationsOpen ? "px-2" : "px-6",
+        )}
+      >
         <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-3 overflow-hidden",
+              operationsOpen && "hidden xl:flex",
+            )}
+          >
             <SessionPlatformBadge
               platform={platform}
               className="h-[34px] w-[34px] shrink-0"
@@ -2924,7 +3153,10 @@ export function SessionsPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div
+            data-session-workbench-toggles="true"
+            className="flex shrink-0 items-center gap-1"
+          >
             <button
               type="button"
               data-session-browser-toggle="true"
@@ -2937,6 +3169,7 @@ export function SessionsPage() {
                   closeBrowserPanel();
                   return;
                 }
+                setOperationsOpen(false);
                 setPanelOpen(false);
                 openBrowserPanel(session?.sessionKey ?? "");
               }}
@@ -2962,6 +3195,7 @@ export function SessionsPage() {
               title={t("sessions.chat.canvas")}
               onClick={() => {
                 const shouldOpen = browserPanel.isOpen || !canvasPanelOpen;
+                setOperationsOpen(false);
                 closeBrowserPanel();
                 setPanelOpen(shouldOpen);
               }}
@@ -2979,7 +3213,35 @@ export function SessionsPage() {
                 />
               )}
             </button>
-            {!!session?.channelId &&
+            <button
+              type="button"
+              data-session-operations-toggle="true"
+              aria-pressed={operationsOpen}
+              aria-label={t("sessions.operations.title")}
+              title={t("sessions.operations.title")}
+              onClick={() => {
+                if (operationsOpen) {
+                  setOperationsOpen(false);
+                  return;
+                }
+                if (browserPanel.openedByAgent) {
+                  toast.info(t("sessions.operations.browserBusy"));
+                  return;
+                }
+                closeBrowserPanelForRouting();
+                setPanelOpen(false);
+                setOperationsOpen(true);
+              }}
+              className={cn(
+                "rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary",
+                operationsOpen &&
+                  "bg-surface-2 text-text-primary shadow-sm ring-1 ring-border",
+              )}
+            >
+              <Gauge size={18} />
+            </button>
+            {!operationsOpen &&
+              !!session?.channelId &&
               platform !== "wechat" &&
               (externalChatUrl ? (
                 <a
@@ -3092,6 +3354,16 @@ export function SessionsPage() {
                       onCanvasOpApplied={onCanvasOpApplied}
                       onOpenSidebar={openSidebar}
                       onOpenLink={handleOpenChatLink}
+                      onBranch={handleBranchFromMessage}
+                      onRollback={handleRollbackToMessage}
+                      messageAction={
+                        messageHistoryAction?.messageId === item.entry.msg.id
+                          ? messageHistoryAction.type
+                          : null
+                      }
+                      actionsDisabled={
+                        replyInProgress || messageHistoryAction !== null
+                      }
                     />,
                   ];
                 }
@@ -3186,6 +3458,59 @@ export function SessionsPage() {
           />
         </div>
       </div>
+      {operationsOpen && (
+        <SessionOperationsPanel
+          snapshot={{
+            busy: replyInProgress,
+            messageCount,
+            modelId: session?.model
+              ? session.model.includes("/") || !session.modelProvider
+                ? session.model
+                : `${session.modelProvider}/${session.model}`
+              : (selectedBot?.modelId ?? null),
+            contextUsedTokens: session?.totalTokens ?? null,
+            contextWindowTokens: session?.contextTokens ?? null,
+            contextFresh: session?.totalTokensFresh ?? null,
+            sessionKey: session?.sessionKey ?? null,
+            agentId: session?.botId ?? null,
+            startedAt:
+              replyInProgress && sentAtRef.current > 0
+                ? sentAtRef.current
+                : null,
+            tools: operationTools,
+            fileCount: operationFileCount,
+            imageCount: operationImageCount,
+            previewCount: previewArtifacts.length,
+            canvasCount: canvasNodes.length,
+            browserAvailable: Boolean(session?.sessionKey),
+            browserOpen: browserSelected,
+            browserOwnedByAgent:
+              browserPanel.openedByAgent &&
+              browserPanel.sessionKey === session?.sessionKey,
+          }}
+          onClose={() => setOperationsOpen(false)}
+          onStop={() => {
+            void handleCancel();
+          }}
+          onRetry={
+            operationRetryMessage
+              ? () => {
+                  void handleSend(operationRetryMessage, [], null);
+                }
+              : undefined
+          }
+          onOpenBrowser={() => {
+            setOperationsOpen(false);
+            setPanelOpen(false);
+            openBrowserPanel(session?.sessionKey ?? "");
+          }}
+          onOpenCanvas={() => {
+            setOperationsOpen(false);
+            closeBrowserPanel();
+            setPanelOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }

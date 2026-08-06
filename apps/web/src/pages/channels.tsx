@@ -34,8 +34,10 @@ import {
   Link2,
   Loader2,
   Plus,
+  RefreshCw,
   RotateCcw,
   Shield,
+  TriangleAlert,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -70,15 +72,15 @@ type LiveStatusData = {
   }[];
 };
 
-// Only China-market channels are surfaced. WhatsApp / Telegram / Slack /
-// Discord remain implemented (OpenClaw bundles them) but are intentionally
-// hidden from this product's UI.
+// Keep the primary China-market channels visible alongside Slack, whose
+// threads, streaming progress, and multi-workspace routing are configurable.
 const PLATFORMS: { id: Platform; emoji: string; desc: string }[] = [
   { id: "wechat", emoji: "\u{1F4AC}", desc: "Personal WeChat" },
   { id: "dingtalk", emoji: "\u{1F4F1}", desc: "DingTalk Bot" },
   { id: "qqbot", emoji: "\u{1F427}", desc: "QQ Bot" },
   { id: "wecom", emoji: "\u{1F4BC}", desc: "WeCom Bot" },
   { id: "feishu", emoji: "\u{1F426}", desc: "Feishu Bot" },
+  { id: "slack", emoji: "\u{1F4AC}", desc: "Slack Workspace" },
 ];
 
 const PLATFORM_LABELS: Record<Platform, string> = {
@@ -95,6 +97,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
 
 const MULTI_INSTANCE_PLATFORMS: ReadonlySet<Platform> = new Set<Platform>([
   "feishu",
+  "slack",
   "wechat",
 ]);
 
@@ -125,19 +128,35 @@ export function ChannelsPage() {
     }
   }, []);
 
-  const { data: channelsData } = useQuery({
+  const {
+    data: channelsData,
+    isLoading: channelsLoading,
+    isError: channelsError,
+    refetch: refetchChannels,
+  } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data } = await getApiV1Channels();
+      const { data, error } = await getApiV1Channels();
+      if (error || !data) {
+        throw new Error("Channel list is unavailable");
+      }
       return data;
     },
   });
 
-  const { data: liveStatusData } = useQuery({
+  const {
+    data: liveStatusData,
+    isLoading: liveStatusLoading,
+    isError: liveStatusError,
+    refetch: refetchLiveStatus,
+  } = useQuery({
     queryKey: ["channels-live-status"],
     queryFn: async () => {
-      const { data } = await getApiV1ChannelsLiveStatus();
-      return data as LiveStatusData | undefined;
+      const { data, error } = await getApiV1ChannelsLiveStatus();
+      if (error || !data) {
+        throw new Error("Channel live status is unavailable");
+      }
+      return data as LiveStatusData;
     },
     refetchInterval: 3000,
     enabled: (channelsData?.channels?.length ?? 0) > 0,
@@ -147,6 +166,10 @@ export function ChannelsPage() {
   const { bots } = useBots();
 
   const channels = channelsData?.channels ?? [];
+  const channelsUnavailable = channelsError && !channelsData;
+  const channelsStale = channelsError && Boolean(channelsData);
+  const liveStatusUnavailable = liveStatusError && !liveStatusData;
+  const liveStatusStale = liveStatusError && Boolean(liveStatusData);
   const isMultiInstance = MULTI_INSTANCE_PLATFORMS.has(platform);
   const instancesForPlatform = channels.filter(
     (ch) => ch.channelType === platform,
@@ -190,191 +213,261 @@ export function ChannelsPage() {
         </p>
       </div>
 
-      {/* Platform selector */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
-        {PLATFORMS.map((p) => {
-          const isActive = platform === p.id;
-          const platformIsMulti = MULTI_INSTANCE_PLATFORMS.has(p.id);
-          const platformInstances = channels.filter(
-            (ch) => ch.channelType === p.id,
-          );
-          const configuredChannel = platformInstances[0];
-          const connected = platformInstances.length > 0;
-          // For single-instance tiles, the live status icon tracks the one
-          // connected channel. For multi-instance tiles, we just show the
-          // aggregate count; per-instance status lives inside the cards.
-          const channelLive = liveStatusData?.channels?.find(
-            (e) => e.channelId === configuredChannel?.id,
-          );
-          const channelLiveStatus = liveStatusData
-            ? (channelLive?.status ?? "connecting")
-            : undefined;
-          return (
+      {channelsLoading && !channelsData ? (
+        <div className="flex items-center justify-center py-20 text-text-muted">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span className="ml-2 text-[13px]">{t("channels.loading")}</span>
+        </div>
+      ) : channelsUnavailable ? (
+        <div
+          role="alert"
+          className="flex flex-col items-center justify-center rounded-xl border border-amber-200 bg-amber-50/40 px-6 py-16 text-center"
+        >
+          <TriangleAlert className="h-7 w-7 text-amber-600" />
+          <p className="mt-3 text-[13px] font-semibold text-text-primary">
+            {t("channels.listUnavailable")}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refetchChannels()}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-[12px] font-medium text-text-primary transition-colors hover:bg-surface-2"
+          >
+            <RefreshCw size={12} />
+            {t("channels.retry")}
+          </button>
+        </div>
+      ) : (
+        <>
+          {(channelsStale || liveStatusUnavailable || liveStatusStale) && (
+            <div
+              aria-live="polite"
+              className="mb-5 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3 text-[12px] text-amber-900 sm:flex-row sm:items-center"
+            >
+              <div className="flex min-w-0 flex-1 items-start gap-2">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <span>
+                  {channelsStale
+                    ? t("channels.listStale")
+                    : liveStatusStale
+                      ? t("channels.liveStatusStale")
+                      : t("channels.liveStatusUnavailable")}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  void (channelsStale ? refetchChannels() : refetchLiveStatus())
+                }
+                className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 transition-colors hover:bg-amber-50 sm:self-auto"
+              >
+                <RefreshCw size={11} />
+                {t("channels.retry")}
+              </button>
+            </div>
+          )}
+
+          {/* Platform selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+            {PLATFORMS.map((p) => {
+              const isActive = platform === p.id;
+              const platformIsMulti = MULTI_INSTANCE_PLATFORMS.has(p.id);
+              const platformInstances = channels.filter(
+                (ch) => ch.channelType === p.id,
+              );
+              const configuredChannel = platformInstances[0];
+              const connected = platformInstances.length > 0;
+              // For single-instance tiles, the live status icon tracks the one
+              // connected channel. For multi-instance tiles, we just show the
+              // aggregate count; per-instance status lives inside the cards.
+              const channelLive = liveStatusData?.channels?.find(
+                (e) => e.channelId === configuredChannel?.id,
+              );
+              const channelLiveStatus = liveStatusData
+                ? (channelLive?.status ?? "connecting")
+                : undefined;
+              return (
+                <button
+                  type="button"
+                  key={p.id}
+                  onClick={() => handlePlatformChange(p.id)}
+                  className={`relative flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-accent/5 border-2 border-accent/40 shadow-sm"
+                      : "bg-surface-1 border border-border hover:border-border-hover hover:bg-surface-2"
+                  }`}
+                >
+                  <div
+                    className={`flex justify-center items-center w-9 h-9 rounded-lg shrink-0 ${
+                      isActive ? "bg-accent/10" : "bg-surface-3"
+                    }`}
+                  >
+                    <span className="text-sm">{p.emoji}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className={`text-[13px] font-semibold ${isActive ? "text-accent" : "text-text-primary"}`}
+                    >
+                      {PLATFORM_LABELS[p.id]}
+                    </div>
+                    <div className="text-[10px] text-text-muted mt-0.5">
+                      {p.desc}
+                    </div>
+                  </div>
+                  {platformIsMulti && connected ? (
+                    <span
+                      className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-[var(--color-success-muted)] text-[var(--color-success)] shrink-0"
+                      title={t("channels.connectedCount", {
+                        count: platformInstances.length,
+                      })}
+                    >
+                      {platformInstances.length}
+                    </span>
+                  ) : connected ? (
+                    liveStatusUnavailable ? (
+                      <TriangleAlert
+                        size={14}
+                        className="shrink-0 text-amber-600"
+                        aria-label={t("channels.liveStatusUnavailable")}
+                      />
+                    ) : liveStatusLoading && !liveStatusData ? (
+                      <Loader2
+                        size={14}
+                        className="shrink-0 animate-spin text-text-muted"
+                      />
+                    ) : channelLiveStatus === "error" ||
+                      channelLiveStatus === "disconnected" ? (
+                      <Shield size={14} className="text-red-500 shrink-0" />
+                    ) : channelLiveStatus === "connecting" ||
+                      channelLiveStatus === "restarting" ? (
+                      <Loader2
+                        size={14}
+                        className="text-amber-500 shrink-0 animate-spin"
+                      />
+                    ) : (
+                      <CheckCircle2
+                        size={14}
+                        className="text-[var(--color-success)] shrink-0"
+                      />
+                    )
+                  ) : (
+                    <Circle size={14} className="text-text-muted/30 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Coming soon */}
+          <div className="flex gap-1.5 items-center mb-4 text-[11px] text-text-muted flex-wrap">
+            <Zap size={10} className="text-accent" />
+            {t("channels.comingSoon")}
+          </div>
+
+          {quotaLimited && !isConfigured && <QuotaBanner resetsAt={resetsAt} />}
+
+          {/* Back button when force-viewing guide for configured platform */}
+          {isConfigured && !isMultiInstance && forceGuide && (
             <button
               type="button"
-              key={p.id}
-              onClick={() => handlePlatformChange(p.id)}
-              className={`relative flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition-all cursor-pointer ${
-                isActive
-                  ? "bg-accent/5 border-2 border-accent/40 shadow-sm"
-                  : "bg-surface-1 border border-border hover:border-border-hover hover:bg-surface-2"
-              }`}
+              onClick={() => setForceGuide(false)}
+              className="flex gap-1.5 items-center mb-5 text-[12px] text-accent font-medium hover:underline underline-offset-2"
             >
-              <div
-                className={`flex justify-center items-center w-9 h-9 rounded-lg shrink-0 ${
-                  isActive ? "bg-accent/10" : "bg-surface-3"
-                }`}
-              >
-                <span className="text-sm">{p.emoji}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div
-                  className={`text-[13px] font-semibold ${isActive ? "text-accent" : "text-text-primary"}`}
-                >
-                  {PLATFORM_LABELS[p.id]}
-                </div>
-                <div className="text-[10px] text-text-muted mt-0.5">
-                  {p.desc}
-                </div>
-              </div>
-              {platformIsMulti && connected ? (
-                <span
-                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-semibold bg-[var(--color-success-muted)] text-[var(--color-success)] shrink-0"
-                  title={t("channels.connectedCount", {
-                    count: platformInstances.length,
-                  })}
-                >
-                  {platformInstances.length}
-                </span>
-              ) : connected ? (
-                channelLiveStatus === "error" ||
-                channelLiveStatus === "disconnected" ? (
-                  <Shield size={14} className="text-red-500 shrink-0" />
-                ) : channelLiveStatus === "connecting" ||
-                  channelLiveStatus === "restarting" ? (
-                  <Loader2
-                    size={14}
-                    className="text-amber-500 shrink-0 animate-spin"
-                  />
-                ) : (
-                  <CheckCircle2
-                    size={14}
-                    className="text-[var(--color-success)] shrink-0"
-                  />
-                )
-              ) : (
-                <Circle size={14} className="text-text-muted/30 shrink-0" />
-              )}
+              <ArrowLeft size={13} /> {t("channels.backToConfig")}
             </button>
-          );
-        })}
-      </div>
+          )}
+          {/* Back button when adding another instance on a multi-instance platform */}
+          {isMultiInstance && hasAnyInstance && addingInstance && (
+            <button
+              type="button"
+              onClick={() => setAddingInstance(false)}
+              className="flex gap-1.5 items-center mb-5 text-[12px] text-accent font-medium hover:underline underline-offset-2"
+            >
+              <ArrowLeft size={13} /> {t("channels.backToConfig")}
+            </button>
+          )}
 
-      {/* Coming soon */}
-      <div className="flex gap-1.5 items-center mb-4 text-[11px] text-text-muted flex-wrap">
-        <Zap size={10} className="text-accent" />
-        {t("channels.comingSoon")}
-      </div>
-
-      {quotaLimited && !isConfigured && <QuotaBanner resetsAt={resetsAt} />}
-
-      {/* Back button when force-viewing guide for configured platform */}
-      {isConfigured && !isMultiInstance && forceGuide && (
-        <button
-          type="button"
-          onClick={() => setForceGuide(false)}
-          className="flex gap-1.5 items-center mb-5 text-[12px] text-accent font-medium hover:underline underline-offset-2"
-        >
-          <ArrowLeft size={13} /> {t("channels.backToConfig")}
-        </button>
+          {/* Content */}
+          {showGuide ? (
+            platform === "slack" ? (
+              <SlackOAuthView
+                onConnected={handleConnected}
+                initialManual={slackManual}
+                manualOnly
+                oauthError={slackError}
+                disabled={quotaLimited}
+              />
+            ) : platform === "discord" ? (
+              <DiscordSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : platform === "telegram" ? (
+              <TelegramSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : platform === "dingtalk" ? (
+              <DingtalkSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : platform === "qqbot" ? (
+              <QqbotSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : platform === "wecom" ? (
+              <WecomSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : platform === "whatsapp" ? (
+              <WhatsappSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : platform === "wechat" ? (
+              <WechatSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            ) : (
+              <FeishuSetupView
+                onConnected={handleConnected}
+                disabled={quotaLimited}
+              />
+            )
+          ) : isMultiInstance ? (
+            <MultiInstanceView
+              platform={platform}
+              instances={instancesForPlatform}
+              bots={bots}
+              liveStatusData={liveStatusData}
+              onConnectAnother={() => {
+                track("workspace_channel_connect_click", { channel: platform });
+                setAddingInstance(true);
+              }}
+              quotaLimited={quotaLimited}
+            />
+          ) : currentChannel ? (
+            <ConfiguredView
+              platform={platform}
+              channel={currentChannel}
+              queryClient={queryClient}
+              onShowGuide={() => setForceGuide(true)}
+              liveStatusData={liveStatusData}
+              liveStatusUnavailable={liveStatusUnavailable}
+              liveStatusLoading={liveStatusLoading}
+              onRetryLiveStatus={() => void refetchLiveStatus()}
+            />
+          ) : null}
+        </>
       )}
-      {/* Back button when adding another instance on a multi-instance platform */}
-      {isMultiInstance && hasAnyInstance && addingInstance && (
-        <button
-          type="button"
-          onClick={() => setAddingInstance(false)}
-          className="flex gap-1.5 items-center mb-5 text-[12px] text-accent font-medium hover:underline underline-offset-2"
-        >
-          <ArrowLeft size={13} /> {t("channels.backToConfig")}
-        </button>
-      )}
-
-      {/* Content */}
-      {showGuide ? (
-        platform === "slack" ? (
-          <SlackOAuthView
-            onConnected={handleConnected}
-            initialManual={slackManual}
-            oauthError={slackError}
-            disabled={quotaLimited}
-          />
-        ) : platform === "discord" ? (
-          <DiscordSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : platform === "telegram" ? (
-          <TelegramSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : platform === "dingtalk" ? (
-          <DingtalkSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : platform === "qqbot" ? (
-          <QqbotSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : platform === "wecom" ? (
-          <WecomSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : platform === "whatsapp" ? (
-          <WhatsappSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : platform === "wechat" ? (
-          <WechatSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        ) : (
-          <FeishuSetupView
-            onConnected={handleConnected}
-            disabled={quotaLimited}
-          />
-        )
-      ) : isMultiInstance ? (
-        <MultiInstanceView
-          platform={platform}
-          instances={instancesForPlatform}
-          bots={bots}
-          liveStatusData={liveStatusData}
-          onConnectAnother={() => {
-            track("workspace_channel_connect_click", { channel: platform });
-            setAddingInstance(true);
-          }}
-          quotaLimited={quotaLimited}
-        />
-      ) : currentChannel ? (
-        <ConfiguredView
-          platform={platform}
-          channel={currentChannel}
-          queryClient={queryClient}
-          onShowGuide={() => setForceGuide(true)}
-          liveStatusData={liveStatusData}
-        />
-      ) : null}
     </div>
   );
 }
 
-// ─── Multi-instance list view (feishu / wechat) ──────────────
+// ─── Multi-instance list view ────────────────────────────────
 
 function MultiInstanceView({
   platform,
@@ -438,6 +531,9 @@ function ConfiguredView({
   queryClient,
   onShowGuide,
   liveStatusData,
+  liveStatusUnavailable,
+  liveStatusLoading,
+  onRetryLiveStatus,
 }: {
   platform: Platform;
   channel: {
@@ -452,6 +548,9 @@ function ConfiguredView({
   queryClient: ReturnType<typeof useQueryClient>;
   onShowGuide: () => void;
   liveStatusData: LiveStatusData | undefined;
+  liveStatusUnavailable: boolean;
+  liveStatusLoading: boolean;
+  onRetryLiveStatus: () => void;
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -462,21 +561,24 @@ function ConfiguredView({
   );
   // Before live-status data arrives, show a neutral loading state
   // instead of defaulting to green "connected".
-  const liveStatus = liveStatusData
-    ? (liveEntry?.status ?? "connecting")
-    : "connecting";
-  const liveStatusLabel = getChannelStatusLabel(
-    liveStatus as ChannelLiveStatus,
-    {
-      connected: t("channels.statusConnected", {
-        platform: PLATFORM_LABELS[platform],
-      }),
-      connecting: `${PLATFORM_LABELS[platform]} ${t("channels.statusConnecting")}`,
-      disconnected: `${PLATFORM_LABELS[platform]} ${t("channels.statusError")}`,
-      error: `${PLATFORM_LABELS[platform]} ${t("channels.statusError")}`,
-      restarting: `${PLATFORM_LABELS[platform]} ${t("channels.statusConnecting")}`,
-    },
-  );
+  const liveStatus = liveStatusUnavailable
+    ? "unavailable"
+    : liveStatusData
+      ? (liveEntry?.status ?? "connecting")
+      : "connecting";
+  const liveStatusLabel = liveStatusUnavailable
+    ? t("channels.liveStatusUnavailable")
+    : liveStatusLoading && !liveStatusData
+      ? t("channels.liveStatusLoading")
+      : getChannelStatusLabel(liveStatus as ChannelLiveStatus, {
+          connected: t("channels.statusConnected", {
+            platform: PLATFORM_LABELS[platform],
+          }),
+          connecting: `${PLATFORM_LABELS[platform]} ${t("channels.statusConnecting")}`,
+          disconnected: `${PLATFORM_LABELS[platform]} ${t("channels.statusError")}`,
+          error: `${PLATFORM_LABELS[platform]} ${t("channels.statusError")}`,
+          restarting: `${PLATFORM_LABELS[platform]} ${t("channels.statusConnecting")}`,
+        });
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
@@ -566,7 +668,9 @@ function ConfiguredView({
           className={`flex flex-col items-start gap-3 p-4 rounded-xl border sm:flex-row sm:items-center ${
             liveStatus === "error" || liveStatus === "disconnected"
               ? "bg-red-500/5 border-red-500/20"
-              : liveStatus === "connecting" || liveStatus === "restarting"
+              : liveStatus === "connecting" ||
+                  liveStatus === "restarting" ||
+                  liveStatus === "unavailable"
                 ? "bg-amber-500/5 border-amber-500/20"
                 : "bg-[var(--color-success-subtle)] border-[var(--color-success-border)]"
           }`}
@@ -575,13 +679,17 @@ function ConfiguredView({
             className={`flex justify-center items-center w-9 h-9 rounded-lg shrink-0 ${
               liveStatus === "error" || liveStatus === "disconnected"
                 ? "bg-red-500/10"
-                : liveStatus === "connecting" || liveStatus === "restarting"
+                : liveStatus === "connecting" ||
+                    liveStatus === "restarting" ||
+                    liveStatus === "unavailable"
                   ? "bg-amber-500/10"
                   : "bg-[var(--color-success-muted)]"
             }`}
           >
             {liveStatus === "error" || liveStatus === "disconnected" ? (
               <Shield size={18} className="text-red-500" />
+            ) : liveStatus === "unavailable" ? (
+              <TriangleAlert size={18} className="text-amber-600" />
             ) : liveStatus === "connecting" || liveStatus === "restarting" ? (
               <Loader2 size={18} className="text-amber-500 animate-spin" />
             ) : (
@@ -606,16 +714,27 @@ function ConfiguredView({
               </>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              track("workspace_change_config_click");
-              onShowGuide();
-            }}
-            className="flex gap-1.5 items-center px-3 py-1.5 text-[11px] text-text-muted rounded-lg border border-border hover:border-border-hover hover:text-text-secondary transition-all shrink-0"
-          >
-            <BookOpen size={11} /> {t("channels.setupGuide")}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {liveStatus === "unavailable" && (
+              <button
+                type="button"
+                onClick={onRetryLiveStatus}
+                className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-medium text-amber-900 transition-colors hover:bg-amber-50"
+              >
+                <RefreshCw size={11} /> {t("channels.retry")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                track("workspace_change_config_click");
+                onShowGuide();
+              }}
+              className="flex gap-1.5 items-center px-3 py-1.5 text-[11px] text-text-muted rounded-lg border border-border hover:border-border-hover hover:text-text-secondary transition-all"
+            >
+              <BookOpen size={11} /> {t("channels.setupGuide")}
+            </button>
+          </div>
         </div>
 
         {/* Discord: Add Bot to Server */}

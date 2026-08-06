@@ -60,6 +60,7 @@ export function useTeamBoard(
       const { data, error } = await getApiV1TeamsByIdBoard({ path: { id } });
       if (error) throw new Error("Team board fetch failed");
       if (!data) throw new Error("Team board returned no data");
+      if (!data.available) throw new Error("Team board is unavailable");
       return data;
     },
   });

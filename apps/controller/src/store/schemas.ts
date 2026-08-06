@@ -567,6 +567,28 @@ export const localAutomationConfigSchema = z.object({
     .default({ enabled: false }),
 });
 
+export const memoryConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    sources: z
+      .array(z.enum(["memory", "sessions"]))
+      .min(1)
+      .default(["memory"]),
+    extraPaths: z.array(z.string().trim().min(1)).default([]),
+    syncIntervalMinutes: z.number().int().min(1).max(1440).default(5),
+    provider: z.string().trim().min(1).default("none"),
+    model: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.provider !== "none" && !value.model) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["model"],
+        message: "model is required when a memory embedding provider is set",
+      });
+    }
+  });
+
 const nexuConfigObjectSchema = z.object({
   $schema: z.string(),
   schemaVersion: z.number().int().positive(),
@@ -596,6 +618,13 @@ const nexuConfigObjectSchema = z.object({
   localAutomation: localAutomationConfigSchema.default({
     browser: { enabled: false },
     computerUse: { enabled: false },
+  }),
+  memory: memoryConfigSchema.default({
+    enabled: true,
+    sources: ["memory"],
+    extraPaths: [],
+    syncIntervalMinutes: 5,
+    provider: "none",
   }),
   secrets: z.record(z.string(), z.string()).default({}),
   schedules: z.array(scheduleResponseSchema).default([]),
@@ -697,6 +726,10 @@ export const nexuConfigSchema = z.preprocess((input) => {
       candidate.localAutomation !== null
         ? candidate.localAutomation
         : {},
+    memory:
+      typeof candidate.memory === "object" && candidate.memory !== null
+        ? candidate.memory
+        : {},
     secrets:
       typeof candidate.secrets === "object" && candidate.secrets !== null
         ? candidate.secrets
@@ -732,6 +765,7 @@ export type ControllerRuntimeConfig = z.infer<
 >;
 export type DeviceControlConfig = z.infer<typeof deviceControlConfigSchema>;
 export type LocalAutomationConfig = z.infer<typeof localAutomationConfigSchema>;
+export type MemoryConfig = z.infer<typeof memoryConfigSchema>;
 export type ControllerProvider = z.infer<typeof controllerProviderSchema>;
 export type ControllerArtifact = z.infer<typeof controllerArtifactSchema>;
 export type ArtifactsIndex = z.infer<typeof artifactsIndexSchema>;

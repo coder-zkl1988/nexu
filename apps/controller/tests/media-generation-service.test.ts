@@ -131,7 +131,7 @@ describe("MediaGenerationService", () => {
 
     const result = await buildService(tabbyMediaRunner).generateImage({
       prompt: "a cat",
-      model: "tabby-image-free",
+      model: "tabby-image-flash",
       aspectRatio: "9:16",
       size: "2K",
     });
@@ -140,10 +140,28 @@ describe("MediaGenerationService", () => {
     expect(tabbyMediaRunner.generateImage).toHaveBeenCalledWith(
       expect.objectContaining({
         botId: "bot-1",
-        model: "tabby-image-free",
+        model: "tabby-image-flash",
         aspectRatio: "9:16",
         size: "2K",
       }),
+    );
+    expect(sendChat).not.toHaveBeenCalled();
+  });
+
+  it("maps legacy image model IDs to the renamed official models", async () => {
+    const out = makeMediaFile("outbound/bot-1/tabby-image/out.png");
+    const tabbyMediaRunner: TabbyMediaRunner = {
+      generateImage: vi.fn(async () => [out]),
+      generateVideo: vi.fn(async () => ""),
+    };
+
+    await buildService(tabbyMediaRunner).generateImage({
+      prompt: "a cat",
+      model: "tabby-image-free",
+    });
+
+    expect(tabbyMediaRunner.generateImage).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "tabby-image-flash" }),
     );
     expect(sendChat).not.toHaveBeenCalled();
   });

@@ -68,6 +68,31 @@
                             ],
                             "default": "user"
                           },
+                          "hostExecution": {
+                            "type": "object",
+                            "properties": {
+                              "channels": {
+                                "type": "string",
+                                "enum": [
+                                  "restricted",
+                                  "host"
+                                ],
+                                "default": "restricted"
+                              },
+                              "automations": {
+                                "type": "string",
+                                "enum": [
+                                  "restricted",
+                                  "host"
+                                ],
+                                "default": "restricted"
+                              }
+                            },
+                            "default": {
+                              "channels": "restricted",
+                              "automations": "restricted"
+                            }
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -192,6 +217,31 @@
                       ],
                       "default": "user"
                     },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -270,6 +320,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -384,6 +459,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -510,6 +610,31 @@
                       ],
                       "default": "user"
                     },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -582,6 +707,27 @@
                   },
                   "modelId": {
                     "type": "string"
+                  },
+                  "hostExecution": {
+                    "type": "object",
+                    "properties": {
+                      "channels": {
+                        "type": "string",
+                        "enum": [
+                          "restricted",
+                          "host"
+                        ],
+                        "default": "restricted"
+                      },
+                      "automations": {
+                        "type": "string",
+                        "enum": [
+                          "restricted",
+                          "host"
+                        ],
+                        "default": "restricted"
+                      }
+                    }
                   }
                 }
               }
@@ -636,6 +782,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -779,6 +950,31 @@
                       ],
                       "default": "user"
                     },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -885,6 +1081,31 @@
                         "system"
                       ],
                       "default": "user"
+                    },
+                    "hostExecution": {
+                      "type": "object",
+                      "properties": {
+                        "channels": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        },
+                        "automations": {
+                          "type": "string",
+                          "enum": [
+                            "restricted",
+                            "host"
+                          ],
+                          "default": "restricted"
+                        }
+                      },
+                      "default": {
+                        "channels": "restricted",
+                        "automations": "restricted"
+                      }
                     },
                     "createdAt": {
                       "type": "string"
@@ -4362,6 +4583,74 @@
                                 "default": []
                               }
                             }
+                          },
+                          "slackCapabilities": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "replyToMode": {
+                                "type": "string",
+                                "enum": [
+                                  "off",
+                                  "first",
+                                  "all",
+                                  "batched"
+                                ],
+                                "default": "off"
+                              },
+                              "streamingMode": {
+                                "type": "string",
+                                "enum": [
+                                  "off",
+                                  "partial",
+                                  "block",
+                                  "progress"
+                                ],
+                                "default": "partial"
+                              },
+                              "nativeTaskCards": {
+                                "type": "boolean",
+                                "default": false
+                              }
+                            }
+                          },
+                          "feishuCapabilities": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "streaming": {
+                                "type": "boolean",
+                                "default": true
+                              },
+                              "renderMode": {
+                                "type": "string",
+                                "enum": [
+                                  "auto",
+                                  "raw",
+                                  "card"
+                                ],
+                                "default": "card"
+                              },
+                              "replyInThread": {
+                                "type": "boolean",
+                                "default": false
+                              },
+                              "voiceReplyMode": {
+                                "type": "string",
+                                "enum": [
+                                  "off",
+                                  "always",
+                                  "tagged",
+                                  "inbound"
+                                ],
+                                "default": "off"
+                              },
+                              "mediaMaxMb": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "default": 30
+                              }
+                            }
                           }
                         },
                         "required": [
@@ -4590,6 +4879,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -4757,6 +5114,74 @@
                             "minLength": 1
                           },
                           "default": []
+                        }
+                      }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
                         }
                       }
                     }
@@ -5114,6 +5539,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -5271,6 +5764,74 @@
                             "minLength": 1
                           },
                           "default": []
+                        }
+                      }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
                         }
                       }
                     }
@@ -5616,6 +6177,74 @@
                             "minLength": 1
                           },
                           "default": []
+                        }
+                      }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
                         }
                       }
                     }
@@ -6040,6 +6669,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6280,6 +6977,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6500,6 +7265,74 @@
                             "minLength": 1
                           },
                           "default": []
+                        }
+                      }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
                         }
                       }
                     }
@@ -6740,6 +7573,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6962,6 +7863,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -6980,6 +7949,343 @@
           },
           "400": {
             "description": "Not a Feishu channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/channels/{channelId}/capabilities": {
+      "patch": {
+        "tags": [
+          "Channels"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "channelId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "channelType": {
+                        "type": "string",
+                        "enum": [
+                          "slack"
+                        ]
+                      },
+                      "settings": {
+                        "type": "object",
+                        "properties": {
+                          "replyToMode": {
+                            "type": "string",
+                            "enum": [
+                              "off",
+                              "first",
+                              "all",
+                              "batched"
+                            ],
+                            "default": "off"
+                          },
+                          "streamingMode": {
+                            "type": "string",
+                            "enum": [
+                              "off",
+                              "partial",
+                              "block",
+                              "progress"
+                            ],
+                            "default": "partial"
+                          },
+                          "nativeTaskCards": {
+                            "type": "boolean",
+                            "default": false
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "channelType",
+                      "settings"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "channelType": {
+                        "type": "string",
+                        "enum": [
+                          "feishu"
+                        ]
+                      },
+                      "settings": {
+                        "type": "object",
+                        "properties": {
+                          "streaming": {
+                            "type": "boolean",
+                            "default": true
+                          },
+                          "renderMode": {
+                            "type": "string",
+                            "enum": [
+                              "auto",
+                              "raw",
+                              "card"
+                            ],
+                            "default": "card"
+                          },
+                          "replyInThread": {
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "voiceReplyMode": {
+                            "type": "string",
+                            "enum": [
+                              "off",
+                              "always",
+                              "tagged",
+                              "inbound"
+                            ],
+                            "default": "off"
+                          },
+                          "mediaMaxMb": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 30
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "channelType",
+                      "settings"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated channel delivery capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "channelType": {
+                      "type": "string",
+                      "enum": [
+                        "slack",
+                        "discord",
+                        "feishu",
+                        "dingtalk",
+                        "wecom",
+                        "wechat",
+                        "telegram",
+                        "whatsapp",
+                        "qqbot"
+                      ]
+                    },
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "connected",
+                        "disconnected",
+                        "error"
+                      ]
+                    },
+                    "teamName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "appId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "botUserId": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "feishuPermissions": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "requireMention": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "dmPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "groupPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "open",
+                            "allowlist",
+                            "disabled"
+                          ],
+                          "default": "open"
+                        },
+                        "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        }
+                      }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "channelType",
+                    "accountId",
+                    "status",
+                    "teamName",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Capability type does not match the channel",
             "content": {
               "application/json": {
                 "schema": {
@@ -7267,6 +8573,74 @@
                           "default": []
                         }
                       }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -7546,6 +8920,74 @@
                             "minLength": 1
                           },
                           "default": []
+                        }
+                      }
+                    },
+                    "slackCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "replyToMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "first",
+                            "all",
+                            "batched"
+                          ],
+                          "default": "off"
+                        },
+                        "streamingMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "partial",
+                            "block",
+                            "progress"
+                          ],
+                          "default": "partial"
+                        },
+                        "nativeTaskCards": {
+                          "type": "boolean",
+                          "default": false
+                        }
+                      }
+                    },
+                    "feishuCapabilities": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "streaming": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "renderMode": {
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "raw",
+                            "card"
+                          ],
+                          "default": "card"
+                        },
+                        "replyInThread": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "voiceReplyMode": {
+                          "type": "string",
+                          "enum": [
+                            "off",
+                            "always",
+                            "tagged",
+                            "inbound"
+                          ],
+                          "default": "off"
+                        },
+                        "mediaMaxMb": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "default": 30
                         }
                       }
                     }
@@ -7845,6 +9287,65 @@
                           "type": "string"
                         },
                         "updatedAt": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "unread": {
+                          "type": "boolean"
+                        },
+                        "archived": {
+                          "type": "boolean"
+                        },
+                        "archivedAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "checkpointCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "runState": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "running",
+                            "failed"
+                          ]
+                        },
+                        "inputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "outputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokensFresh": {
+                          "type": "boolean"
+                        },
+                        "contextTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "estimatedCostUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "modelProvider": {
+                          "type": "string"
+                        },
+                        "model": {
                           "type": "string"
                         }
                       },
@@ -8242,6 +9743,65 @@
                         },
                         "updatedAt": {
                           "type": "string"
+                        },
+                        "category": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "unread": {
+                          "type": "boolean"
+                        },
+                        "archived": {
+                          "type": "boolean"
+                        },
+                        "archivedAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "checkpointCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "runState": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "running",
+                            "failed"
+                          ]
+                        },
+                        "inputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "outputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokensFresh": {
+                          "type": "boolean"
+                        },
+                        "contextTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "estimatedCostUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "modelProvider": {
+                          "type": "string"
+                        },
+                        "model": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -8500,6 +10060,65 @@
                           "type": "string"
                         },
                         "updatedAt": {
+                          "type": "string"
+                        },
+                        "category": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "unread": {
+                          "type": "boolean"
+                        },
+                        "archived": {
+                          "type": "boolean"
+                        },
+                        "archivedAt": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "checkpointCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "runState": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "running",
+                            "failed"
+                          ]
+                        },
+                        "inputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "outputTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokens": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalTokensFresh": {
+                          "type": "boolean"
+                        },
+                        "contextTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "exclusiveMinimum": true
+                        },
+                        "estimatedCostUsd": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "modelProvider": {
+                          "type": "string"
+                        },
+                        "model": {
                           "type": "string"
                         }
                       },
@@ -8899,6 +10518,65 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    },
+                    "unread": {
+                      "type": "boolean"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "checkpointCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "runState": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "running",
+                        "failed"
+                      ]
+                    },
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokensFresh": {
+                      "type": "boolean"
+                    },
+                    "contextTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "estimatedCostUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "modelProvider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -9023,6 +10701,65 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    },
+                    "unread": {
+                      "type": "boolean"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "checkpointCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "runState": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "running",
+                        "failed"
+                      ]
+                    },
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokensFresh": {
+                      "type": "boolean"
+                    },
+                    "contextTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "estimatedCostUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "modelProvider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -9096,9 +10833,88 @@
           },
           {
             "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "search",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "exclude",
+                "include",
+                "only"
+              ],
+              "default": "exclude"
+            },
+            "required": false,
+            "name": "archived",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "conversations",
+                "scheduled"
+              ]
+            },
+            "required": false,
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "running",
+                "failed"
+              ]
+            },
+            "required": false,
+            "name": "runState",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "pinned",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "unread",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100,
+              "maximum": 500,
               "default": 20
             },
             "required": false,
@@ -9172,6 +10988,65 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "category": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "unread": {
+                            "type": "boolean"
+                          },
+                          "archived": {
+                            "type": "boolean"
+                          },
+                          "archivedAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "checkpointCount": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "runState": {
+                            "type": "string",
+                            "enum": [
+                              "idle",
+                              "running",
+                              "failed"
+                            ]
+                          },
+                          "inputTokens": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "outputTokens": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "totalTokens": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "totalTokensFresh": {
+                            "type": "boolean"
+                          },
+                          "contextTokens": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "estimatedCostUsd": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "modelProvider": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -9205,6 +11080,24 @@
                     "total",
                     "limit",
                     "offset"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Session data temporarily unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }
@@ -9277,6 +11170,65 @@
                       "type": "string"
                     },
                     "updatedAt": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    },
+                    "unread": {
+                      "type": "boolean"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "checkpointCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "runState": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "running",
+                        "failed"
+                      ]
+                    },
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokensFresh": {
+                      "type": "boolean"
+                    },
+                    "contextTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "estimatedCostUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "modelProvider": {
+                      "type": "string"
+                    },
+                    "model": {
                       "type": "string"
                     }
                   },
@@ -9419,6 +11371,65 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    },
+                    "unread": {
+                      "type": "boolean"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "checkpointCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "runState": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "running",
+                        "failed"
+                      ]
+                    },
+                    "inputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "outputTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokens": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalTokensFresh": {
+                      "type": "boolean"
+                    },
+                    "contextTokens": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "estimatedCostUsd": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "modelProvider": {
+                      "type": "string"
+                    },
+                    "model": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -9523,6 +11534,9 @@
                           "aborted": {
                             "type": "boolean"
                           },
+                          "failed": {
+                            "type": "boolean"
+                          },
                           "toolName": {
                             "type": "string"
                           },
@@ -9553,6 +11567,538 @@
           },
           "404": {
             "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/messages/{messageId}/branch": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "messageId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fork the session and select this message as its active leaf",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "messageId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "sessionKey",
+                    "title",
+                    "messageId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or message not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Branch rejected while the session is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/messages/{messageId}/rollback": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "messageId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Select this message as the current session's active leaf",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "messageId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id",
+                    "sessionKey",
+                    "messageId"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or message not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rollback rejected while the session is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/organization": {
+      "patch": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "clearCategory": {
+                    "type": "boolean"
+                  },
+                  "pinned": {
+                    "type": "boolean"
+                  },
+                  "unread": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated session organization state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Update rejected by OpenClaw",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/checkpoints": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Durable compaction checkpoints for a session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "checkpoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "manual",
+                              "auto-threshold",
+                              "overflow-retry",
+                              "timeout-retry"
+                            ]
+                          },
+                          "tokensBefore": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "tokensAfter": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "summary": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "createdAt",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "checkpoints"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Checkpoint list unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{id}/checkpoints/{checkpointId}/branch": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "checkpointId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Non-destructive recovery branch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "botId": {
+                      "type": "string"
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "checkpoint": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "manual",
+                            "auto-threshold",
+                            "overflow-retry",
+                            "timeout-retry"
+                          ]
+                        },
+                        "tokensBefore": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "tokensAfter": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "summary": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "createdAt",
+                        "reason"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "botId",
+                    "sessionKey",
+                    "title",
+                    "checkpoint"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Recovery branch rejected",
             "content": {
               "application/json": {
                 "schema": {
@@ -10867,6 +13413,10 @@
                   "baseUrl": {
                     "type": "string"
                   },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "instanceKey": {
                     "type": "string",
                     "minLength": 1
@@ -10956,6 +13506,10 @@
                   },
                   "baseUrl": {
                     "type": "string"
+                  },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 }
               }
@@ -11229,6 +13783,10 @@
                   },
                   "baseUrl": {
                     "type": "string"
+                  },
+                  "modelId": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 }
               }
@@ -15766,6 +18324,9 @@
                     "boardId": {
                       "type": "string"
                     },
+                    "available": {
+                      "type": "boolean"
+                    },
                     "cards": {
                       "type": "array",
                       "items": {
@@ -15791,6 +18352,24 @@
                           "output": {
                             "type": "string",
                             "nullable": true
+                          },
+                          "sessionKey": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "parentIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": []
+                          },
+                          "childIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": []
                           }
                         },
                         "required": [
@@ -15806,6 +18385,7 @@
                   },
                   "required": [
                     "boardId",
+                    "available",
                     "cards"
                   ]
                 }
@@ -18972,6 +21552,1881 @@
         }
       }
     },
+    "/api/v1/runtime/operations": {
+      "get": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "sessionKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "agentId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sanitized desktop operation status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "approvalsAvailable": {
+                      "type": "boolean"
+                    },
+                    "tasksAvailable": {
+                      "type": "boolean"
+                    },
+                    "usageAvailable": {
+                      "type": "boolean"
+                    },
+                    "providerUsageAvailable": {
+                      "type": "boolean"
+                    },
+                    "modelAuth": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "ready",
+                            "needs-attention",
+                            "unavailable"
+                          ]
+                        },
+                        "availableModels": {
+                          "type": "number"
+                        },
+                        "configuredModels": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "availableModels",
+                        "configuredModels"
+                      ]
+                    },
+                    "approvals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "exec",
+                              "plugin"
+                            ]
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "controlled-terminal",
+                              "browser",
+                              "computer-use",
+                              "sensitive-tool"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          },
+                          "cwd": {
+                            "type": "string"
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "warning": {
+                            "type": "string"
+                          },
+                          "riskKinds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allowedDecisions": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "allow-once",
+                                "allow-always",
+                                "deny"
+                              ]
+                            }
+                          },
+                          "agentId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "createdAtMs": {
+                            "type": "number"
+                          },
+                          "expiresAtMs": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "category",
+                          "title",
+                          "riskKinds",
+                          "allowedDecisions",
+                          "createdAtMs",
+                          "expiresAtMs"
+                        ]
+                      }
+                    },
+                    "tasks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "taskId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "runtime": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "queued",
+                              "running",
+                              "completed",
+                              "failed",
+                              "timed_out",
+                              "cancelled"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "agentId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "childSessionKey": {
+                            "type": "string"
+                          },
+                          "ownerKey": {
+                            "type": "string"
+                          },
+                          "parentTaskId": {
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "flowId": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "endedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "progressSummary": {
+                            "type": "string"
+                          },
+                          "terminalSummary": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status"
+                        ]
+                      }
+                    },
+                    "taskGraph": {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "partial": {
+                          "type": "boolean"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        },
+                        "totalNodes": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "sources": {
+                          "type": "object",
+                          "properties": {
+                            "openclaw": {
+                              "type": "boolean"
+                            },
+                            "team": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "openclaw",
+                            "team"
+                          ]
+                        },
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "openclaw",
+                                  "team"
+                                ]
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "groupId": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "lifecycle": {
+                                "type": "string",
+                                "enum": [
+                                  "queued",
+                                  "running",
+                                  "waiting",
+                                  "blocked",
+                                  "succeeded",
+                                  "failed",
+                                  "cancelled",
+                                  "timed_out",
+                                  "unknown"
+                                ]
+                              },
+                              "rawStatus": {
+                                "type": "string"
+                              },
+                              "taskId": {
+                                "type": "string"
+                              },
+                              "runId": {
+                                "type": "string"
+                              },
+                              "flowId": {
+                                "type": "string"
+                              },
+                              "sessionKey": {
+                                "type": "string"
+                              },
+                              "teamId": {
+                                "type": "string"
+                              },
+                              "teamName": {
+                                "type": "string"
+                              },
+                              "cardId": {
+                                "type": "string"
+                              },
+                              "agentId": {
+                                "type": "string"
+                              },
+                              "createdAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ]
+                              },
+                              "updatedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ]
+                              },
+                              "startedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ]
+                              },
+                              "endedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ]
+                              },
+                              "output": {
+                                "type": "string"
+                              },
+                              "error": {
+                                "type": "string"
+                              },
+                              "cancellable": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "source",
+                              "sourceId",
+                              "kind",
+                              "groupId",
+                              "title",
+                              "lifecycle",
+                              "rawStatus",
+                              "cancellable"
+                            ]
+                          }
+                        },
+                        "edges": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "from": {
+                                "type": "string"
+                              },
+                              "to": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "depends_on",
+                                  "parent_child",
+                                  "executes"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "from",
+                              "to",
+                              "kind"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "available",
+                        "partial",
+                        "truncated",
+                        "totalNodes",
+                        "sources",
+                        "nodes",
+                        "edges"
+                      ]
+                    },
+                    "usage": {
+                      "type": "object",
+                      "properties": {
+                        "input": {
+                          "type": "number"
+                        },
+                        "output": {
+                          "type": "number"
+                        },
+                        "cacheRead": {
+                          "type": "number"
+                        },
+                        "cacheWrite": {
+                          "type": "number"
+                        },
+                        "totalTokens": {
+                          "type": "number"
+                        },
+                        "totalCost": {
+                          "type": "number"
+                        },
+                        "missingCostEntries": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "input",
+                        "output",
+                        "cacheRead",
+                        "cacheWrite",
+                        "totalTokens",
+                        "totalCost",
+                        "missingCostEntries"
+                      ]
+                    },
+                    "providers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "windows": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "label": {
+                                  "type": "string"
+                                },
+                                "usedPercent": {
+                                  "type": "number"
+                                },
+                                "resetAt": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "label",
+                                "usedPercent"
+                              ]
+                            }
+                          },
+                          "billing": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "balance",
+                                    "spend",
+                                    "budget"
+                                  ]
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "amount": {
+                                  "type": "number"
+                                },
+                                "used": {
+                                  "type": "number"
+                                },
+                                "limit": {
+                                  "type": "number"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                },
+                                "resetAt": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "unit"
+                              ]
+                            }
+                          },
+                          "summary": {
+                            "type": "string"
+                          },
+                          "plan": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "provider",
+                          "displayName",
+                          "windows"
+                        ]
+                      }
+                    },
+                    "nextTaskCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connected",
+                    "approvalsAvailable",
+                    "tasksAvailable",
+                    "usageAvailable",
+                    "providerUsageAvailable",
+                    "modelAuth",
+                    "approvals",
+                    "tasks",
+                    "taskGraph",
+                    "providers"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/approvals": {
+      "get": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending sanitized runtime approvals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "approvals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "exec",
+                              "plugin"
+                            ]
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "controlled-terminal",
+                              "browser",
+                              "computer-use",
+                              "sensitive-tool"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "command": {
+                            "type": "string"
+                          },
+                          "cwd": {
+                            "type": "string"
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "warning": {
+                            "type": "string"
+                          },
+                          "riskKinds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "allowedDecisions": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "allow-once",
+                                "allow-always",
+                                "deny"
+                              ]
+                            }
+                          },
+                          "agentId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "createdAtMs": {
+                            "type": "number"
+                          },
+                          "expiresAtMs": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "category",
+                          "title",
+                          "riskKinds",
+                          "allowedDecisions",
+                          "createdAtMs",
+                          "expiresAtMs"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "connected",
+                    "available",
+                    "approvals"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/approvals/{approvalId}/resolve": {
+      "post": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "approvalId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "exec",
+                      "plugin"
+                    ]
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "allow-once",
+                      "allow-always",
+                      "deny"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "decision"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approval resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Runtime unavailable or approval expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/audit": {
+      "get": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "sessionKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "agentId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persistent approval history and metadata-only runtime audit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "historyAvailable": {
+                      "type": "boolean"
+                    },
+                    "runtimeAuditAvailable": {
+                      "type": "boolean"
+                    },
+                    "approvalHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "approvalId": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "openclaw",
+                              "team"
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "exec",
+                              "plugin",
+                              "team"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "pending",
+                              "approved",
+                              "denied",
+                              "expired",
+                              "interrupted",
+                              "failed"
+                            ]
+                          },
+                          "decision": {
+                            "type": "string",
+                            "enum": [
+                              "allow-once",
+                              "allow-always",
+                              "deny",
+                              "approved",
+                              "rejected",
+                              "expired",
+                              "interrupted"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "reviewer": {
+                            "type": "string"
+                          },
+                          "agentId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "teamId": {
+                            "type": "string"
+                          },
+                          "workflowId": {
+                            "type": "string"
+                          },
+                          "stepId": {
+                            "type": "string"
+                          },
+                          "cardId": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "expiresAt": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "resolvedAt": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "approvalId",
+                          "source",
+                          "kind",
+                          "status",
+                          "title",
+                          "requestedAt"
+                        ]
+                      }
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "eventId": {
+                            "type": "string"
+                          },
+                          "sequence": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "sourceSequence": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "occurredAt": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_run",
+                              "tool_action"
+                            ]
+                          },
+                          "action": {
+                            "type": "string",
+                            "enum": [
+                              "agent.run.started",
+                              "agent.run.finished",
+                              "tool.action.started",
+                              "tool.action.finished"
+                            ]
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "started",
+                              "succeeded",
+                              "failed",
+                              "cancelled",
+                              "timed_out",
+                              "blocked",
+                              "unknown"
+                            ]
+                          },
+                          "errorCode": {
+                            "type": "string"
+                          },
+                          "actor": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "agent",
+                                  "system"
+                                ]
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "id"
+                            ]
+                          },
+                          "agentId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "sessionId": {
+                            "type": "string"
+                          },
+                          "runId": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
+                          },
+                          "toolName": {
+                            "type": "string"
+                          },
+                          "redaction": {
+                            "type": "string",
+                            "enum": [
+                              "metadata_only"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "eventId",
+                          "sequence",
+                          "sourceSequence",
+                          "occurredAt",
+                          "kind",
+                          "action",
+                          "status",
+                          "actor",
+                          "agentId",
+                          "runId",
+                          "redaction"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connected",
+                    "historyAvailable",
+                    "runtimeAuditAvailable",
+                    "approvalHistory",
+                    "events"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/recovery": {
+      "get": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "sessionKey",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "agentId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persistent delivery, isolation, and snapshot recovery state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "healthAvailable": {
+                      "type": "boolean"
+                    },
+                    "deadLettersAvailable": {
+                      "type": "boolean"
+                    },
+                    "deadLetterReplayAvailable": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "stateIsolationAvailable": {
+                      "type": "boolean"
+                    },
+                    "quarantineClearAvailable": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "snapshotsAvailable": {
+                      "type": "boolean"
+                    },
+                    "deadLetters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "queueName": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "oldestFailedAt": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "queueName",
+                          "count"
+                        ]
+                      }
+                    },
+                    "quarantined": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "engineId": {
+                            "type": "string"
+                          },
+                          "owner": {
+                            "type": "string"
+                          },
+                          "operation": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "failedAt": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "engineId",
+                          "operation",
+                          "reason",
+                          "failedAt"
+                        ]
+                      }
+                    },
+                    "checkpoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "checkpointId": {
+                            "type": "string"
+                          },
+                          "sessionKey": {
+                            "type": "string"
+                          },
+                          "sessionId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "number"
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": [
+                              "manual",
+                              "auto-threshold",
+                              "overflow-retry",
+                              "timeout-retry"
+                            ]
+                          },
+                          "tokensBefore": {
+                            "type": "number"
+                          },
+                          "tokensAfter": {
+                            "type": "number"
+                          },
+                          "summary": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "checkpointId",
+                          "sessionKey",
+                          "sessionId",
+                          "createdAt",
+                          "reason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "connected",
+                    "healthAvailable",
+                    "deadLettersAvailable",
+                    "deadLetterReplayAvailable",
+                    "stateIsolationAvailable",
+                    "quarantineClearAvailable",
+                    "snapshotsAvailable",
+                    "deadLetters",
+                    "quarantined",
+                    "checkpoints"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/recovery/checkpoints/{checkpointId}/restore": {
+      "post": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "checkpointId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "agentId": {
+                    "type": "string"
+                  },
+                  "confirm": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionKey",
+                  "confirm"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session restored to the selected durable checkpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "checkpoint": {
+                      "type": "object",
+                      "properties": {
+                        "checkpointId": {
+                          "type": "string"
+                        },
+                        "sessionKey": {
+                          "type": "string"
+                        },
+                        "sessionId": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "manual",
+                            "auto-threshold",
+                            "overflow-retry",
+                            "timeout-retry"
+                          ]
+                        },
+                        "tokensBefore": {
+                          "type": "number"
+                        },
+                        "tokensAfter": {
+                          "type": "number"
+                        },
+                        "summary": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "checkpointId",
+                        "sessionKey",
+                        "sessionId",
+                        "createdAt",
+                        "reason"
+                      ]
+                    },
+                    "entry": {
+                      "type": "object",
+                      "properties": {
+                        "sessionId": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "sessionId",
+                        "updatedAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "key",
+                    "sessionId",
+                    "checkpoint",
+                    "entry"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Runtime unavailable, session active, or restore failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/tasks/{taskId}/cancel": {
+      "post": {
+        "tags": [
+          "Runtime Operations"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "taskId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task cancellation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "found": {
+                      "type": "boolean"
+                    },
+                    "cancelled": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "found",
+                    "cancelled"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Runtime unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/status": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "agentId",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory search index status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "lastSyncAtMs": {
+                      "type": "number"
+                    },
+                    "indexedItems": {
+                      "type": "number"
+                    },
+                    "promotedItems": {
+                      "type": "number"
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "semantic",
+                        "fts-only"
+                      ]
+                    },
+                    "reasonCode": {
+                      "type": "string",
+                      "enum": [
+                        "embedding-auth-missing",
+                        "embedding-provider-unavailable",
+                        "fts-unavailable",
+                        "probe-timeout",
+                        "invalid-status",
+                        "runtime-unavailable"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ready",
+                        "sync-needed",
+                        "disabled",
+                        "unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "connected",
+                    "available",
+                    "enabled",
+                    "status"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/settings": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory search settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "memory": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "memory",
+                              "sessions"
+                            ]
+                          },
+                          "minItems": 1,
+                          "default": [
+                            "memory"
+                          ]
+                        },
+                        "extraPaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "syncIntervalMinutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440,
+                          "default": 5
+                        },
+                        "provider": {
+                          "type": "string",
+                          "minLength": 1,
+                          "default": "none"
+                        },
+                        "model": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "memory"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Memory"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "memory",
+                        "sessions"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 20
+                  },
+                  "extraPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "maxItems": 20
+                  },
+                  "syncIntervalMinutes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1440
+                  },
+                  "provider": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated memory search settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "memory": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "default": true
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "memory",
+                              "sessions"
+                            ]
+                          },
+                          "minItems": 1,
+                          "default": [
+                            "memory"
+                          ]
+                        },
+                        "extraPaths": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "syncIntervalMinutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440,
+                          "default": 5
+                        },
+                        "provider": {
+                          "type": "string",
+                          "minLength": 1,
+                          "default": "none"
+                        },
+                        "model": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "memory"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Memory settings could not be applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/rebuild": {
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memory index rebuilt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "rebuiltAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "rebuiltAt"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Memory is disabled or rebuilding failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workspace-templates": {
       "get": {
         "tags": [
@@ -20639,6 +25094,62 @@
         }
       }
     },
+    "/api/internal/runtime/host-execution-blocked": {
+      "post": {
+        "tags": [
+          "Runtime Operations",
+          "Internal"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sessionKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "toolName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "sessionKey",
+                  "toolName",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Block recorded against the owning schedule, if any",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recorded": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "recorded"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/schedules": {
       "get": {
         "tags": [
@@ -20702,6 +25213,20 @@
                           "modelId": {
                             "type": "string"
                           },
+                          "onlyNotifyOnChange": {
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "failureAlertEnabled": {
+                            "type": "boolean",
+                            "default": false
+                          },
+                          "failureAlertAfter": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100,
+                            "default": 3
+                          },
                           "id": {
                             "type": "string"
                           },
@@ -20713,6 +25238,86 @@
                           },
                           "externalId": {
                             "type": "string"
+                          },
+                          "nextRunAtMs": {
+                            "type": "integer"
+                          },
+                          "lastRunAtMs": {
+                            "type": "integer"
+                          },
+                          "lastDurationMs": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "lastRunStatus": {
+                            "type": "string",
+                            "enum": [
+                              "ok",
+                              "error",
+                              "skipped"
+                            ]
+                          },
+                          "lastDeliveryStatus": {
+                            "type": "string",
+                            "enum": [
+                              "delivered",
+                              "not-delivered",
+                              "unknown",
+                              "not-requested"
+                            ]
+                          },
+                          "deliveryMode": {
+                            "type": "string",
+                            "enum": [
+                              "none",
+                              "announce",
+                              "webhook"
+                            ]
+                          },
+                          "deliveryChannel": {
+                            "type": "string"
+                          },
+                          "deliveryTo": {
+                            "type": "string"
+                          },
+                          "deliveryAccountId": {
+                            "type": "string"
+                          },
+                          "lastOutputFingerprint": {
+                            "type": "string"
+                          },
+                          "lastOutputObservedAt": {
+                            "type": "string"
+                          },
+                          "lastOutputNotificationStatus": {
+                            "type": "string",
+                            "enum": [
+                              "delivered",
+                              "suppressed",
+                              "failed"
+                            ]
+                          },
+                          "lastOutputNotificationError": {
+                            "type": "string"
+                          },
+                          "lastHostExecutionBlock": {
+                            "type": "object",
+                            "properties": {
+                              "at": {
+                                "type": "string"
+                              },
+                              "toolName": {
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "at",
+                              "toolName",
+                              "reason"
+                            ]
                           }
                         },
                         "required": [
@@ -20790,6 +25395,20 @@
                   },
                   "modelId": {
                     "type": "string"
+                  },
+                  "onlyNotifyOnChange": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "failureAlertEnabled": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "failureAlertAfter": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 3
                   }
                 },
                 "required": [
@@ -20855,6 +25474,20 @@
                     "modelId": {
                       "type": "string"
                     },
+                    "onlyNotifyOnChange": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "failureAlertEnabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "failureAlertAfter": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "default": 3
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -20866,6 +25499,86 @@
                     },
                     "externalId": {
                       "type": "string"
+                    },
+                    "nextRunAtMs": {
+                      "type": "integer"
+                    },
+                    "lastRunAtMs": {
+                      "type": "integer"
+                    },
+                    "lastDurationMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "lastRunStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error",
+                        "skipped"
+                      ]
+                    },
+                    "lastDeliveryStatus": {
+                      "type": "string",
+                      "enum": [
+                        "delivered",
+                        "not-delivered",
+                        "unknown",
+                        "not-requested"
+                      ]
+                    },
+                    "deliveryMode": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "announce",
+                        "webhook"
+                      ]
+                    },
+                    "deliveryChannel": {
+                      "type": "string"
+                    },
+                    "deliveryTo": {
+                      "type": "string"
+                    },
+                    "deliveryAccountId": {
+                      "type": "string"
+                    },
+                    "lastOutputFingerprint": {
+                      "type": "string"
+                    },
+                    "lastOutputObservedAt": {
+                      "type": "string"
+                    },
+                    "lastOutputNotificationStatus": {
+                      "type": "string",
+                      "enum": [
+                        "delivered",
+                        "suppressed",
+                        "failed"
+                      ]
+                    },
+                    "lastOutputNotificationError": {
+                      "type": "string"
+                    },
+                    "lastHostExecutionBlock": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "toolName": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "toolName",
+                        "reason"
+                      ]
                     }
                   },
                   "required": [
@@ -20876,6 +25589,42 @@
                     "id",
                     "createdAt",
                     "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Notification delivery target unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "OpenClaw schedule registration failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
                   ]
                 }
               }
@@ -20943,6 +25692,17 @@
                   },
                   "modelId": {
                     "type": "string"
+                  },
+                  "onlyNotifyOnChange": {
+                    "type": "boolean"
+                  },
+                  "failureAlertEnabled": {
+                    "type": "boolean"
+                  },
+                  "failureAlertAfter": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
                   }
                 }
               }
@@ -21002,6 +25762,20 @@
                     "modelId": {
                       "type": "string"
                     },
+                    "onlyNotifyOnChange": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "failureAlertEnabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "failureAlertAfter": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "default": 3
+                    },
                     "id": {
                       "type": "string"
                     },
@@ -21013,6 +25787,86 @@
                     },
                     "externalId": {
                       "type": "string"
+                    },
+                    "nextRunAtMs": {
+                      "type": "integer"
+                    },
+                    "lastRunAtMs": {
+                      "type": "integer"
+                    },
+                    "lastDurationMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "lastRunStatus": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error",
+                        "skipped"
+                      ]
+                    },
+                    "lastDeliveryStatus": {
+                      "type": "string",
+                      "enum": [
+                        "delivered",
+                        "not-delivered",
+                        "unknown",
+                        "not-requested"
+                      ]
+                    },
+                    "deliveryMode": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "announce",
+                        "webhook"
+                      ]
+                    },
+                    "deliveryChannel": {
+                      "type": "string"
+                    },
+                    "deliveryTo": {
+                      "type": "string"
+                    },
+                    "deliveryAccountId": {
+                      "type": "string"
+                    },
+                    "lastOutputFingerprint": {
+                      "type": "string"
+                    },
+                    "lastOutputObservedAt": {
+                      "type": "string"
+                    },
+                    "lastOutputNotificationStatus": {
+                      "type": "string",
+                      "enum": [
+                        "delivered",
+                        "suppressed",
+                        "failed"
+                      ]
+                    },
+                    "lastOutputNotificationError": {
+                      "type": "string"
+                    },
+                    "lastHostExecutionBlock": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "string"
+                        },
+                        "toolName": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "toolName",
+                        "reason"
+                      ]
                     }
                   },
                   "required": [
@@ -21028,8 +25882,44 @@
               }
             }
           },
+          "400": {
+            "description": "Notification delivery target unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "OpenClaw schedule update failed",
             "content": {
               "application/json": {
                 "schema": {

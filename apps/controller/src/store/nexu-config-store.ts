@@ -15,12 +15,14 @@ import type {
   CreditRechargeRecord,
   DesktopRewardClaimProof,
   DesktopRewardsStatus,
+  FeishuChannelCapabilities,
   FeishuPermissions,
   ModelProviderConfig,
   PersistedModelsConfig,
   RewardTask,
   RewardTaskId,
   ScheduleResponse,
+  SlackChannelCapabilities,
   UpdateScheduleInput,
 } from "@nexu/shared";
 import {
@@ -62,11 +64,13 @@ import {
   type ControllerRuntimeConfig,
   type DeviceControlConfig,
   type LocalAutomationConfig,
+  type MemoryConfig,
   type NexuConfig,
   cloudProfilesFileSchema,
   nexuConfigSchema,
   type storedProviderResponseSchema,
 } from "./schemas.js";
+import { SecretBox } from "./secret-box.js";
 
 const DEFAULT_MANAGED_CHANNEL_ACCOUNT_ID = "default";
 
@@ -661,7 +665,10 @@ export class NexuConfigStore {
   /** Callback fired when cloud state changes (connect/disconnect). */
   onCloudStateChanged?: (change: DesktopCloudStateChange) => Promise<void>;
 
+  private readonly secretBox: SecretBox;
+
   constructor(private readonly env: ControllerEnv) {
+    this.secretBox = new SecretBox(path.join(env.nexuHomeDir, "secret.key"));
     this.store = new LowDbStore<NexuConfig>(
       env.nexuConfigPath,
       nexuConfigSchema,
@@ -698,9 +705,45 @@ export class NexuConfigStore {
           browser: { enabled: false },
           computerUse: { enabled: false },
         },
+        memory: {
+          enabled: true,
+          sources: ["memory"],
+          extraPaths: [],
+          syncIntervalMinutes: 5,
+          provider: "none",
+        },
         schedules: [],
         secrets: {},
       }),
+      {
+        // Credentials are encrypted at rest and the file is owner-only. This
+        // does not stop the agent (same OS user, see SecretBox), it stops the
+        // config being readable by other accounts and being usable when the
+        // file alone is copied into a bug report or a backup.
+        fileMode: 0o600,
+        transform: {
+          onWrite: (config) => ({
+            ...config,
+            secrets: Object.fromEntries(
+              Object.entries(config.secrets).map(([key, value]) => [
+                key,
+                SecretBox.isEncrypted(value)
+                  ? value
+                  : this.secretBox.encrypt(value),
+              ]),
+            ),
+          }),
+          onRead: (config) => ({
+            ...config,
+            secrets: Object.fromEntries(
+              Object.entries(config.secrets).map(([key, value]) => [
+                key,
+                this.secretBox.decrypt(value),
+              ]),
+            ),
+          }),
+        },
+      },
     );
     this.cloudProfilesStore = new LowDbStore<CloudProfilesFile>(
       path.join(env.nexuHomeDir, "cloud-profiles.json"),
@@ -1019,6 +1062,9 @@ export class NexuConfigStore {
       name: input.name,
       slug: input.slug,
       poolId: input.poolId ?? null,
+      // Host execution for channel- and automation-driven runs is opt-in per
+      // bot; a newly created bot never starts with it open.
+      hostExecution: { channels: "restricted", automations: "restricted" },
       status: "active",
       modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
       systemPrompt: input.systemPrompt ?? null,
@@ -1052,6 +1098,7 @@ export class NexuConfigStore {
       name?: string;
       systemPrompt?: string;
       modelId?: string;
+      hostExecution?: Partial<BotResponse["hostExecution"]>;
     },
   ): Promise<BotResponse | null> {
     let updatedBot: BotResponse | null = null;
@@ -1068,6 +1115,12 @@ export class NexuConfigStore {
           name: input.name ?? bot.name,
           systemPrompt: input.systemPrompt ?? bot.systemPrompt,
           modelId: input.modelId ?? bot.modelId,
+          hostExecution: {
+            channels:
+              input.hostExecution?.channels ?? bot.hostExecution.channels,
+            automations:
+              input.hostExecution?.automations ?? bot.hostExecution.automations,
+          },
           updatedAt: now(),
         };
         return updatedBot;
@@ -1162,6 +1215,9 @@ export class NexuConfigStore {
       channelId: input.channelId,
       description: input.description,
       modelId: input.modelId || undefined,
+      onlyNotifyOnChange: input.onlyNotifyOnChange ?? false,
+      failureAlertEnabled: input.failureAlertEnabled ?? false,
+      failureAlertAfter: input.failureAlertAfter ?? 3,
       createdAt,
       updatedAt: createdAt,
     };
@@ -1193,24 +1249,106 @@ export class NexuConfigStore {
           enabled: input.enabled ?? s.enabled,
           source: input.source ?? s.source,
           sessionKey:
-            input.sessionKey !== undefined ? input.sessionKey : s.sessionKey,
+            input.sessionKey !== undefined
+              ? input.sessionKey || undefined
+              : s.sessionKey,
           channelType:
-            input.channelType !== undefined ? input.channelType : s.channelType,
+            input.channelType !== undefined
+              ? input.channelType || undefined
+              : s.channelType,
           channelId:
-            input.channelId !== undefined ? input.channelId : s.channelId,
+            input.channelId !== undefined
+              ? input.channelId || undefined
+              : s.channelId,
           description:
-            input.description !== undefined ? input.description : s.description,
+            input.description !== undefined
+              ? input.description || undefined
+              : s.description,
           // Empty string clears the per-job model override back to bot default.
           modelId:
             input.modelId !== undefined
               ? input.modelId || undefined
               : s.modelId,
+          onlyNotifyOnChange: input.onlyNotifyOnChange ?? s.onlyNotifyOnChange,
+          failureAlertEnabled:
+            input.failureAlertEnabled ?? s.failureAlertEnabled,
+          failureAlertAfter: input.failureAlertAfter ?? s.failureAlertAfter,
+          ...(input.onlyNotifyOnChange !== undefined &&
+          input.onlyNotifyOnChange !== s.onlyNotifyOnChange
+            ? {
+                lastOutputFingerprint: undefined,
+                lastOutputObservedAt: undefined,
+                lastOutputNotificationStatus: undefined,
+                lastOutputNotificationError: undefined,
+              }
+            : {}),
           updatedAt: now(),
         };
         return updated;
       }),
     }));
 
+    return updated;
+  }
+
+  /**
+   * Record that a scheduled run was refused host command execution.
+   *
+   * Kept separate from the output-notification fields: those describe whether
+   * an output was delivered, this describes work that could not happen at all.
+   */
+  async recordScheduleHostExecutionBlock(
+    id: string,
+    input: { at: string; toolName: string; reason: string },
+  ): Promise<ScheduleResponse | null> {
+    let updated: ScheduleResponse | null = null;
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((schedule) => {
+        if (schedule.id !== id) return schedule;
+        updated = { ...schedule, lastHostExecutionBlock: input };
+        return updated;
+      }),
+    }));
+    return updated;
+  }
+
+  async recordScheduleOutputNotification(
+    id: string,
+    input: {
+      fingerprint: string;
+      observedAt: string;
+      status: NonNullable<ScheduleResponse["lastOutputNotificationStatus"]>;
+      error?: string;
+    },
+  ): Promise<ScheduleResponse | null> {
+    let updated: ScheduleResponse | null = null;
+    await this.store.update((config) => ({
+      ...config,
+      schedules: (config.schedules ?? []).map((schedule) => {
+        if (schedule.id !== id) return schedule;
+        const currentObservedAtMs = schedule.lastOutputObservedAt
+          ? Date.parse(schedule.lastOutputObservedAt)
+          : Number.NaN;
+        const nextObservedAtMs = Date.parse(input.observedAt);
+        if (
+          Number.isFinite(currentObservedAtMs) &&
+          (!Number.isFinite(nextObservedAtMs) ||
+            nextObservedAtMs < currentObservedAtMs)
+        ) {
+          updated = schedule;
+          return schedule;
+        }
+        updated = {
+          ...schedule,
+          lastOutputFingerprint: input.fingerprint,
+          lastOutputObservedAt: input.observedAt,
+          lastOutputNotificationStatus: input.status,
+          lastOutputNotificationError: input.error,
+        };
+        return updated;
+      }),
+    }));
     return updated;
   }
 
@@ -1298,7 +1436,15 @@ export class NexuConfigStore {
 
   async updateChannel(
     channelId: string,
-    patch: Partial<Pick<ChannelResponse, "botId" | "feishuPermissions">>,
+    patch: Partial<
+      Pick<
+        ChannelResponse,
+        | "botId"
+        | "feishuPermissions"
+        | "slackCapabilities"
+        | "feishuCapabilities"
+      >
+    >,
   ): Promise<ChannelResponse> {
     const existing = await this.getChannel(channelId);
     if (!existing) {
@@ -1322,6 +1468,12 @@ export class NexuConfigStore {
       ...(patch.botId !== undefined ? { botId: patch.botId } : {}),
       ...(patch.feishuPermissions !== undefined
         ? { feishuPermissions: patch.feishuPermissions }
+        : {}),
+      ...(patch.slackCapabilities !== undefined
+        ? { slackCapabilities: patch.slackCapabilities }
+        : {}),
+      ...(patch.feishuCapabilities !== undefined
+        ? { feishuCapabilities: patch.feishuCapabilities }
         : {}),
       updatedAt: now(),
     };
@@ -1350,6 +1502,31 @@ export class NexuConfigStore {
     return this.updateChannel(channelId, { feishuPermissions: perms });
   }
 
+  async updateChannelCapabilities(
+    channelId: string,
+    input:
+      | { channelType: "slack"; settings: SlackChannelCapabilities }
+      | { channelType: "feishu"; settings: FeishuChannelCapabilities },
+  ): Promise<ChannelResponse> {
+    const existing = await this.getChannel(channelId);
+    if (!existing) {
+      throw new Error(`Channel not found: ${channelId}`);
+    }
+    if (existing.channelType !== input.channelType) {
+      throw new Error(
+        `Channel type mismatch: expected ${existing.channelType}, received ${input.channelType}`,
+      );
+    }
+    if (input.channelType === "slack") {
+      return this.updateChannel(channelId, {
+        slackCapabilities: input.settings,
+      });
+    }
+    return this.updateChannel(channelId, {
+      feishuCapabilities: input.settings,
+    });
+  }
+
   async connectSlack(
     input: ConnectSlackInput & { botUserId?: string | null },
   ): Promise<ChannelResponse> {
@@ -1373,6 +1550,7 @@ export class NexuConfigStore {
       botUserId: input.botUserId ?? null,
       createdAt: connectedAt,
       updatedAt: connectedAt,
+      slackCapabilities: null,
     };
 
     await this.store.update((config) => {
@@ -1641,6 +1819,7 @@ export class NexuConfigStore {
       createdAt: connectedAt,
       updatedAt: connectedAt,
       feishuPermissions: null,
+      feishuCapabilities: null,
     };
 
     await this.store.update((config) => {
@@ -3406,6 +3585,31 @@ export class NexuConfigStore {
         },
       };
       return { ...config, localAutomation: nextConfig };
+    });
+    return nextConfig;
+  }
+
+  async getMemoryConfig(): Promise<MemoryConfig> {
+    const config = await this.getConfig();
+    return config.memory;
+  }
+
+  async setMemoryConfig(patch: Partial<MemoryConfig>): Promise<MemoryConfig> {
+    let nextConfig: MemoryConfig = {
+      enabled: true,
+      sources: ["memory"],
+      extraPaths: [],
+      syncIntervalMinutes: 5,
+      provider: "none",
+    };
+    await this.store.update((config) => {
+      nextConfig = {
+        ...config.memory,
+        ...patch,
+        sources: patch.sources ?? config.memory.sources,
+        extraPaths: patch.extraPaths ?? config.memory.extraPaths,
+      };
+      return { ...config, memory: nextConfig };
     });
     return nextConfig;
   }

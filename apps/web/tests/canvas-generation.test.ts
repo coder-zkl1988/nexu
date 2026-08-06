@@ -143,7 +143,7 @@ describe("generateImageIntoNode", () => {
     await generateImageIntoNode(node.id, "sky", {
       referenceImages: ["/img/ref1.png"],
       count: 2,
-      model: "tabby-image",
+      model: "tabby-image-pro",
       transparentBackground: true,
     });
 
@@ -152,7 +152,7 @@ describe("generateImageIntoNode", () => {
         prompt: "sky",
         referenceImages: ["/img/ref1.png"],
         count: 2,
-        model: "tabby-image",
+        model: "tabby-image-pro",
         transparentBackground: true,
       },
     });

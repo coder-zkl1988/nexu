@@ -94,7 +94,7 @@ export async function bootstrapController(
   // Run independent prep tasks in parallel to shave off startup time.
   // All three are independent: process cleanup, plugin files, cloud model fetch.
   const prepareStartedAt = Date.now();
-  await Promise.all([
+  const [, , pluginResult] = await Promise.all([
     container.openclawProcess.prepare(),
     container.localAutomationService.prepare(),
     container.openclawSyncService.ensureRuntimeModelPlugin(),
@@ -103,6 +103,29 @@ export async function bootstrapController(
       .catch(() => {}),
   ]);
   logBootstrapStage("parallel_prepare", prepareStartedAt);
+
+  // OpenClaw reads a plugin's source once, at registration, and the local dev
+  // stack starts it BEFORE the controller materializes plugins. Without this a
+  // guard update only takes effect on the *next* OpenClaw start, which for
+  // nexu-toolcall-guard means the previous version of a security control keeps
+  // running after an upgrade.
+  if ((pluginResult?.changedPluginIds?.size ?? 0) > 0) {
+    logger.info(
+      { changedPluginIds: [...(pluginResult?.changedPluginIds ?? [])] },
+      "runtime_plugins_changed_restarting_openclaw",
+    );
+    await container.openclawProcess
+      .restart("runtime-plugins-changed")
+      .catch((err: unknown) => {
+        logger.warn(
+          {
+            error: err instanceof Error ? err.message : String(err),
+            changedPluginIds: [...(pluginResult?.changedPluginIds ?? [])],
+          },
+          "runtime_plugins_restart_failed",
+        );
+      });
+  }
 
   // Validate default model against available models before first sync
   const modelValidationStartedAt = Date.now();

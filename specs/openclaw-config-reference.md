@@ -198,18 +198,21 @@ talk, gateway, memory
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `agents.defaults.memorySearch.enabled` | boolean | true | 启用向量记忆搜索 |
+| `agents.defaults.memorySearch.enabled` | boolean | true | 启用记忆搜索 |
 | `agents.defaults.memorySearch.sources` | ("memory" \| "sessions")[] | ["memory"] | 搜索来源 |
 | `agents.defaults.memorySearch.extraPaths` | string[] | - | 额外索引路径 |
-| `agents.defaults.memorySearch.provider` | `"openai" \| "gemini" \| "local" \| "voyage" \| "mistral"` | - | 嵌入模型提供者 |
+| `agents.defaults.memorySearch.experimental.sessionMemory` | boolean | false | 允许索引会话记录；使用 `sessions` 来源时必须同时启用 |
+| `agents.defaults.memorySearch.provider` | string | `"openai"` | 嵌入模型提供者；`"none"` 启用 FTS-only 模式 |
 | `agents.defaults.memorySearch.model` | string | - | 嵌入模型 ID |
-| `agents.defaults.memorySearch.fallback` | string \| "none" | - | 回退提供者 |
-| `agents.defaults.memorySearch.remote` | object | - | baseUrl, apiKey, headers, batch 配置 |
-| `agents.defaults.memorySearch.local` | object | - | GGUF model path, cache dir |
-| `agents.defaults.memorySearch.store` | object | - | driver (sqlite), path, vector extension |
-| `agents.defaults.memorySearch.chunking` | object | - | token size, overlap |
+| `agents.defaults.memorySearch.fallback` | string | `"none"` | 回退提供者 |
+| `agents.defaults.memorySearch.remote` | object | - | baseUrl、apiKey、headers、并发与 batch 配置 |
+| `agents.defaults.memorySearch.local` | object | - | GGUF modelPath、modelCacheDir、contextSize |
+| `agents.defaults.memorySearch.store` | object | - | SQLite driver、FTS tokenizer、vector 与 cache 配置 |
+| `agents.defaults.memorySearch.chunking` | object | - | tokens、overlap |
 | `agents.defaults.memorySearch.sync` | object | - | onSessionStart, onSearch, watch, intervals |
 | `agents.defaults.memorySearch.query` | object | - | maxResults, minScore, hybrid, MMR, temporal decay |
+
+Nexu 桌面端默认输出 `provider: "none"`、`store.vector.enabled: false` 和 `store.fts.tokenizer: "trigram"`，提供不依赖外部凭据的本地全文记忆。未来启用语义检索时，仍需单独配置真实支持 `/embeddings` 的提供者与嵌入模型；聊天模型配置不会自动成为记忆嵌入配置。
 | `agents.defaults.contextPruning` | object | - | mode, TTL, cache strategies, tool allow/deny |
 
 #### Thinking & Verbosity
@@ -783,10 +786,12 @@ talk, gateway, memory
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `models.bedrockDiscovery.enabled` | boolean | 启用 Bedrock 自动发现 |
-| `models.bedrockDiscovery.region` | string | AWS 区域 |
-| `models.bedrockDiscovery.providerFilter` | string[] | 提供者过滤 |
-| `models.bedrockDiscovery.refreshInterval` | number | 刷新间隔 |
+| `plugins.entries.amazon-bedrock.config.discovery.enabled` | boolean | 启用 Bedrock 自动发现 |
+| `plugins.entries.amazon-bedrock.config.discovery.region` | string | AWS 区域 |
+| `plugins.entries.amazon-bedrock.config.discovery.providerFilter` | string[] | 提供者过滤 |
+| `plugins.entries.amazon-bedrock.config.discovery.refreshInterval` | number | 刷新间隔 |
+
+OpenClaw 2026.7.1 的发现能力由外置 `@openclaw/amazon-bedrock-provider` 插件提供；`models.bedrockDiscovery` 不是有效配置字段。
 
 ---
 
@@ -1023,10 +1028,12 @@ talk, gateway, memory
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `plugins.enabled` | boolean | 启用插件 |
-| `plugins.allow` / `deny` | string[] | 白/黑名单 |
+| `plugins.allow` / `deny` | string[] | 可选白/黑名单；Nexu 默认均省略，使已安装插件可被 OpenClaw 正常发现 |
 | `plugins.load.paths` | string[] | 插件搜索路径 |
 | `plugins.slots.memory` | string | 记忆插件 ("none" 禁用) |
 | `plugins.entries[id]` | object | enabled, config |
+
+Nexu 仅通过 `plugins.entries` 管理平台插件的启用状态和配置，不生成全局插件白名单或黑名单。这样第三方、内置和后续安装的插件不会因为静态目录契约而被默认阻断。
 
 ---
 

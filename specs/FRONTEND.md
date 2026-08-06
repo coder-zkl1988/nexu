@@ -36,6 +36,7 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 | `/workspace/models` | Models / Settings | General profile, model providers, and unified device/automation controls |
 | `/workspace/skills` | Skills | Skill catalog |
 | `/workspace/skills/:slug` | Skill Detail | Individual skill info and actions |
+| `/workspace/automations` | Automations | OpenClaw schedules, delivery rules, run history, and failure visibility |
 
 ### Skill Store data flow
 
@@ -57,7 +58,15 @@ After any API route/schema change: `pnpm generate-types` then `pnpm typecheck`.
 
 Session detail pages expose browser and canvas controls beside the conversation header. Both modes share the resizable right-side workbench, and their header controls show an activity dot while the corresponding surface is open.
 
+The conversation header also exposes a Run center inspector. Its Run tab renders OpenClaw and Nexu Team work as one normalized task DAG with shared lifecycle states, dependency edges, source identity, OpenClaw cancellation, recent tool activity, context-window usage, provider quota/cost data, and generated outputs. Its Approvals tab keeps OpenClaw native execution/plugin approvals separate from Nexu Team workflow approvals, preserves each approval's allowed decisions, and follows the pending queue with a durable reviewer-aware decision history plus metadata-only runtime activity. While the authenticated desktop shell is mounted, a lightweight global watcher polls both approval sources and emits a deduplicated system notification for each newly observed approval when notification permission has been granted; opening Run center is not required. Its Recovery tab exposes delivery failure totals, context-engine quarantine state, and durable compaction snapshots. Only capabilities backed by OpenClaw RPCs are actionable: snapshot restore is available with explicit confirmation, while dead-letter replay/delete and direct quarantine clearing remain diagnostic because OpenClaw does not expose those operations. Its Health tab reports controller/OpenClaw readiness, channel connectivity, model availability, and local automation permissions; failed or unavailable upstreams must remain explicit instead of rendering as an empty or healthy state. Opening Browser or Canvas closes Run center, and opening Run center closes a user-owned workbench, so one right-side surface owns the available width at a time. An agent-owned Browser remains pinned while its task is active and blocks Run center from replacing it.
+
+The workspace conversation rail provides title/group search plus `All`, `Conversations`, `Scheduled`, `Unread`, `Running`, `Needs attention`, and `Archived` filters. Sessions can be pinned, marked read/unread, and assigned an OpenClaw-backed category; pinned sessions sort first and custom categories become visible groups. Running state overlays the controller's live `SessionRunRegistry`, while failed state comes from OpenClaw's persisted run/transcript outcome. `Conversations` excludes scheduled sessions, scheduled classification remains based on the controller-owned `:schedule-` session-key namespace, and filtered scheduled matches stay expanded.
+
+Archived sessions remain hidden by default and can be restored from the dedicated filter. The recovery dialog offers an explicit continue-current action and lists OpenClaw's durable compaction checkpoints. Conversation messages expose two distinct native operations: branch creates a fork whose active leaf is the selected message, while rollback changes the current session's active leaf after confirmation. Compaction checkpoints remain available for non-destructive branch creation, and the Run center Recovery tab additionally exposes OpenClaw's real snapshot restore operation with confirmation.
+
 The embedded browser supports up to eight tabs, navigation controls, generated-page auto-open, DOM element selection into the current chat input, and screenshot annotation into an image attachment. Arbitrary pages run in sandboxed Electron `WebContentsView` instances with Node integration disabled; the trusted application webview remains the only surface with the desktop preload bridge. In non-desktop web builds, the browser falls back to a sandboxed iframe without element selection or screenshot capture.
+
+The browser workbench also exposes a control center for the current agent/pairing state and a download center with progress, completed-item reveal, and history clearing. Host failures use an explicit unavailable state with retry. A failed revoke/resume request keeps the last confirmed sharing state and reports the failure instead of optimistically removing the shared tab. Downloads remain scoped to the owning desktop browser surface and never expose their local path to the renderer.
 
 Absolute HTTP(S) links in session Markdown open in the embedded browser. A link request never retargets a tab pinned by an active browser agent; in that case the URL falls back to the system browser. Explicit link navigation also wins over older generated-page artifacts so a stale preview cannot steal focus.
 
@@ -66,6 +75,8 @@ The chat composer attachment menu separates images, files, and directories. Desk
 Xiaohongshu editors stay inline in the conversation. The canvas also exposes native Xiaohongshu and phone-preview nodes for AI copy generation, connected images, device selection, and publishing. A publish result with unknown phone status is non-terminal and must not be retried automatically, which avoids duplicate posts.
 
 Generated local pages are discovered from `index.html` / `index.htm` files under the active Bot workspace and served through the controller's constrained preview route. Preview file resolution must remain inside the selected project root after `realpath` resolution, including symlink checks.
+
+The desktop shell exposes Quick Chat from the application menu, resident tray, and `CommandOrControl+Shift+Space`. Every entry snapshots context before bringing Nexu forward: macOS first reads the focused application's accessibility selection, then falls back to the clipboard; Windows and Linux snapshot clipboard text. The composer can also read a Nexu selection and attach a current-display screenshot. Captured context is bounded and staged in memory for one Quick Chat request instead of being persisted as a hidden conversation. The context IPC accepts requests only from the active Deskpet renderer, so other application windows cannot read the staged selection, clipboard fallback, or screenshot.
 
 ## Long-running sessions
 
@@ -103,18 +114,30 @@ corrupt OpenClaw's active transcript. Busy messages are classified before send:
 
 ## Channels
 
-Channel management lives at `/workspace/channels` ([`apps/web/src/pages/channels.tsx`](../apps/web/src/pages/channels.tsx)). Slack and Discord remain single-instance per workspace; Feishu and WeChat support multi-instance connections.
+Channel management lives at `/workspace/channels` ([`apps/web/src/pages/channels.tsx`](../apps/web/src/pages/channels.tsx)). Slack, Feishu, and WeChat support multi-instance connections; Discord remains single-instance per workspace.
 
-### Multi-instance Feishu / WeChat
+### Multi-instance Slack / Feishu / WeChat
 
-Feishu (`feishu`) and WeChat (`wechat`) channels can onboard multiple accounts, each independently routed to one bot:
+Slack (`slack`), Feishu (`feishu`), and WeChat (`wechat`) channels can onboard multiple accounts, each independently routed to one bot:
 
-- **Bot required at connect time.** The connect form for Feishu / WeChat uses [`<BotPicker />`](../apps/web/src/components/channels/bot-picker.tsx) as a required field. Submitting without a selection surfaces the `channels.errors.botRequired` toast.
-- **Instance list rendering.** For `feishu` / `wechat`, `channels.tsx` renders a list of connected instances plus a "Connect another" action. Other channel types keep the existing single-instance UI.
+- **Bot required at connect time.** The connect form for Slack / Feishu / WeChat uses [`<BotPicker />`](../apps/web/src/components/channels/bot-picker.tsx) as a required field. Submitting without a selection surfaces the `channels.errors.botRequired` toast. The local controller's Slack OAuth routes are deprecated placeholders, so the channel page exposes only the working manual Slack setup and does not show a non-functional OAuth action.
+- **Instance list rendering.** For `slack` / `feishu` / `wechat`, `channels.tsx` renders a list of connected instances plus a "Connect another" action. Other channel types keep the existing single-instance UI.
 - **Instance cards.** Each [`<ChannelInstanceCard />`](../apps/web/src/components/channels/channel-instance-card.tsx) shows the account id, status, and a "Routes to bot: X" row with an inline "Change" button. Changing the bound bot calls `PATCH /api/v1/channels/:id` via the [`useUpdateChannelBot`](../apps/web/src/hooks/use-update-channel-bot.ts) hook.
-- **Platform badge.** The platform picker shows an "N connected" count for Feishu / WeChat once at least one instance is connected; other platforms keep the existing check / loader icon behavior.
+- **Platform badge.** The platform picker shows an "N connected" count for Slack / Feishu / WeChat once at least one instance is connected; other platforms keep the existing check / loader icon behavior.
 
-Out of scope (possible follow-up, plan D): routing different chats under the same Feishu / WeChat account to different bots.
+Out of scope (possible follow-up, plan D): routing different chats under the same channel account to different bots.
+
+### Per-channel delivery capabilities
+
+Slack and Feishu instance cards expose a collapsible [`ChannelCapabilitiesPanel`](../apps/web/src/components/channels/channel-capabilities-panel.tsx). The panel persists through `PATCH /api/v1/channels/{channelId}/capabilities`, refreshes the channel list, and the controller synchronizes the changed account config to OpenClaw.
+
+- **Slack:** thread reply policy (`replyToMode`), live response mode (`streaming.mode`), and native task cards (`streaming.progress.nativeTaskCards`). Native task cards are available only in progress mode.
+- **Feishu:** card/text rendering (`renderMode`), streaming card updates (`streaming`), topic-thread replies (`replyInThread`), automatic TTS policy (`tts.auto`), and inbound/outbound media limit (`mediaMaxMb`).
+- **Feishu media visibility:** audio, image, file, and video badges describe capabilities already provided by the bundled runtime; they are not cosmetic enable switches.
+
+Historical channel records keep their former behavior: a `null` capability record is normalized to the UI defaults and is only persisted after the user saves it.
+
+Channel-list and live-status request failures remain distinct from an unconfigured channel. The page renders retryable unavailable states and may keep the last successful list/status visible as explicitly stale partial data. Manual Slack setup also requires a valid controller-derived redirect URL before exposing its manifest link; channel-binding lookup failures disable bot selection and connection until a successful retry.
 
 ### Per-channel Feishu permissions
 
@@ -128,6 +151,20 @@ Each Feishu channel instance exposes four permissions via the [`FeishuPermission
 Backward compatibility: when `channel.feishuPermissions` is `null` (historical records), the channel binding compiler emits the previously-hardcoded defaults (`requireMention: true`, `dmPolicy: open`, `groupPolicy: open`, `allowFrom: ["*"]`).
 
 Persistence flow: UI → [`useUpdateFeishuPermissions`](../apps/web/src/hooks/use-update-feishu-permissions.ts) → `PATCH /api/v1/channels/{channelId}/feishu-permissions` → store → `openclawSyncService.syncAll()` → OpenClaw `feishu.accounts[<accountId>]` fields.
+
+## Automations
+
+The Automations page exposes schedule, timezone, assigned bot/model, delivery channel, next run, last duration, latest output, and run history. Delivery can notify only when output changes and can emit an alert after a configured consecutive-failure threshold. The controller persists the last observed output cursor/fingerprint and reconciles `cron.runs` both at startup and after OpenClaw WebSocket reconnect, so results completed while the controller was offline are delivered once with a stable idempotency key. List and history failures render unavailable states with retry rather than empty schedules. The create/edit modal independently reports Bot and Channel dependency failures, supports retry, and cannot create an automation until required resources have loaded successfully.
+
+## Model providers
+
+The Models / Settings provider surface loads the model catalog, provider registry, and persisted provider configuration as one required baseline. Failure in any source renders a single retryable unavailable state and prevents saving, so a request failure cannot overwrite existing providers with an empty document. Provider validation must return usable model ids before a provider can be saved. OpenAI OAuth provider and flow-status failures render a retryable unavailable state; start and disconnect failures preserve the last confirmed connection state and surface an error.
+
+Amazon Bedrock validation requires an explicit model or inference-profile id from the selected region, then runs the bundled OpenClaw live probe against an isolated temporary configuration using the AWS SDK credential chain. The temporary runtime loads only the installed `amazon-bedrock` provider extension and accepts success only for the exact requested model. A missing provider plugin is reported explicitly instead of being misclassified as an AWS credential failure.
+
+## Memory
+
+The Models / Settings page includes the OpenClaw Memory search status and controls. It distinguishes ready, sync-needed, disabled, unavailable, and loading states; the UI must not label stale or unsynchronized memory as ready. Nexu defaults to OpenClaw's local FTS-only mode with the CJK-compatible `trigram` tokenizer, so memory and optional session transcripts remain searchable without a separate embedding credential. FTS readiness requires the local SQLite full-text index to be available; semantic readiness still requires the bundled OpenClaw deep status probe to complete a real bounded embedding request. The status contract exposes only a search mode and sanitized reason code, while paths, provider errors, and secret material remain outside the browser-facing payload.
 
 ## Conventions
 

@@ -12,6 +12,7 @@ import {
   Loader2,
   Lock,
   MessageSquare,
+  RefreshCw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -104,6 +105,19 @@ function buildSlackManifestUrl(baseUrl: string): string {
   return `https://api.slack.com/apps?new_app=1&manifest_json=${encodeURIComponent(JSON.stringify(manifest))}`;
 }
 
+function resolveSlackBaseUrl(redirectUri: string): string {
+  const redirectUrl = new URL(redirectUri);
+  if (redirectUrl.protocol !== "http:" && redirectUrl.protocol !== "https:") {
+    throw new Error("unsupported Slack redirect URI protocol");
+  }
+
+  const callbackPath = "/api/oauth/slack/callback";
+  const basePath = redirectUrl.pathname.endsWith(callbackPath)
+    ? redirectUrl.pathname.slice(0, -callbackPath.length)
+    : "";
+  return `${redirectUrl.origin}${basePath}`.replace(/\/$/, "");
+}
+
 export interface SlackOAuthViewProps {
   /** Called when Slack is successfully connected */
   onConnected: () => void;
@@ -111,6 +125,8 @@ export interface SlackOAuthViewProps {
   variant?: "page" | "modal";
   /** Start directly in manual mode */
   initialManual?: boolean;
+  /** Hide the deprecated OAuth placeholder and expose only manual setup. */
+  manualOnly?: boolean;
   /** OAuth returnTo path (e.g. "/onboarding?openModal=slack") */
   oauthReturnTo?: string;
   /** Error message from a failed OAuth attempt (passed via query param) */
@@ -123,13 +139,14 @@ export function SlackOAuthView({
   onConnected,
   variant = "page",
   initialManual,
+  manualOnly = false,
   oauthReturnTo,
   oauthError,
   disabled,
 }: SlackOAuthViewProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<"install" | "authorizing" | "manual">(
-    initialManual ? "manual" : "install",
+    initialManual || manualOnly ? "manual" : "install",
   );
   const [activeStep, setActiveStep] = useState(0);
   const [botToken, setBotToken] = useState("");
@@ -138,38 +155,34 @@ export function SlackOAuthView({
   const [botId, setBotId] = useState<string>("");
   const [oauthFailed, setOauthFailed] = useState(!!oauthError);
   const [oauthErrorMsg, setOauthErrorMsg] = useState(oauthError || "");
-  const [eventsUrl, setEventsUrl] = useState(
-    `${window.location.origin}/api/slack/events`,
-  );
-
-  const { data: channelsData } = useQuery({
+  const channelsQuery = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data } = await getApiV1Channels();
+      const { data, error } = await getApiV1Channels();
+      if (error || !data) {
+        throw new Error("Slack channel bindings are unavailable");
+      }
       return data;
     },
   });
+  const redirectUriQuery = useQuery({
+    queryKey: ["slack-redirect-uri"],
+    queryFn: async () => {
+      const { data, error } = await getApiV1ChannelsSlackRedirectUri();
+      if (error || !data?.redirectUri) {
+        throw new Error("Slack redirect URI is unavailable");
+      }
+      return resolveSlackBaseUrl(data.redirectUri);
+    },
+  });
   const disabledBotIds = useMemo(() => {
-    const channels = channelsData?.channels ?? [];
+    const channels = channelsQuery.data?.channels ?? [];
     return new Set(
       channels.filter((ch) => ch.channelType === "slack").map((ch) => ch.botId),
     );
-  }, [channelsData]);
-
-  // Fetch server base URL so the events URL matches the actual deployment
-  useEffect(() => {
-    getApiV1ChannelsSlackRedirectUri()
-      .then(({ data }) => {
-        if (data?.redirectUri) {
-          const base = data.redirectUri.replace(
-            /\/api\/oauth\/slack\/callback$/,
-            "",
-          );
-          setEventsUrl(`${base}/api/slack/events`);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  }, [channelsQuery.data]);
+  const channelOperationsDisabled =
+    disabled || connecting || !channelsQuery.isSuccess;
 
   // Detect return from failed OAuth via browser back button
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally run once on mount to check OAuth state
@@ -222,6 +235,10 @@ export function SlackOAuthView({
   };
 
   const handleManualConnect = async () => {
+    if (!channelsQuery.isSuccess) {
+      toast.error(t("slackSetup.channelsUnavailable"));
+      return;
+    }
     setConnecting(true);
     try {
       const { data, error } = await postApiV1ChannelsSlackConnect({
@@ -359,20 +376,22 @@ export function SlackOAuthView({
           <p className="text-[12px] text-text-muted mt-0.5 leading-relaxed">
             {oauthFailed
               ? oauthErrorMsg || t("slackSetup.oauthNotCompleted")
-              : t("slackSetup.manualDesc")}{" "}
-            {t("slackSetup.tryOauthSuffix")}
+              : t("slackSetup.manualDesc")}
+            {manualOnly ? null : <> {t("slackSetup.tryOauthSuffix")}</>}
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setOauthFailed(false);
-              setOauthErrorMsg("");
-              setPhase("install");
-            }}
-            className="mt-2 text-[12px] font-medium text-[#4A154B] hover:underline underline-offset-2 cursor-pointer"
-          >
-            {t("slackSetup.tryOauthAgain")}
-          </button>
+          {manualOnly ? null : (
+            <button
+              type="button"
+              onClick={() => {
+                setOauthFailed(false);
+                setOauthErrorMsg("");
+                setPhase("install");
+              }}
+              className="mt-2 text-[12px] font-medium text-[#4A154B] hover:underline underline-offset-2 cursor-pointer"
+            >
+              {t("slackSetup.tryOauthAgain")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -412,6 +431,29 @@ export function SlackOAuthView({
         ))}
       </div>
 
+      {channelsQuery.isError && (
+        <div
+          data-slack-channels-unavailable="true"
+          className="mb-5 flex items-center justify-between gap-3 rounded-lg border border-red-500/15 bg-red-500/5 px-3 py-2.5"
+        >
+          <div className="flex min-w-0 items-center gap-2 text-[12px] text-text-secondary">
+            <AlertCircle className="size-3.5 shrink-0 text-red-500" />
+            <span>{t("slackSetup.channelsUnavailable")}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => channelsQuery.refetch()}
+            disabled={channelsQuery.isFetching}
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[#4A154B] hover:bg-[#4A154B]/5 disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`size-3 ${channelsQuery.isFetching ? "animate-spin" : ""}`}
+            />
+            {t("slackSetup.retryChannels")}
+          </button>
+        </div>
+      )}
+
       {/* Step 1: Create Slack App */}
       {activeStep === 0 && (
         <div className="p-5 rounded-xl border bg-surface-1 border-border">
@@ -429,17 +471,46 @@ export function SlackOAuthView({
             </div>
           </div>
           <div className="ml-11">
-            <a
-              href={buildSlackManifestUrl(
-                eventsUrl.replace(/\/api\/slack\/events$/, ""),
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex gap-1.5 items-center px-4 py-2 text-[12px] font-medium text-white rounded-lg bg-[#4A154B] hover:bg-[#3a1039] transition-all"
-            >
-              <ExternalLink size={12} />
-              {t("slackSetup.createSlackApp")}
-            </a>
+            {redirectUriQuery.isPending && (
+              <div
+                data-slack-redirect-loading="true"
+                className="flex items-center gap-2 text-[12px] text-text-muted"
+              >
+                <Loader2 className="size-3.5 animate-spin" />
+                {t("slackSetup.redirectUriLoading")}
+              </div>
+            )}
+            {redirectUriQuery.isError && (
+              <div
+                data-slack-redirect-unavailable="true"
+                className="flex flex-wrap items-center gap-2 text-[12px] text-text-secondary"
+              >
+                <AlertCircle className="size-3.5 shrink-0 text-red-500" />
+                <span>{t("slackSetup.redirectUriUnavailable")}</span>
+                <button
+                  type="button"
+                  onClick={() => redirectUriQuery.refetch()}
+                  disabled={redirectUriQuery.isFetching}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 font-medium text-[#4A154B] hover:bg-[#4A154B]/5 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`size-3 ${redirectUriQuery.isFetching ? "animate-spin" : ""}`}
+                  />
+                  {t("slackSetup.retryRedirectUri")}
+                </button>
+              </div>
+            )}
+            {redirectUriQuery.isSuccess && (
+              <a
+                href={buildSlackManifestUrl(redirectUriQuery.data)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex gap-1.5 items-center px-4 py-2 text-[12px] font-medium text-white rounded-lg bg-[#4A154B] hover:bg-[#3a1039] transition-all"
+              >
+                <ExternalLink size={12} />
+                {t("slackSetup.createSlackApp")}
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -652,7 +723,7 @@ export function SlackOAuthView({
                 value={botId || null}
                 onChange={setBotId}
                 required
-                disabled={disabled || connecting}
+                disabled={channelOperationsDisabled}
                 disabledBotIds={disabledBotIds}
               />
             </div>
@@ -662,9 +733,13 @@ export function SlackOAuthView({
               disabled={
                 disabled ||
                 connecting ||
+                !channelsQuery.isSuccess ||
                 !botToken.trim() ||
                 !signingSecret.trim() ||
                 !botId
+              }
+              data-slack-channel-operations-disabled={
+                !channelsQuery.isSuccess ? "true" : "false"
               }
               className="flex gap-1.5 items-center px-5 py-2.5 text-[13px] font-medium text-white rounded-lg bg-[#4A154B] hover:bg-[#3a1039] transition-all disabled:opacity-60 cursor-pointer"
             >
@@ -681,18 +756,22 @@ export function SlackOAuthView({
 
       {/* Navigation */}
       <div className="flex justify-between items-center mt-5">
-        <button
-          type="button"
-          onClick={() =>
-            activeStep === 0
-              ? setPhase("install")
-              : setActiveStep(activeStep - 1)
-          }
-          className="flex gap-1.5 items-center text-[12px] text-text-muted hover:text-text-secondary transition-all cursor-pointer"
-        >
-          <ArrowLeft size={13} />
-          {activeStep === 0 ? t("slackSetup.back") : t("slackSetup.previous")}
-        </button>
+        {manualOnly && activeStep === 0 ? (
+          <span />
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              activeStep === 0
+                ? setPhase("install")
+                : setActiveStep(activeStep - 1)
+            }
+            className="flex gap-1.5 items-center text-[12px] text-text-muted hover:text-text-secondary transition-all cursor-pointer"
+          >
+            <ArrowLeft size={13} />
+            {activeStep === 0 ? t("slackSetup.back") : t("slackSetup.previous")}
+          </button>
+        )}
         {activeStep < SLACK_MANUAL_STEP_KEYS.length - 1 && (
           <button
             type="button"

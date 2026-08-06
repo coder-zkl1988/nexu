@@ -1,5 +1,18 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+export interface LowDbStoreOptions<T> {
+  /**
+   * Applied on the way to disk and on the way back. Used to keep credentials
+   * out of the file at rest while every caller above still sees plaintext.
+   */
+  transform?: {
+    onWrite: (value: T) => T;
+    onRead: (value: T) => T;
+  };
+  /** POSIX mode for the persisted files. Credentials warrant 0o600. */
+  fileMode?: number;
+}
 export class LowDbStore<T> {
   private cache: T | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -8,6 +21,7 @@ export class LowDbStore<T> {
     private readonly filePath: string,
     private readonly schema: { parse(input: unknown): T },
     private readonly createDefault: () => T,
+    private readonly options: LowDbStoreOptions<T> = {},
   ) {}
 
   async read(): Promise<T> {
@@ -40,10 +54,26 @@ export class LowDbStore<T> {
       await mkdir(path.dirname(this.filePath), { recursive: true });
       const tempPath = `${this.filePath}.tmp`;
       const backupPath = `${this.filePath}.bak`;
-      const payload = `${JSON.stringify(validated, null, 2)}\n`;
-      await writeFile(tempPath, payload, "utf8");
-      await writeFile(backupPath, payload, "utf8");
+      const persisted = this.options.transform
+        ? this.options.transform.onWrite(validated)
+        : validated;
+      const payload = `${JSON.stringify(persisted, null, 2)}\n`;
+      const mode = this.options.fileMode;
+      await writeFile(tempPath, payload, {
+        encoding: "utf8",
+        ...(mode ? { mode } : {}),
+      });
+      await writeFile(backupPath, payload, {
+        encoding: "utf8",
+        ...(mode ? { mode } : {}),
+      });
       await rename(tempPath, this.filePath);
+      if (mode) {
+        // rename preserves the temp file's mode, but a file that predates this
+        // option keeps its old permissions until it is rewritten.
+        await chmod(this.filePath, mode).catch(() => {});
+        await chmod(backupPath, mode).catch(() => {});
+      }
       this.cache = validated;
     });
 
@@ -59,6 +89,9 @@ export class LowDbStore<T> {
 
   private async readAndParse(filePath: string): Promise<T> {
     const raw = await readFile(filePath, "utf8");
-    return this.schema.parse(JSON.parse(raw));
+    const parsed = this.schema.parse(JSON.parse(raw));
+    return this.options.transform
+      ? this.options.transform.onRead(parsed)
+      : parsed;
   }
 }

@@ -3,6 +3,9 @@
 // with a purpose label instead of letting a bot be assigned to them.
 const SPECIAL_PURPOSE_MODEL_LABEL_KEYS: Record<string, string> = {
   "tabby-phone": "models.special.phone",
+  "tabby-image-pro": "models.special.image",
+  "tabby-image-flash": "models.special.image",
+  // Keep stale cloud-model caches non-selectable during the ID migration.
   "tabby-image": "models.special.image",
   "tabby-image-free": "models.special.image",
   "tabby-video": "models.special.video",

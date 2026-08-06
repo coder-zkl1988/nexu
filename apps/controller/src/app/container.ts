@@ -26,6 +26,7 @@ import { WorkspaceTemplateWriter } from "../runtime/workspace-template-writer.js
 import { AgentBrowserBridge } from "../services/agent-browser-bridge.js";
 import { AgentService } from "../services/agent-service.js";
 import { AnalyticsService } from "../services/analytics-service.js";
+import { ApprovalAuditService } from "../services/approval-audit-service.js";
 import { ArtifactService } from "../services/artifact-service.js";
 import { AttachmentStore } from "../services/attachment-store.js";
 import { BundledTabbyMediaRunner } from "../services/bundled-tabby-media-runner.js";
@@ -100,6 +101,7 @@ export interface ControllerContainer {
   localUserService: LocalUserService;
   desktopLocalService: DesktopLocalService;
   analyticsService: AnalyticsService;
+  approvalAuditService: ApprovalAuditService;
   artifactService: ArtifactService;
   attachmentStore: AttachmentStore;
   templateService: TemplateService;
@@ -184,6 +186,35 @@ export async function createContainer(): Promise<ControllerContainer> {
   const watchTrigger = new OpenClawWatchTrigger(env, openclawProcess);
   const wsClient = new OpenClawWsClient(env);
   const gatewayService = new OpenClawGatewayService(wsClient);
+  const approvalAuditService = new ApprovalAuditService(
+    path.join(env.nexuHomeDir, "approval-audit-ledger.json"),
+  );
+  await approvalAuditService.markInterruptedTeamApprovals();
+  const observeApprovalEvent = (event: string, operation: Promise<boolean>) => {
+    void operation.catch((error) => {
+      logger.warn(
+        {
+          event,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "approval_audit_event_persist_failed",
+      );
+    });
+  };
+  for (const kind of ["exec", "plugin"] as const) {
+    wsClient.on(`${kind}.approval.requested`, (payload) => {
+      observeApprovalEvent(
+        `${kind}.approval.requested`,
+        approvalAuditService.observeGatewayRequested(kind, payload),
+      );
+    });
+    wsClient.on(`${kind}.approval.resolved`, (payload) => {
+      observeApprovalEvent(
+        `${kind}.approval.resolved`,
+        approvalAuditService.observeGatewayResolved(kind, payload),
+      );
+    });
+  }
   // Tracks in-flight webchat turns per session so the chat send path can reject
   // fast (friendly "busy") instead of submitting a second turn that would time
   // out on OpenClaw's session file lock. Fed by the gateway's chat lifecycle
@@ -253,6 +284,14 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawSyncService,
     sessionsRuntime,
   );
+  wsClient.onConnected(() => {
+    void scheduleService.handleGatewayConnected().catch((error) => {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        "schedule_reconnect_reconciliation_failed",
+      );
+    });
+  });
   const openclawAuthService = new OpenClawAuthService(env, authProfilesStore);
   const analyticsService = new AnalyticsService(
     env,
@@ -266,6 +305,7 @@ export async function createContainer(): Promise<ControllerContainer> {
     openclawProcess,
   );
   modelProviderService.setAuthService(openclawAuthService);
+  modelProviderService.setGatewayService(gatewayService);
   const runtimeModelStateService = new RuntimeModelStateService(env);
   const quotaFallbackService = new QuotaFallbackService(
     configStore,
@@ -338,7 +378,11 @@ export async function createContainer(): Promise<ControllerContainer> {
 
   // AgentService is used by both the return block and the experthub install
   // flow. Construct it once so both paths share the same cache/syncAll semantics.
-  const agentService = new AgentService(configStore, openclawSyncService);
+  const agentService = new AgentService(
+    configStore,
+    openclawSyncService,
+    openclawProcess,
+  );
 
   const teamWorkflowLedgerStore = new TeamWorkflowLedgerStore(
     env.teamWorkflowDbPath,
@@ -487,6 +531,8 @@ export async function createContainer(): Promise<ControllerContainer> {
     readSessionEntry: (botId, sessionKey) =>
       readSubagentSessionEntry(env.openclawStateDir, botId, sessionKey),
     readAssistantReply: (sessionFile) => readLastAssistantReply(sessionFile),
+    approvalAudit: approvalAuditService,
+    getReviewerName: async () => (await configStore.getLocalProfile()).name,
     ensureTeamMembers: async (teamId, memberSlugs) => {
       const team = teamLedgerStore.get(teamId);
       if (!team) {
@@ -756,7 +802,11 @@ export async function createContainer(): Promise<ControllerContainer> {
     agentService,
     channelService,
     channelFallbackService,
-    sessionService: new SessionService(sessionsRuntime, gatewayService),
+    sessionService: new SessionService(
+      sessionsRuntime,
+      gatewayService,
+      sessionRunRegistry,
+    ),
     runtimeConfigService: new RuntimeConfigService(
       configStore,
       openclawSyncService,
@@ -772,6 +822,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       openclawProcess,
     ),
     analyticsService,
+    approvalAuditService,
     artifactService: new ArtifactService(artifactsStore),
     attachmentStore,
     templateService: new TemplateService(configStore, openclawSyncService),

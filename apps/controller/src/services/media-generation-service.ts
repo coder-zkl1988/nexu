@@ -180,11 +180,17 @@ export class MediaGenerationService {
 
     const count = input.count ?? 1;
     const tabbyMediaRunner = this.deps.tabbyMediaRunner;
+    const tabbyImageModel =
+      input.model === "tabby-image"
+        ? "tabby-image-pro"
+        : input.model === "tabby-image-free"
+          ? "tabby-image-flash"
+          : input.model;
     const canUseBundledTabbyImage =
       tabbyMediaRunner !== undefined &&
-      (input.model === undefined ||
-        input.model === "tabby-image" ||
-        input.model === "tabby-image-free") &&
+      (tabbyImageModel === undefined ||
+        tabbyImageModel === "tabby-image-pro" ||
+        tabbyImageModel === "tabby-image-flash") &&
       (!input.referenceImages || input.referenceImages.length === 0) &&
       input.sourceImage === undefined &&
       input.maskDataUrl === undefined;
@@ -194,7 +200,7 @@ export class MediaGenerationService {
           botId,
           prompt: input.prompt,
           count,
-          ...(input.model !== undefined ? { model: input.model } : {}),
+          ...(tabbyImageModel !== undefined ? { model: tabbyImageModel } : {}),
           ...(input.quality !== undefined ? { quality: input.quality } : {}),
           ...(input.aspectRatio !== undefined
             ? { aspectRatio: input.aspectRatio }

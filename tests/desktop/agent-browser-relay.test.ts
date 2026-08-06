@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  */
 
 const controlWindow = vi.fn();
+const isAgentSharingAllowed = vi.fn(() => true);
 const ensureAgentTab = vi.fn();
 const isAgentTabPanelHosted = vi.fn(() => true);
 const waitForAgentTabPanel = vi.fn(async () => true);
@@ -25,6 +26,8 @@ vi.mock("../../apps/desktop/main/services/embedded-browser-manager", () => ({
   embeddedBrowserManager: {
     ensureAgentTab: (...args: unknown[]) => ensureAgentTab(...args),
     controlWindow: (...args: unknown[]) => controlWindow(...args),
+    isAgentSharingAllowed: (...args: unknown[]) =>
+      isAgentSharingAllowed(...args),
     isAgentTabPanelHosted: (...args: unknown[]) =>
       isAgentTabPanelHosted(...args),
     waitForAgentTabPanel: (...args: unknown[]) => waitForAgentTabPanel(...args),
@@ -153,6 +156,8 @@ afterEach(async () => {
     await cleanups.pop()?.();
   }
   controlWindow.mockReset();
+  isAgentSharingAllowed.mockReset();
+  isAgentSharingAllowed.mockReturnValue(true);
   ensureAgentTab.mockReset();
   isAgentTabPanelHosted.mockReset().mockReturnValue(true);
   waitForAgentTabPanel.mockReset().mockResolvedValue(true);
@@ -187,6 +192,34 @@ describe("AgentBrowserRelay", () => {
       requestId: "r1",
       outcome: { ok: true, snapshot: { url: "https://example.com/" } },
     });
+  });
+
+  it("rejects browser commands after the user revokes sharing", async () => {
+    const controller = await startFakeController();
+    const relay = createRelay(controller.port);
+    cleanups.push(
+      () => controller.close(),
+      () => relay.stop(),
+    );
+    isAgentSharingAllowed.mockReturnValue(false);
+
+    relay.start();
+    await waitUntil(() => controller.subscribers() === 1, "subscription");
+    controller.send({
+      requestId: "revoked-1",
+      sessionKey: "agent:bot:main",
+      command: { action: "snapshot" },
+    });
+
+    await waitUntil(() => controller.results.length === 1, "result POST");
+    expect(controller.results[0]).toMatchObject({
+      requestId: "revoked-1",
+      outcome: {
+        ok: false,
+        error: expect.stringContaining("revoked by the user"),
+      },
+    });
+    expect(controlWindow).not.toHaveBeenCalled();
   });
 
   it("does not report an opened page until the browser panel is visible", async () => {

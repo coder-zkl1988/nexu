@@ -1,6 +1,8 @@
 import type { BotResponse, CreateBotInput, UpdateBotInput } from "@nexu/shared";
 import { HTTPException } from "hono/http-exception";
 import { resolveDefaultBotFromConfig } from "../lib/default-bot.js";
+import { logger } from "../lib/logger.js";
+import type { OpenClawProcessManager } from "../runtime/openclaw-process.js";
 import type { NexuConfigStore } from "../store/nexu-config-store.js";
 import type { OpenClawSyncService } from "./openclaw-sync-service.js";
 
@@ -8,6 +10,8 @@ export class AgentService {
   constructor(
     private readonly configStore: NexuConfigStore,
     private readonly syncService: OpenClawSyncService,
+    /** Optional: host-execution changes skip their restart when absent. */
+    private readonly openclawProcess?: OpenClawProcessManager,
   ) {}
 
   async listBots() {
@@ -26,9 +30,28 @@ export class AgentService {
   }
 
   async updateBot(botId: string, input: UpdateBotInput) {
+    const previous = await this.configStore.getBot(botId);
     const bot = await this.configStore.updateBot(botId, input);
     if (bot !== null) {
       await this.syncService.syncAll();
+      // The guard captures `api.pluginConfig` once at registration, so writing
+      // the new value into openclaw.json is not enough — without a restart the
+      // switch silently does nothing until the next one.
+      const hostExecutionChanged =
+        previous !== null &&
+        (previous.hostExecution.channels !== bot.hostExecution.channels ||
+          previous.hostExecution.automations !== bot.hostExecution.automations);
+      if (hostExecutionChanged) {
+        if (!this.openclawProcess) {
+          // Without the restart the switch is a silent no-op: the guard read
+          // its policy once, at plugin registration.
+          logger.error(
+            { botId },
+            "host_execution_change_without_process_manager",
+          );
+        }
+        await this.openclawProcess?.restart("host-execution-changed");
+      }
     }
     return bot;
   }

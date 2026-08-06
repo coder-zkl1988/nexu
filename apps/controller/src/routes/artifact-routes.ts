@@ -96,9 +96,26 @@ export function registerArtifactRoutes(
       });
       if (!file) return c.text("Not found", 404);
 
+      // These files are agent-written and served from the control plane's own
+      // origin, so a script in them is otherwise a same-origin caller of the
+      // control plane and can start an agent run. Scope `connect-src` to the
+      // preview subtree instead of denying it outright: generated pages
+      // routinely fetch their own data files, and `'self'` would put the whole
+      // API back in reach. Falls back to `'none'` when the host header is
+      // unusable — a preview that cannot fetch beats one that can POST to
+      // /api/v1/chat. A document-level `sandbox` is the wrong tool here: it
+      // would put the page in an opaque origin and its own subresource loads
+      // would then be rejected by the loopback guard as cross-site.
+      const previewHost = c.req.header("host");
+      const connectSrc =
+        previewHost && /^[\w.-]+(:\d+)?$/.test(previewHost)
+          ? `http://${previewHost}/api/v1/artifacts/local-preview/`
+          : "'none'";
+
       return c.body(file.data, 200, {
         "Access-Control-Allow-Origin": "*",
         "Cache-Control": "no-store",
+        "Content-Security-Policy": `connect-src ${connectSrc}; form-action 'none'; base-uri 'none'`,
         "Content-Type": file.contentType,
         "X-Content-Type-Options": "nosniff",
       });

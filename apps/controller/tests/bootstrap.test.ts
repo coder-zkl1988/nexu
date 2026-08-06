@@ -37,7 +37,9 @@ describe("bootstrapController", () => {
         prepare: vi.fn().mockResolvedValue(undefined),
       },
       openclawSyncService: {
-        ensureRuntimeModelPlugin: vi.fn().mockResolvedValue(undefined),
+        ensureRuntimeModelPlugin: vi
+          .fn()
+          .mockResolvedValue({ changedPluginIds: new Set<string>() }),
         syncAllImmediate,
         beginSettling: vi.fn(),
       },

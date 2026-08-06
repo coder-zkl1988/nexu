@@ -268,9 +268,10 @@ export class OpenClawSyncService {
     return this.doSync();
   }
 
-  async ensureRuntimeModelPlugin(): Promise<void> {
-    await this.runtimePluginWriter.ensurePlugins();
+  async ensureRuntimeModelPlugin(): Promise<{ changedPluginIds: Set<string> }> {
+    const { changedPluginIds } = await this.runtimePluginWriter.ensurePlugins();
     await this.runtimeModelWriter.writeFallback();
+    return { changedPluginIds };
   }
 
   /**

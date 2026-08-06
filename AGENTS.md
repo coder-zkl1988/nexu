@@ -251,6 +251,10 @@ See `ARCHITECTURE.md` for the full bird's-eye view. Key points:
 | Desktop runtime guide | `specs/guides/desktop-runtime-guide.md` |
 | Desktop update testing guide | `specs/guides/desktop-update-testing.md` |
 | Security posture | `specs/SECURITY.md` |
+| Host-execution origin gate & write/read fence | `apps/controller/static/runtime-plugins/nexu-toolcall-guard/index.js` |
+| Desktop session-key shape (shared with the guard) | `apps/controller/src/lib/desktop-session-key.ts` |
+| Credential encryption at rest | `apps/controller/src/store/secret-box.ts` |
+| Per-bot host execution setting | `packages/shared/src/schemas/bot.ts`, `apps/web/src/pages/host-execution-settings-section.tsx` |
 | Reliability | `specs/RELIABILITY.md` |
 | Product model | `specs/PRODUCT_SENSE.md` |
 | Quality signals | `specs/QUALITY_SCORE.md` |

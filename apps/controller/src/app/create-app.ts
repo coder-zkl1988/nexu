@@ -17,10 +17,12 @@ import { registerDeviceTaskHistoryRoutes } from "../routes/device-task-history-r
 import { buildExperthubRoutes } from "../routes/experthub-routes.js";
 import { registerIntegrationRoutes } from "../routes/integration-routes.js";
 import { registerMediaRoutes } from "../routes/media-routes.js";
+import { registerMemoryRoutes } from "../routes/memory-routes.js";
 import { registerMiscCompatRoutes } from "../routes/misc-compat-routes.js";
 import { registerModelRoutes } from "../routes/model-routes.js";
 import { registerProviderOAuthRoutes } from "../routes/provider-oauth-routes.js";
 import { registerRuntimeConfigRoutes } from "../routes/runtime-config-routes.js";
+import { registerRuntimeOperationsRoutes } from "../routes/runtime-operations-routes.js";
 import { registerScheduleRoutes } from "../routes/schedule-routes.js";
 import { registerSessionRoutes } from "../routes/session-routes.js";
 import { registerSkillhubRoutes } from "../routes/skillhub-routes.js";
@@ -126,6 +128,8 @@ export function createApp(container: ControllerContainer) {
   );
   registerUserRoutes(app, container);
   registerRuntimeConfigRoutes(app, container);
+  registerRuntimeOperationsRoutes(app, container);
+  registerMemoryRoutes(app, container);
   registerWorkspaceTemplateRoutes(app, container);
   registerDeviceTaskHistoryRoutes(app, container);
   registerDeviceControlRoutes(app, container);

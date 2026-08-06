@@ -29,7 +29,7 @@ function printHelp() {
 Options:
   -p, --prompt                  Image description (required)
   -f, --filename                Output filename (required)
-      --model                   tabby-image or tabby-image-free
+      --model                   tabby-image-pro or tabby-image-flash
       --size                    GPT: auto/1K/2K/3K/4K or WIDTHxHEIGHT;
                                 Agnes: 1K/2K/3K/4K or WIDTHxHEIGHT
       --ratio                   1:1, 3:4, 4:3, 16:9, 9:16, 2:3, 3:2, 21:9

@@ -1,7 +1,7 @@
 {
   "id": "nexu-toolcall-guard",
   "name": "Nexu Tool Call Guard",
-  "description": "Restricts local browser and computer automation to desktop main sessions, and breaks infinite tool-call retry loops when a model repeatedly fails argument validation.",
+  "description": "Restricts local browser and computer automation to desktop main sessions, keeps host command execution out of channel- and automation-driven runs, fences writes to runtime-critical paths and reads of credential paths, and breaks infinite tool-call retry loops when a model repeatedly fails argument validation.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -9,6 +9,60 @@
       "threshold": {
         "type": "number",
         "description": "Consecutive same-tool validation failures (with no argument progress) before further calls are blocked. Minimum 2, default 3."
+      },
+      "fence": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Roots that no session may write to through file tools. Falls back to OPENCLAW_STATE_DIR / NEXU_HOME when absent.",
+        "properties": {
+          "stateDir": {
+            "type": "string",
+            "description": "OpenClaw state directory. Its extensions/, openclaw.json, and skills/ are fenced."
+          },
+          "nexuHome": {
+            "type": "string",
+            "description": "Nexu home directory holding user config, ledgers, and compiled snapshots."
+          },
+          "extraRoots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional absolute paths to fence."
+          },
+          "userSkillsDir": {
+            "type": "string",
+            "description": "Directory of user-authored skills that the runtime hot-loads. Defaults to ~/.agents/skills."
+          }
+        }
+      },
+      "hostExecution": {
+        "type": "object",
+        "description": "Per-bot opt-out from the default host-execution restriction, keyed by bot id. Only bots that changed a default are present.",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "channels": {
+              "type": "string",
+              "enum": [
+                "restricted",
+                "host"
+              ]
+            },
+            "automations": {
+              "type": "string",
+              "enum": [
+                "restricted",
+                "host"
+              ]
+            }
+          }
+        }
+      },
+      "controllerUrl": {
+        "type": "string",
+        "description": "Loopback origin of the Nexu controller, used to report automation blocks so the owning schedule can surface them."
       }
     }
   },

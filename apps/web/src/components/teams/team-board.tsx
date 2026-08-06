@@ -95,7 +95,11 @@ export function TeamBoard({ teamId }: { teamId: string }) {
     return <p className="text-sm text-destructive">{t("teams.boardError")}</p>;
   }
 
-  const cards = data.cards;
+  const cards: TeamBoardCard[] = data.cards.map((card) => ({
+    ...card,
+    parentIds: card.parentIds ?? [],
+    childIds: card.childIds ?? [],
+  }));
   const leadBotId = team?.leadBotId ?? null;
   // Roll the parent orchestration card up from its children (see
   // boardColumnKeyForCard). Only sound when the board holds exactly one run's

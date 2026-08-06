@@ -6,10 +6,20 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { A2UISidebarProvider } from "../src/lib/a2ui/a2ui-sidebar-context";
+import {
+  getBrowserPanelState,
+  openBrowserPanel,
+  resetBrowserPanelForTests,
+} from "../src/lib/browser/browser-panel-store";
+import {
+  __resetCanvasForTests,
+  setPanelOpen,
+} from "../src/lib/canvas/canvas-store";
 import { SessionsPage } from "../src/pages/sessions";
 
 // jsdom doesn't implement layout, so Element.scrollIntoView is absent.
@@ -86,6 +96,16 @@ vi.mock("@/lib/api/event-source", () => ({
 
 const postApiV1ChatLocal = vi.fn();
 const postApiV1ChatSteer = vi.fn();
+const toastInfo = vi.hoisted(() => vi.fn());
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    info: toastInfo,
+    success: vi.fn(),
+  },
+}));
+
 vi.mock("../lib/api/sdk.gen", () => ({
   getApiV1SessionsById: vi.fn(async () => ({
     data: {
@@ -125,6 +145,21 @@ vi.mock("../lib/api/sdk.gen", () => ({
   })),
   getApiV1ChatRunStatus: vi.fn(async () => ({ data: { busy: false } })),
   getApiV1Artifacts: vi.fn(async () => ({ data: { artifacts: [] } })),
+  getApiInternalDesktopReady: vi.fn(async () => ({
+    data: {
+      ready: true,
+      degraded: false,
+      status: "active",
+      controlPlane: { phase: "ready", wsConnected: true },
+    },
+  })),
+  getApiV1Teams: vi.fn(async () => ({ data: { teams: [] } })),
+  getApiV1TeamsByIdWorkflowApprovals: vi.fn(async () => ({
+    data: { approvals: [] },
+  })),
+  postApiV1TeamsByIdWorkflowsByWorkflowIdRunsByRunIdStepsByStepIdApprove: vi.fn(
+    async () => ({ data: { ok: true } }),
+  ),
   postApiV1ChatLocal: (...args: unknown[]) => postApiV1ChatLocal(...args),
   postApiV1ChatSteer: (...args: unknown[]) => postApiV1ChatSteer(...args),
   postApiV1ChatCancel: vi.fn(async () => ({ data: undefined })),
@@ -196,6 +231,9 @@ describe("SessionsPage steer handoff (integration)", () => {
     invokeDesktopHost.mockReset();
     postApiV1ChatLocal.mockReset();
     postApiV1ChatSteer.mockReset();
+    toastInfo.mockReset();
+    resetBrowserPanelForTests();
+    __resetCanvasForTests();
   });
 
   afterEach(() => {
@@ -303,5 +341,110 @@ describe("SessionsPage steer handoff (integration)", () => {
         "Continue typing to guide the task or ask about progress",
       ),
     ).toBeNull();
+  });
+
+  it("does not let Run center replace a browser owned by the active agent", async () => {
+    openBrowserPanel("agent:bot-1:main", true);
+    const { container } = renderSession();
+
+    const toggle = await screen.findByRole("button", {
+      name: "sessions.operations.title",
+    });
+    fireEvent.click(toggle);
+
+    expect(getBrowserPanelState()).toMatchObject({
+      isOpen: true,
+      openedByAgent: true,
+      sessionKey: "agent:bot-1:main",
+    });
+    expect(
+      container.querySelector('[data-session-operations="true"]'),
+    ).toBeNull();
+    expect(toastInfo).toHaveBeenCalledWith("sessions.operations.browserBusy");
+  });
+
+  it("hands the workbench between Run center and Browser without overlap", async () => {
+    openBrowserPanel("agent:bot-1:main");
+    const { container } = renderSession();
+
+    const toggle = await screen.findByRole("button", {
+      name: "sessions.operations.title",
+    });
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-session-operations="true"]'),
+      ).not.toBeNull(),
+    );
+    expect(getBrowserPanelState().isOpen).toBe(false);
+
+    act(() => openBrowserPanel("agent:bot-1:main", true));
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-session-operations="true"]'),
+      ).toBeNull(),
+    );
+    expect(getBrowserPanelState()).toMatchObject({
+      isOpen: true,
+      openedByAgent: true,
+    });
+  });
+
+  it("keeps every workbench toggle visible while Run center is open", async () => {
+    const { container } = renderSession();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "sessions.operations.title",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-session-operations="true"]'),
+      ).not.toBeNull(),
+    );
+
+    const toolbar = container.querySelector(
+      '[data-session-workbench-toggles="true"]',
+    );
+    expect(toolbar).not.toBeNull();
+    expect(
+      Array.from(
+        toolbar?.querySelectorAll(
+          "[data-session-browser-toggle], [data-session-canvas-toggle], [data-session-operations-toggle]",
+        ) ?? [],
+      ).map((button) =>
+        button.hasAttribute("data-session-browser-toggle")
+          ? "browser"
+          : button.hasAttribute("data-session-canvas-toggle")
+            ? "canvas"
+            : "operations",
+      ),
+    ).toEqual(["browser", "canvas", "operations"]);
+  });
+
+  it("closes Run center when Canvas claims the shared workbench", async () => {
+    const { container } = renderSession();
+
+    const toggle = await screen.findByRole("button", {
+      name: "sessions.operations.title",
+    });
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-session-operations="true"]'),
+      ).not.toBeNull(),
+    );
+
+    act(() => setPanelOpen(true));
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-session-operations="true"]'),
+      ).toBeNull(),
+    );
   });
 });

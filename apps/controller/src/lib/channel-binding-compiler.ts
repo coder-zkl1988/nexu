@@ -121,6 +121,8 @@ export function compileChannelsConfig(params: {
     const secret = buildSecretLookup(params.secrets, channel.id);
 
     if (channel.channelType === "slack") {
+      const capabilities = channel.slackCapabilities;
+      const streamingMode = capabilities?.streamingMode ?? "partial";
       slackAccounts[channel.accountId] = {
         enabled: true,
         botToken: secret("botToken"),
@@ -130,8 +132,21 @@ export function compileChannelsConfig(params: {
           ? undefined
           : `/slack/events/${channel.accountId}`,
         appToken: useSlackSocketMode ? socketAppToken : undefined,
-        streaming: "partial",
-        replyToMode: "off",
+        streaming: {
+          mode: streamingMode,
+          nativeTransport: true,
+          ...(streamingMode === "progress"
+            ? {
+                progress: {
+                  nativeTaskCards: capabilities?.nativeTaskCards ?? false,
+                  render: capabilities?.nativeTaskCards ? "rich" : "text",
+                  toolProgress: true,
+                  commandText: "status",
+                },
+              }
+            : {}),
+        },
+        replyToMode: capabilities?.replyToMode ?? "off",
         typingReaction: "hourglass_flowing_sand",
         groupPolicy: "open",
         dmPolicy: "open",
@@ -235,6 +250,7 @@ export function compileChannelsConfig(params: {
           ? ["*"]
           : perms.allowFrom
         : ["*"];
+      const capabilities = channel.feishuCapabilities;
 
       feishuAccounts[channel.accountId] = {
         enabled: channel.status === "connected",
@@ -245,6 +261,17 @@ export function compileChannelsConfig(params: {
         groupPolicy,
         allowFrom,
         ...(perms ? { requireMention: perms.requireMention } : {}),
+        ...(capabilities
+          ? {
+              streaming: capabilities.streaming,
+              renderMode: capabilities.renderMode,
+              replyInThread: capabilities.replyInThread
+                ? ("enabled" as const)
+                : ("disabled" as const),
+              mediaMaxMb: capabilities.mediaMaxMb,
+              tts: { auto: capabilities.voiceReplyMode },
+            }
+          : {}),
         ...(connectionMode === "webhook"
           ? {
               webhookPath: `/feishu/events/${channel.accountId}`,

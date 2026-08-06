@@ -43,6 +43,7 @@ export const hostInvokeChannels = [
   "desktop:deskpet-activity",
   "desktop:deskpet-move-window",
   "desktop:deskpet-set-mouse-events",
+  "desktop:get-quick-chat-context",
   "desktop:report-error",
   "desktop:get-rewards-status",
   "desktop:set-reward-balance",
@@ -114,6 +115,14 @@ export type DesktopBrowserControl =
     }
   | { action: "hide" | "dispose" }
   | {
+      action:
+        | "center-state"
+        | "clear-downloads"
+        | "revoke-agent"
+        | "resume-agent";
+    }
+  | { action: "show-download"; downloadId: string }
+  | {
       action: "choose-viewport";
       tabId: string;
       currentMode: DesktopBrowserViewportMode;
@@ -152,6 +161,27 @@ export type DesktopBrowserControlResult =
   | { kind: "ok" }
   | { kind: "viewport"; mode: DesktopBrowserViewportMode }
   | { kind: "history"; artifactId: string | null }
+  | {
+      kind: "center-state";
+      agentSharingEnabled: boolean;
+      tabs: Array<{
+        id: string;
+        title: string;
+        url: string;
+        loading: boolean;
+        agentControlled: boolean;
+      }>;
+      downloads: Array<{
+        id: string;
+        filename: string;
+        url: string;
+        state: "progressing" | "completed" | "cancelled" | "interrupted";
+        receivedBytes: number;
+        totalBytes: number;
+        startedAt: number;
+        completedAt?: number;
+      }>;
+    }
   | {
       kind: "state";
       url: string;
@@ -267,9 +297,11 @@ export type HostInvokePayloadMap = {
   };
   "desktop:deskpet-send-message": {
     text: string;
+    attachments?: DesktopQuickChatAttachment[];
   };
   "desktop:deskpet-start-chat": {
     text: string;
+    attachments?: DesktopQuickChatAttachment[];
   };
   "desktop:deskpet-register-current-chat": {
     botId: string;
@@ -278,6 +310,7 @@ export type HostInvokePayloadMap = {
   };
   "desktop:deskpet-reply-current-chat": {
     text: string;
+    attachments?: DesktopQuickChatAttachment[];
   };
   "desktop:deskpet-open-current-chat":
     | {
@@ -297,6 +330,10 @@ export type HostInvokePayloadMap = {
   "desktop:deskpet-set-mouse-events": {
     ignore: boolean;
     forward?: boolean;
+  };
+  "desktop:get-quick-chat-context": {
+    includeSelectedText: boolean;
+    includeScreenshot: boolean;
   };
   "desktop:report-error": {
     area: string;
@@ -634,6 +671,11 @@ export type HostInvokeResultMap = {
   "desktop:deskpet-set-mouse-events": {
     ok: boolean;
   };
+  "desktop:get-quick-chat-context": {
+    selectedText: string | null;
+    selectedTextSource: "selection" | "clipboard" | null;
+    screenshot: DesktopQuickChatAttachment | null;
+  };
   "desktop:report-error": { reported: boolean };
   "desktop:get-rewards-status": {
     cloudBalance?: {
@@ -784,6 +826,16 @@ export type DesktopDeskpetSize = "small" | "medium" | "large";
 
 export type DesktopDeskpetMoodSource = "auto" | "manual" | "runtime";
 
+export type DesktopQuickChatAttachment = {
+  type: "image";
+  content: string;
+  metadata: {
+    mimeType: "image/png";
+    filename: string;
+    size: number;
+  };
+};
+
 export type HostDesktopCommand =
   | {
       /**
@@ -864,6 +916,9 @@ export type HostDesktopCommand =
   | {
       type: "deskpet:set-size";
       size: DesktopDeskpetSize;
+    }
+  | {
+      type: "deskpet:open-composer";
     }
   | {
       type: "desktop:shell-preferences-updated";

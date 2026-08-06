@@ -109,6 +109,46 @@ describe("OpenClawGatewayService", () => {
     );
   });
 
+  it("queries the runtime-authenticated model catalog", async () => {
+    const request = vi.fn(async () => ({
+      models: [
+        {
+          id: "tabby-ultra",
+          name: "tabby-ultra",
+          provider: "link",
+          api: "openai-completions",
+          available: true,
+          contextWindow: 258_000,
+          reasoning: false,
+          input: ["text", "image"],
+          compat: { supportsStore: false },
+        },
+      ],
+    }));
+    const service = new OpenClawGatewayService({ request } as never);
+
+    await expect(service.listModels("all")).resolves.toEqual({
+      models: [
+        expect.objectContaining({
+          id: "tabby-ultra",
+          provider: "link",
+          available: true,
+          contextWindow: 258_000,
+        }),
+      ],
+    });
+    expect(request).toHaveBeenCalledWith("models.list", { view: "all" });
+  });
+
+  it("rejects the obsolete key-based model catalog contract", async () => {
+    const request = vi.fn(async () => ({
+      models: [{ key: "link/tabby-ultra", available: true }],
+    }));
+    const service = new OpenClawGatewayService({ request } as never);
+
+    await expect(service.listModels("configured")).rejects.toThrow();
+  });
+
   it("replaces the active run through OpenClaw's sessions.steer RPC", async () => {
     const request = vi.fn(async () => ({
       runId: "steer-command-1",
@@ -132,5 +172,45 @@ describe("OpenClawGatewayService", () => {
       }),
       { timeoutMs: 130_000 },
     );
+  });
+
+  it("uses the OpenClaw operator RPCs for desktop operations", async () => {
+    const request = vi.fn(async () => ({}));
+    const service = new OpenClawGatewayService({ request } as never);
+
+    await service.listExecApprovals();
+    await service.listPluginApprovals();
+    await service.resolveApproval({
+      id: "approval-1",
+      kind: "exec",
+      decision: "allow-once",
+    });
+    await service.listTasks({ sessionKey: "agent:bot-1:main", limit: 20 });
+    await service.cancelTask({ taskId: "task-1", reason: "Stopped by user" });
+    await service.getSessionUsage({
+      key: "agent:bot-1:main",
+      includeContextWeight: true,
+    });
+    await service.getProviderUsage();
+    await service.getMemoryStatus("bot-1");
+
+    expect(request.mock.calls).toEqual([
+      ["exec.approval.list", {}],
+      ["plugin.approval.list", {}],
+      ["exec.approval.resolve", { id: "approval-1", decision: "allow-once" }],
+      ["tasks.list", { sessionKey: "agent:bot-1:main", limit: 20 }],
+      ["tasks.cancel", { taskId: "task-1", reason: "Stopped by user" }],
+      [
+        "sessions.usage",
+        {
+          key: "agent:bot-1:main",
+          includeContextWeight: true,
+          groupBy: "instance",
+          limit: 1,
+        },
+      ],
+      ["usage.status", {}],
+      ["doctor.memory.status", { agentId: "bot-1" }],
+    ]);
   });
 });

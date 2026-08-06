@@ -73,9 +73,9 @@ const MODEL_CAPABILITIES: Record<
   // API — Codex enforces its own product-level context window, which is
   // smaller than the API's published 1,050,000. Use the Codex window, not the
   // API one, or these overflow exactly like tabby-mini did before.
-  "tabby-ultra": { contextWindow: 384000, maxTokens: 128000 }, // gpt-5.5 via Codex — Codex window is 400,000, not the API's 1,050,000
-  "tabby-pro": { contextWindow: 384000, maxTokens: 128000 }, // gpt-5.4 via Codex — same 400,000 Codex window assumed (same subscription/product path as 5.5)
-  "tabby-mini": { contextWindow: 384000, maxTokens: 32768 }, // gpt-5.4-mini via Codex — API cap (400,000) and assumed Codex cap coincide
+  "tabby-ultra": { contextWindow: 258000, maxTokens: 128000 }, // gpt-5.5 via Codex — effective product window capped at 258K
+  "tabby-pro": { contextWindow: 258000, maxTokens: 128000 }, // gpt-5.4 via Codex — effective product window capped at 258K
+  "tabby-mini": { contextWindow: 258000, maxTokens: 32768 }, // gpt-5.4-mini via Codex — effective product window capped at 258K
   "tabby-fast": { contextWindow: 983040, maxTokens: 384000 }, // deepseek-v4-pro — official docs: 1,000,000 ctx (was wrongly 1,048,576, slightly over cap)
   "tabby-free": { contextWindow: 240000, maxTokens: 8192 }, // agnes-2.0-flash — docs conflict (512K vs 256K); using the more conservative 256K with margin
   "tabby-phone": { contextWindow: 245760, maxTokens: 8192 }, // stepfun-3.7-flash — confirmed 256,000 ctx, with margin
@@ -233,7 +233,11 @@ function compileModelsConfig(
     }
 
     const apiKey = resolveModelProviderApiKey(descriptor);
-    if (apiKey === null && descriptor.provider.auth !== "oauth") {
+    if (
+      apiKey === null &&
+      descriptor.provider.auth !== "oauth" &&
+      descriptor.provider.auth !== "aws-sdk"
+    ) {
       continue;
     }
 
@@ -246,6 +250,9 @@ function compileModelsConfig(
     providers[descriptor.runtimeKey] = {
       baseUrl: descriptor.provider.baseUrl,
       ...(hasUsableApiKey ? { apiKey } : {}),
+      ...(descriptor.provider.auth === "aws-sdk"
+        ? { auth: "aws-sdk" as const }
+        : {}),
       api: descriptor.apiKind,
       ...(descriptor.authHeader ? { authHeader: true } : {}),
       ...(descriptor.defaultHeaders
@@ -477,13 +484,22 @@ function compilePlugins(
   env: ControllerEnv,
   hasTeams: boolean,
 ): OpenClawConfig["plugins"] {
-  const resolvedMiniMaxOauth = listModelProviderRuntimeDescriptors(config).some(
+  const modelProviderDescriptors = listModelProviderRuntimeDescriptors(config);
+  const resolvedMiniMaxOauth = modelProviderDescriptors.some(
     (descriptor) =>
       descriptor.providerId === "minimax" &&
       descriptor.provider.enabled &&
       descriptor.provider.auth === "oauth" &&
       descriptor.legacyOauthCredential !== null,
   );
+  const bedrockDiscovery = config.models.bedrockDiscovery;
+  const resolvedAmazonBedrock =
+    bedrockDiscovery?.enabled === true ||
+    modelProviderDescriptors.some(
+      (descriptor) =>
+        descriptor.providerId === "amazon-bedrock" &&
+        descriptor.provider.enabled,
+    );
 
   const connectedPluginIds = [
     ...new Set(
@@ -493,56 +509,16 @@ function compilePlugins(
         .filter((pluginId): pluginId is string => pluginId !== null),
     ),
   ];
-  // No prewarmed channel plugins. openclaw-lark/openclaw-weixin used to be
-  // always allowed (+ enabled) so connecting Feishu/WeChat only mutated
-  // channel-level config rather than plugins.allow. But always-loading them
-  // together with the empty placeholder channels blocked controller readiness
-  // for ~120s when no channel was configured. Allow/enable them only when a
-  // matching channel is actually connected (via connectedPluginIds); the first
-  // connect triggers a one-time gateway reload that then converges.
-  const prewarmedChannelPluginIds: string[] = [];
   const analyticsEnabled = config.desktop.analyticsEnabled !== false;
-  const platformPluginIds = [
-    "nexu-runtime-model",
-    "nexu-credit-guard",
-    "nexu-platform-bootstrap",
-    // Always allow langfuse-tracer so analytics preference changes only
-    // toggle its `enabled` flag (hot-reload) instead of mutating
-    // plugins.allow which triggers a full gateway restart (~11s).
-    "langfuse-tracer",
-    "nexu-a2ui",
-    "nexu-toolcall-guard",
-    "find-expert",
-    "nexu-team",
-    "nexu-canvas",
-    "nexu-browser",
-    ...(resolvedMiniMaxOauth ? ["minimax-portal-auth"] : []),
-  ];
-
   const deviceControlEnabled = config.deviceControl.enabled;
-
-  // Sort and dedup defensively so `plugins.allow` is fully deterministic.
-  // Without this, channel reorderings or brief status flaps change the
-  // output order, which OpenClaw treats as a config change and triggers
-  // a SIGUSR1 restart + 11s gateway drain per reload.
-  const allow = Array.from(
-    new Set([
-      ...connectedPluginIds,
-      ...prewarmedChannelPluginIds,
-      ...platformPluginIds,
-      ...(deviceControlEnabled ? ["tabby-control"] : []),
-      // Workboard backs the team task board (decompose / dependencies /
-      // dispatch). Bundled but disabled by default; enabling it adds a
-      // plugin to plugins.allow which triggers a one-time gateway restart.
-      ...(hasTeams ? ["workboard"] : []),
-    ]),
-  ).sort();
 
   return {
     load: {
       paths: [env.openclawExtensionsDir],
     },
-    allow,
+    // Deliberately omit both `allow` and `deny`. OpenClaw then discovers all
+    // installed plugins by default, while `entries` below remains the source
+    // of truth for Nexu-managed plugin settings and explicit enablement.
     entries: {
       ...(connectedPluginIds.includes("openclaw-lark")
         ? {
@@ -645,6 +621,30 @@ function compilePlugins(
         hooks: {
           allowConversationAccess: true,
         },
+        // openclaw.json is written only by the controller and is itself fenced,
+        // so it is the one channel that can hand the guard its policy without
+        // being forgeable by a tool call.
+        config: {
+          controllerUrl: `http://127.0.0.1:${env.port}`,
+          fence: {
+            stateDir: env.openclawStateDir,
+            nexuHome: env.nexuHomeDir,
+          },
+          // Per-bot escape hatch. Only bots that opted out of a default are
+          // emitted, so the common case stays a small object. A bot record
+          // without the field is read as fully restricted rather than throwing:
+          // a compiler that crashes here leaves the runtime with no config at
+          // all, which is a worse outcome than a conservative default.
+          hostExecution: Object.fromEntries(
+            config.bots
+              .filter(
+                (bot) =>
+                  bot.hostExecution?.channels === "host" ||
+                  bot.hostExecution?.automations === "host",
+              )
+              .map((bot) => [bot.id, bot.hostExecution]),
+          ),
+        },
       },
       ...(hasTeams
         ? {
@@ -657,6 +657,16 @@ function compilePlugins(
         ? {
             "minimax-portal-auth": {
               enabled: true,
+            },
+          }
+        : {}),
+      ...(resolvedAmazonBedrock
+        ? {
+            "amazon-bedrock": {
+              enabled: true,
+              ...(bedrockDiscovery
+                ? { config: { discovery: bedrockDiscovery } }
+                : {}),
             },
           }
         : {}),
@@ -697,6 +707,16 @@ export function compileOpenClawConfig(
   const utilityModelId = config.runtime.utilityModelId
     ? resolveModelId(config, env, config.runtime.utilityModelId, oauthState)
     : null;
+  const memoryConfig = config.memory ?? {
+    enabled: true,
+    sources: ["memory" as const],
+    extraPaths: [],
+    syncIntervalMinutes: 5,
+    provider: "none",
+  };
+  const sessionMemoryEnabled = memoryConfig.sources.includes("sessions");
+  const memoryProvider = memoryConfig.provider ?? "none";
+  const semanticMemoryEnabled = memoryProvider !== "none";
   const computerUseEnabled =
     isLocalAutomationPreviewEnabled(env) &&
     config.localAutomation?.computerUse.enabled === true &&
@@ -799,6 +819,28 @@ export function compileOpenClawConfig(
     agents: {
       defaults: {
         model: { primary: defaultModelId },
+        memorySearch: {
+          enabled: memoryConfig.enabled,
+          sources: memoryConfig.sources,
+          experimental: { sessionMemory: sessionMemoryEnabled },
+          // Provider aliases such as `link` reuse the matching compiled model
+          // provider's base URL and credential without duplicating secrets.
+          provider: memoryProvider,
+          ...(semanticMemoryEnabled && memoryConfig.model
+            ? { model: memoryConfig.model }
+            : {}),
+          fallback: "none",
+          ...(memoryConfig.extraPaths.length > 0
+            ? { extraPaths: memoryConfig.extraPaths }
+            : {}),
+          store: {
+            fts: { tokenizer: "trigram" },
+            vector: { enabled: semanticMemoryEnabled },
+          },
+          sync: {
+            intervalMinutes: memoryConfig.syncIntervalMinutes,
+          },
+        },
         // Route short internal tasks (generated session/thread titles) through
         // a cheaper model when configured; OpenClaw falls back to the primary
         // model when absent.
@@ -839,14 +881,12 @@ export function compileOpenClawConfig(
       ),
     },
     tools: {
-      // Host shell execution is only available inside an explicitly enabled
-      // sandbox. Outside one it is denied outright rather than left as an
-      // implicit, unaudited way to drive the user's machine.
-      ...(process.env.SANDBOX_ENABLED === "true"
-        ? {}
-        : { deny: ["exec", "process"] }),
+      profile: "full",
+      // Desktop agents can use the native exec/process surface by default.
+      // Enabling the sandbox changes the execution host, not tool visibility
+      // or approval behavior.
       exec: {
-        security: process.env.SANDBOX_ENABLED === "true" ? "full" : "deny",
+        security: "full",
         ask: "off",
         host: process.env.SANDBOX_ENABLED === "true" ? "sandbox" : "gateway",
       },
@@ -865,7 +905,6 @@ export function compileOpenClawConfig(
         ? {
             sandbox: {
               tools: {
-                allow: [],
                 deny: ["gateway"],
               },
             },

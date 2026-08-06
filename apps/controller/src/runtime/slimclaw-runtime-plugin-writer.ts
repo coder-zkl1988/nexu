@@ -6,6 +6,7 @@ import {
   readFile,
   readdir,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import path, { basename } from "node:path";
@@ -33,7 +34,15 @@ interface BundledPluginInstall {
 export class OpenClawRuntimePluginWriter {
   constructor(private readonly env: ControllerEnv) {}
 
-  async ensurePlugins(): Promise<void> {
+  /**
+   * Materialize runtime plugins into the OpenClaw extensions directory.
+   *
+   * Returns the ids whose materialized copy differed from the shipped source,
+   * i.e. the plugins a already-running OpenClaw is executing a stale version
+   * of. Callers that own the process use this to decide on a restart.
+   */
+  async ensurePlugins(): Promise<{ changedPluginIds: Set<string> }> {
+    const changedPluginIds = new Set<string>();
     await mkdir(this.env.openclawExtensionsDir, { recursive: true });
     const handledPluginIds = await this.ensureBundledPlugins();
     await this.migrateShadowedManagedNpmInstalls(handledPluginIds);
@@ -45,7 +54,7 @@ export class OpenClawRuntimePluginWriter {
       });
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        return;
+        return { changedPluginIds };
       }
       throw err;
     }
@@ -68,6 +77,14 @@ export class OpenClawRuntimePluginWriter {
         this.env.runtimePluginTemplatesDir,
         entry.name,
       );
+      // OpenClaw reads a plugin's source once, at registration. A materialized
+      // copy that differs from the shipped one means the running runtime is
+      // executing stale plugin code — for nexu-toolcall-guard that is a
+      // security control silently running a previous version — so report it
+      // and let the caller decide whether to restart.
+      if (await this.differs(sourceDir, targetDir)) {
+        changedPluginIds.add(entry.name);
+      }
       await cp(sourceDir, targetDir, {
         recursive: true,
         force: true,
@@ -75,6 +92,47 @@ export class OpenClawRuntimePluginWriter {
         filter: (source) => basename(source) !== ".bin",
       });
     }
+
+    return { changedPluginIds };
+  }
+
+  /** Content comparison over the files OpenClaw actually loads. */
+  private async differs(
+    sourceDir: string,
+    targetDir: string,
+  ): Promise<boolean> {
+    let sourceEntries: string[];
+    try {
+      sourceEntries = await readdir(sourceDir);
+    } catch {
+      return false;
+    }
+    for (const name of sourceEntries) {
+      if (name === ".bin") continue;
+      const sourcePath = path.join(sourceDir, name);
+      const targetPath = path.join(targetDir, name);
+      let sourceStat: Awaited<ReturnType<typeof stat>>;
+      try {
+        sourceStat = await stat(sourcePath);
+      } catch {
+        continue;
+      }
+      if (sourceStat.isDirectory()) {
+        if (await this.differs(sourcePath, targetPath)) return true;
+        continue;
+      }
+      try {
+        const [source, target] = await Promise.all([
+          readFile(sourcePath),
+          readFile(targetPath),
+        ]);
+        if (!source.equals(target)) return true;
+      } catch {
+        // Missing or unreadable on the target side counts as a difference.
+        return true;
+      }
+    }
+    return false;
   }
 
   private async ensureBundledPlugins(): Promise<Set<string>> {

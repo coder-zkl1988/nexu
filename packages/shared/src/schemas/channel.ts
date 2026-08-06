@@ -95,6 +95,66 @@ export const feishuPermissionsSchema = z.object({
 export type FeishuPolicy = z.infer<typeof feishuPolicySchema>;
 export type FeishuPermissions = z.infer<typeof feishuPermissionsSchema>;
 
+export const slackReplyToModeSchema = z.enum([
+  "off",
+  "first",
+  "all",
+  "batched",
+]);
+
+export const slackStreamingModeSchema = z.enum([
+  "off",
+  "partial",
+  "block",
+  "progress",
+]);
+
+export const slackChannelCapabilitiesSchema = z.object({
+  replyToMode: slackReplyToModeSchema.default("off"),
+  streamingMode: slackStreamingModeSchema.default("partial"),
+  nativeTaskCards: z.boolean().default(false),
+});
+
+export const feishuRenderModeSchema = z.enum(["auto", "raw", "card"]);
+export const feishuVoiceReplyModeSchema = z.enum([
+  "off",
+  "always",
+  "tagged",
+  "inbound",
+]);
+
+export const feishuChannelCapabilitiesSchema = z.object({
+  streaming: z.boolean().default(true),
+  renderMode: feishuRenderModeSchema.default("card"),
+  replyInThread: z.boolean().default(false),
+  voiceReplyMode: feishuVoiceReplyModeSchema.default("off"),
+  mediaMaxMb: z.number().int().min(1).default(30),
+});
+
+export const updateChannelCapabilitiesSchema = z.discriminatedUnion(
+  "channelType",
+  [
+    z.object({
+      channelType: z.literal("slack"),
+      settings: slackChannelCapabilitiesSchema,
+    }),
+    z.object({
+      channelType: z.literal("feishu"),
+      settings: feishuChannelCapabilitiesSchema,
+    }),
+  ],
+);
+
+export type SlackChannelCapabilities = z.infer<
+  typeof slackChannelCapabilitiesSchema
+>;
+export type FeishuChannelCapabilities = z.infer<
+  typeof feishuChannelCapabilitiesSchema
+>;
+export type UpdateChannelCapabilitiesInput = z.infer<
+  typeof updateChannelCapabilitiesSchema
+>;
+
 export const channelConnectErrorCodeSchema = z.enum([
   "already_connected",
   "app_id_mismatch",
@@ -177,6 +237,8 @@ export const channelResponseSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   feishuPermissions: feishuPermissionsSchema.nullable().optional(),
+  slackCapabilities: slackChannelCapabilitiesSchema.nullable().optional(),
+  feishuCapabilities: feishuChannelCapabilitiesSchema.nullable().optional(),
 });
 
 export const channelListResponseSchema = z.object({

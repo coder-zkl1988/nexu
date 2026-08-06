@@ -1,10 +1,22 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControllerEnv } from "../src/app/env.js";
 import { mediaCacheDir, mediaCachePathFor } from "../src/lib/media-cache.js";
-import { SessionsRuntime } from "../src/runtime/sessions-runtime.js";
+import {
+  SessionMessageNotFoundError,
+  SessionTranscriptLockedError,
+  SessionsRuntime,
+  SessionsRuntimeUnavailableError,
+} from "../src/runtime/sessions-runtime.js";
 
 function createEnv(overrides: Record<string, unknown> = {}): ControllerEnv {
   return {
@@ -50,6 +62,43 @@ describe("SessionsRuntime", () => {
       await rm(rootDir, { recursive: true, force: true });
       rootDir = null;
     }
+  });
+
+  it("returns an empty list when the agents directory does not exist", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = new SessionsRuntime(
+      createEnv({ openclawStateDir: rootDir }),
+    );
+
+    await expect(runtime.listSessions()).resolves.toEqual([]);
+  });
+
+  it("reports a sanitized unavailable error when the agents path cannot be scanned", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    await writeFile(path.join(rootDir, "agents"), "not a directory", "utf8");
+    const runtime = new SessionsRuntime(
+      createEnv({ openclawStateDir: rootDir }),
+    );
+
+    const result = runtime.listSessions();
+    await expect(result).rejects.toBeInstanceOf(
+      SessionsRuntimeUnavailableError,
+    );
+    await expect(result).rejects.not.toThrow(rootDir);
+  });
+
+  it("reports unavailable when a sessions index is unreadable JSON", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const sessionsDir = path.join(rootDir, "agents", "bot-1", "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    await writeFile(path.join(sessionsDir, "sessions.json"), "{", "utf8");
+    const runtime = new SessionsRuntime(
+      createEnv({ openclawStateDir: rootDir }),
+    );
+
+    await expect(runtime.listSessions()).rejects.toBeInstanceOf(
+      SessionsRuntimeUnavailableError,
+    );
   });
 
   it("merges filesystem metadata into session responses", async () => {
@@ -1726,6 +1775,201 @@ describe("SessionsRuntime", () => {
       "utf8",
     );
   }
+
+  function transcriptMessage(
+    id: string,
+    parentId: string | null,
+    role: "user" | "assistant",
+  ): Record<string, unknown> {
+    return {
+      type: "message",
+      id,
+      parentId,
+      timestamp: "2026-08-04T01:00:00.000Z",
+      message: {
+        role,
+        content: `${role}-${id}`,
+        timestamp: Date.parse("2026-08-04T01:00:00.000Z"),
+      },
+    };
+  }
+
+  it("keeps legacy flat history when a transcript has no leaf controls", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "legacy-branches.jsonl", [
+      transcriptMessage("user-1", null, "user"),
+      transcriptMessage("assistant-1", "user-1", "assistant"),
+      transcriptMessage("user-2", "assistant-1", "user"),
+      transcriptMessage("assistant-2", "user-2", "assistant"),
+      transcriptMessage("alternate-user", "assistant-1", "user"),
+    ]);
+
+    const result = await runtime.getChatHistory("legacy-branches.jsonl");
+
+    expect(result.messages.map((message) => message.id)).toEqual([
+      "user-1",
+      "assistant-1",
+      "user-2",
+      "assistant-2",
+      "alternate-user",
+    ]);
+  });
+
+  it("reads only the active parent chain after a valid leaf control", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "active-branch.jsonl", [
+      transcriptMessage("user-1", null, "user"),
+      transcriptMessage("assistant-1", "user-1", "assistant"),
+      transcriptMessage("abandoned-user", "assistant-1", "user"),
+      transcriptMessage("abandoned-assistant", "abandoned-user", "assistant"),
+      {
+        type: "plugin_marker",
+        id: "opaque-tail",
+        parentId: "abandoned-assistant",
+      },
+      {
+        type: "leaf",
+        id: "leaf-1",
+        parentId: "opaque-tail",
+        timestamp: "2026-08-04T01:01:00.000Z",
+        targetId: "assistant-1",
+        appendParentId: "opaque-tail",
+      },
+      transcriptMessage("active-user", "assistant-1", "user"),
+      transcriptMessage("active-assistant", "active-user", "assistant"),
+    ]);
+
+    const result = await runtime.getChatHistory("active-branch.jsonl");
+
+    expect(result.messages.map((message) => message.id)).toEqual([
+      "user-1",
+      "assistant-1",
+      "active-user",
+      "active-assistant",
+    ]);
+    await expect(
+      runtime.sessionContainsActiveMessage({
+        botId: "bot-web",
+        sessionKey: "active-branch",
+        messageId: "abandoned-user",
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      runtime.sessionContainsActiveMessage({
+        botId: "bot-web",
+        sessionKey: "active-branch",
+        messageId: "active-user",
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it("ignores an invalid leaf control with an unknown target", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "invalid-leaf.jsonl", [
+      transcriptMessage("user-1", null, "user"),
+      transcriptMessage("assistant-1", "user-1", "assistant"),
+      transcriptMessage("user-2", "assistant-1", "user"),
+      {
+        type: "leaf",
+        id: "invalid-leaf",
+        parentId: "user-2",
+        timestamp: "2026-08-04T01:01:00.000Z",
+        targetId: "missing-message",
+        appendParentId: "missing-message",
+      },
+    ]);
+
+    const result = await runtime.getChatHistory("invalid-leaf.jsonl");
+
+    expect(result.messages.map((message) => message.id)).toEqual([
+      "user-1",
+      "assistant-1",
+      "user-2",
+    ]);
+  });
+
+  it("appends a leaf control for a known message and rejects unknown messages", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "message-rollback.jsonl", [
+      transcriptMessage("user-1", null, "user"),
+      transcriptMessage("assistant-1", "user-1", "assistant"),
+      transcriptMessage("user-2", "assistant-1", "user"),
+    ]);
+
+    await runtime.selectActiveMessage({
+      botId: "bot-web",
+      sessionKey: "message-rollback",
+      messageId: "assistant-1",
+    });
+
+    const sessionPath = path.join(
+      rootDir,
+      "agents",
+      "bot-web",
+      "sessions",
+      "message-rollback.jsonl",
+    );
+    const transcript = await readFile(sessionPath, "utf8");
+    const lastRecord = JSON.parse(
+      transcript.trim().split("\n").at(-1) ?? "{}",
+    ) as Record<string, unknown>;
+    expect(lastRecord).toMatchObject({
+      type: "leaf",
+      parentId: "user-2",
+      targetId: "assistant-1",
+      appendParentId: "assistant-1",
+    });
+    await expect(
+      runtime.selectActiveMessage({
+        botId: "bot-web",
+        sessionKey: "message-rollback",
+        messageId: "missing-message",
+      }),
+    ).rejects.toBeInstanceOf(SessionMessageNotFoundError);
+    const result = await runtime.getChatHistory("message-rollback.jsonl");
+    expect(result.messages.map((message) => message.id)).toEqual([
+      "user-1",
+      "assistant-1",
+    ]);
+    await expect(access(`${sessionPath}.lock`)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("does not modify a transcript while OpenClaw holds its write lock", async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));
+    const runtime = createWebchatRuntime(rootDir);
+    await writeWebchatSession(rootDir, "locked-rollback.jsonl", [
+      transcriptMessage("user-1", null, "user"),
+      transcriptMessage("assistant-1", "user-1", "assistant"),
+    ]);
+    const sessionPath = path.join(
+      rootDir,
+      "agents",
+      "bot-web",
+      "sessions",
+      "locked-rollback.jsonl",
+    );
+    const original = await readFile(sessionPath, "utf8");
+    await writeFile(
+      `${sessionPath}.lock`,
+      JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+      "utf8",
+    );
+
+    await expect(
+      runtime.selectActiveMessage({
+        botId: "bot-web",
+        sessionKey: "locked-rollback",
+        messageId: "assistant-1",
+      }),
+    ).rejects.toBeInstanceOf(SessionTranscriptLockedError);
+    await expect(readFile(sessionPath, "utf8")).resolves.toBe(original);
+  });
 
   it("surfaces render_a2ui toolResult records and drops other tool results", async () => {
     rootDir = await mkdtemp(path.join(tmpdir(), "nexu-sessions-runtime-"));

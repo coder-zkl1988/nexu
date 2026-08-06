@@ -80,7 +80,7 @@ config write, never mutated during a read path.
 ### Compiler
 
 - `agents.list` stays **slug-sorted** (deterministic output; avoids spurious gateway
-  reloads — same rationale as the `plugins.allow` sort).
+  reloads, like the deterministic managed-plugin entry output).
 - `default: index === 0` becomes `default: bot.id === resolved.id`, where
   `resolved = resolveDefaultBot(config)` is computed once per compile. When the compiled
   list is non-empty, resolver step 3 guarantees a match.

@@ -342,7 +342,7 @@ export class OpenClawWsClient {
   private tickIntervalMs = 30_000;
   private tickTimer: NodeJS.Timeout | null = null;
   private connectTimer: NodeJS.Timeout | null = null;
-  private onConnectedCallback: (() => void) | null = null;
+  private readonly connectedListeners = new Set<() => void>();
   private onDisconnectedCallback: (() => void) | null = null;
   private onGatewayShutdownCallback:
     | ((payload: {
@@ -365,8 +365,9 @@ export class OpenClawWsClient {
   }
 
   /** Register a callback fired once each time the WS handshake completes. */
-  onConnected(cb: () => void): void {
-    this.onConnectedCallback = cb;
+  onConnected(cb: () => void): () => void {
+    this.connectedListeners.add(cb);
+    return () => this.connectedListeners.delete(cb);
   }
 
   /** Register a callback fired when an established gateway connection closes. */
@@ -820,14 +821,17 @@ export class OpenClawWsClient {
 
         logger.info({}, "openclaw_ws_connected");
 
-        // Fire the onConnected callback (e.g. to push initial config)
-        try {
-          this.onConnectedCallback?.();
-        } catch (err) {
-          logger.warn(
-            { error: err instanceof Error ? err.message : String(err) },
-            "openclaw_ws_on_connected_callback_error",
-          );
+        // Notify independent reconnect consumers without allowing one failure
+        // to block the rest (for example, config sync and cron reconciliation).
+        for (const listener of this.connectedListeners) {
+          try {
+            listener();
+          } catch (err) {
+            logger.warn(
+              { error: err instanceof Error ? err.message : String(err) },
+              "openclaw_ws_on_connected_callback_error",
+            );
+          }
         }
       },
       reject: (err) => {

@@ -124,6 +124,11 @@ describe("macOS Entitlements — V8 JIT requirements", () => {
     ).toBe(true);
   });
 
+  it("parent plist permits consent-gated Apple Events for Quick Chat selection capture", () => {
+    const dict = parsePlistDict(parentPlist);
+    expect(dict.get("com.apple.security.automation.apple-events")).toBe("true");
+  });
+
   it("inherit plist explicitly grants disable-library-validation (native addon load guard)", () => {
     expect(
       plistHasKey(
@@ -148,6 +153,10 @@ describe("macOS Entitlements — V8 JIT requirements", () => {
     expect(mac.entitlements).toBe("build/entitlements.mac.plist");
     expect(mac.entitlementsInherit).toBe(
       "build/entitlements.mac.inherit.plist",
+    );
+    const extendInfo = mac.extendInfo as Record<string, unknown>;
+    expect(extendInfo.NSAppleEventsUsageDescription).toBe(
+      "Tabby reads text you selected in another app when you invoke Quick Chat.",
     );
   });
 

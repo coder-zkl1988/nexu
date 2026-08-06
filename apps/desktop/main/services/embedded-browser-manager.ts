@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, WebContentsView } from "electron";
+import { BrowserWindow, Menu, WebContentsView, shell } from "electron";
 import type {
   DesktopBrowserControl,
   DesktopBrowserControlResult,
@@ -21,6 +21,19 @@ type ManagedTab = {
   pendingUrl: string | null;
   pendingLoad: Promise<void> | null;
   refs: BrowserRefTable;
+};
+
+type ManagedDownload = {
+  id: string;
+  ownerId: number;
+  filename: string;
+  path: string;
+  url: string;
+  state: "progressing" | "completed" | "cancelled" | "interrupted";
+  receivedBytes: number;
+  totalBytes: number;
+  startedAt: number;
+  completedAt?: number;
 };
 
 const DEFAULT_SNAPSHOT_NODES = 400;
@@ -251,6 +264,9 @@ const elementPickerScript = `new Promise((resolve) => {
 
 export class EmbeddedBrowserManager {
   private readonly tabs = new Map<string, ManagedTab>();
+  private readonly downloads = new Map<string, ManagedDownload>();
+  private readonly trackedSessions = new WeakSet<Electron.Session>();
+  private readonly revokedAgentSharing = new Set<number>();
   /**
    * Windows whose panel is currently hosting the agent tab.
    *
@@ -265,6 +281,10 @@ export class EmbeddedBrowserManager {
 
   isAgentTabPanelHosted(owner: BrowserWindow): boolean {
     return this.panelHosted.has(owner.id);
+  }
+
+  isAgentSharingAllowed(owner: BrowserWindow): boolean {
+    return !this.revokedAgentSharing.has(owner.id);
   }
 
   /** Resolves true once the panel places the agent tab, false on timeout. */
@@ -334,6 +354,7 @@ export class EmbeddedBrowserManager {
       refs: new BrowserRefTable(),
     };
     this.tabs.set(key, tab);
+    this.ensureDownloadTracking(owner, view.webContents.session);
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (isSafeBrowserUrl(url))
@@ -350,6 +371,51 @@ export class EmbeddedBrowserManager {
     });
     owner.once("closed", () => this.disposeOwner(owner));
     return tab;
+  }
+
+  private ensureDownloadTracking(
+    owner: BrowserWindow,
+    browserSession: Electron.Session,
+  ): void {
+    if (this.trackedSessions.has(browserSession)) return;
+    this.trackedSessions.add(browserSession);
+    browserSession.on("will-download", (_event, item, webContents) => {
+      const downloadOwner = [...this.tabs.values()].find(
+        (tab) => tab.view.webContents === webContents,
+      )?.owner;
+      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const download: ManagedDownload = {
+        id,
+        ownerId: downloadOwner?.id ?? owner.id,
+        filename: item.getFilename(),
+        path: item.getSavePath(),
+        url: item.getURL(),
+        state: "progressing",
+        receivedBytes: item.getReceivedBytes(),
+        totalBytes: item.getTotalBytes(),
+        startedAt: Date.now(),
+      };
+      this.downloads.set(id, download);
+      item.on("updated", (_updatedEvent, state) => {
+        download.filename = item.getFilename();
+        download.path = item.getSavePath();
+        download.receivedBytes = item.getReceivedBytes();
+        download.totalBytes = item.getTotalBytes();
+        download.state = state;
+      });
+      item.once("done", (_doneEvent, state) => {
+        download.filename = item.getFilename();
+        download.path = item.getSavePath();
+        download.receivedBytes = item.getReceivedBytes();
+        download.totalBytes = item.getTotalBytes();
+        download.state = state;
+        download.completedAt = Date.now();
+        const retained = [...this.downloads.values()]
+          .sort((left, right) => right.startedAt - left.startedAt)
+          .slice(50);
+        for (const stale of retained) this.downloads.delete(stale.id);
+      });
+    });
   }
 
   private loadTab(tab: ManagedTab, url: string): Promise<void> {
@@ -382,6 +448,7 @@ export class EmbeddedBrowserManager {
       if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
       this.tabs.delete(key);
     }
+    this.revokedAgentSharing.delete(owner.id);
   }
 
   control(
@@ -400,6 +467,60 @@ export class EmbeddedBrowserManager {
     owner: BrowserWindow,
     input: DesktopBrowserControl,
   ): Promise<DesktopBrowserControlResult> {
+    if (input.action === "center-state") {
+      return {
+        kind: "center-state",
+        agentSharingEnabled: this.isAgentSharingAllowed(owner),
+        tabs: [...this.tabs.entries()]
+          .filter(([, tab]) => tab.owner === owner)
+          .map(([key, tab]) => ({
+            id: key.slice(key.indexOf(":") + 1),
+            title: tab.view.webContents.getTitle() || "New tab",
+            url: tab.view.webContents.getURL(),
+            loading: tab.view.webContents.isLoading(),
+            agentControlled: key.endsWith(`:${AGENT_TAB_ID}`),
+          })),
+        downloads: [...this.downloads.values()]
+          .filter((download) => download.ownerId === owner.id)
+          .sort((left, right) => right.startedAt - left.startedAt)
+          .map(({ ownerId: _ownerId, path: _path, ...download }) => download),
+      };
+    }
+    if (input.action === "clear-downloads") {
+      for (const [id, download] of this.downloads) {
+        if (download.ownerId === owner.id && download.state !== "progressing") {
+          this.downloads.delete(id);
+        }
+      }
+      return { kind: "ok" };
+    }
+    if (input.action === "show-download") {
+      const download = this.downloads.get(input.downloadId);
+      if (
+        download?.ownerId === owner.id &&
+        download.state === "completed" &&
+        download.path
+      ) {
+        shell.showItemInFolder(download.path);
+      }
+      return { kind: "ok" };
+    }
+    if (input.action === "revoke-agent") {
+      this.revokedAgentSharing.add(owner.id);
+      const key = this.key(owner, AGENT_TAB_ID);
+      const tab = this.tabs.get(key);
+      if (tab) {
+        owner.contentView.removeChildView(tab.view);
+        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+        this.tabs.delete(key);
+      }
+      this.markPanelHosted(owner, false);
+      return { kind: "ok" };
+    }
+    if (input.action === "resume-agent") {
+      this.revokedAgentSharing.delete(owner.id);
+      return { kind: "ok" };
+    }
     if (input.action === "hide" || input.action === "dispose") {
       for (const tab of this.tabs.values()) {
         if (tab.owner === owner) tab.view.setVisible(false);
@@ -409,6 +530,11 @@ export class EmbeddedBrowserManager {
       return { kind: "ok" };
     }
     if (!("tabId" in input)) throw new Error("Browser tab id is required.");
+    if (input.tabId === AGENT_TAB_ID && !this.isAgentSharingAllowed(owner)) {
+      throw new Error(
+        "Browser sharing was revoked by the user. Resume agent control before using this tab.",
+      );
+    }
 
     const key = this.key(owner, input.tabId);
     if (input.action === "close-tab") {
