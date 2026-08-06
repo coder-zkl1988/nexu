@@ -83,6 +83,7 @@ jobs:
           NEXU_DESKTOP_BUILD_SOURCE: nightly
           NEXU_DESKTOP_BUILD_BRANCH: ${{ github.ref_name }}
           NEXU_DESKTOP_BUILD_COMMIT: ${{ github.sha }}
+          NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: "true"
           NEXU_UPDATE_FEED_URL: https://desktop-releases.nexu.io/nightly/win32/x64/latest-win.json
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}

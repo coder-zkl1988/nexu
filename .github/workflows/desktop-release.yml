@@ -198,6 +198,7 @@ jobs:
           NEXU_DESKTOP_UPDATE_CHANNEL: ${{ needs.prepare-release.outputs.update_channel }}
           NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
           NEXU_DESKTOP_BUILD_SOURCE: "release"
+          NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: "true"
           TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           NEXU_DESKTOP_SENTRY_DSN: ${{ secrets.NEXU_DESKTOP_SENTRY_DSN }}
@@ -382,6 +383,7 @@ jobs:
           NEXU_DESKTOP_BUILD_BRANCH: ${{ needs.prepare-release.outputs.tag_name }}
           NEXU_DESKTOP_BUILD_COMMIT: ${{ needs.prepare-release.outputs.commit_sha }}
           NEXU_DESKTOP_AUTO_UPDATE_ENABLED: "true"
+          NEXU_LOCAL_AUTOMATION_PREVIEW_ENABLED: "true"
           TABBY_CONTROL_DIR: ${{ github.workspace }}/.release-worktrees/tabby-control
           NEXU_DESKTOP_SENTRY_DSN: ${{ secrets.NEXU_DESKTOP_SENTRY_DSN }}
           VITE_POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
