@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
@@ -120,6 +120,75 @@ function listPackages(nodeModulesDir) {
   }
 
   return result;
+}
+
+/**
+ * Decide where each collected dependency goes in the bundled output.
+ *
+ * The output tree is flat by default, but a flat tree cannot express two
+ * versions of one package — and npm/pnpm use exactly that to satisfy
+ * conflicting ranges. Deduplicating by name alone silently discarded the
+ * loser, leaving the consumer resolving a version its manifest rejects
+ * (dingtalk's axios asked for form-data@^4.0.5 and got 4.0.0).
+ *
+ * First writer wins the top-level slot; a later entry with a different
+ * version nests under the package that depends on it, mirroring the layout
+ * Node already knows how to resolve. An entry with no parent has nowhere
+ * correct to go, so it is dropped rather than allowed to clobber the
+ * top-level copy.
+ *
+ * @param {Array<{name: string, version: string, realPath: string, parentName: string | null}>} entries
+ * @returns {Array<{name: string, realPath: string, nestUnder: string | null}>}
+ */
+export function planDependencyPlacements(entries) {
+  const topLevelVersionByName = new Map();
+  const placements = [];
+
+  for (const entry of entries) {
+    const claimedVersion = topLevelVersionByName.get(entry.name);
+
+    if (claimedVersion === undefined) {
+      topLevelVersionByName.set(entry.name, entry.version);
+      placements.push({
+        name: entry.name,
+        realPath: entry.realPath,
+        nestUnder: null,
+      });
+      continue;
+    }
+
+    if (claimedVersion === entry.version) {
+      continue;
+    }
+
+    if (!entry.parentName) {
+      continue;
+    }
+
+    placements.push({
+      name: entry.name,
+      realPath: entry.realPath,
+      nestUnder: entry.parentName,
+    });
+  }
+
+  return placements;
+}
+
+/**
+ * Version of an installed package, or null when it ships no readable
+ * manifest. A null version never matches another, so such a package is only
+ * ever placed once — the conservative outcome.
+ */
+function readPackageVersion(packageRoot) {
+  try {
+    const manifest = JSON.parse(
+      readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+    );
+    return typeof manifest.version === "string" ? manifest.version : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readJson(filePath) {
@@ -574,13 +643,18 @@ async function bundlePlugin({ id, npmName, localSource }) {
     "@playwright/test",
     ...Object.keys(packageJson.peerDependencies ?? {}),
   ]);
-  const collected = new Map();
+  const collected = [];
+  const seenRealPaths = new Set();
   const queue = [
-    { nodeModulesDir: rootDependencyNodeModules, skipPkg: npmName },
+    {
+      nodeModulesDir: rootDependencyNodeModules,
+      skipPkg: npmName,
+      parentName: null,
+    },
   ];
 
   while (queue.length > 0) {
-    const { nodeModulesDir, skipPkg } = queue.shift();
+    const { nodeModulesDir, skipPkg, parentName } = queue.shift();
     for (const { name, fullPath } of listPackages(nodeModulesDir)) {
       if (
         name === skipPkg ||
@@ -597,14 +671,38 @@ async function bundlePlugin({ id, npmName, localSource }) {
         continue;
       }
 
-      if (collected.has(realPackagePath)) {
+      if (seenRealPaths.has(realPackagePath)) {
         continue;
       }
-      collected.set(realPackagePath, name);
+      seenRealPaths.add(realPackagePath);
+      collected.push({
+        name,
+        version: readPackageVersion(realPackagePath),
+        realPath: realPackagePath,
+        parentName,
+      });
 
       const depVirtualNodeModules = getVirtualStoreNodeModules(realPackagePath);
       if (depVirtualNodeModules && depVirtualNodeModules !== nodeModulesDir) {
-        queue.push({ nodeModulesDir: depVirtualNodeModules, skipPkg: name });
+        queue.push({
+          nodeModulesDir: depVirtualNodeModules,
+          skipPkg: name,
+          parentName: name,
+        });
+      }
+
+      // Packages that vendor their own dependencies (npm-style nesting rather
+      // than pnpm's flat store) keep conflicting versions in a package-local
+      // node_modules. Walking up never reaches those, so descend explicitly —
+      // otherwise the nested copy is invisible and the consumer silently
+      // resolves the top-level version its manifest rejects.
+      const packageLocalNodeModules = getPackageNodeModules(realPackagePath);
+      if (packageLocalNodeModules && hasRealPackages(packageLocalNodeModules)) {
+        queue.push({
+          nodeModulesDir: packageLocalNodeModules,
+          skipPkg: name,
+          parentName: name,
+        });
       }
     }
   }
@@ -612,17 +710,15 @@ async function bundlePlugin({ id, npmName, localSource }) {
   const outputNodeModules = path.join(outputDir, "node_modules");
   await mkdir(outputNodeModules, { recursive: true });
 
-  const copiedNames = new Set();
-  for (const [realPackagePath, packageName] of collected) {
-    if (copiedNames.has(packageName)) {
-      continue;
-    }
-    copiedNames.add(packageName);
-
-    const destinationPath = path.join(outputNodeModules, packageName);
+  for (const { name, realPath, nestUnder } of planDependencyPlacements(
+    collected,
+  )) {
+    const destinationPath = nestUnder
+      ? path.join(outputNodeModules, nestUnder, "node_modules", name)
+      : path.join(outputNodeModules, name);
     await mkdir(path.dirname(destinationPath), { recursive: true });
     await rm(destinationPath, { recursive: true, force: true });
-    await cp(realPackagePath, destinationPath, {
+    await cp(realPath, destinationPath, {
       recursive: true,
       force: true,
       dereference: true,
