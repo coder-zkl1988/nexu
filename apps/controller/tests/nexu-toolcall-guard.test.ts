@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -71,22 +78,63 @@ describe("nexu-toolcall-guard run provenance", () => {
     return { record, spawned, agentEnd, beforeToolCall };
   }
 
-  // Built by the shipping runtime, not by hand. The previous version of these
-  // tests invented a desktop ctx with no channelId at all; the real derivation
-  // returns `channelId: "webchat"` (INTERNAL_MESSAGE_CHANNEL) for every
-  // chat.send turn, which classified the desktop user as a remote channel and
-  // permanently revoked their host execution. A hand-made fixture cannot see
-  // that class of bug.
-  async function realAgentHookChannelFields(params: Record<string, unknown>) {
-    const url = pathToFileURL(
-      path.resolve(
-        process.cwd(),
-        "../../packages/slimclaw/.dist-runtime/openclaw/node_modules/openclaw/dist/hook-agent-context-DPPRzCBU.js",
-      ),
-    ).href;
-    const mod = (await import(url)) as Record<string, unknown>;
-    const build = mod.t as (input: unknown) => Record<string, unknown>;
-    return build(params);
+  // The channel fields OpenClaw hands the agent lifecycle hooks. An earlier
+  // version of these tests invented a desktop context with no channelId at
+  // all; the real derivation returns `channelId: "webchat"`
+  // (INTERNAL_MESSAGE_CHANNEL) for every chat.send turn, which classified the
+  // desktop user as a remote channel and permanently revoked their host
+  // execution. A hand-made fixture cannot see that class of bug — so these are
+  // the shapes the runtime actually produces, and `assertDerivationMatches`
+  // below re-derives them from the runtime itself wherever it is installed.
+  const DESKTOP_CHANNEL_FIELDS = {
+    channel: "webchat",
+    messageProvider: "webchat",
+    channelId: "webchat",
+    chatId: "webchat",
+  };
+  const SLACK_CHANNEL_FIELDS = {
+    channel: "slack",
+    messageProvider: "slack",
+    channelId: "C123",
+    chatId: "C123",
+  };
+
+  /**
+   * Re-derive the fixtures from the prepared OpenClaw runtime when it is on
+   * disk, so a runtime upgrade that changes the derivation fails here instead
+   * of silently invalidating the premise. CI installs with
+   * NEXU_SKIP_RUNTIME_POSTINSTALL=1 and has no prepared runtime, so this is a
+   * drift check where it can run rather than a dependency everywhere.
+   */
+  async function assertDerivationMatches(
+    params: Record<string, unknown>,
+    expected: Record<string, string>,
+  ): Promise<void> {
+    const distDir = path.resolve(
+      process.cwd(),
+      "../../packages/slimclaw/.dist-runtime/openclaw/node_modules/openclaw/dist",
+    );
+    let moduleName: string | undefined;
+    try {
+      // Bundle filenames are content-hashed, so match the stem, never the hash.
+      moduleName = (await readdir(distDir)).find(
+        (entry) =>
+          entry.startsWith("hook-agent-context-") && entry.endsWith(".js"),
+      );
+    } catch {
+      return; // no prepared runtime here
+    }
+    if (!moduleName) return;
+
+    const mod = (await import(
+      pathToFileURL(path.join(distDir, moduleName)).href
+    )) as Record<string, unknown>;
+    const build = mod.t as
+      | ((input: unknown) => Record<string, unknown>)
+      | undefined;
+    if (typeof build !== "function") return;
+
+    expect(build(params)).toMatchObject(expected);
   }
 
   it("leaves the desktop user alone when the runtime labels their turn webchat", async () => {
@@ -94,13 +142,11 @@ describe("nexu-toolcall-guard run provenance", () => {
     const bot = "bot-webchat-desktop";
     const sessionKey = `agent:${bot}:main`;
 
-    const channelFields = await realAgentHookChannelFields({
-      messageProvider: "webchat",
-      sessionKey,
-    });
-    // Guards the premise: if the runtime ever stops labelling desktop turns
-    // this way, this test should be revisited rather than silently passing.
-    expect(channelFields.channelId).toBe("webchat");
+    const channelFields = DESKTOP_CHANNEL_FIELDS;
+    await assertDerivationMatches(
+      { messageProvider: "webchat", sessionKey },
+      channelFields,
+    );
 
     for (const runId of ["run-webchat-1", "run-webchat-2"]) {
       await record(
@@ -126,12 +172,11 @@ describe("nexu-toolcall-guard run provenance", () => {
     const bot = "bot-real-channel";
     const sessionKey = `agent:${bot}:slack:channel:C123`;
 
-    const channelFields = await realAgentHookChannelFields({
-      messageProvider: "slack",
-      currentChannelId: "C123",
-      sessionKey,
-    });
-    expect(channelFields.channelId).toBe("C123");
+    const channelFields = SLACK_CHANNEL_FIELDS;
+    await assertDerivationMatches(
+      { messageProvider: "slack", currentChannelId: "C123", sessionKey },
+      channelFields,
+    );
 
     await record(
       {},
