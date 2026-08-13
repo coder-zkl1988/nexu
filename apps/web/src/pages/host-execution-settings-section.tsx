@@ -81,55 +81,57 @@ export function HostExecutionSettingsSection() {
             {t("hostExecution.noBots")}
           </div>
         ) : (
-          bots.map((bot: Bot) => (
-            <div
-              key={bot.id}
-              data-host-execution-bot={bot.id}
-              className="rounded-md border border-border p-3"
-            >
-              <div className="text-sm font-medium text-text-primary">
-                {bot.name}
-              </div>
-              <div className="mt-3 space-y-3">
-                {(
-                  [
-                    ["channels", t("hostExecution.channels")],
-                    ["automations", t("hostExecution.automations")],
-                  ] as const
-                ).map(([surface, label]) => (
-                  // Radix renders a button, not an input, so the control is
-                  // associated by id rather than wrapped in a <label>.
-                  <div
-                    key={surface}
-                    className="flex items-center justify-between gap-4"
-                  >
-                    <span
-                      id={`host-execution-${bot.id}-${surface}-label`}
-                      className="text-sm text-text-secondary"
+          <div className="max-h-[420px] space-y-4 overflow-y-auto pr-1">
+            {bots.map((bot: Bot) => (
+              <div
+                key={bot.id}
+                data-host-execution-bot={bot.id}
+                className="rounded-md border border-border p-3"
+              >
+                <div className="text-sm font-medium text-text-primary">
+                  {bot.name}
+                </div>
+                <div className="mt-3 space-y-3">
+                  {(
+                    [
+                      ["channels", t("hostExecution.channels")],
+                      ["automations", t("hostExecution.automations")],
+                    ] as const
+                  ).map(([surface, label]) => (
+                    // Radix renders a button, not an input, so the control is
+                    // associated by id rather than wrapped in a <label>.
+                    <div
+                      key={surface}
+                      className="flex items-center justify-between gap-4"
                     >
-                      {label}
-                      <span className="mt-0.5 block text-xs text-text-muted">
-                        {t(`hostExecution.${surface}Hint`)}
+                      <span
+                        id={`host-execution-${bot.id}-${surface}-label`}
+                        className="text-sm text-text-secondary"
+                      >
+                        {label}
+                        <span className="mt-0.5 block text-xs text-text-muted">
+                          {t(`hostExecution.${surface}Hint`)}
+                        </span>
                       </span>
-                    </span>
-                    <Switch
-                      aria-labelledby={`host-execution-${bot.id}-${surface}-label`}
-                      data-host-execution-switch={`${bot.id}:${surface}`}
-                      checked={bot.hostExecution?.[surface] === "host"}
-                      disabled={updateMutation.isPending}
-                      onCheckedChange={(enabled) =>
-                        updateMutation.mutate({
-                          botId: bot.id,
-                          surface,
-                          enabled,
-                        })
-                      }
-                    />
-                  </div>
-                ))}
+                      <Switch
+                        aria-labelledby={`host-execution-${bot.id}-${surface}-label`}
+                        data-host-execution-switch={`${bot.id}:${surface}`}
+                        checked={bot.hostExecution?.[surface] === "host"}
+                        disabled={updateMutation.isPending}
+                        onCheckedChange={(enabled) =>
+                          updateMutation.mutate({
+                            botId: bot.id,
+                            surface,
+                            enabled,
+                          })
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
