@@ -337,7 +337,7 @@ export function SessionOperationsPanel({
   return (
     <aside
       data-session-operations="true"
-      className="absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l border-border bg-surface-0 sm:w-[360px]"
+      className="absolute inset-y-0 right-0 z-10 flex w-full flex-col border-l border-border bg-[var(--color-tabby-bg)] sm:w-[360px]"
     >
       <div className="flex h-[58px] shrink-0 items-center justify-between border-b border-border px-4">
         <div className="flex items-center gap-2">
