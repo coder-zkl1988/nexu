@@ -1,9 +1,3 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useCloudConnect } from "@/hooks/use-cloud-connect";
 import { useDesktopCloudStatus } from "@/hooks/use-desktop-cloud-status";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +13,42 @@ import {
 import type { DeviceInfo } from "./device-card";
 import { DeviceCard } from "./device-card";
 import { MirrorPanel } from "./mirror-panel";
+
+// Anchored under its trigger button, matching the "下载 Tabby" popover.
+// The parent must be positioned (`relative`).
+function QrConnectPopover({
+  qrUrl,
+  open,
+  align,
+}: {
+  qrUrl: string;
+  open: boolean;
+  align: "right" | "center";
+}) {
+  return (
+    <div
+      className={`absolute top-full mt-2 z-50 bg-surface-0 rounded-xl border border-border shadow-lg p-4 transition-all duration-200 ${
+        align === "right"
+          ? "right-0 origin-top-right"
+          : "left-1/2 -translate-x-1/2 origin-top"
+      } ${
+        open
+          ? "opacity-100 scale-100"
+          : "opacity-0 scale-95 pointer-events-none"
+      }`}
+    >
+      <div className="bg-white p-2 rounded-lg border border-border">
+        <QRCodeSVG value={qrUrl} size={160} level="M" />
+      </div>
+      <p className="w-[178px] text-[11px] text-text-muted mt-2 text-center leading-relaxed">
+        在手机上打开 Tabby App，点击「扫码连接」，扫描上方二维码即可连接。
+      </p>
+      <code className="block w-[178px] mt-2 text-[11px] text-text-muted bg-surface-2 px-2 py-1 rounded font-mono break-all text-left">
+        {qrUrl}
+      </code>
+    </div>
+  );
+}
 
 export function DevicesPage() {
   const { t } = useTranslation();
@@ -39,7 +69,9 @@ export function DevicesPage() {
     },
     [mirrorDevice],
   );
-  const [showQrDialog, setShowQrDialog] = useState(false);
+  // Which button the QR popover is anchored under, so it always opens directly
+  // below the button that was clicked.
+  const [qrPopover, setQrPopover] = useState<"header" | "empty" | null>(null);
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
 
   const { data: runtimeConfig } = useQuery({
@@ -233,14 +265,23 @@ export function DevicesPage() {
                 </div>
               </div>
               {qrUrl && (
-                <button
-                  type="button"
-                  onClick={() => setShowQrDialog(true)}
-                  className="flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-accent rounded-lg border border-border hover:bg-accent/5 transition-all"
-                >
-                  <QrCode className="h-3.5 w-3.5" />
-                  扫码连接
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQrPopover(qrPopover === "header" ? null : "header")
+                    }
+                    className="flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-accent rounded-lg border border-border hover:bg-accent/5 transition-all"
+                  >
+                    <QrCode className="h-3.5 w-3.5" />
+                    扫码连接
+                  </button>
+                  <QrConnectPopover
+                    qrUrl={qrUrl}
+                    open={qrPopover === "header"}
+                    align="right"
+                  />
+                </div>
               )}
               <Link
                 to="/workspace/devices/tasks"
@@ -294,14 +335,23 @@ export function DevicesPage() {
                 {t("devices.emptyHint")}
               </div>
               {qrUrl && (
-                <button
-                  type="button"
-                  onClick={() => setShowQrDialog(true)}
-                  className="flex items-center gap-2 mt-4 px-4 py-2 text-[13px] font-medium text-accent rounded-lg border border-accent/30 hover:bg-accent/5 transition-all"
-                >
-                  <QrCode className="h-4 w-4" />
-                  扫码连接手机
-                </button>
+                <div className="relative mt-4">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQrPopover(qrPopover === "empty" ? null : "empty")
+                    }
+                    className="flex items-center gap-2 px-4 py-2 text-[13px] font-medium text-accent rounded-lg border border-accent/30 hover:bg-accent/5 transition-all"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    扫码连接手机
+                  </button>
+                  <QrConnectPopover
+                    qrUrl={qrUrl}
+                    open={qrPopover === "empty"}
+                    align="center"
+                  />
+                </div>
               )}
             </div>
           )}
@@ -334,33 +384,6 @@ export function DevicesPage() {
           />
         </div>
       )}
-
-      <Dialog open={showQrDialog} onOpenChange={setShowQrDialog}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <QrCode className="h-4 w-4" />
-              扫码连接手机
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 pt-2">
-            <div className="bg-white p-3 rounded-xl border border-border">
-              {qrUrl && <QRCodeSVG value={qrUrl} size={200} level="M" />}
-            </div>
-            <div className="w-full px-[15%] pb-[15%]">
-              <p className="text-[12px] text-text-muted leading-relaxed text-left">
-                在手机上打开 Tabby
-                App，点击「扫码连接」，扫描上方二维码即可连接。
-              </p>
-              {qrUrl && (
-                <code className="block mt-2 text-[11px] text-text-muted bg-surface-2 px-2 py-1 rounded font-mono break-all text-left">
-                  {qrUrl}
-                </code>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {showLoginGate && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-surface-0/80 px-6 backdrop-blur-sm">
