@@ -398,6 +398,31 @@ The phone-side VLM uses a **dual-layer autonomous architecture** that supports m
   - Decompose operations into ≤3-step sub-task groups dispatched sequentially
   - Verify screenshot after each group before continuing
 
+#### Many phones: dispatch asynchronously, do not block
+
+`device_execute_batch` and `device_execute_task_all` **wait for every phone**. They
+suit only short tasks across a handful of devices:
+
+- Wall-clock equals the slowest phone; one stuck device holds the whole call open
+- A wait beyond a few minutes gets your own turn aborted by the session watchdog —
+  **losing the results of the phones that already succeeded**
+
+**Beyond two or three phones, or when work may run for more than a few minutes,
+use the async trio instead:**
+
+1. `device_dispatch_tasks` — returns a `jobId` **immediately**, in milliseconds,
+   without waiting for any phone
+2. `device_job_status` — progress for that `jobId`: total / running / succeeded /
+   failed, plus every failure and its reason
+   - Summary only by default. A few hundred phone transcripts will not fit in context
+   - Pass `includeResults` for successful details, and `offset` to page through them
+3. `device_cancel_job` — stop every phone still running in that job
+
+While polling, do **not** dispatch new work to the same phones; wait for `done: true`.
+
+If a `jobId` has aged out, query per device with `device_get_task_results` — a
+device's results outlive the job record.
+
 **Example**:
 
 > User: "Help me publish a post on 小红书"
@@ -407,4 +432,13 @@ Autonomous mode (default):
 - Verify screenshot ✓ → `device_execute_task`: "Fill in the title and body text"
 - Verify screenshot ✓ → `device_execute_task`: "Add topic tags and tap publish"
 - Verify screenshot ✓ → Report completion
+
+> User: "Have every phone search 小红书 for badminton and comment on 10 posts each"
+
+Multi-device async (the default once phones or runtimes grow):
+- `device_dispatch_tasks`: one task per phone → `jobId` back at once
+- `device_job_status`: poll until `done: true` (meanwhile you can tell the user
+  "dispatched to N phones, in progress")
+- `device_job_status` + `includeResults`: page through the successes and report
+  them together with any failures
 <!-- NEXU-PLATFORM-END -->
