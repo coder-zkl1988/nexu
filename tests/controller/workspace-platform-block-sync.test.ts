@@ -1,0 +1,177 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { ControllerEnv } from "../../apps/controller/src/app/env.js";
+import { WorkspaceTemplateWriter } from "../../apps/controller/src/runtime/workspace-template-writer.js";
+
+const START = "<!-- NEXU-PLATFORM-START -->";
+const END = "<!-- NEXU-PLATFORM-END -->";
+
+const template = (block: string) =>
+  `# Agent\n\nIntro text.\n\n${START}\n${block}\n${END}\n`;
+
+/** What an agent's copy looks like after it has edited around the block. */
+const workspaceDoc = (block: string, agentNotes: string) =>
+  `# Agent\n\nIntro text.\n\n${START}\n${block}\n${END}\n\n${agentNotes}\n`;
+
+describe("platform block sync", () => {
+  let root: string;
+  let templatesDir: string;
+  let stateDir: string;
+  let writer: WorkspaceTemplateWriter;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), "block-sync-"));
+    templatesDir = path.join(root, "templates");
+    stateDir = path.join(root, "state");
+    await mkdir(path.join(templatesDir, "en"), { recursive: true });
+    writer = new WorkspaceTemplateWriter({
+      platformTemplatesDir: templatesDir,
+      openclawStateDir: stateDir,
+    } as ControllerEnv);
+  });
+
+  const seedTemplate = (block: string) =>
+    writeFile(
+      path.join(templatesDir, "en", "AGENTS.md"),
+      template(block),
+      "utf8",
+    );
+
+  const seedWorkspace = async (botId: string, content: string) => {
+    await mkdir(path.join(stateDir, "agents", botId), { recursive: true });
+    await writeFile(
+      path.join(stateDir, "agents", botId, "AGENTS.md"),
+      content,
+      "utf8",
+    );
+  };
+
+  const read = (botId: string) =>
+    readFile(path.join(stateDir, "agents", botId, "AGENTS.md"), "utf8");
+
+  const sync = (botId = "bot-1") =>
+    writer.syncPlatformBlocks([{ id: botId, status: "active", lang: "en" }]);
+
+  it("updates the platform block without touching what the agent wrote", async () => {
+    await seedTemplate("New platform rule.");
+    // The agent has rewritten the intro AND appended its own conventions —
+    // both must survive, or self-evolution is silently destroyed.
+    const agentEdited = `# Agent\n\nIntro the agent rewrote itself.\n\n${START}\nOld platform rule.\n${END}\n\n## My conventions\n\nAlways greet in Cantonese.\n`;
+    await seedWorkspace("bot-1", agentEdited);
+
+    const report = await sync();
+
+    const after = await read("bot-1");
+    expect(report.updated).toEqual([{ botId: "bot-1", file: "AGENTS.md" }]);
+    expect(after).toContain("New platform rule.");
+    expect(after).not.toContain("Old platform rule.");
+    expect(after).toContain("Intro the agent rewrote itself.");
+    expect(after).toContain("Always greet in Cantonese.");
+  });
+
+  it("is idempotent — a second run rewrites nothing", async () => {
+    await seedTemplate("Stable rule.");
+    await seedWorkspace("bot-1", workspaceDoc("Stable rule.", "## Mine"));
+
+    const report = await sync();
+
+    expect(report.updated).toHaveLength(0);
+    expect(report.unchanged).toEqual([{ botId: "bot-1", file: "AGENTS.md" }]);
+  });
+
+  it("appends a block to a doc that predates the marked layout", async () => {
+    await seedTemplate("New rule.");
+    const legacy = "# Agent\n\nAn older doc with no platform block at all.\n";
+    await seedWorkspace("bot-1", legacy);
+
+    const report = await sync();
+
+    const after = await read("bot-1");
+    expect(report.repaired).toEqual([{ botId: "bot-1", file: "AGENTS.md" }]);
+    expect(after).toContain("An older doc with no platform block at all.");
+    expect(after).toContain("New rule.");
+    expect(after.indexOf(START)).toBeGreaterThan(after.indexOf("older doc"));
+  });
+
+  it("repair is idempotent — the block is appended once, then updated in place", async () => {
+    await seedTemplate("First rule.");
+    await seedWorkspace("bot-1", "# Agent\n\nLegacy doc.\n");
+
+    await sync();
+    await seedTemplate("Second rule.");
+    const second = await sync();
+
+    const after = await read("bot-1");
+    // One marker pair, not two — the second pass updated rather than re-appended.
+    expect(after.split(START)).toHaveLength(2);
+    expect(after.split(END)).toHaveLength(2);
+    expect(second.repaired).toHaveLength(0);
+    expect(second.updated).toEqual([{ botId: "bot-1", file: "AGENTS.md" }]);
+    expect(after).toContain("Second rule.");
+    expect(after).not.toContain("First rule.");
+  });
+
+  it("never appends to a doc with a broken marker pair, however many syncs run", async () => {
+    await seedTemplate("New rule.");
+    // A stray END. Appending a full block here would leave two ENDs, the parse
+    // would still fail, and every sync would append again — unbounded growth.
+    const broken = `# Agent\n\nSome text.\n${END}\nMore text.\n`;
+    await seedWorkspace("bot-1", broken);
+
+    await sync();
+    await sync();
+    await sync();
+
+    expect(await read("bot-1")).toBe(broken);
+  });
+
+  it("reports a bot that has no such workspace doc instead of creating one", async () => {
+    await seedTemplate("New rule.");
+    await mkdir(path.join(stateDir, "agents", "bot-1"), { recursive: true });
+
+    const report = await sync();
+
+    expect(report.missing).toEqual([{ botId: "bot-1", file: "AGENTS.md" }]);
+  });
+
+  it("ignores template files that are not platform-managed", async () => {
+    await seedTemplate("New rule.");
+    // SOUL.md has no markers in the template, so it is the agent's entirely.
+    await writeFile(
+      path.join(templatesDir, "en", "SOUL.md"),
+      "# Soul\n\nTemplate soul.\n",
+      "utf8",
+    );
+    await seedWorkspace("bot-1", workspaceDoc("New rule.", "## Mine"));
+    const soulPath = path.join(stateDir, "agents", "bot-1", "SOUL.md");
+    await writeFile(soulPath, "# Soul\n\nThe agent's own soul.\n", "utf8");
+
+    const report = await sync();
+
+    expect(await readFile(soulPath, "utf8")).toBe(
+      "# Soul\n\nThe agent's own soul.\n",
+    );
+    expect(
+      [
+        ...report.updated,
+        ...report.unchanged,
+        ...report.unmarked,
+        ...report.missing,
+      ].every((e) => e.file === "AGENTS.md"),
+    ).toBe(true);
+  });
+
+  it("skips paused and deleted bots", async () => {
+    await seedTemplate("New rule.");
+    await seedWorkspace("bot-1", workspaceDoc("Old rule.", "## Mine"));
+
+    const report = await writer.syncPlatformBlocks([
+      { id: "bot-1", status: "paused", lang: "en" },
+    ]);
+
+    expect(report.updated).toHaveLength(0);
+    expect(await read("bot-1")).toContain("Old rule.");
+  });
+});

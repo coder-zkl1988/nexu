@@ -311,6 +311,30 @@ export class OpenClawSyncService {
         )
       : undefined;
 
+    // Refresh the platform-managed block in each bot's workspace docs. Seeding
+    // only ever runs at creation, so without this a rule added to the templates
+    // would reach new bots and no one else. Touches nothing outside the markers,
+    // and rewrites only files whose block actually differs, so a steady state is
+    // a read per doc.
+    await this.templateWriter
+      .syncPlatformBlocks(
+        config.bots.map((b) => ({
+          id: b.id,
+          status: b.status,
+          // Bots do not persist the language they were seeded with, so fall back
+          // to the desktop locale — the same choice a new bot would get today.
+          lang: config.desktop?.locale,
+        })),
+      )
+      .catch((err: unknown) => {
+        // Never let doc drift block a config push — the config is what keeps the
+        // runtime working; the block is guidance.
+        logger.warn(
+          { error: err instanceof Error ? err.message : err },
+          "platform block sync failed; continuing with config sync",
+        );
+      });
+
     const rawCompiled = compileOpenClawConfig(
       config,
       this.env,

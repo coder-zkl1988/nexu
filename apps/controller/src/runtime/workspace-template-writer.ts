@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import {
   cp,
   mkdir,
@@ -15,6 +16,67 @@ interface BotInfo {
   status: string;
   /** ISO language code (e.g. "en", "zh-CN"). Defaults to "en". */
   lang?: string;
+}
+
+/** Marks the span of a workspace doc that the platform owns and may rewrite. */
+const PLATFORM_BLOCK_START = "<!-- NEXU-PLATFORM-START -->";
+const PLATFORM_BLOCK_END = "<!-- NEXU-PLATFORM-END -->";
+
+/** Per-file outcome of a platform block sync, for logging and for tests. */
+export interface PlatformBlockSyncReport {
+  updated: Array<{ botId: string; file: string }>;
+  unchanged: Array<{ botId: string; file: string }>;
+  /** Doc had no block at all; one was appended so it can be kept current from now on. */
+  repaired: Array<{ botId: string; file: string }>;
+  /** Doc has a broken marker pair — left untouched, since the boundary is unknowable. */
+  unmarked: Array<{ botId: string; file: string }>;
+  /** Template is platform-managed but the bot has no such file yet. */
+  missing: Array<{ botId: string; file: string }>;
+}
+
+/**
+ * The text between the markers, or null when the document has no complete,
+ * well-ordered pair. A lone or reversed marker means the document is not a
+ * shape we understand, and guessing at the boundary would corrupt it.
+ */
+function extractPlatformBlock(content: string): string | null {
+  const start = content.indexOf(PLATFORM_BLOCK_START);
+  const end = content.indexOf(PLATFORM_BLOCK_END);
+  if (start < 0 || end < 0 || end < start) return null;
+  return content.slice(start + PLATFORM_BLOCK_START.length, end);
+}
+
+/**
+ * True when the document carries no marker at all, and a block can therefore be
+ * appended safely.
+ *
+ * A document with a stray or reversed marker is explicitly NOT safe: appending a
+ * complete block would leave two of one marker, and the parse would still fail —
+ * so the next sync would append again, and again. Repair has to be limited to
+ * the case where the result is unambiguous.
+ */
+function hasNoPlatformMarkers(content: string): boolean {
+  return (
+    !content.includes(PLATFORM_BLOCK_START) &&
+    !content.includes(PLATFORM_BLOCK_END)
+  );
+}
+
+/** Append a platform block to a doc that has none, keeping one blank line before it. */
+function appendPlatformBlock(content: string, block: string): string {
+  const body = content.replace(/\s*$/, "");
+  return `${body}\n\n${PLATFORM_BLOCK_START}${block}${PLATFORM_BLOCK_END}\n`;
+}
+
+/** Swap in a new platform block, leaving every byte outside the markers alone. */
+function replacePlatformBlock(content: string, block: string): string {
+  const start = content.indexOf(PLATFORM_BLOCK_START);
+  const end = content.indexOf(PLATFORM_BLOCK_END);
+  return (
+    content.slice(0, start + PLATFORM_BLOCK_START.length) +
+    block +
+    content.slice(end)
+  );
 }
 
 const TIMEZONE_LINE_RE = /^-\s+\*\*(Timezone:|时区：)\*\*\s*$/;
@@ -75,6 +137,129 @@ export class WorkspaceTemplateWriter {
       );
       await this.copyPlatformTemplates(bot.id, sourceDir);
     }
+  }
+
+  /**
+   * Refresh the platform-managed block inside each active bot's workspace docs.
+   *
+   * Seeding runs once, at bot creation, and never overwrites — agents edit these
+   * files at runtime, so re-copying a template would destroy whatever the agent
+   * has since written. That leaves platform guidance frozen at whenever the bot
+   * was created: a rule added to the template today reaches no existing bot, and
+   * the fleet drifts further apart with every release.
+   *
+   * The templates mark their own section with
+   * `<!-- NEXU-PLATFORM-START -->` / `<!-- NEXU-PLATFORM-END -->`. Everything
+   * inside is ours to update; everything outside belongs to the agent. Replacing
+   * only the marked span keeps both true at once.
+   *
+   * Deliberately conservative about what it will touch:
+   * - a workspace file that does not exist is left to {@link write}
+   * - a file with no marker at all predates this layout, and gets a block
+   *   appended so it can be kept current from then on. Appending adds nothing
+   *   the agent wrote and is idempotent: once the block exists, later syncs
+   *   update it in place
+   * - a file with a stray or reversed marker is skipped. Appending there would
+   *   leave a duplicate marker, the parse would still fail, and every sync would
+   *   append again
+   * - a file whose block already matches is not rewritten, so a steady state
+   *   costs one read
+   */
+  async syncPlatformBlocks(bots: BotInfo[]): Promise<PlatformBlockSyncReport> {
+    const report: PlatformBlockSyncReport = {
+      updated: [],
+      unchanged: [],
+      repaired: [],
+      unmarked: [],
+      missing: [],
+    };
+    const templatesRoot = this.env.platformTemplatesDir;
+    if (!templatesRoot || !(await this.directoryExists(templatesRoot))) {
+      logger.warn(
+        { templatesRoot },
+        "platform templates unavailable; skipping block sync",
+      );
+      return report;
+    }
+
+    for (const bot of bots.filter((b) => b.status === "active")) {
+      const sourceDir = await this.resolveTemplateDir(
+        templatesRoot,
+        bot.lang ?? "en",
+      );
+      let entries: Dirent[];
+      try {
+        entries = await readdir(sourceDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+        const templateBlock = extractPlatformBlock(
+          await readFile(path.join(sourceDir, entry.name), "utf8").catch(
+            () => "",
+          ),
+        );
+        // Only files the template itself marks are platform-managed.
+        if (templateBlock == null) continue;
+
+        const target = path.join(
+          this.env.openclawStateDir,
+          "agents",
+          bot.id,
+          entry.name,
+        );
+        const current = await readFile(target, "utf8").catch(() => null);
+        if (current == null) {
+          report.missing.push({ botId: bot.id, file: entry.name });
+          continue;
+        }
+        const currentBlock = extractPlatformBlock(current);
+        if (currentBlock == null) {
+          if (!hasNoPlatformMarkers(current)) {
+            report.unmarked.push({ botId: bot.id, file: entry.name });
+            continue;
+          }
+          await writeFile(
+            target,
+            appendPlatformBlock(current, templateBlock),
+            "utf8",
+          );
+          report.repaired.push({ botId: bot.id, file: entry.name });
+          continue;
+        }
+        if (currentBlock === templateBlock) {
+          report.unchanged.push({ botId: bot.id, file: entry.name });
+          continue;
+        }
+        await writeFile(
+          target,
+          replacePlatformBlock(current, templateBlock),
+          "utf8",
+        );
+        report.updated.push({ botId: bot.id, file: entry.name });
+      }
+    }
+
+    logger.info(
+      {
+        updated: report.updated.length,
+        unchanged: report.unchanged.length,
+        repaired: report.repaired.length,
+        unmarked: report.unmarked.length,
+        missing: report.missing.length,
+      },
+      "platform block sync complete",
+    );
+    if (report.unmarked.length) {
+      logger.warn(
+        { files: report.unmarked.slice(0, 10) },
+        "workspace docs with a broken platform marker pair were left untouched; " +
+          "repair them by hand, or they will never receive platform updates",
+      );
+    }
+    return report;
   }
 
   /**
