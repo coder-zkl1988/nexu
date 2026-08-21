@@ -819,6 +819,20 @@ export function compileOpenClawConfig(
     agents: {
       defaults: {
         model: { primary: defaultModelId },
+        // Stalled-session watchdog. The runtime's default aborts a session
+        // whose active tool call has shown no session-level progress for 6
+        // minutes (2m warn x3) — sized for chat turns, not for device
+        // automation, where a phone works for many minutes while its progress
+        // heartbeats stay inside the tabby-control plugin and never reach the
+        // session. 20 minutes keeps the watchdog able to reclaim a genuinely
+        // hung session (its real job) without executing healthy device runs.
+        // The warn threshold stays at the default 2 minutes: it only logs, and
+        // an early diagnostic trail is useful.
+        heartbeat: {
+          diagnostics: {
+            stuckSessionAbortMs: 20 * 60_000,
+          },
+        },
         memorySearch: {
           enabled: memoryConfig.enabled,
           sources: memoryConfig.sources,

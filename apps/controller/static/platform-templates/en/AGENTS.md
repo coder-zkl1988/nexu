@@ -398,31 +398,31 @@ The phone-side VLM uses a **dual-layer autonomous architecture** that supports m
   - Decompose operations into ≤3-step sub-task groups dispatched sequentially
   - Verify screenshot after each group before continuing
 
-#### Many phones: dispatch asynchronously, do not block
+#### Phone tasks: dispatch and collect
 
-`device_execute_batch` and `device_execute_task_all` **wait for every phone**. They
-suit only short tasks across a handful of devices:
+Every batch tool (`device_execute_batch` / `device_execute_task_all`) has a
+**soft deadline**: it waits up to ~4 minutes. Phones still running at the
+deadline are not lost — the tool returns the **settled results plus a `jobId`**
+and tells you to collect the rest via `device_job_status`. Follow the
+instructions in the tool result; you never need to estimate task duration.
 
-- Wall-clock equals the slowest phone; one stuck device holds the whole call open
-- A wait beyond a few minutes gets your own turn aborted by the session watchdog —
-  **losing the results of the phones that already succeeded**
+Two ways to dispatch:
 
-**Beyond two or three phones, or when work may run for more than a few minutes,
-use the async trio instead:**
+1. **Batch tools (default)** — dispatch and wait until the soft deadline. Short
+   work returns complete; long work returns partial results + a `jobId`
+2. **`device_dispatch_tasks` (no waiting)** — returns a `jobId` immediately,
+   for when you want to tell the user "dispatched, in progress" first and
+   collect at leisure
 
-1. `device_dispatch_tasks` — returns a `jobId` **immediately**, in milliseconds,
-   without waiting for any phone
-2. `device_job_status` — progress for that `jobId`: total / running / succeeded /
-   failed, plus every failure and its reason
-   - Summary only by default. A few hundred phone transcripts will not fit in context
-   - Pass `includeResults` for successful details, and `offset` to page through them
-3. `device_cancel_job` — stop every phone still running in that job
+Collection and control:
 
-While polling, do **not** dispatch new work to the same phones; wait for `done: true`.
-
-If a `jobId` has aged out, query per device with `device_get_task_results` — a
-device's results outlive the job record.
-
+- `device_job_status` — progress for a `jobId`: totals plus every failure;
+  pass `includeResults` (with `offset` paging) for successful details
+- `device_cancel_job` — stop every phone still running in that job
+- Once you hold a `jobId`, do **not** re-dispatch the same phones — the task is
+  already running on them
+- If a `jobId` has aged out, query per device with `device_get_task_results`:
+  a device's results are kept 6 hours and **survive desktop restarts**
 **Example**:
 
 > User: "Help me publish a post on 小红书"
@@ -435,10 +435,10 @@ Autonomous mode (default):
 
 > User: "Have every phone search 小红书 for badminton and comment on 10 posts each"
 
-Multi-device async (the default once phones or runtimes grow):
-- `device_dispatch_tasks`: one task per phone → `jobId` back at once
-- `device_job_status`: poll until `done: true` (meanwhile you can tell the user
-  "dispatched to N phones, in progress")
-- `device_job_status` + `includeResults`: page through the successes and report
-  them together with any failures
+Multi-device batch:
+- `device_execute_batch`: one task per phone, wait until the soft deadline
+- All settled → summarise directly; got a `jobId` → tell the user "X phones
+  done, the rest in progress" first
+- Poll `device_job_status` until `done: true`, page with `includeResults`, and
+  merge into one summary for the user
 <!-- NEXU-PLATFORM-END -->

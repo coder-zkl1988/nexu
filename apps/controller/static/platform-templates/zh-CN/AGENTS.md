@@ -398,25 +398,21 @@ Tabby 支持通过 Tabby 移动应用控制真实 Android 手机。当用户要�
   - 将操作拆分为 ≤3 步的子任务逐组下发
   - 每组完成后验收截图再继续
 
-#### 多台手机：用异步下发，不要阻塞等待
+#### 手机任务：下发与收割
 
-`device_execute_batch` 和 `device_execute_task_all` 会**等待每一台手机**。它们只适合少量手机上的短任务：
+所有批量工具（`device_execute_batch` / `device_execute_task_all`）都带**软截止**：最多等约 4 分钟。到点没跑完的手机不会丢——工具会返回**已完成的部分结果 + 一个 `jobId`**，并提示你用 `device_job_status` 收剩下的。跟着工具结果里的指引走即可，不需要预估任务时长。
 
-- 整体耗时等于最慢那台；任意一台卡住就拖住整个调用
-- 等待超过几分钟，你自己这一轮会被会话看门狗中止 —— **连已经成功的那些手机的结果也一起丢失**
+两种下发方式：
 
-**手机多于两三台、或任务可能超过几分钟时，改用异步三件套：**
+1. **批量工具（默认）** —— 下发并等待到软截止。短任务当场拿到全部结果；长任务拿到部分结果 + `jobId` 续查
+2. **`device_dispatch_tasks`（不等待）** —— 立即返回 `jobId`，适合你想先回复用户"已下发,进行中"再慢慢收割的场景
 
-1. `device_dispatch_tasks` —— 下发后**立刻返回** `jobId`，毫秒级，不等任何一台
-2. `device_job_status` —— 用 `jobId` 查看进度：总数/运行中/成功/失败 + 失败明细
-   - 默认只给汇总。几百台的完整执行记录塞不进上下文
-   - 需要成功详情时传 `includeResults`，并用 `offset` 翻页
-3. `device_cancel_job` —— 停掉该批次里所有仍在运行的手机
+收割与控制：
 
-轮询期间：**不要**对同一批手机下发新任务，等 `done: true` 再继续。
-
-若某台手机的 `jobId` 已过期，用 `device_get_task_results` 按设备查 —— 单台结果的保留时间比作业记录长。
-
+- `device_job_status` —— 用 `jobId` 查进度：总数/运行中/成功/失败 + 失败明细；成功详情传 `includeResults` 并用 `offset` 翻页
+- `device_cancel_job` —— 停掉该批次里所有仍在运行的手机
+- 拿到 `jobId` 后**不要**对同一批手机重复下发——任务已经在它们上面跑着
+- 若 `jobId` 已过期，用 `device_get_task_results` 按设备查：单台结果保留 6 小时且**可跨桌面端重启存活**
 **示例**：
 
 > 用户："帮我在小红书发一篇笔记"
@@ -429,8 +425,8 @@ Tabby 支持通过 Tabby 移动应用控制真实 Android 手机。当用户要�
 
 > 用户："让所有手机都去小红书搜羽毛球并各评论 10 篇"
 
-多机异步（手机较多或任务较长时的默认做法）：
-- `device_dispatch_tasks`：为每台手机各下发一条任务 → 立即拿到 `jobId`
-- `device_job_status`：轮询到 `done: true`（期间可以先回复用户"已下发 N 台，进行中"）
-- `device_job_status` + `includeResults`：分页取回成功详情，连同失败明细一起汇总给用户
+多机批量：
+- `device_execute_batch`：为每台手机各下发一条任务，等到软截止
+- 全部完成 → 直接汇总；返回 `jobId` → 先告诉用户"已完成 X 台，其余进行中"
+- `device_job_status` 轮询到 `done: true`，`includeResults` 分页取回，合并汇总给用户
 <!-- NEXU-PLATFORM-END -->
