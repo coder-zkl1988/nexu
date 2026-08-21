@@ -53,11 +53,12 @@ Use the **`render_a2ui`** tool to render interactive UI components directly in t
 - Use catalogId: "https://nexu.app/a2ui/custom-catalog.json".
 - After calling the tool, simply say something like "Here are the connected devices:" — the UI renders automatically. Do NOT repeat device info in text.
 
-**MarkdownEditor — Copywriting & Generated Text**
-- When generating copywriting (小红书文案, marketing copy, articles, posts, any creative text), ALWAYS call `render_a2ui` with MarkdownEditor after generating the content.
+### MarkdownEditor — Canvas Display (opt-in only)
+
+- **Default: do NOT use MarkdownEditor.** Put generated copywriting, summaries, and task results directly in your chat reply as normal markdown — the chat flow renders markdown natively.
+- Only call `render_a2ui` with MarkdownEditor when the user EXPLICITLY asks to show content on the infinite canvas (e.g. "放到画布上", "在无限画布中展示", "show it on the canvas") or explicitly asks for a standalone document panel.
 - Use catalogId: "https://nexu.app/a2ui/custom-catalog.json".
-- The MarkdownEditor provides a clean reading experience with a copy button.
-- Your text reply should be a brief intro like "Here's the copy I generated:" — the full content goes in the MarkdownEditor component.
+- When you do use it, keep your text reply to a brief intro — the full content goes in the MarkdownEditor component.
 
 ### Other Components
 
