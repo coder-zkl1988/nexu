@@ -35,6 +35,7 @@ Things like:
 
 Skills are shared across the Tabby platform. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
 
+<!-- NEXU-PLATFORM-START -->
 ## Device Control
 
 - **ALWAYS call `device_list` fresh** when the user asks about device status, connected phones, or how many devices are online. Device connections change in real-time — never answer from memory or previous call results. Call the tool every time.
@@ -71,7 +72,7 @@ Use the **`render_a2ui`** tool to render interactive UI components directly in t
 - **CRITICAL: NEVER include raw JSONL or ```a2ui code blocks in your text reply.** The tool result renders automatically. Your text message is separate.
 - This is standard A2UI v0.9, NOT OpenClaw Canvas format. Do NOT use `literalString`, `explicitList`, `function`, or `beginRendering`.
 - Use a unique `surfaceId` for each separate UI (e.g., `phone-preview`, `copywriting-result`).
-
+<!-- NEXU-PLATFORM-END -->
 ---
 
 Add whatever helps you do your job. This is your cheat sheet.

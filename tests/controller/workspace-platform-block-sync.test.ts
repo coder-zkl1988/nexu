@@ -163,6 +163,58 @@ describe("platform block sync", () => {
     ).toBe(true);
   });
 
+  it("syncs a doc that only the English templates carry", async () => {
+    // zh-CN translates the docs worth translating; TOOLS.md lives only under
+    // en/. Resolving one directory for the whole set dropped it entirely, so a
+    // zh-CN bot never received it and edits to it reached nobody.
+    await mkdir(path.join(templatesDir, "zh-CN"), { recursive: true });
+    await writeFile(
+      path.join(templatesDir, "zh-CN", "AGENTS.md"),
+      template("翻译过的平台规则。"),
+      "utf8",
+    );
+    await writeFile(
+      path.join(templatesDir, "en", "TOOLS.md"),
+      template("English-only tool notes."),
+      "utf8",
+    );
+    await mkdir(path.join(stateDir, "agents", "bot-1"), { recursive: true });
+    await writeFile(
+      path.join(stateDir, "agents", "bot-1", "AGENTS.md"),
+      workspaceDoc("旧的平台规则。", "## 我的笔记"),
+      "utf8",
+    );
+    await writeFile(
+      path.join(stateDir, "agents", "bot-1", "TOOLS.md"),
+      workspaceDoc("Stale tool notes.", "## My own notes"),
+      "utf8",
+    );
+
+    const report = await writer.syncPlatformBlocks([
+      { id: "bot-1", status: "active", lang: "zh-CN" },
+    ]);
+
+    const files = report.updated.map((e) => e.file).sort();
+    expect(files).toEqual(["AGENTS.md", "TOOLS.md"]);
+
+    // The translated doc wins for its own name; the English-only doc is still
+    // delivered, and neither loses the agent's own writing.
+    const agents = await readFile(
+      path.join(stateDir, "agents", "bot-1", "AGENTS.md"),
+      "utf8",
+    );
+    expect(agents).toContain("翻译过的平台规则。");
+    expect(agents).toContain("## 我的笔记");
+
+    const tools = await readFile(
+      path.join(stateDir, "agents", "bot-1", "TOOLS.md"),
+      "utf8",
+    );
+    expect(tools).toContain("English-only tool notes.");
+    expect(tools).not.toContain("Stale tool notes.");
+    expect(tools).toContain("## My own notes");
+  });
+
   it("skips paused and deleted bots", async () => {
     await seedTemplate("New rule.");
     await seedWorkspace("bot-1", workspaceDoc("Old rule.", "## Mine"));

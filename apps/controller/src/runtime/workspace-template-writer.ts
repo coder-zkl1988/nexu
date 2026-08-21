@@ -131,11 +131,11 @@ export class WorkspaceTemplateWriter {
     }
 
     for (const bot of activeBots) {
-      const sourceDir = await this.resolveTemplateDir(
+      const templateFiles = await this.resolveTemplateFiles(
         templatesRoot,
         bot.lang ?? "en",
       );
-      await this.copyPlatformTemplates(bot.id, sourceDir);
+      await this.copyPlatformTemplates(bot.id, templateFiles);
     }
   }
 
@@ -183,23 +183,15 @@ export class WorkspaceTemplateWriter {
     }
 
     for (const bot of bots.filter((b) => b.status === "active")) {
-      const sourceDir = await this.resolveTemplateDir(
+      const templateFiles = await this.resolveTemplateFiles(
         templatesRoot,
         bot.lang ?? "en",
       );
-      let entries: Dirent[];
-      try {
-        entries = await readdir(sourceDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
 
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      for (const entry of templateFiles) {
+        if (!entry.name.endsWith(".md")) continue;
         const templateBlock = extractPlatformBlock(
-          await readFile(path.join(sourceDir, entry.name), "utf8").catch(
-            () => "",
-          ),
+          await readFile(entry.sourcePath, "utf8").catch(() => ""),
         );
         // Only files the template itself marks are platform-managed.
         if (templateBlock == null) continue;
@@ -282,9 +274,45 @@ export class WorkspaceTemplateWriter {
     return root;
   }
 
+  /**
+   * The platform docs for a language, each resolved to its own source file.
+   *
+   * A translated directory is not required to be complete: `zh-CN/` carries the
+   * four docs worth translating, while TOOLS.md exists only under `en/`.
+   * Resolving one directory for the whole set therefore drops every file the
+   * translation happens not to have — a zh-CN bot never saw TOOLS.md at all,
+   * neither at seeding nor on sync, and edits to it reached nobody. Falling back
+   * per file keeps the translated copies where they exist and the English
+   * original everywhere else.
+   */
+  private async resolveTemplateFiles(
+    root: string,
+    lang: string,
+  ): Promise<Array<{ name: string; sourcePath: string }>> {
+    const primaryDir = await this.resolveTemplateDir(root, lang);
+    const fallbackDir = path.join(root, "en");
+    const byName = new Map<string, string>();
+
+    // Fallback first so a translated file of the same name overwrites it.
+    for (const dir of [fallbackDir, primaryDir]) {
+      if (dir !== primaryDir && !(await this.directoryExists(dir))) continue;
+      let entries: Dirent[];
+      try {
+        entries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        byName.set(entry.name, path.join(dir, entry.name));
+      }
+    }
+    return [...byName].map(([name, sourcePath]) => ({ name, sourcePath }));
+  }
+
   private async copyPlatformTemplates(
     botId: string,
-    sourceDir: string,
+    templateFiles: Array<{ name: string; sourcePath: string }>,
   ): Promise<void> {
     const workspaceDir = path.join(this.env.openclawStateDir, "agents", botId);
 
@@ -292,12 +320,11 @@ export class WorkspaceTemplateWriter {
     await mkdir(workspaceDir, { recursive: true });
 
     try {
-      const entries = await readdir(sourceDir, { withFileTypes: true });
       let seededCount = 0;
       let preservedCount = 0;
 
-      for (const entry of entries) {
-        const sourcePath = path.join(sourceDir, entry.name);
+      for (const entry of templateFiles) {
+        const sourcePath = entry.sourcePath;
         // Write directly to workspace root, not nexu-platform/ subdirectory
         const targetPath = path.join(workspaceDir, entry.name);
 
@@ -347,7 +374,11 @@ export class WorkspaceTemplateWriter {
       );
     } catch (err) {
       logger.error(
-        { botId, sourceDir, error: err instanceof Error ? err.message : err },
+        {
+          botId,
+          files: templateFiles.map((f) => f.name),
+          error: err instanceof Error ? err.message : err,
+        },
         "failed to seed platform templates",
       );
     }
