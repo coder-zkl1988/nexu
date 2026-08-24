@@ -17,7 +17,14 @@ export const createBotSchema = z.object({
     .min(1)
     .max(100),
   systemPrompt: z.string().optional(),
-  modelId: z.string().default("gpt-4o"),
+  /**
+   * Which model this bot runs on. Null (or absent) means "follow the global
+   * default" — the compiler then omits the per-agent model and OpenClaw falls
+   * back to agents.defaults.model. Without that state every bot carried a
+   * concrete id, so changing the global default could only be made to work by
+   * overwriting all of them, which erased any per-bot choice.
+   */
+  modelId: z.string().nullable().optional(),
   poolId: z.string().optional(),
   expertSlug: z
     .string()
@@ -51,7 +58,8 @@ const DEFAULT_HOST_EXECUTION = {
 export const updateBotSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   systemPrompt: z.string().optional(),
-  modelId: z.string().optional(),
+  /** Null clears the binding back to "follow the global default". */
+  modelId: z.string().nullable().optional(),
   hostExecution: botHostExecutionSchema.partial().optional(),
 });
 
@@ -61,7 +69,8 @@ export const botResponseSchema = z.object({
   slug: z.string(),
   poolId: z.string().nullable(),
   status: botStatusSchema,
-  modelId: z.string(),
+  /** Null means this bot follows the global default model. */
+  modelId: z.string().nullable().default(null),
   systemPrompt: z.string().nullable(),
   expertSlug: z.string().nullable().default(null),
   origin: botOriginSchema.default("user"),

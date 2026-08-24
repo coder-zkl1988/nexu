@@ -161,6 +161,78 @@ function createConfig(overrides: Partial<NexuConfig> = {}): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  // A bot with no model of its own follows the global default. The compiler
+  // expresses that by omitting the per-agent model so OpenClaw falls back to
+  // agents.defaults — which is the whole reason per-bot binding can coexist
+  // with a global setting instead of being overwritten by it.
+  it("omits the per-agent model for a bot that follows the default", () => {
+    const config = createConfig();
+    const result = compileOpenClawConfig(
+      {
+        ...config,
+        bots: [{ ...config.bots[0], modelId: null } as (typeof config.bots)[0]],
+      },
+      createEnv(),
+    );
+
+    expect(result.agents.list[0]?.model).toBeUndefined();
+    expect(
+      (result.agents.defaults as Record<string, unknown>).model,
+    ).toMatchObject({ primary: expect.stringContaining("claude-sonnet-4") });
+  });
+
+  it("keeps a bot's own model even when it differs from the default", () => {
+    const config = createConfig();
+    const result = compileOpenClawConfig(
+      {
+        ...config,
+        bots: [
+          {
+            ...config.bots[0],
+            modelId: "openai/gpt-4.1",
+          } as (typeof config.bots)[0],
+        ],
+        runtime: {
+          ...config.runtime,
+          defaultModelId: "anthropic/claude-sonnet-4",
+        },
+      },
+      createEnv(),
+    );
+
+    // The bot chose this model; the global default must not reach it.
+    expect(result.agents.list[0]?.model).toMatchObject({
+      primary: expect.stringContaining("gpt-4.1"),
+    });
+  });
+
+  it("takes the default from the configured default, not the first bot", () => {
+    const config = createConfig();
+    const result = compileOpenClawConfig(
+      {
+        ...config,
+        bots: [
+          {
+            ...config.bots[0],
+            modelId: "openai/gpt-4.1",
+          } as (typeof config.bots)[0],
+        ],
+        runtime: {
+          ...config.runtime,
+          defaultModelId: "anthropic/claude-sonnet-4",
+        },
+      },
+      createEnv(),
+    );
+
+    // This once read the first active bot first, which only worked because
+    // changing the default rewrote every bot. With per-bot bindings that order
+    // lets whichever bot sorts first dictate the default for all the others.
+    expect(
+      (result.agents.defaults as Record<string, unknown>).model,
+    ).toMatchObject({ primary: expect.stringContaining("claude-sonnet-4") });
+  });
+
   it("allows host shell and process execution by default", () => {
     const previousSandboxEnabled = process.env.SANDBOX_ENABLED;
     Reflect.deleteProperty(process.env, "SANDBOX_ENABLED");
@@ -411,14 +483,17 @@ describe("compileOpenClawConfig", () => {
         }
       )?.hooks?.allowConversationAccess,
     ).toBe(true);
-    // OpenClaw's own browser tool drove the user's real Chrome through a
-    // paired extension. It is not compiled at all any more: the agent gets the
-    // browser panel inside the app, which needs no extension, no pairing, and
-    // carries no session the user did not open in it. The top-level `browser`
-    // block is gone from OpenClawConfig entirely, so the type — not this test —
-    // is what stops it coming back.
+    // OpenClaw's own browser tool drives the user's real Chrome, including a
+    // profile that attaches to their signed-in session. The agent is meant to
+    // get the browser panel inside the app instead, which carries no session
+    // the user did not open in it.
+    //
+    // Emitting nothing was not enough: OpenClaw bundles that plugin and enables
+    // it by default, so "not configured" still meant "available", and the agent
+    // — seeing one rich tool next to five narrow ones — chose it and browsed in
+    // Chrome. It has to be disabled explicitly.
     expect(result.plugins?.allow).toBeUndefined();
-    expect(result.plugins?.entries?.browser).toBeUndefined();
+    expect(result.plugins?.entries?.browser).toEqual({ enabled: false });
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
     expect(result.tools?.exec?.security).toBe("full");
     expect(result.tools?.deny).toBeUndefined();
@@ -457,7 +532,9 @@ describe("compileOpenClawConfig", () => {
 
     expect(result.mcp).toBeUndefined();
     expect(result.plugins?.allow).toBeUndefined();
-    expect(result.plugins?.entries?.browser).toBeUndefined();
+    // Disabled explicitly, not merely unconfigured — the bundled plugin is on
+    // by default, so omitting it leaves the user's real Chrome reachable.
+    expect(result.plugins?.entries?.browser).toEqual({ enabled: false });
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain("browser");
     expect(result.agents.list[0]?.tools?.alsoAllow).not.toContain(
       "cua-driver__click",

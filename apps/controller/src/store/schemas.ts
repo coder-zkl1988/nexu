@@ -648,6 +648,7 @@ export const nexuConfigSchema = z.preprocess((input) => {
     typeof candidate.desktop === "object" && candidate.desktop !== null
       ? (candidate.desktop as Record<string, unknown>)
       : null;
+  const persistedDefaultModelId = runtimeCandidate?.defaultModelId;
   return {
     $schema:
       typeof candidate.$schema === "string"
@@ -662,16 +663,28 @@ export const nexuConfigSchema = z.preprocess((input) => {
         ? candidate.app
         : {},
     bots: Array.isArray(candidate.bots)
-      ? candidate.bots.map((bot) =>
-          typeof bot === "object" &&
-          bot !== null &&
-          typeof bot.modelId === "string"
-            ? {
-                ...bot,
-                modelId: normalizePersistedModelRef(bot.modelId, models),
-              }
-            : bot,
-        )
+      ? candidate.bots.map((bot) => {
+          if (typeof bot !== "object" || bot === null) return bot;
+          if (typeof bot.modelId !== "string") return bot;
+          const modelId = normalizePersistedModelRef(bot.modelId, models);
+          // An empty id was the old "no model" marker; null is now the one
+          // way to say "follow the global default".
+          if (modelId === "") return { ...bot, modelId: null };
+          // Migration: before per-bot binding existed, changing the global
+          // default rewrote every bot, so a bot whose model merely equals the
+          // current default was never a deliberate choice. Reset those to
+          // follow, or they would silently freeze at today's value and stop
+          // tracking the default forever. A bot pointing at anything else was
+          // chosen and is left alone.
+          const currentDefault =
+            typeof persistedDefaultModelId === "string"
+              ? normalizePersistedModelRef(persistedDefaultModelId, models)
+              : null;
+          if (currentDefault && modelId === currentDefault) {
+            return { ...bot, modelId: null };
+          }
+          return { ...bot, modelId };
+        })
       : [],
     runtime: runtimeCandidate
       ? {

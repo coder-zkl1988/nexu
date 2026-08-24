@@ -1232,7 +1232,9 @@ describe("NexuConfigStore", () => {
 
     const config = await store.getConfig();
     expect(config.runtime.defaultModelId).toBe("");
-    expect(config.bots[0]?.modelId).toBe("");
+    // Null, not "": a bot with no binding follows the global default, and the
+    // empty string used to compile into an agent with an unknown model.
+    expect(config.bots[0]?.modelId).toBeNull();
   });
 
   it("backfills missing desktop cloud userId from /api/v1/me during bootstrap", async () => {

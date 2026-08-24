@@ -35,7 +35,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { getApiV1Models } from "../../lib/api/sdk.gen";
+import {
+  getApiInternalDesktopDefaultModel,
+  getApiV1Models,
+} from "../../lib/api/sdk.gen";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,7 +49,8 @@ export interface BotItem {
   name: string;
   slug: string;
   status: "active" | "paused" | "deleted";
-  modelId: string;
+  /** Null means this bot follows the global default model. */
+  modelId: string | null;
 }
 
 export interface PendingAttachment {
@@ -514,11 +518,33 @@ export function ChatInputArea({
     },
     staleTime: 5 * 60 * 1000,
   });
+  // A bot with no binding of its own runs on the global default, so that is
+  // the model to name here — "Default" alone tells the user nothing about
+  // what will actually answer.
+  const { data: defaultModelData } = useQuery({
+    queryKey: ["desktop-default-model"],
+    queryFn: async () => {
+      const { data } = await getApiInternalDesktopDefaultModel();
+      return data as { modelId: string | null } | undefined;
+    },
+  });
   const models = (modelsData?.models ?? []) as Array<{
     id: string;
     name: string;
     provider: string;
   }>;
+
+  const nameForModel = (modelId: string | null | undefined): string | null => {
+    if (!modelId) return null;
+    return models.find((m) => m.id === modelId)?.name ?? modelId;
+  };
+  // Null modelId is "follow the global default", so resolve it through to the
+  // model that will actually answer rather than showing a bare placeholder.
+  const followsDefault = !selectedBot?.modelId;
+  const modelLabel =
+    nameForModel(selectedBot?.modelId) ??
+    nameForModel(defaultModelData?.modelId) ??
+    "Default";
 
   const addAttachment = useCallback((att: Omit<PendingAttachment, "id">) => {
     setPendingAttachments((prev) => [
@@ -1116,15 +1142,9 @@ export function ChatInputArea({
                 <span
                   data-chat-model="true"
                   className="max-w-[160px] truncate text-[12px] text-text-muted"
-                  title={
-                    models.find((m) => m.id === selectedBot?.modelId)?.name ??
-                    selectedBot?.modelId ??
-                    "Default"
-                  }
+                  title={modelLabel}
                 >
-                  {models.find((m) => m.id === selectedBot?.modelId)?.name ??
-                    selectedBot?.modelId ??
-                    "Default"}
+                  {modelLabel}
                 </span>
               ) : (
                 <div className="relative" ref={modelDropdownRef}>
@@ -1133,13 +1153,38 @@ export function ChatInputArea({
                     onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
                     className="flex items-center gap-1 px-2 h-8 rounded-lg hover:bg-[var(--color-tabby-canvas)] transition-colors text-[var(--color-tabby-muted)] text-sm"
                   >
-                    {models.find((m) => m.id === selectedBot?.modelId)?.name ??
-                      selectedBot?.modelId ??
-                      "Default"}
+                    {modelLabel}
                     <ChevronDown className="w-3.5 h-3.5" />
                   </button>
                   {modelDropdownOpen && (
                     <div className="absolute bottom-full right-0 mb-1 w-52 bg-white border border-[var(--color-tabby-border)] rounded-xl shadow-lg z-50 max-h-72 overflow-y-auto">
+                      {/* Following the global default has to be reachable, or
+                          picking a model here would be a one-way door: there
+                          would be no way back to tracking the setting. */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedBot) return;
+                          onSelectBot({ ...selectedBot, modelId: null });
+                          setModelDropdownOpen(false);
+                        }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] text-[var(--color-tabby-foreground)] truncate">
+                            {t("models.followDefault")}
+                          </div>
+                          <div className="text-[11px] text-[var(--color-tabby-muted)] truncate">
+                            {nameForModel(defaultModelData?.modelId) ?? "—"}
+                          </div>
+                        </div>
+                        {followsDefault && (
+                          <Check
+                            size={14}
+                            className="text-[var(--color-tabby-orange)] shrink-0"
+                          />
+                        )}
+                      </button>
                       {(() => {
                         const filtered = models.filter((m) => m.id && m.name);
                         const groups = new Map<string, typeof filtered>();

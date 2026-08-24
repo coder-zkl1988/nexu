@@ -459,6 +459,7 @@ const zhCN = {
   "reward.whatsapp.desc": "每周可领一次",
 
   // ── Models Page ──
+  "models.followDefault": "跟随全局默认",
   "models.pageTitle": "设置",
   "models.pageSubtitle": "管理 AI 模型服务商",
   "settings.pageSubtitle": "管理资料、语言偏好与 AI 模型服务商",

@@ -1739,6 +1739,10 @@ export function ModelsPage() {
         model_name: modelId,
       });
       queryClient.invalidateQueries({ queryKey: ["desktop-default-model"] });
+      // The chat surfaces read their model off the bot record, not off this
+      // query, so without these they keep showing the previous model.
+      queryClient.invalidateQueries({ queryKey: ["bots"] });
+      queryClient.invalidateQueries({ queryKey: ["bot"] });
     },
   });
 

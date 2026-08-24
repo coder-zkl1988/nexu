@@ -1031,7 +1031,8 @@ export class NexuConfigStore {
     name: string;
     slug: string;
     systemPrompt?: string;
-    modelId?: string;
+    /** Null or absent means the bot follows the global default model. */
+    modelId?: string | null;
     poolId?: string;
     expertSlug?: string | null;
     origin?: BotOrigin;
@@ -1066,7 +1067,10 @@ export class NexuConfigStore {
       // bot; a newly created bot never starts with it open.
       hostExecution: { channels: "restricted", automations: "restricted" },
       status: "active",
-      modelId: input.modelId ?? (await this.getConfig()).runtime.defaultModelId,
+      // Null, not a snapshot of the current default: a new bot should follow
+      // the global default as it changes, not be frozen to whatever it
+      // happened to be at creation time.
+      modelId: input.modelId ?? null,
       systemPrompt: input.systemPrompt ?? null,
       expertSlug: input.expertSlug ?? null,
       origin: input.origin ?? "user",
@@ -1097,7 +1101,7 @@ export class NexuConfigStore {
     input: {
       name?: string;
       systemPrompt?: string;
-      modelId?: string;
+      modelId?: string | null;
       hostExecution?: Partial<BotResponse["hostExecution"]>;
     },
   ): Promise<BotResponse | null> {
@@ -1114,7 +1118,9 @@ export class NexuConfigStore {
           ...bot,
           name: input.name ?? bot.name,
           systemPrompt: input.systemPrompt ?? bot.systemPrompt,
-          modelId: input.modelId ?? bot.modelId,
+          // `undefined` leaves the binding alone; `null` clears it back to
+          // following the global default. `??` alone cannot tell them apart.
+          modelId: input.modelId === undefined ? bot.modelId : input.modelId,
           hostExecution: {
             channels:
               input.hostExecution?.channels ?? bot.hostExecution.channels,
@@ -2656,17 +2662,17 @@ export class NexuConfigStore {
   }
 
   async setDefaultModel(modelId: string): Promise<void> {
+    // Bots are deliberately left alone. A bot with modelId === null follows
+    // this value through the compiler, so the change reaches it without a
+    // write; a bot with an explicit model chose that model, and overwriting it
+    // here — as this once did for every bot — is what made per-bot binding
+    // impossible to keep.
     await this.store.update((config) => ({
       ...config,
       runtime: {
         ...config.runtime,
         defaultModelId: modelId,
       },
-      bots: config.bots.map((bot) => ({
-        ...bot,
-        modelId,
-        updatedAt: now(),
-      })),
     }));
   }
 
@@ -3347,8 +3353,10 @@ export class NexuConfigStore {
       previousConfig.runtime.defaultModelId,
       previousCloudModels,
     );
-    const botsHaveManaged = previousConfig.bots.some((bot) =>
-      isManagedCloudModelId(bot.modelId, previousCloudModels),
+    const botsHaveManaged = previousConfig.bots.some(
+      (bot) =>
+        bot.modelId !== null &&
+        isManagedCloudModelId(bot.modelId, previousCloudModels),
     );
     if (defaultWasManaged || botsHaveManaged) {
       const updatedAt = now();
@@ -3364,8 +3372,11 @@ export class NexuConfigStore {
             : config.runtime.defaultModelId,
         },
         bots: config.bots.map((bot) =>
+          bot.modelId !== null &&
           isManagedCloudModelId(bot.modelId, previousCloudModels)
-            ? { ...bot, modelId: "", updatedAt }
+            ? // Back to following the global default rather than an empty
+              // string, which compiled into an "Unknown model" agent.
+              { ...bot, modelId: null, updatedAt }
             : bot,
         ),
       }));

@@ -16,11 +16,11 @@ export type GetApiV1BotsResponses = {
             id: string;
             name: string;
             slug: string;
-            poolId: string;
+            poolId: string | null;
             status: 'active' | 'paused' | 'deleted';
-            modelId: string;
-            systemPrompt: string;
-            expertSlug?: string;
+            modelId?: string | null;
+            systemPrompt: string | null;
+            expertSlug?: string | null;
             origin?: 'user' | 'system';
             hostExecution?: {
                 channels?: 'restricted' | 'host';
@@ -39,9 +39,9 @@ export type PostApiV1BotsData = {
         name: string;
         slug: string;
         systemPrompt?: string;
-        modelId?: string;
+        modelId?: string | null;
         poolId?: string;
-        expertSlug?: string;
+        expertSlug?: string | null;
     };
     path?: never;
     query?: never;
@@ -56,11 +56,11 @@ export type PostApiV1BotsResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -99,11 +99,11 @@ export type GetApiV1BotsDefaultResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -150,11 +150,11 @@ export type PutApiV1BotsDefaultResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -215,11 +215,11 @@ export type GetApiV1BotsByBotIdResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -236,7 +236,7 @@ export type PatchApiV1BotsByBotIdData = {
     body?: {
         name?: string;
         systemPrompt?: string;
-        modelId?: string;
+        modelId?: string | null;
         hostExecution?: {
             channels?: 'restricted' | 'host';
             automations?: 'restricted' | 'host';
@@ -268,11 +268,11 @@ export type PatchApiV1BotsByBotIdResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -313,11 +313,11 @@ export type PostApiV1BotsByBotIdPauseResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -358,11 +358,11 @@ export type PostApiV1BotsByBotIdResumeResponses = {
         id: string;
         name: string;
         slug: string;
-        poolId: string;
+        poolId: string | null;
         status: 'active' | 'paused' | 'deleted';
-        modelId: string;
-        systemPrompt: string;
-        expertSlug?: string;
+        modelId?: string | null;
+        systemPrompt: string | null;
+        expertSlug?: string | null;
         origin?: 'user' | 'system';
         hostExecution?: {
             channels?: 'restricted' | 'host';
@@ -482,7 +482,7 @@ export type GetApiSharedSlackResolveClaimKeyResponses = {
         expired: boolean;
         used: boolean;
         teamId?: string;
-        teamName?: string;
+        teamName?: string | null;
         imUserId?: string;
         isExistingWorkspace?: boolean;
         memberCount?: number;
@@ -592,22 +592,22 @@ export type GetApiInternalDesktopFallbackEventsResponses = {
             receivedAt: string;
             channel: string;
             status: string;
-            reasonCode: string;
-            accountId: string;
-            to: string;
-            threadId: string;
-            sessionKey: string;
-            actionId: string;
+            reasonCode: string | null;
+            accountId: string | null;
+            to: string | null;
+            threadId: string | null;
+            sessionKey: string | null;
+            actionId: string | null;
             fallbackOutcome: 'sent' | 'skipped' | 'failed';
             fallbackReason: string;
-            error: string;
+            error: string | null;
             sendResult: {
                 runId?: string;
                 messageId?: string;
                 channel?: string;
                 chatId?: string;
                 conversationId?: string;
-            };
+            } | null;
         }>;
     };
 };
@@ -678,7 +678,7 @@ export type GetApiAuthGetSessionResponses = {
             id: string;
             email: string;
             name: string;
-            image: string;
+            image: string | null;
         };
     };
 };
@@ -699,17 +699,17 @@ export type GetApiInternalDesktopCloudStatusResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -717,10 +717,10 @@ export type GetApiInternalDesktopCloudStatusResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
     };
@@ -769,17 +769,17 @@ export type PostApiInternalDesktopCloudProfileConnectResponses = {
         status: {
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             models?: Array<{
                 id: string;
                 name: string;
                 provider?: string;
             }>;
             cloudUrl: string;
-            linkUrl: string;
+            linkUrl: string | null;
             activeProfileName: string;
             profiles: Array<{
                 name: string;
@@ -787,10 +787,10 @@ export type PostApiInternalDesktopCloudProfileConnectResponses = {
                 linkUrl: string;
                 connected: boolean;
                 polling?: boolean;
-                userId?: string;
-                userName?: string;
-                userEmail?: string;
-                connectedAt?: string;
+                userId?: string | null;
+                userName?: string | null;
+                userEmail?: string | null;
+                connectedAt?: string | null;
                 modelCount: number;
             }>;
         };
@@ -814,17 +814,17 @@ export type PostApiInternalDesktopCloudRefreshResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -832,10 +832,10 @@ export type PostApiInternalDesktopCloudRefreshResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         configPushed: boolean;
@@ -864,17 +864,17 @@ export type PostApiInternalDesktopCloudProfileCreateResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -882,10 +882,10 @@ export type PostApiInternalDesktopCloudProfileCreateResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         ok: boolean;
@@ -916,17 +916,17 @@ export type PostApiInternalDesktopCloudProfileUpdateResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -934,10 +934,10 @@ export type PostApiInternalDesktopCloudProfileUpdateResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         ok: boolean;
@@ -963,17 +963,17 @@ export type PostApiInternalDesktopCloudProfileDeleteResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -981,10 +981,10 @@ export type PostApiInternalDesktopCloudProfileDeleteResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         ok: boolean;
@@ -1028,17 +1028,17 @@ export type PostApiInternalDesktopCloudProfileDisconnectResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -1046,10 +1046,10 @@ export type PostApiInternalDesktopCloudProfileDisconnectResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         ok: boolean;
@@ -1075,17 +1075,17 @@ export type PostApiInternalDesktopCloudProfileSelectResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -1093,10 +1093,10 @@ export type PostApiInternalDesktopCloudProfileSelectResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         ok: boolean;
@@ -1126,17 +1126,17 @@ export type PostApiInternalDesktopCloudProfilesImportResponses = {
     200: {
         connected: boolean;
         polling?: boolean;
-        userId?: string;
-        userName?: string;
-        userEmail?: string;
-        connectedAt?: string;
+        userId?: string | null;
+        userName?: string | null;
+        userEmail?: string | null;
+        connectedAt?: string | null;
         models?: Array<{
             id: string;
             name: string;
             provider?: string;
         }>;
         cloudUrl: string;
-        linkUrl: string;
+        linkUrl: string | null;
         activeProfileName: string;
         profiles: Array<{
             name: string;
@@ -1144,10 +1144,10 @@ export type PostApiInternalDesktopCloudProfilesImportResponses = {
             linkUrl: string;
             connected: boolean;
             polling?: boolean;
-            userId?: string;
-            userName?: string;
-            userEmail?: string;
-            connectedAt?: string;
+            userId?: string | null;
+            userName?: string | null;
+            userEmail?: string | null;
+            connectedAt?: string | null;
             modelCount: number;
         }>;
         ok: boolean;
@@ -1194,7 +1194,7 @@ export type GetApiInternalDesktopDefaultModelResponses = {
      * Default model
      */
     200: {
-        modelId: string;
+        modelId: string | null;
     };
 };
 
@@ -1234,7 +1234,7 @@ export type GetApiInternalDesktopUtilityModelResponses = {
      * Utility model for short internal tasks (session titles)
      */
     200: {
-        modelId: string;
+        modelId: string | null;
     };
 };
 
@@ -1255,7 +1255,7 @@ export type PutApiInternalDesktopUtilityModelResponses = {
      */
     200: {
         ok: boolean;
-        modelId: string;
+        modelId: string | null;
         configPushed: boolean;
     };
 };
@@ -1276,8 +1276,8 @@ export type GetApiInternalDesktopRewardsResponses = {
     200: {
         viewer: {
             cloudConnected: boolean;
-            activeModelId: string;
-            activeModelProviderId: string;
+            activeModelId: string | null;
+            activeModelProviderId: string | null;
             usingManagedModel: boolean;
         };
         progress: {
@@ -1294,9 +1294,9 @@ export type GetApiInternalDesktopRewardsResponses = {
             shareMode: 'link' | 'tweet' | 'image';
             repeatMode: 'once' | 'daily' | 'weekly';
             requiresScreenshot: boolean;
-            actionUrl?: string;
+            actionUrl?: string | null;
             isClaimed: boolean;
-            lastClaimedAt: string;
+            lastClaimedAt: string | null;
             claimCount: number;
         }>;
         cloudBalance?: {
@@ -1305,7 +1305,7 @@ export type GetApiInternalDesktopRewardsResponses = {
             totalConsumed: number;
             giftedBalance?: number;
             planBalance?: number;
-        };
+        } | null;
         autoFallbackTriggered?: boolean;
     };
 };
@@ -1379,8 +1379,8 @@ export type PostApiInternalDesktopRewardsClaimResponses = {
         status: {
             viewer: {
                 cloudConnected: boolean;
-                activeModelId: string;
-                activeModelProviderId: string;
+                activeModelId: string | null;
+                activeModelProviderId: string | null;
                 usingManagedModel: boolean;
             };
             progress: {
@@ -1397,9 +1397,9 @@ export type PostApiInternalDesktopRewardsClaimResponses = {
                 shareMode: 'link' | 'tweet' | 'image';
                 repeatMode: 'once' | 'daily' | 'weekly';
                 requiresScreenshot: boolean;
-                actionUrl?: string;
+                actionUrl?: string | null;
                 isClaimed: boolean;
-                lastClaimedAt: string;
+                lastClaimedAt: string | null;
                 claimCount: number;
             }>;
             cloudBalance?: {
@@ -1408,7 +1408,7 @@ export type PostApiInternalDesktopRewardsClaimResponses = {
                 totalConsumed: number;
                 giftedBalance?: number;
                 planBalance?: number;
-            };
+            } | null;
             autoFallbackTriggered?: boolean;
         };
     };
@@ -1443,8 +1443,8 @@ export type PostApiInternalDesktopRewardsSetBalanceResponses = {
     200: {
         viewer: {
             cloudConnected: boolean;
-            activeModelId: string;
-            activeModelProviderId: string;
+            activeModelId: string | null;
+            activeModelProviderId: string | null;
             usingManagedModel: boolean;
         };
         progress: {
@@ -1461,9 +1461,9 @@ export type PostApiInternalDesktopRewardsSetBalanceResponses = {
             shareMode: 'link' | 'tweet' | 'image';
             repeatMode: 'once' | 'daily' | 'weekly';
             requiresScreenshot: boolean;
-            actionUrl?: string;
+            actionUrl?: string | null;
             isClaimed: boolean;
-            lastClaimedAt: string;
+            lastClaimedAt: string | null;
             claimCount: number;
         }>;
         cloudBalance?: {
@@ -1472,7 +1472,7 @@ export type PostApiInternalDesktopRewardsSetBalanceResponses = {
             totalConsumed: number;
             giftedBalance?: number;
             planBalance?: number;
-        };
+        } | null;
         autoFallbackTriggered?: boolean;
     };
 };
@@ -1497,9 +1497,9 @@ export type GetApiV1ChannelsResponses = {
             channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
             accountId: string;
             status: 'pending' | 'connected' | 'disconnected' | 'error';
-            teamName: string;
-            appId?: string;
-            botUserId?: string;
+            teamName: string | null;
+            appId?: string | null;
+            botUserId?: string | null;
             createdAt: string;
             updatedAt: string;
             feishuPermissions?: {
@@ -1507,19 +1507,19 @@ export type GetApiV1ChannelsResponses = {
                 dmPolicy?: 'open' | 'allowlist' | 'disabled';
                 groupPolicy?: 'open' | 'allowlist' | 'disabled';
                 allowFrom?: Array<string>;
-            };
+            } | null;
             slackCapabilities?: {
                 replyToMode?: 'off' | 'first' | 'all' | 'batched';
                 streamingMode?: 'off' | 'partial' | 'block' | 'progress';
                 nativeTaskCards?: boolean;
-            };
+            } | null;
             feishuCapabilities?: {
                 streaming?: boolean;
                 renderMode?: 'auto' | 'raw' | 'card';
                 replyInThread?: boolean;
                 voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
                 mediaMaxMb?: number;
-            };
+            } | null;
         }>;
     };
 };
@@ -1600,9 +1600,9 @@ export type PostApiV1ChannelsSlackConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -1610,19 +1610,19 @@ export type PostApiV1ChannelsSlackConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -1696,9 +1696,9 @@ export type PostApiV1ChannelsDiscordConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -1706,19 +1706,19 @@ export type PostApiV1ChannelsDiscordConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -1758,9 +1758,9 @@ export type PostApiV1ChannelsFeishuConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -1768,19 +1768,19 @@ export type PostApiV1ChannelsFeishuConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -1851,9 +1851,9 @@ export type PostApiV1ChannelsTelegramConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -1861,19 +1861,19 @@ export type PostApiV1ChannelsTelegramConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -1945,9 +1945,9 @@ export type PostApiV1ChannelsDingtalkConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -1955,19 +1955,19 @@ export type PostApiV1ChannelsDingtalkConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2039,9 +2039,9 @@ export type PostApiV1ChannelsQqbotConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2049,19 +2049,19 @@ export type PostApiV1ChannelsQqbotConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2133,9 +2133,9 @@ export type PostApiV1ChannelsWecomConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2143,19 +2143,19 @@ export type PostApiV1ChannelsWecomConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2225,9 +2225,9 @@ export type GetApiV1ChannelsByChannelIdStatusResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2235,19 +2235,19 @@ export type GetApiV1ChannelsByChannelIdStatusResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2339,9 +2339,9 @@ export type PatchApiV1ChannelsByChannelIdResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2349,19 +2349,19 @@ export type PatchApiV1ChannelsByChannelIdResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2408,9 +2408,9 @@ export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2418,19 +2418,19 @@ export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2488,9 +2488,9 @@ export type PatchApiV1ChannelsByChannelIdCapabilitiesResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2498,19 +2498,19 @@ export type PatchApiV1ChannelsByChannelIdCapabilitiesResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2612,9 +2612,9 @@ export type PostApiV1ChannelsWhatsappConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2622,19 +2622,19 @@ export type PostApiV1ChannelsWhatsappConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2735,9 +2735,9 @@ export type PostApiV1ChannelsWechatConnectResponses = {
         channelType: 'slack' | 'discord' | 'feishu' | 'dingtalk' | 'wecom' | 'wechat' | 'telegram' | 'whatsapp' | 'qqbot';
         accountId: string;
         status: 'pending' | 'connected' | 'disconnected' | 'error';
-        teamName: string;
-        appId?: string;
-        botUserId?: string;
+        teamName: string | null;
+        appId?: string | null;
+        botUserId?: string | null;
         createdAt: string;
         updatedAt: string;
         feishuPermissions?: {
@@ -2745,19 +2745,19 @@ export type PostApiV1ChannelsWechatConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
-        };
+        } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
             streamingMode?: 'off' | 'partial' | 'block' | 'progress';
             nativeTaskCards?: boolean;
-        };
+        } | null;
         feishuCapabilities?: {
             streaming?: boolean;
             renderMode?: 'auto' | 'raw' | 'card';
             replyInThread?: boolean;
             voiceReplyMode?: 'off' | 'always' | 'tagged' | 'inbound';
             mediaMaxMb?: number;
-        };
+        } | null;
     };
 };
 
@@ -2786,11 +2786,11 @@ export type GetApiV1ChannelsLiveStatusResponses = {
             connected: boolean;
             running: boolean;
             configured: boolean;
-            lastError: string;
+            lastError: string | null;
         }>;
         agent: {
-            modelId: string;
-            modelName: string;
+            modelId: string | null;
+            modelName: string | null;
             alive: boolean;
         };
     };
@@ -2827,7 +2827,7 @@ export type GetApiV1ChannelsByChannelIdReadinessResponses = {
         connected: boolean;
         running: boolean;
         configured: boolean;
-        lastError: string;
+        lastError: string | null;
         gatewayConnected: boolean;
     };
 };
@@ -2853,22 +2853,22 @@ export type GetApiV1ChatSessionResponses = {
             id: string;
             botId: string;
             sessionKey: string;
-            channelType: string;
-            channelId: string;
+            channelType: string | null;
+            channelId: string | null;
             title: string;
             status: string;
             messageCount: number;
-            lastMessageAt: string;
+            lastMessageAt: string | null;
             metadata: {
                 [key: string]: unknown;
-            };
+            } | null;
             createdAt: string;
             updatedAt: string;
-            category?: string;
+            category?: string | null;
             pinned?: boolean;
             unread?: boolean;
             archived?: boolean;
-            archivedAt?: string;
+            archivedAt?: string | null;
             checkpointCount?: number;
             runState?: 'idle' | 'running' | 'failed';
             inputTokens?: number;
@@ -2879,7 +2879,7 @@ export type GetApiV1ChatSessionResponses = {
             estimatedCostUsd?: number;
             modelProvider?: string;
             model?: string;
-        };
+        } | null;
     };
 };
 
@@ -2925,7 +2925,7 @@ export type PostApiV1ChatSideQuestionResponses = {
      */
     200: {
         accepted: boolean;
-        runId: string;
+        runId: string | null;
     };
 };
 
@@ -2948,7 +2948,7 @@ export type PostApiV1ChatSteerResponses = {
      */
     200: {
         accepted: boolean;
-        runId: string;
+        runId: string | null;
     };
 };
 
@@ -3008,22 +3008,22 @@ export type PostApiV1ChatLocalStartResponses = {
             id: string;
             botId: string;
             sessionKey: string;
-            channelType: string;
-            channelId: string;
+            channelType: string | null;
+            channelId: string | null;
             title: string;
             status: string;
             messageCount: number;
-            lastMessageAt: string;
+            lastMessageAt: string | null;
             metadata: {
                 [key: string]: unknown;
-            };
+            } | null;
             createdAt: string;
             updatedAt: string;
-            category?: string;
+            category?: string | null;
             pinned?: boolean;
             unread?: boolean;
             archived?: boolean;
-            archivedAt?: string;
+            archivedAt?: string | null;
             checkpointCount?: number;
             runState?: 'idle' | 'running' | 'failed';
             inputTokens?: number;
@@ -3034,16 +3034,16 @@ export type PostApiV1ChatLocalStartResponses = {
             estimatedCostUsd?: number;
             modelProvider?: string;
             model?: string;
-        };
+        } | null;
         message: {
             id: string;
-            runId?: string;
+            runId?: string | null;
             role: string;
             type: string;
             content?: unknown;
-            timestamp: number;
-            createdAt: string;
-        };
+            timestamp: number | null;
+            createdAt: string | null;
+        } | null;
     };
 };
 
@@ -3102,22 +3102,22 @@ export type PostApiV1ChatLocalResponses = {
             id: string;
             botId: string;
             sessionKey: string;
-            channelType: string;
-            channelId: string;
+            channelType: string | null;
+            channelId: string | null;
             title: string;
             status: string;
             messageCount: number;
-            lastMessageAt: string;
+            lastMessageAt: string | null;
             metadata: {
                 [key: string]: unknown;
-            };
+            } | null;
             createdAt: string;
             updatedAt: string;
-            category?: string;
+            category?: string | null;
             pinned?: boolean;
             unread?: boolean;
             archived?: boolean;
-            archivedAt?: string;
+            archivedAt?: string | null;
             checkpointCount?: number;
             runState?: 'idle' | 'running' | 'failed';
             inputTokens?: number;
@@ -3128,16 +3128,16 @@ export type PostApiV1ChatLocalResponses = {
             estimatedCostUsd?: number;
             modelProvider?: string;
             model?: string;
-        };
+        } | null;
         message: {
             id: string;
-            runId?: string;
+            runId?: string | null;
             role: string;
             type: string;
             content?: unknown;
-            timestamp: number;
-            createdAt: string;
-        };
+            timestamp: number | null;
+            createdAt: string | null;
+        } | null;
     };
 };
 
@@ -3208,8 +3208,8 @@ export type GetApiV1ChatHistoryResponses = {
             id: string;
             role: 'user' | 'assistant' | 'toolResult';
             content?: unknown;
-            timestamp: number;
-            createdAt: string;
+            timestamp: number | null;
+            createdAt: string | null;
             aborted?: boolean;
             toolName?: string;
             toolCallId?: string;
@@ -3247,22 +3247,22 @@ export type PostApiInternalSessionsResponses = {
         id: string;
         botId: string;
         sessionKey: string;
-        channelType: string;
-        channelId: string;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
         status: string;
         messageCount: number;
-        lastMessageAt: string;
+        lastMessageAt: string | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
-        category?: string;
+        category?: string | null;
         pinned?: boolean;
         unread?: boolean;
         archived?: boolean;
-        archivedAt?: string;
+        archivedAt?: string | null;
         checkpointCount?: number;
         runState?: 'idle' | 'running' | 'failed';
         inputTokens?: number;
@@ -3314,22 +3314,22 @@ export type PatchApiInternalSessionsByIdResponses = {
         id: string;
         botId: string;
         sessionKey: string;
-        channelType: string;
-        channelId: string;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
         status: string;
         messageCount: number;
-        lastMessageAt: string;
+        lastMessageAt: string | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
-        category?: string;
+        category?: string | null;
         pinned?: boolean;
         unread?: boolean;
         archived?: boolean;
-        archivedAt?: string;
+        archivedAt?: string | null;
         checkpointCount?: number;
         runState?: 'idle' | 'running' | 'failed';
         inputTokens?: number;
@@ -3360,7 +3360,7 @@ export type GetApiV1SessionsData = {
         pinned?: 'true' | 'false';
         unread?: 'true' | 'false';
         limit?: number;
-        offset?: number;
+        offset?: number | null;
     };
     url: '/api/v1/sessions';
 };
@@ -3385,22 +3385,22 @@ export type GetApiV1SessionsResponses = {
             id: string;
             botId: string;
             sessionKey: string;
-            channelType: string;
-            channelId: string;
+            channelType: string | null;
+            channelId: string | null;
             title: string;
             status: string;
             messageCount: number;
-            lastMessageAt: string;
+            lastMessageAt: string | null;
             metadata: {
                 [key: string]: unknown;
-            };
+            } | null;
             createdAt: string;
             updatedAt: string;
-            category?: string;
+            category?: string | null;
             pinned?: boolean;
             unread?: boolean;
             archived?: boolean;
-            archivedAt?: string;
+            archivedAt?: string | null;
             checkpointCount?: number;
             runState?: 'idle' | 'running' | 'failed';
             inputTokens?: number;
@@ -3468,22 +3468,22 @@ export type GetApiV1SessionsByIdResponses = {
         id: string;
         botId: string;
         sessionKey: string;
-        channelType: string;
-        channelId: string;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
         status: string;
         messageCount: number;
-        lastMessageAt: string;
+        lastMessageAt: string | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
-        category?: string;
+        category?: string | null;
         pinned?: boolean;
         unread?: boolean;
         archived?: boolean;
-        archivedAt?: string;
+        archivedAt?: string | null;
         checkpointCount?: number;
         runState?: 'idle' | 'running' | 'failed';
         inputTokens?: number;
@@ -3527,22 +3527,22 @@ export type PostApiV1SessionsByIdResetResponses = {
         id: string;
         botId: string;
         sessionKey: string;
-        channelType: string;
-        channelId: string;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
         status: string;
         messageCount: number;
-        lastMessageAt: string;
+        lastMessageAt: string | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
-        category?: string;
+        category?: string | null;
         pinned?: boolean;
         unread?: boolean;
         archived?: boolean;
-        archivedAt?: string;
+        archivedAt?: string | null;
         checkpointCount?: number;
         runState?: 'idle' | 'running' | 'failed';
         inputTokens?: number;
@@ -3589,14 +3589,14 @@ export type GetApiV1SessionsByIdMessagesResponses = {
             id: string;
             role: 'user' | 'assistant' | 'toolResult';
             content?: unknown;
-            timestamp: number;
-            createdAt: string;
+            timestamp: number | null;
+            createdAt: string | null;
             aborted?: boolean;
             failed?: boolean;
             toolName?: string;
             toolCallId?: string;
         }>;
-        sessionKey: string;
+        sessionKey: string | null;
     };
 };
 
@@ -4260,7 +4260,7 @@ export type GetApiV1ModelProvidersMinimaxOauthStatusResponses = {
         connected: boolean;
         inProgress: boolean;
         region?: 'global' | 'cn';
-        error?: string;
+        error?: string | null;
     };
 };
 
@@ -4281,7 +4281,7 @@ export type DeleteApiV1ModelProvidersMinimaxOauthLoginResponses = {
         connected: boolean;
         inProgress: boolean;
         region?: 'global' | 'cn';
-        error?: string;
+        error?: string | null;
         cancelled: boolean;
     };
 };
@@ -4305,7 +4305,7 @@ export type PostApiV1ModelProvidersMinimaxOauthLoginResponses = {
         connected: boolean;
         inProgress: boolean;
         region?: 'global' | 'cn';
-        error?: string;
+        error?: string | null;
         started: boolean;
         browserUrl?: string;
     };
@@ -4709,22 +4709,22 @@ export type PostApiInternalArtifactsResponses = {
     201: {
         id: string;
         botId: string;
-        sessionKey: string;
-        channelType: string;
-        channelId: string;
+        sessionKey: string | null;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
-        artifactType: string;
-        source: string;
-        contentType: string;
+        artifactType: string | null;
+        source: string | null;
+        contentType: string | null;
         status: string;
-        previewUrl: string;
-        deployTarget: string;
-        linesOfCode: number;
-        fileCount: number;
-        durationMs: number;
+        previewUrl: string | null;
+        deployTarget: string | null;
+        linesOfCode: number | null;
+        fileCount: number | null;
+        durationMs: number | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
     };
@@ -4798,22 +4798,22 @@ export type PatchApiInternalArtifactsByIdResponses = {
     200: {
         id: string;
         botId: string;
-        sessionKey: string;
-        channelType: string;
-        channelId: string;
+        sessionKey: string | null;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
-        artifactType: string;
-        source: string;
-        contentType: string;
+        artifactType: string | null;
+        source: string | null;
+        contentType: string | null;
         status: string;
-        previewUrl: string;
-        deployTarget: string;
-        linesOfCode: number;
-        fileCount: number;
-        durationMs: number;
+        previewUrl: string | null;
+        deployTarget: string | null;
+        linesOfCode: number | null;
+        fileCount: number | null;
+        durationMs: number | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
     };
@@ -4826,7 +4826,7 @@ export type GetApiV1ArtifactsData = {
     path?: never;
     query?: {
         limit?: number;
-        offset?: number;
+        offset?: number | null;
         sessionKey?: string;
     };
     url: '/api/v1/artifacts';
@@ -4840,22 +4840,22 @@ export type GetApiV1ArtifactsResponses = {
         artifacts: Array<{
             id: string;
             botId: string;
-            sessionKey: string;
-            channelType: string;
-            channelId: string;
+            sessionKey: string | null;
+            channelType: string | null;
+            channelId: string | null;
             title: string;
-            artifactType: string;
-            source: string;
-            contentType: string;
+            artifactType: string | null;
+            source: string | null;
+            contentType: string | null;
             status: string;
-            previewUrl: string;
-            deployTarget: string;
-            linesOfCode: number;
-            fileCount: number;
-            durationMs: number;
+            previewUrl: string | null;
+            deployTarget: string | null;
+            linesOfCode: number | null;
+            fileCount: number | null;
+            durationMs: number | null;
             metadata: {
                 [key: string]: unknown;
-            };
+            } | null;
             createdAt: string;
             updatedAt: string;
         }>;
@@ -4938,22 +4938,22 @@ export type GetApiV1ArtifactsByIdResponses = {
     200: {
         id: string;
         botId: string;
-        sessionKey: string;
-        channelType: string;
-        channelId: string;
+        sessionKey: string | null;
+        channelType: string | null;
+        channelId: string | null;
         title: string;
-        artifactType: string;
-        source: string;
-        contentType: string;
+        artifactType: string | null;
+        source: string | null;
+        contentType: string | null;
         status: string;
-        previewUrl: string;
-        deployTarget: string;
-        linesOfCode: number;
-        fileCount: number;
-        durationMs: number;
+        previewUrl: string | null;
+        deployTarget: string | null;
+        linesOfCode: number | null;
+        fileCount: number | null;
+        durationMs: number | null;
         metadata: {
             [key: string]: unknown;
-        };
+        } | null;
         createdAt: string;
         updatedAt: string;
     };
@@ -4988,27 +4988,27 @@ export type GetApiV1SkillhubCatalogResponses = {
         installedSlugs: Array<string>;
         installedSkills: Array<{
             slug: string;
-            ownerHandle: string;
-            version: string;
+            ownerHandle: string | null;
+            version: string | null;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             name: string;
             description: string;
-            installedAt: string;
-            agentId: string;
-            agentName: string;
+            installedAt: string | null;
+            agentId: string | null;
+            agentName: string | null;
         }>;
         meta: {
             version: string;
             updatedAt: string;
             skillCount: number;
-        };
+        } | null;
         queue: Array<{
             slug: string;
-            ownerHandle: string;
+            ownerHandle: string | null;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
             position: number;
-            error: string;
+            error: string | null;
             errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
             retries: number;
             enqueuedAt: string;
@@ -5033,22 +5033,22 @@ export type GetApiV1SkillhubStatusResponses = {
         installedSlugs: Array<string>;
         installedSkills: Array<{
             slug: string;
-            ownerHandle: string;
-            version: string;
+            ownerHandle: string | null;
+            version: string | null;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             name: string;
             description: string;
-            installedAt: string;
-            agentId: string;
-            agentName: string;
+            installedAt: string | null;
+            agentId: string | null;
+            agentName: string | null;
         }>;
         queue: Array<{
             slug: string;
-            ownerHandle: string;
+            ownerHandle: string | null;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
             position: number;
-            error: string;
+            error: string | null;
             errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
             retries: number;
             enqueuedAt: string;
@@ -5103,32 +5103,32 @@ export type GetApiV1SkillhubCatalogPageResponses = {
         installedSlugs: Array<string>;
         installedSkills: Array<{
             slug: string;
-            ownerHandle: string;
-            version: string;
+            ownerHandle: string | null;
+            version: string | null;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             name: string;
             description: string;
-            installedAt: string;
-            agentId: string;
-            agentName: string;
+            installedAt: string | null;
+            agentId: string | null;
+            agentName: string | null;
         }>;
         meta: {
             version: string;
             updatedAt: string;
             skillCount: number;
-        };
+        } | null;
         queue: Array<{
             slug: string;
-            ownerHandle: string;
+            ownerHandle: string | null;
             source: 'managed' | 'custom' | 'workspace' | 'user';
             status: 'queued' | 'downloading' | 'installing-deps' | 'done' | 'failed';
             position: number;
-            error: string;
+            error: string | null;
             errorCode: 'skill_not_found' | 'rate_limit' | 'npm_missing' | 'deps_install_failed' | 'unknown';
             retries: number;
             enqueuedAt: string;
         }>;
-        nextCursor: string;
+        nextCursor: string | null;
         total: number;
         facets: Array<{
             tag: string;
@@ -5187,7 +5187,7 @@ export type PostApiV1SkillhubUninstallData = {
     body?: {
         slug: string;
         source?: 'managed' | 'custom' | 'workspace' | 'user';
-        agentId?: string;
+        agentId?: string | null;
     };
     path?: never;
     query?: never;
@@ -5284,14 +5284,14 @@ export type GetApiV1SkillhubSkillsBySlugResponses = {
         stars: number;
         tags: Array<string>;
         version: string;
-        installedVersion: string;
+        installedVersion: string | null;
         updateEligible: boolean;
         updatedAt: string;
         installed: boolean;
         installedSource: 'managed' | 'custom' | 'workspace' | 'user';
-        agentId: string;
+        agentId: string | null;
         uninstallable: boolean;
-        skillContent: string;
+        skillContent: string | null;
         files: Array<string>;
     };
 };
@@ -5378,7 +5378,7 @@ export type GetApiV1ExperthubCatalogResponses = {
             version: string;
             updatedAt: string;
             count: number;
-        };
+        } | null;
     };
 };
 
@@ -5497,7 +5497,7 @@ export type PostApiV1ExperthubRefreshResponses = {
             version: string;
             updatedAt: string;
             count: number;
-        };
+        } | null;
     };
 };
 
@@ -5903,10 +5903,10 @@ export type GetApiV1TeamsByIdBoardResponses = {
             id: string;
             title: string;
             status: string;
-            agentId: string;
-            assigneeName: string;
-            output: string;
-            sessionKey?: string;
+            agentId: string | null;
+            assigneeName: string | null;
+            output: string | null;
+            sessionKey?: string | null;
             parentIds?: Array<string>;
             childIds?: Array<string>;
         }>;
@@ -6621,11 +6621,11 @@ export type GetApiV1MeResponses = {
         id: string;
         email: string;
         name: string;
-        image?: string;
+        image?: string | null;
         plan: string;
         inviteAccepted: boolean;
         onboardingCompleted: boolean;
-        authSource?: string;
+        authSource?: string | null;
     };
 };
 
@@ -6651,11 +6651,11 @@ export type PatchApiV1MeResponses = {
             id: string;
             email: string;
             name: string;
-            image?: string;
+            image?: string | null;
             plan: string;
             inviteAccepted: boolean;
             onboardingCompleted: boolean;
-            authSource?: string;
+            authSource?: string | null;
         };
     };
 };
@@ -6702,7 +6702,7 @@ export type GetApiV1RuntimeConfigResponses = {
                 authMode?: 'none' | 'token';
             };
             defaultModelId?: string;
-            utilityModelId?: string;
+            utilityModelId?: string | null;
         };
         deviceControl: {
             enabled?: boolean;
@@ -6721,9 +6721,9 @@ export type GetApiV1RuntimeConfigResponses = {
         localAutomationStatus: {
             previewEnabled: boolean;
             computerUseAvailable: boolean;
-            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os' | null;
-            computerUseBinaryPath: string | null;
-            computerUseBackend: 'cua-driver' | null;
+            computerUseUnavailableReason: 'missing-sidecar' | 'unsupported-os';
+            computerUseBinaryPath: unknown;
+            computerUseBackend: 'cua-driver';
             computerUsePermissionState: 'ready' | 'permission-required' | 'unavailable' | 'unknown' | 'disabled';
             computerUsePermissions: Array<{
                 name: string;
@@ -6744,7 +6744,7 @@ export type PutApiV1RuntimeConfigData = {
             authMode?: 'none' | 'token';
         };
         defaultModelId?: string;
-        utilityModelId?: string;
+        utilityModelId?: string | null;
     };
     path?: never;
     query?: never;
@@ -6763,7 +6763,7 @@ export type PutApiV1RuntimeConfigResponses = {
                 authMode?: 'none' | 'token';
             };
             defaultModelId?: string;
-            utilityModelId?: string;
+            utilityModelId?: string | null;
         };
     };
 };
@@ -8283,7 +8283,7 @@ export type GetApiV1SchedulesByScheduleIdRunsData = {
     };
     query?: {
         limit?: number;
-        offset?: number;
+        offset?: number | null;
     };
     url: '/api/v1/schedules/{scheduleId}/runs';
 };

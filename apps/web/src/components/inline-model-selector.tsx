@@ -94,6 +94,12 @@ export function InlineModelSelector(props: InlineModelSelectorProps) {
       });
       queryClient.invalidateQueries({ queryKey: ["desktop-default-model"] });
       queryClient.invalidateQueries({ queryKey: ["channels-live-status"] });
+      // Bots that follow the default resolve their displayed model from the
+      // bot record, so the chat header stays on the old name until these are
+      // refetched — and the global 10s staleTime means a normal
+      // switch-then-open-a-chat never triggers that on its own.
+      queryClient.invalidateQueries({ queryKey: ["bots"] });
+      queryClient.invalidateQueries({ queryKey: ["bot"] });
     },
   });
 

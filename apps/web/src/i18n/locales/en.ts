@@ -506,6 +506,7 @@ const en = {
   "reward.whatsapp.desc": "Once per week",
 
   // ── Models Page ──
+  "models.followDefault": "Follow global default",
   "models.pageTitle": "Settings",
   "models.pageSubtitle": "Manage AI model providers",
   "settings.pageSubtitle": "Manage profile, language, and AI model providers",

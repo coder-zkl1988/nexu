@@ -127,6 +127,7 @@ import {
   getApiV1ChatRunStatus,
   getApiV1SessionsById,
   getApiV1SessionsByIdMessages,
+  patchApiV1BotsByBotId,
   postApiV1ChatCancel,
   postApiV1ChatIntent,
   postApiV1ChatLocal,
@@ -1757,7 +1758,9 @@ export function SessionsPage() {
           | "active"
           | "paused"
           | "deleted",
-        modelId: (bot as Record<string, unknown>).modelId as string,
+        modelId: ((bot as Record<string, unknown>).modelId ?? null) as
+          | string
+          | null,
       } as BotItem)
     : null;
 
@@ -2328,6 +2331,32 @@ export function SessionsPage() {
       });
     },
     [waitingForReply],
+  );
+
+  /**
+   * Binds this bot to a model, or clears the binding back to following the
+   * global default when `modelId` is null.
+   *
+   * The picker used to be inert here (a no-op handler behind modelReadOnly),
+   * so the only way to change a model was the global setting — which then
+   * rewrote every bot and erased any per-bot choice.
+   */
+  const updateBotModel = useCallback(
+    async (botId: string, modelId: string | null): Promise<void> => {
+      const { error } = await patchApiV1BotsByBotId({
+        path: { botId },
+        body: { modelId },
+      });
+      if (error) {
+        toast.error(t("models.modelSwitchFailed"));
+        return;
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["bots"] }),
+        queryClient.invalidateQueries({ queryKey: ["bot", botId] }),
+      ]);
+    },
+    [queryClient, t],
   );
 
   const handleCancel = useCallback(async () => {
@@ -3439,7 +3468,9 @@ export function SessionsPage() {
           <ChatInputArea
             bots={bots}
             selectedBot={selectedBot}
-            onSelectBot={() => {}}
+            onSelectBot={(next) => {
+              void updateBotModel(next.id, next.modelId);
+            }}
             onSend={handleSend}
             onTyping={handleDeskpetTyping}
             onCancel={handleCancel}
@@ -3452,7 +3483,6 @@ export function SessionsPage() {
             disabled={!session?.botId}
             placeholder={t("localChat.inputPlaceholder")}
             showBotSelector={false}
-            modelReadOnly
             focusToken={deskpetReplyFocusToken}
             externalInputSessionKey={session?.sessionKey ?? null}
           />

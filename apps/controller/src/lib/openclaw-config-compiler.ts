@@ -707,13 +707,20 @@ export function compileOpenClawConfig(
 ): OpenClawConfig {
   const disableMdnsDiscovery = process.env.CI === "true";
   const activeBots = config.bots.filter((bot) => bot.status === "active");
-  const firstBotModel = activeBots[0]?.modelId ?? null;
+  // agents.defaults.model is what every bot without its own binding runs on,
+  // so it has to be the configured default. This once read the first active
+  // bot first, which only worked because changing the default rewrote every
+  // bot: with per-bot bindings that order would let whichever bot happens to
+  // sort first dictate the default for all the others. The first bot's model
+  // stays as a last resort for configs that never recorded a default.
+  const firstBotModel = activeBots.find((bot) => bot.modelId)?.modelId ?? null;
   const defaultModelId = resolveModelId(
     config,
     env,
-    firstBotModel ??
-      getDesktopSelectedModel(config) ??
-      config.runtime.defaultModelId,
+    config.runtime.defaultModelId ||
+      getDesktopSelectedModel(config) ||
+      firstBotModel ||
+      "",
     oauthState,
   );
   const utilityModelId = config.runtime.utilityModelId
