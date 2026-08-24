@@ -90,6 +90,20 @@ function createBaseConfig(): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("puts the stalled-session thresholds where OpenClaw reads them", () => {
+    const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
+
+    // OpenClaw reads these from top-level `diagnostics`. They were once nested
+    // under agents.defaults.heartbeat, whose schema is strict and has no such
+    // key — the gateway refused to start at all, and nothing caught it because
+    // the value was still readable back out of the written JSON.
+    expect(compiled.diagnostics?.stuckSessionAbortMs).toBe(20 * 60_000);
+    expect(
+      (compiled.agents?.defaults as Record<string, unknown> | undefined)
+        ?.heartbeat,
+    ).toBeUndefined();
+  });
+
   it("does not emit Feishu/weixin plugin entries or channel accounts before first connect", () => {
     const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
 

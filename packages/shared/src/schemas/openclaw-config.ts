@@ -281,20 +281,6 @@ const agentsConfigSchema = z.object({
       timeFormat: z.enum(["12h", "24h"]).optional(),
       // Max concurrent
       maxConcurrent: z.number().optional(),
-      // Session diagnostics thresholds. Nested under heartbeat because the
-      // runtime resolves them via its heartbeat config merge, but they govern
-      // the general stalled-session watchdog, not heartbeat scheduling.
-      heartbeat: z
-        .object({
-          diagnostics: z
-            .object({
-              stuckSessionWarnMs: z.number().int().positive().optional(),
-              stuckSessionAbortMs: z.number().int().positive().optional(),
-            })
-            .optional(),
-        })
-        .passthrough()
-        .optional(),
     })
     .passthrough()
     .optional(),
@@ -673,6 +659,10 @@ const diagnosticsConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
     otel: diagnosticsOtelSchema.optional(),
+    /** No-progress age before the stalled-session watchdog warns (default 2m). */
+    stuckSessionWarnMs: z.number().int().positive().optional(),
+    /** No-progress age before it aborts the run (default: 3x the warn value). */
+    stuckSessionAbortMs: z.number().int().positive().optional(),
   })
   .passthrough();
 
