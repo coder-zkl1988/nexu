@@ -861,12 +861,21 @@ export function compileOpenClawConfig(
             enabled: true,
           },
         },
-        // LLM call timeout. OpenClaw default is 600s (10min).
-        // 900s (15min) accommodates multi-step device-control workflows
-        // (screenshot → describe → tap loops) that routinely exceed 5min
-        // on slow Android devices.  Still well under compaction's 900s
-        // safety timeout (EMBEDDED_COMPACTION_TIMEOUT_MS defaults to 900).
-        timeoutSeconds: 900,
+        // Wall-clock ceiling for an entire agent run — every tool call and
+        // every wait inside one turn, not a single LLM request. OpenClaw
+        // defaults this to 48h, i.e. effectively unbounded; the 900s once set
+        // here was aimed at slow device steps but capped the whole turn
+        // instead, so a healthy run that kept making progress was killed the
+        // moment it passed 15 minutes. Browsing 30 posts takes longer than
+        // that at 25-75s per phone step, so the cap failed exactly the
+        // workloads it was meant to serve.
+        //
+        // A ceiling still earns its place: a runaway run holds an OpenClaw
+        // lane and leaves the bot unreachable. But detecting a hung run is the
+        // stalled-session watchdog's job (see diagnostics.stuckSessionAbortMs)
+        // — it measures lack of progress, which is the actual symptom. This
+        // only needs to be high enough that no legitimate turn reaches it.
+        timeoutSeconds: 2 * 60 * 60,
         humanDelay: {
           mode: "off",
         },

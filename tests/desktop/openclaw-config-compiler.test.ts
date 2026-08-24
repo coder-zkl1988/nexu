@@ -90,6 +90,21 @@ function createBaseConfig(): NexuConfig {
 }
 
 describe("compileOpenClawConfig", () => {
+  it("does not cap an agent run below what a device workflow needs", () => {
+    const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
+
+    // agents.defaults.timeoutSeconds is a wall-clock ceiling on a whole run,
+    // not a per-LLM-call timeout. It was once 900s, which killed healthy runs
+    // that were still making progress: a phone step takes 25-75s, so browsing
+    // 30 posts passes 15 minutes by construction. Detecting a hung run belongs
+    // to the stalled-session watchdog, which measures lack of progress.
+    const timeoutSeconds = (
+      compiled.agents?.defaults as Record<string, unknown> | undefined
+    )?.timeoutSeconds;
+    expect(typeof timeoutSeconds).toBe("number");
+    expect(timeoutSeconds as number).toBeGreaterThanOrEqual(60 * 60);
+  });
+
   it("puts the stalled-session thresholds where OpenClaw reads them", () => {
     const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
 
