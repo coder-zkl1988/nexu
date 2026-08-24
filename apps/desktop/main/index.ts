@@ -97,7 +97,6 @@ import {
   startDesktopDevInspectServer,
   stopDesktopDevInspectServer,
 } from "./services/dev-inspect-server";
-import { AGENT_TAB_ID } from "./services/embedded-browser-manager";
 import { isLaunchdBootstrapEnabled } from "./services/launchd-bootstrap";
 import { ProxyManager } from "./services/proxy-manager";
 import {
@@ -1226,15 +1225,16 @@ function startAgentBrowserRelay(): void {
   agentBrowserRelay = new AgentBrowserRelay({
     controllerBaseUrl: runtimeConfig.urls.controllerBase,
     getWindow: () => mainWindow,
-    onOpen: (url) => {
+    onOpen: (url, sessionKey, tabId) => {
       // The browser view is already loading; the panel is how the user gets to
       // watch it, so raise it in the window that owns the view.
       if (!mainWindow || mainWindow.isDestroyed()) return;
       if (!mainWindow.isVisible()) mainWindow.show();
       broadcastHostDesktopCommand({
         type: "browser:agent-opened",
-        tabId: AGENT_TAB_ID,
+        tabId,
         url,
+        sessionKey,
       });
     },
     onRunEnded: (sessionKey) => {

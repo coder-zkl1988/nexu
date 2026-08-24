@@ -28,7 +28,10 @@ import {
   closeBrowserPanelForSessionNavigation,
   useBrowserPanel,
 } from "@/lib/browser/browser-panel-store";
-import { EmbeddedBrowser } from "@/lib/browser/embedded-browser";
+import {
+  EmbeddedBrowser,
+  forgetBrowserSession,
+} from "@/lib/browser/embedded-browser";
 import { exportBoardAsZip } from "@/lib/canvas/canvas-export";
 import { CanvasBoardTitle } from "@/lib/canvas/canvas-toolbar";
 import { CanvasSurface } from "@/lib/canvas/infinite-canvas";
@@ -847,6 +850,13 @@ function WorkspaceLayoutContent() {
     mutationFn: deleteSidebarSession,
     onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["sidebar-sessions"] });
+      // The agent browser view lives in the main process under an id derived
+      // from the session key; deleting the conversation does not reach it, so
+      // without this its page outlives the session that opened it.
+      const deletedKey = sessions.find(
+        (candidate) => candidate.id === deletedId,
+      )?.sessionKey;
+      if (deletedKey) void forgetBrowserSession(deletedKey);
       // If the deleted session is currently viewed, navigate away
       if (selectedSessionId === deletedId) {
         navigate("/workspace");

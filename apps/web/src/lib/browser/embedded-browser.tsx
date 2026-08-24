@@ -33,7 +33,10 @@ import type {
   DesktopBrowserHistoryItem,
 } from "../../../../desktop/shared/host";
 import { getApiV1Artifacts } from "../../../lib/api/sdk.gen";
-import { useAgentBrowserTabRequest } from "./agent-browser-relay";
+import {
+  clearAgentBrowserTabRequest,
+  useAgentBrowserTabRequest,
+} from "./agent-browser-relay";
 import { BrowserAnnotationEditor } from "./browser-annotation-editor";
 import type { BrowserNavigationRequest } from "./browser-panel-store";
 
@@ -304,6 +307,22 @@ async function controlDesktopBrowser(
     "desktop:browser-control",
     payload,
   ) as Promise<DesktopBrowserControlResult>;
+}
+
+/**
+ * Drops the agent page a deleted conversation left behind.
+ *
+ * The view lives in the main process under an id derived from the session
+ * key, so nothing about deleting the conversation reaches it on its own — the
+ * page would simply outlive the session that opened it.
+ */
+export async function forgetBrowserSession(sessionKey: string): Promise<void> {
+  if (!sessionKey) return;
+  clearAgentBrowserTabRequest(sessionKey);
+  if (!hasDesktopBrowserHost()) return;
+  await controlDesktopBrowser({ action: "forget-session", sessionKey }).catch(
+    () => null,
+  );
 }
 
 interface EmbeddedBrowserProps {
@@ -674,8 +693,12 @@ export function EmbeddedBrowser({
   // The agent drives its own tab in the main process. Adopt it by id so the
   // user sees the page it is working on; the main process already navigated,
   // so this only mirrors the tab into the panel's own list.
+  //
+  // Only a request from the conversation this panel is showing is adopted. The
+  // agent's tab id is derived from its session key, so adopting another
+  // session's request would pull that conversation's page into this one.
   useEffect(() => {
-    if (!agentTabRequest) return;
+    if (!agentTabRequest || agentTabRequest.sessionKey !== sessionKey) return;
     const { tabId, url } = agentTabRequest;
     setTabs((current) =>
       current.some((tab) => tab.id === tabId)
@@ -685,7 +708,7 @@ export function EmbeddedBrowser({
         : [...current, createBrowserTab(url, "New tab", tabId)],
     );
     setActiveTabId(tabId);
-  }, [agentTabRequest]);
+  }, [agentTabRequest, sessionKey]);
 
   const addTab = (): void => {
     if (tabs.length >= MAX_TABS) return;

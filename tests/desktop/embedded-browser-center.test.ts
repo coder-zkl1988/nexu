@@ -96,8 +96,8 @@ vi.mock("../../apps/desktop/main/services/embedded-browser-cdp", () => ({
 }));
 
 import {
-  AGENT_TAB_ID,
   EmbeddedBrowserManager,
+  agentTabId,
 } from "../../apps/desktop/main/services/embedded-browser-manager";
 
 type DownloadState = "progressing" | "completed" | "cancelled" | "interrupted";
@@ -145,7 +145,8 @@ describe("embedded browser control center", () => {
   it("reports the agent tab and blocks recreating it after sharing is revoked", async () => {
     const manager = new EmbeddedBrowserManager();
     const owner = createOwner(7);
-    manager.ensureAgentTab(owner);
+    const AGENT_TAB_ID = agentTabId("agent:bot:main");
+    manager.ensureAgentTab(owner, AGENT_TAB_ID);
 
     await expect(
       manager.controlWindow(owner, {
@@ -188,7 +189,7 @@ describe("embedded browser control center", () => {
   it("tracks download progress, reveals completed files, and clears history", async () => {
     const manager = new EmbeddedBrowserManager();
     const owner = createOwner(11);
-    manager.ensureAgentTab(owner);
+    manager.ensureAgentTab(owner, agentTabId("agent:bot:main"));
     const item = new MockDownloadItem();
     electronMocks.browserSession.emit("will-download", {}, item, undefined);
     item.receivedBytes = 40;

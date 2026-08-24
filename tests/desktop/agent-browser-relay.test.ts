@@ -22,7 +22,11 @@ const isAgentTabPanelHosted = vi.fn(() => true);
 const waitForAgentTabPanel = vi.fn(async () => true);
 
 vi.mock("../../apps/desktop/main/services/embedded-browser-manager", () => ({
-  AGENT_TAB_ID: "agent",
+  // The relay derives the tab id from the driving session, so the stub must
+  // vary with it too — a constant here would hide a relay that ignored the
+  // session and went back to one shared tab.
+  agentTabId: (sessionKey: string) => `agent-${sessionKey}`,
+  isAgentTabId: (tabId: string) => tabId.startsWith("agent-"),
   embeddedBrowserManager: {
     ensureAgentTab: (...args: unknown[]) => ensureAgentTab(...args),
     controlWindow: (...args: unknown[]) => controlWindow(...args),
@@ -139,7 +143,8 @@ async function waitUntil(
 function createRelay(
   port: number,
   onRunEnded?: (sessionKey: string) => void,
-  onOpen: (url: string) => void = () => undefined,
+  onOpen: (url: string, sessionKey: string, tabId: string) => void = () =>
+    undefined,
 ): AgentBrowserRelay {
   return new AgentBrowserRelay({
     controllerBaseUrl: `http://127.0.0.1:${port}`,
@@ -243,7 +248,13 @@ describe("AgentBrowserRelay", () => {
     });
 
     await waitUntil(() => controller.results.length === 1, "result POST");
-    expect(onOpen).toHaveBeenCalledWith("https://example.com/");
+    // The tab id must be the one derived from this command's session: it is
+    // what scopes the agent's page to its own conversation.
+    expect(onOpen).toHaveBeenCalledWith(
+      "https://example.com/",
+      "agent:bot:main",
+      "agent-agent:bot:main",
+    );
     expect(waitForAgentTabPanel).toHaveBeenCalledOnce();
     expect(controller.results[0]).toMatchObject({
       requestId: "open-without-panel",

@@ -11,10 +11,7 @@ import {
   parseCommandFrame,
   parseRunEndedFrame,
 } from "./agent-browser-protocol";
-import {
-  AGENT_TAB_ID,
-  embeddedBrowserManager,
-} from "./embedded-browser-manager";
+import { agentTabId, embeddedBrowserManager } from "./embedded-browser-manager";
 
 /**
  * Runs the agent's browser commands against the embedded browser.
@@ -86,8 +83,12 @@ function normalizeUrl(value: string): string | null {
 export type AgentBrowserRelayOptions = {
   controllerBaseUrl: string;
   getWindow: () => BrowserWindow | null;
-  /** Raises the browser panel so the user sees the page the agent opened. */
-  onOpen: (url: string) => void;
+  /**
+   * Raises the browser panel so the user sees the page the agent opened.
+   * Carries the session that drove it and the tab id derived from it, so the
+   * panel only adopts a page belonging to the conversation it is showing.
+   */
+  onOpen: (url: string, sessionKey: string, tabId: string) => void;
   /** The run that drove the browser ended; the panel's agent pin can go. */
   onRunEnded?: (sessionKey: string) => void;
   /**
@@ -215,7 +216,7 @@ export class AgentBrowserRelay {
   private async runAndReport(envelope: CommandEnvelope): Promise<void> {
     let outcome: AgentBrowserOutcome;
     try {
-      outcome = await this.run(envelope.command);
+      outcome = await this.run(envelope.command, envelope.sessionKey);
     } catch (error: unknown) {
       outcome = {
         ok: false,
@@ -241,7 +242,11 @@ export class AgentBrowserRelay {
 
   private async run(
     command: AgentBrowserCommand,
+    sessionKey: string,
   ): Promise<AgentBrowserOutcome> {
+    // The agent's view is scoped to the session that drives it, so one
+    // conversation's page never surfaces in another.
+    const tabId = agentTabId(sessionKey);
     const owner = this.options.getWindow();
     if (!owner || owner.isDestroyed()) return { ok: false, error: NO_WINDOW };
     const sharingAllowed =
@@ -271,10 +276,12 @@ export class AgentBrowserRelay {
      * would have been swallowed anyway.
      */
     const ensureHosted = async (url: string): Promise<boolean> => {
-      if (embeddedBrowserManager.isAgentTabPanelHosted(owner)) return true;
-      this.options.onOpen(url);
+      if (embeddedBrowserManager.isAgentTabPanelHosted(owner, tabId))
+        return true;
+      this.options.onOpen(url, sessionKey, tabId);
       return embeddedBrowserManager.waitForAgentTabPanel(
         owner,
+        tabId,
         this.timing.panelWaitMs,
       );
     };
@@ -282,7 +289,7 @@ export class AgentBrowserRelay {
     const snapshot = async (): Promise<AgentBrowserSnapshot> => {
       const result = await embeddedBrowserManager.controlWindow(owner, {
         action: "snapshot",
-        tabId: AGENT_TAB_ID,
+        tabId,
       });
       if (result?.kind !== "snapshot")
         throw new Error("could not read the page");
@@ -293,10 +300,10 @@ export class AgentBrowserRelay {
     if (command.action === "open") {
       const url = normalizeUrl(command.url);
       if (!url) return { ok: false, error: "invalid web address" };
-      embeddedBrowserManager.ensureAgentTab(owner);
+      embeddedBrowserManager.ensureAgentTab(owner, tabId);
       await embeddedBrowserManager.controlWindow(owner, {
         action: "navigate",
-        tabId: AGENT_TAB_ID,
+        tabId,
         url,
       });
       if (!(await ensureHosted(url))) {
@@ -313,7 +320,7 @@ export class AgentBrowserRelay {
       }
       await embeddedBrowserManager.controlWindow(owner, {
         action: "scroll",
-        tabId: AGENT_TAB_ID,
+        tabId,
         deltaY: command.deltaY,
       });
       const after = await snapshot();
@@ -330,13 +337,13 @@ export class AgentBrowserRelay {
     if (command.action === "click") {
       await embeddedBrowserManager.controlWindow(owner, {
         action: "click-ref",
-        tabId: AGENT_TAB_ID,
+        tabId,
         ref: command.ref,
       });
     } else {
       await embeddedBrowserManager.controlWindow(owner, {
         action: "type-ref",
-        tabId: AGENT_TAB_ID,
+        tabId,
         ref: command.ref,
         text: command.text,
         submit: command.submit,

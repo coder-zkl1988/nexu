@@ -123,6 +123,15 @@ export type DesktopBrowserControl =
     }
   | { action: "show-download"; downloadId: string }
   | {
+      /**
+       * A conversation was deleted; drop the agent page it opened. Without
+       * this the view outlives the session that created it, and the next
+       * conversation to reach that derived tab id inherits its page.
+       */
+      action: "forget-session";
+      sessionKey: string;
+    }
+  | {
       action: "choose-viewport";
       tabId: string;
       currentMode: DesktopBrowserViewportMode;
@@ -845,6 +854,12 @@ export type HostDesktopCommand =
       type: "browser:agent-opened";
       tabId: string;
       url: string;
+      /**
+       * The conversation that drove it. The panel adopts the tab only when
+       * this matches the session it is showing, so one conversation's page
+       * cannot surface in another.
+       */
+      sessionKey: string;
     }
   | {
       /**

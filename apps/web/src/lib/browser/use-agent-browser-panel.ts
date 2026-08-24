@@ -1,7 +1,9 @@
 import { useEffect } from "react";
-import { requestAgentBrowserTab } from "./agent-browser-relay";
 import {
-  getBrowserPanelState,
+  clearAgentBrowserTabRequest,
+  requestAgentBrowserTab,
+} from "./agent-browser-relay";
+import {
   openBrowserPanel,
   releaseAgentBrowserPanelPin,
 } from "./browser-panel-store";
@@ -18,11 +20,12 @@ import {
  * for conversations held somewhere else, webchat included.
  */
 
-type DesktopCommand = { type?: string; tabId?: string; url?: string };
-
-// Used only when the agent opens a page before any conversation has claimed
-// the panel; artifact lookups keyed by it simply come back empty.
-const FALLBACK_SESSION_KEY = "agent";
+type DesktopCommand = {
+  type?: string;
+  tabId?: string;
+  url?: string;
+  sessionKey?: string;
+};
 
 export function useAgentBrowserPanel(): void {
   useEffect(() => {
@@ -37,15 +40,20 @@ export function useAgentBrowserPanel(): void {
     return onDesktopCommand.call(candidate, (command: DesktopCommand) => {
       if (command.type === "browser:agent-run-ended") {
         releaseAgentBrowserPanelPin();
+        // The page stays alive in the main process so the user can read it,
+        // but the request must not outlive the run — a standing one is
+        // re-adopted by every later panel mount, in every conversation.
+        if (command.sessionKey) clearAgentBrowserTabRequest(command.sessionKey);
         return;
       }
       if (command.type !== "browser:agent-opened") return;
-      if (!command.tabId || !command.url) return;
-      requestAgentBrowserTab(command.tabId, command.url);
-      openBrowserPanel(
-        getBrowserPanelState().sessionKey ?? FALLBACK_SESSION_KEY,
-        true,
-      );
+      if (!command.tabId || !command.url || !command.sessionKey) return;
+      requestAgentBrowserTab(command.tabId, command.url, command.sessionKey);
+      // Open the panel *as* the driving session rather than keeping whichever
+      // one happened to be showing. The panel is keyed by session key, so this
+      // both remounts it with that conversation's own tabs and lets the
+      // adoption below recognise the request as its own.
+      openBrowserPanel(command.sessionKey, true);
     }) as (() => void) | undefined;
   }, []);
 }

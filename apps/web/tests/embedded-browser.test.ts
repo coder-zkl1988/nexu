@@ -57,6 +57,7 @@ vi.mock("../lib/api/sdk.gen", () => ({
 
 vi.mock("../src/lib/browser/agent-browser-relay", () => ({
   useAgentBrowserTabRequest: () => null,
+  clearAgentBrowserTabRequest: () => undefined,
 }));
 
 vi.mock("../src/lib/desktop-links", () => ({

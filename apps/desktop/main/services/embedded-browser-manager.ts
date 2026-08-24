@@ -124,12 +124,47 @@ function chooseBrowserHistoryArtifact(
 }
 
 /**
- * The tab the agent drives. Fixed rather than generated so the panel can adopt
- * it by id after a remount: the renderer's tab ids live in React state, which
- * a collapsed panel throws away, while this tab outlives it in the main
- * process.
+ * Prefix of the tab an agent drives. The id must be derivable rather than
+ * generated so the panel can adopt it after a remount: the renderer's tab ids
+ * live in React state, which a collapsed panel throws away, while this tab
+ * outlives it in the main process.
+ *
+ * It is derived from the session key rather than fixed, so one conversation's
+ * page cannot surface in another. A single `"agent"` id made the agent's view
+ * a process-wide singleton: every session that opened the panel adopted the
+ * same tab, and the page outlived even the deletion of the conversation that
+ * opened it.
  */
-export const AGENT_TAB_ID = "agent";
+const AGENT_TAB_PREFIX = "agent-";
+
+/**
+ * How many agent tabs stay resident. Each is a full Chromium renderer, so
+ * per-session isolation without a ceiling would grow the process count with
+ * every conversation that ever touched the browser. Evicting the least
+ * recently used one keeps recent sessions resumable at a bounded cost; an
+ * evicted session simply opens a fresh page next time.
+ */
+const MAX_AGENT_TABS = 3;
+
+/**
+ * Stable, filesystem-safe id for a session's agent tab.
+ *
+ * FNV-1a over the session key: short, collision-resistant enough for the
+ * handful of live sessions involved, and — unlike the raw key — guaranteed to
+ * match TAB_ID_PATTERN.
+ */
+export function agentTabId(sessionKey: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < sessionKey.length; i += 1) {
+    hash ^= sessionKey.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${AGENT_TAB_PREFIX}${hash.toString(16).padStart(8, "0")}`;
+}
+
+export function isAgentTabId(tabId: string): boolean {
+  return tabId.startsWith(AGENT_TAB_PREFIX);
+}
 
 function isSafeBrowserUrl(value: string): boolean {
   try {
@@ -276,25 +311,32 @@ export class EmbeddedBrowserManager {
    * commands wait for this rather than acting into a view that will silently
    * ignore them.
    */
-  private readonly panelHosted = new Set<number>();
-  private readonly panelWaiters = new Map<number, Set<() => void>>();
+  private readonly panelHosted = new Set<string>();
+  private readonly panelWaiters = new Map<string, Set<() => void>>();
+  /**
+   * Agent tab keys in least-recently-used order (most recent last). Drives
+   * MAX_AGENT_TABS eviction.
+   */
+  private readonly agentTabUse: string[] = [];
 
-  isAgentTabPanelHosted(owner: BrowserWindow): boolean {
-    return this.panelHosted.has(owner.id);
+  isAgentTabPanelHosted(owner: BrowserWindow, tabId: string): boolean {
+    return this.panelHosted.has(this.key(owner, tabId));
   }
 
   isAgentSharingAllowed(owner: BrowserWindow): boolean {
     return !this.revokedAgentSharing.has(owner.id);
   }
 
-  /** Resolves true once the panel places the agent tab, false on timeout. */
+  /** Resolves true once the panel places that agent tab, false on timeout. */
   waitForAgentTabPanel(
     owner: BrowserWindow,
+    tabId: string,
     timeoutMs: number,
   ): Promise<boolean> {
-    if (this.isAgentTabPanelHosted(owner)) return Promise.resolve(true);
+    if (this.isAgentTabPanelHosted(owner, tabId)) return Promise.resolve(true);
+    const waiterKey = this.key(owner, tabId);
     return new Promise((resolve) => {
-      const waiters = this.panelWaiters.get(owner.id) ?? new Set();
+      const waiters = this.panelWaiters.get(waiterKey) ?? new Set();
       const settle = (): void => {
         clearTimeout(timer);
         waiters.delete(settle);
@@ -305,17 +347,29 @@ export class EmbeddedBrowserManager {
         resolve(false);
       }, timeoutMs);
       waiters.add(settle);
-      this.panelWaiters.set(owner.id, waiters);
+      this.panelWaiters.set(waiterKey, waiters);
     });
   }
 
-  private markPanelHosted(owner: BrowserWindow, hosted: boolean): void {
-    if (!hosted) {
-      this.panelHosted.delete(owner.id);
-      return;
+  /**
+   * Records which agent tab the panel is currently hosting.
+   *
+   * Only one tab can be placed at a time, so hosting one clears the rest:
+   * a stale "hosted" for another session's tab would let a command act into a
+   * view that is not on screen, where synthesized clicks are swallowed.
+   */
+  private markPanelHosted(
+    owner: BrowserWindow,
+    hostedTabId: string | null,
+  ): void {
+    const prefix = `${owner.id}:`;
+    for (const hosted of [...this.panelHosted]) {
+      if (hosted.startsWith(prefix)) this.panelHosted.delete(hosted);
     }
-    this.panelHosted.add(owner.id);
-    const waiters = this.panelWaiters.get(owner.id);
+    if (hostedTabId === null) return;
+    const key = this.key(owner, hostedTabId);
+    this.panelHosted.add(key);
+    const waiters = this.panelWaiters.get(key);
     if (!waiters) return;
     for (const waiter of [...waiters]) waiter();
   }
@@ -325,10 +379,55 @@ export class EmbeddedBrowserManager {
     return `${owner.id}:${tabId}`;
   }
 
+  /** Destroys one tab and forgets every piece of bookkeeping that named it. */
+  private destroyTab(key: string): void {
+    const tab = this.tabs.get(key);
+    if (tab) {
+      detachDebugger(tab.view.webContents);
+      tab.owner.contentView.removeChildView(tab.view);
+      if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
+      this.tabs.delete(key);
+    }
+    this.panelHosted.delete(key);
+    this.panelWaiters.delete(key);
+    const index = this.agentTabUse.indexOf(key);
+    if (index !== -1) this.agentTabUse.splice(index, 1);
+  }
+
+  /**
+   * Marks an agent tab as most recently used and evicts past MAX_AGENT_TABS.
+   *
+   * The hosted tab is never evicted: it is the one currently on screen, and
+   * tearing it out from under a running command would strand the agent.
+   */
+  private touchAgentTab(key: string): void {
+    const index = this.agentTabUse.indexOf(key);
+    if (index !== -1) this.agentTabUse.splice(index, 1);
+    this.agentTabUse.push(key);
+    while (this.agentTabUse.length > MAX_AGENT_TABS) {
+      const victim = this.agentTabUse.find(
+        (candidate) => !this.panelHosted.has(candidate),
+      );
+      if (victim === undefined) break;
+      this.destroyTab(victim);
+    }
+  }
+
+  /**
+   * Drops a session's agent tab — used when its conversation is deleted, so a
+   * removed session leaves no page behind.
+   */
+  disposeAgentTabForSession(owner: BrowserWindow, sessionKey: string): void {
+    this.destroyTab(this.key(owner, agentTabId(sessionKey)));
+  }
+
   private ensureTab(owner: BrowserWindow, tabId: string): ManagedTab {
     const key = this.key(owner, tabId);
     const existing = this.tabs.get(key);
-    if (existing) return existing;
+    if (existing) {
+      if (isAgentTabId(tabId)) this.touchAgentTab(key);
+      return existing;
+    }
 
     const view = new WebContentsView({
       webPreferences: {
@@ -354,6 +453,7 @@ export class EmbeddedBrowserManager {
       refs: new BrowserRefTable(),
     };
     this.tabs.set(key, tab);
+    if (isAgentTabId(tabId)) this.touchAgentTab(key);
     this.ensureDownloadTracking(owner, view.webContents.session);
 
     view.webContents.setWindowOpenHandler(({ url }) => {
@@ -441,12 +541,9 @@ export class EmbeddedBrowserManager {
   }
 
   private disposeOwner(owner: BrowserWindow): void {
-    for (const [key, tab] of this.tabs) {
+    for (const [key, tab] of [...this.tabs]) {
       if (tab.owner !== owner) continue;
-      detachDebugger(tab.view.webContents);
-      owner.contentView.removeChildView(tab.view);
-      if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
-      this.tabs.delete(key);
+      this.destroyTab(key);
     }
     this.revokedAgentSharing.delete(owner.id);
   }
@@ -458,9 +555,9 @@ export class EmbeddedBrowserManager {
     return this.controlWindow(resolveOwnerWindow(sender), input);
   }
 
-  /** Creates the agent's tab if needed, without putting it on screen. */
-  ensureAgentTab(owner: BrowserWindow): void {
-    this.ensureTab(owner, AGENT_TAB_ID);
+  /** Creates that session's agent tab if needed, without putting it on screen. */
+  ensureAgentTab(owner: BrowserWindow, tabId: string): void {
+    this.ensureTab(owner, tabId);
   }
 
   async controlWindow(
@@ -478,7 +575,7 @@ export class EmbeddedBrowserManager {
             title: tab.view.webContents.getTitle() || "New tab",
             url: tab.view.webContents.getURL(),
             loading: tab.view.webContents.isLoading(),
-            agentControlled: key.endsWith(`:${AGENT_TAB_ID}`),
+            agentControlled: isAgentTabId(key.slice(key.indexOf(":") + 1)),
           })),
         downloads: [...this.downloads.values()]
           .filter((download) => download.ownerId === owner.id)
@@ -507,14 +604,20 @@ export class EmbeddedBrowserManager {
     }
     if (input.action === "revoke-agent") {
       this.revokedAgentSharing.add(owner.id);
-      const key = this.key(owner, AGENT_TAB_ID);
-      const tab = this.tabs.get(key);
-      if (tab) {
-        owner.contentView.removeChildView(tab.view);
-        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
-        this.tabs.delete(key);
+      // Revoking is a withdrawal of consent for agent browsing as a whole, so
+      // it must take down every session's agent tab — leaving another
+      // conversation's page alive would keep exactly what the user revoked.
+      const prefix = `${owner.id}:`;
+      for (const [key, tab] of [...this.tabs]) {
+        if (tab.owner !== owner) continue;
+        if (!isAgentTabId(key.slice(prefix.length))) continue;
+        this.destroyTab(key);
       }
-      this.markPanelHosted(owner, false);
+      this.markPanelHosted(owner, null);
+      return { kind: "ok" };
+    }
+    if (input.action === "forget-session") {
+      this.disposeAgentTabForSession(owner, input.sessionKey);
       return { kind: "ok" };
     }
     if (input.action === "resume-agent") {
@@ -525,12 +628,12 @@ export class EmbeddedBrowserManager {
       for (const tab of this.tabs.values()) {
         if (tab.owner === owner) tab.view.setVisible(false);
       }
-      this.markPanelHosted(owner, false);
+      this.markPanelHosted(owner, null);
       if (input.action === "dispose") this.disposeOwner(owner);
       return { kind: "ok" };
     }
     if (!("tabId" in input)) throw new Error("Browser tab id is required.");
-    if (input.tabId === AGENT_TAB_ID && !this.isAgentSharingAllowed(owner)) {
+    if (isAgentTabId(input.tabId) && !this.isAgentSharingAllowed(owner)) {
       throw new Error(
         "Browser sharing was revoked by the user. Resume agent control before using this tab.",
       );
@@ -538,12 +641,7 @@ export class EmbeddedBrowserManager {
 
     const key = this.key(owner, input.tabId);
     if (input.action === "close-tab") {
-      const tab = this.tabs.get(key);
-      if (tab) {
-        owner.contentView.removeChildView(tab.view);
-        if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
-        this.tabs.delete(key);
-      }
+      this.destroyTab(key);
       return { kind: "ok" };
     }
 
@@ -564,7 +662,10 @@ export class EmbeddedBrowserManager {
         normalizeBrowserZoomFactor(input.zoomFactor),
       );
       tab.view.setBounds(clampBounds(owner, input.bounds));
-      this.markPanelHosted(owner, input.tabId === AGENT_TAB_ID);
+      this.markPanelHosted(
+        owner,
+        isAgentTabId(input.tabId) ? input.tabId : null,
+      );
       await this.loadTab(tab, input.url);
       return { kind: "ok" };
     }
