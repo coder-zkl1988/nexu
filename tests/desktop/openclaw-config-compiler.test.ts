@@ -105,6 +105,39 @@ describe("compileOpenClawConfig", () => {
     expect(timeoutSeconds as number).toBeGreaterThanOrEqual(60 * 60);
   });
 
+  it("leaves nexu-browser as the only browser surface", () => {
+    const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
+    const entries = compiled.plugins?.entries as
+      | Record<string, { enabled?: boolean }>
+      | undefined;
+
+    // OpenClaw bundles a `browser` tool whose "user" profile attaches to the
+    // user's own signed-in Chrome — the capability nexu-browser deliberately
+    // dropped. With both registered the agent preferred the bundled one and
+    // browsed in Chrome instead of the panel the user watches.
+    expect(entries?.browser?.enabled).toBe(false);
+    expect(entries?.["nexu-browser"]?.enabled).toBe(true);
+  });
+
+  it("does not advertise web_search when no provider is configured", () => {
+    const braveKey = process.env.BRAVE_API_KEY;
+    process.env.BRAVE_API_KEY = undefined;
+    // biome-ignore lint/performance/noDelete: env vars must be absent, not "undefined".
+    delete process.env.BRAVE_API_KEY;
+    try {
+      const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
+      // `enabled: true` with no provider still registers the tool, so the
+      // agent picks it and every call fails at runtime.
+      const search = (
+        compiled.tools?.web as Record<string, unknown> | undefined
+      )?.search as Record<string, unknown> | undefined;
+      expect(search?.enabled).toBe(false);
+      expect(search?.provider).toBeUndefined();
+    } finally {
+      if (braveKey !== undefined) process.env.BRAVE_API_KEY = braveKey;
+    }
+  });
+
   it("puts the stalled-session thresholds where OpenClaw reads them", () => {
     const compiled = compileOpenClawConfig(createBaseConfig(), createEnv());
 

@@ -600,6 +600,18 @@ function compilePlugins(
           controllerUrl: `http://127.0.0.1:${env.port}`,
         },
       },
+      // OpenClaw bundles its own `browser` tool, which drives a real Chrome —
+      // including a `user` profile that attaches to the user's own signed-in
+      // session. Nexu deliberately dropped that capability when it built
+      // nexu-browser (see the header of static/runtime-plugins/nexu-browser),
+      // but leaving the bundled plugin on silently reinstated it: the agent
+      // saw both tool sets, preferred the richer bundled one, and browsed in
+      // Chrome instead of the panel the user watches. Disabling the plugin
+      // removes the CLI, gateway method, agent tool, and control service as
+      // one unit, leaving nexu-browser as the only browser surface.
+      browser: {
+        enabled: false,
+      },
       "nexu-browser": {
         enabled: true,
         config: {
@@ -900,12 +912,19 @@ export function compileOpenClawConfig(
         host: process.env.SANDBOX_ENABLED === "true" ? "sandbox" : "gateway",
       },
       web: {
-        search: {
-          enabled: true,
-          ...(process.env.BRAVE_API_KEY
-            ? { provider: "brave", apiKey: process.env.BRAVE_API_KEY }
-            : {}),
-        },
+        // Only advertise web_search when a provider is actually configured.
+        // `enabled: true` with no provider still registers the tool, so the
+        // agent picks it and every call fails with "web_search is disabled or
+        // no provider is available" — a whole turn spent discovering that the
+        // capability was never there. An absent tool is read correctly the
+        // first time.
+        search: process.env.BRAVE_API_KEY
+          ? {
+              enabled: true,
+              provider: "brave",
+              apiKey: process.env.BRAVE_API_KEY,
+            }
+          : { enabled: false },
         fetch: {
           enabled: true,
         },
