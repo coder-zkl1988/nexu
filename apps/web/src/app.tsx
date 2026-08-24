@@ -25,7 +25,6 @@ import { SessionsPage } from "./pages/sessions";
 import { SkillsPage } from "./pages/skills";
 import { SlackClaimPage } from "./pages/slack-claim";
 import { SlackOAuthCallbackPage } from "./pages/slack-oauth-callback";
-import { TeamDetailPage } from "./pages/team-detail";
 import { TeamsPage } from "./pages/teams";
 import { WelcomePage } from "./pages/welcome";
 
@@ -117,7 +116,6 @@ export function App() {
                 element={<AutomationsPage />}
               />
               <Route path="/workspace/teams" element={<TeamsPage />} />
-              <Route path="/workspace/teams/:id" element={<TeamDetailPage />} />
               <Route path="/workspace/experts" element={<ExpertsPage />} />
               <Route
                 path="/workspace/experts/custom"

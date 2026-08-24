@@ -36,19 +36,3 @@ export function rollupRunStatus(
   );
   return anyProgressing ? "running" : "blocked";
 }
-
-/** Map a run rollup onto the team board's Kanban column key. */
-export function rollupColumnKey(
-  rollup: RunRollupStatus,
-): "todo" | "running" | "blocked" | "done" {
-  switch (rollup) {
-    case "done":
-      return "done";
-    case "blocked":
-      return "blocked";
-    case "running":
-      return "running";
-    default:
-      return "todo";
-  }
-}

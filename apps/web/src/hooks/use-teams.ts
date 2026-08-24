@@ -1,19 +1,11 @@
-import type {
-  AutoRunTeamTaskRequest,
-  CreateTeamRequest,
-  RunTeamTaskRequest,
-  UpdateTeamRequest,
-} from "@nexu/shared";
+import type { CreateTeamRequest, UpdateTeamRequest } from "@nexu/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   deleteApiV1TeamsById,
   getApiV1Teams,
-  getApiV1TeamsById,
   getApiV1TeamsByIdBoard,
   patchApiV1TeamsById,
   postApiV1Teams,
-  postApiV1TeamsByIdRun,
-  postApiV1TeamsByIdRunAuto,
 } from "../../lib/api/sdk.gen";
 
 const TEAMS_QUERY_KEY = ["teams"] as const;
@@ -26,20 +18,6 @@ export function useTeams() {
       const { data, error } = await getApiV1Teams();
       if (error) throw new Error("Teams fetch failed");
       if (!data) throw new Error("Teams returned no data");
-      return data;
-    },
-  });
-}
-
-export function useTeam(id: string | null) {
-  return useQuery({
-    queryKey: id ? TEAM_DETAIL_QUERY_KEY(id) : ["teams", "__disabled__"],
-    enabled: !!id,
-    queryFn: async () => {
-      if (!id) throw new Error("Team id missing");
-      const { data, error } = await getApiV1TeamsById({ path: { id } });
-      if (error) throw new Error("Team fetch failed");
-      if (!data) throw new Error("Team returned no data");
       return data;
     },
   });
@@ -116,40 +94,6 @@ export function useDeleteTeam() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: ["bots"] });
-    },
-  });
-}
-
-export function useRunTeamTask() {
-  return useMutation({
-    mutationFn: async ({
-      id,
-      body,
-    }: { id: string; body: RunTeamTaskRequest }) => {
-      const { data, error } = await postApiV1TeamsByIdRun({
-        path: { id },
-        body,
-      });
-      if (error) throw new Error("Run team task request failed");
-      if (!data) throw new Error("Run team task returned no data");
-      return data;
-    },
-  });
-}
-
-export function useRunTeamTaskAuto() {
-  return useMutation({
-    mutationFn: async ({
-      id,
-      body,
-    }: { id: string; body: AutoRunTeamTaskRequest }) => {
-      const { data, error } = await postApiV1TeamsByIdRunAuto({
-        path: { id },
-        body,
-      });
-      if (error) throw new Error("Auto-run team task request failed");
-      if (!data) throw new Error("Auto-run team task returned no data");
-      return data;
     },
   });
 }

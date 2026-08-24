@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rollupColumnKey, rollupRunStatus } from "../src/lib/team-run-status";
+import { rollupRunStatus } from "../src/lib/team-run-status";
 
 // A team run's displayed status must roll up from its CHILD step cards, never
 // the parent orchestration card — the workboard marks the parent `done` the
@@ -41,16 +41,5 @@ describe("rollupRunStatus", () => {
   it("lets running dominate blocked (blocked requires nothing else moving)", () => {
     expect(rollupRunStatus(["running", "blocked"])).toBe("running");
     expect(rollupRunStatus(["todo", "blocked"])).toBe("running");
-  });
-});
-
-describe("rollupColumnKey", () => {
-  it("maps a rollup onto the team board Kanban column", () => {
-    expect(rollupColumnKey("done")).toBe("done");
-    expect(rollupColumnKey("running")).toBe("running");
-    expect(rollupColumnKey("blocked")).toBe("blocked");
-    // A run with no children yet parks the orchestration card in todo, never
-    // done.
-    expect(rollupColumnKey("idle")).toBe("todo");
   });
 });

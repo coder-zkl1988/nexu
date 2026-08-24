@@ -29,7 +29,6 @@ import type { TeamResponse } from "@nexu/shared";
 import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 
 export function TeamsPage() {
   const { t } = useTranslation();
@@ -84,14 +83,9 @@ export function TeamsPage() {
               <Card key={team.id} className="flex flex-col">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
-                    <Link
-                      to={`/workspace/teams/${team.id}`}
-                      className="min-w-0"
-                    >
-                      <CardTitle className="truncate hover:underline">
-                        {team.name}
-                      </CardTitle>
-                    </Link>
+                    <div className="min-w-0">
+                      <CardTitle className="truncate">{team.name}</CardTitle>
+                    </div>
                     <div className="flex shrink-0 items-center">
                       {/* The default team's membership is dynamic (all
                           installed experts) — manual member edits would be

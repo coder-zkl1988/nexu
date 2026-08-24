@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { TeamWorkflows } from "../src/components/teams/team-workflows";
 import {
   WorkflowDagCanvas,
   topologicalWaves,
@@ -190,71 +189,6 @@ describe("WorkflowDagCanvas", () => {
       />,
     );
     expect(markup).toContain("approval");
-  });
-});
-
-describe("TeamWorkflows", () => {
-  it("renders the workflow list from the query cache", () => {
-    localStorage.clear();
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    queryClient.setQueryData(["teams", TEAM.id, "workflows"], {
-      workflows: [
-        {
-          id: "wf-1",
-          teamId: TEAM.id,
-          name: "小红书爆款笔记",
-          description: "主题 → 成稿",
-          inputs: [],
-          steps: STEPS,
-          source: "builtin",
-          createdAt: "2026-07-01T00:00:00.000Z",
-          updatedAt: "2026-07-01T00:00:00.000Z",
-        },
-      ],
-    });
-
-    const markup = renderToStaticMarkup(
-      <QueryClientProvider client={queryClient}>
-        <A2UISidebarProvider>
-          <TeamWorkflows team={TEAM} />
-        </A2UISidebarProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(markup).toContain('data-team-workflows="true"');
-    expect(markup).toContain('data-workflow-row="wf-1"');
-    expect(markup).toContain("小红书爆款笔记");
-    expect(markup).toContain("teamWorkflows.builtin");
-    expect(markup).toContain('data-workflow-run="wf-1"');
-    // No stored run — no reopen button.
-    expect(markup).not.toContain("data-recent-run");
-  });
-
-  it("offers to reopen the most recent run from localStorage (survives remount)", () => {
-    localStorage.clear();
-    localStorage.setItem(
-      `nexu:team-workflows:recent-run:${TEAM.id}`,
-      JSON.stringify(RUN),
-    );
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    queryClient.setQueryData(["teams", TEAM.id, "workflows"], {
-      workflows: [],
-    });
-
-    const markup = renderToStaticMarkup(
-      <QueryClientProvider client={queryClient}>
-        <A2UISidebarProvider>
-          <TeamWorkflows team={TEAM} />
-        </A2UISidebarProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(markup).toContain('data-recent-run="parent-1"');
-    localStorage.clear();
   });
 });
 
