@@ -47,6 +47,43 @@ function loadState() {
 
 let cachedConfigRaw = null;
 let cachedProviderModels = null;
+let cachedAgentsWithOwnModel = null;
+let cachedAgentConfigRaw = null;
+
+/**
+ * Set of agent ids that carry their own `model.primary` in openclaw.json.
+ *
+ * Cached by raw file content alongside {@link loadProviderModels}, so the two
+ * views never disagree about which config they came from.
+ */
+function loadAgentsWithOwnModel() {
+  try {
+    const raw = readFileSync(openclawConfigPath, "utf8");
+    if (cachedAgentsWithOwnModel && cachedAgentConfigRaw === raw) {
+      return cachedAgentsWithOwnModel;
+    }
+    const parsed = JSON.parse(raw);
+    const list = parsed?.agents?.list;
+    const ids = new Set();
+    if (Array.isArray(list)) {
+      for (const agent of list) {
+        const primary = agent?.model?.primary;
+        if (
+          typeof agent?.id === "string" &&
+          typeof primary === "string" &&
+          primary.trim().length > 0
+        ) {
+          ids.add(agent.id);
+        }
+      }
+    }
+    cachedAgentConfigRaw = raw;
+    cachedAgentsWithOwnModel = ids;
+    return ids;
+  } catch {
+    return cachedAgentsWithOwnModel;
+  }
+}
 
 /**
  * Map of provider key -> Set of model ids registered in openclaw.json.
@@ -124,18 +161,41 @@ function resolveValidOverride(state) {
   return { providerOverride, modelOverride };
 }
 
+/**
+ * True when the running agent carries its own model binding, in which case the
+ * global selection must stay out of the way.
+ *
+ * A missing agent id means we cannot tell, and the safe answer is to leave the
+ * previous behaviour intact rather than drop the override for everyone.
+ */
+function agentPinsOwnModel(ctx) {
+  const agentId = ctx?.agentId;
+  if (typeof agentId !== "string" || agentId.length === 0) return false;
+  const pinned = loadAgentsWithOwnModel();
+  return pinned ? pinned.has(agentId) : false;
+}
+
 const plugin = {
   id: "nexu-runtime-model",
   name: "Nexu Runtime Model",
   description:
-    "Injects Nexu runtime model selection into model routing and prompt context.",
+    "Injects the Nexu global model selection into model routing and prompt context, for agents that do not pin their own model.",
   register(api) {
     try {
       api.logger.info(
         "[nexu-runtime-model] loaded — intercepting before_model_resolve",
       );
     } catch {}
-    api.on("before_model_resolve", async () => {
+    api.on("before_model_resolve", async (_event, ctx) => {
+      // The selection this plugin carries is the *global* default. An agent
+      // that pins its own model in openclaw.json has already made a more
+      // specific choice, and overriding it here silently defeated the
+      // per-bot binding: the bot ran on the global model while every
+      // surface — the picker, the bot record, agents.list — showed the one
+      // the user had chosen.
+      if (agentPinsOwnModel(ctx)) {
+        return;
+      }
       const state = loadState();
       const override = resolveValidOverride(state);
       if (!override) {
@@ -156,7 +216,14 @@ const plugin = {
       };
     });
 
-    api.on("before_prompt_build", async () => {
+    api.on("before_prompt_build", async (_event, ctx) => {
+      // Same gate as before_model_resolve: without it the prompt would tell a
+      // pinned agent that the global model is "the only source of truth" for
+      // this turn, which is how a bot bound to tabby-ultra reported itself as
+      // tabby-pro.
+      if (agentPinsOwnModel(ctx)) {
+        return;
+      }
       const state = loadState();
       // Only inject the "authoritative model is X" notice when the override is
       // actually being applied — otherwise the prompt would lie about a model
