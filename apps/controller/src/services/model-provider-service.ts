@@ -411,14 +411,26 @@ function sleep(ms: number): Promise<void> {
 // Providers that support OAuth login (no API key needed).
 const OAUTH_PROVIDER_IDS = new Set(["openai"]);
 
-const INTERNAL_MANAGED_MODEL_IDS = new Set(["qwen/qwen3-embedding-4b"]);
+/**
+ * Retrieval models the picker must not offer as a chat model.
+ *
+ * Matched by name because the upstream catalog carries no model type: every
+ * entry reports the same `input` and `output`, so an embedding model and a
+ * chat model are indistinguishable by shape. An exact-id list was tried first
+ * and went stale the moment the catalog gained more of them.
+ *
+ * `bge` is matched on its own because BAAI's General Embedding family does not
+ * spell out "embedding" — `BAAI/bge-m3` and `BAAI/bge-large-zh-v1.5` would
+ * otherwise reach the chat picker.
+ */
+const RETRIEVAL_MODEL_ID_PATTERN = /(embedding|rerank|\bbge[-/])/u;
 
 function isUserVisibleManagedModel(model: Model): boolean {
   const normalizedId = model.id
     .trim()
     .toLowerCase()
     .replace(/^link\//u, "");
-  return !INTERNAL_MANAGED_MODEL_IDS.has(normalizedId);
+  return !RETRIEVAL_MODEL_ID_PATTERN.test(normalizedId);
 }
 
 export class ModelProviderService {
