@@ -65,6 +65,7 @@ import {
   type DeviceControlConfig,
   type LocalAutomationConfig,
   type MemoryConfig,
+  type MemosConfig,
   type NexuConfig,
   cloudProfilesFileSchema,
   nexuConfigSchema,
@@ -711,6 +712,14 @@ export class NexuConfigStore {
           extraPaths: [],
           syncIntervalMinutes: 5,
           provider: "none",
+          minScore: 0.2,
+        },
+        memos: {
+          enabled: false,
+          userId: "tabby-user",
+          memoryLimitNumber: 9,
+          preferenceLimitNumber: 6,
+          relativity: 0.4,
         },
         schedules: [],
         secrets: {},
@@ -3612,6 +3621,7 @@ export class NexuConfigStore {
       extraPaths: [],
       syncIntervalMinutes: 5,
       provider: "none",
+      minScore: 0.2,
     };
     await this.store.update((config) => {
       nextConfig = {
@@ -3621,6 +3631,26 @@ export class NexuConfigStore {
         extraPaths: patch.extraPaths ?? config.memory.extraPaths,
       };
       return { ...config, memory: nextConfig };
+    });
+    return nextConfig;
+  }
+
+  async getMemosConfig(): Promise<MemosConfig> {
+    const config = await this.getConfig();
+    return config.memos;
+  }
+
+  async setMemosConfig(patch: Partial<MemosConfig>): Promise<MemosConfig> {
+    let nextConfig: MemosConfig = {
+      enabled: false,
+      userId: "tabby-user",
+      memoryLimitNumber: 9,
+      preferenceLimitNumber: 6,
+      relativity: 0.4,
+    };
+    await this.store.update((config) => {
+      nextConfig = { ...config.memos, ...patch };
+      return { ...config, memos: nextConfig };
     });
     return nextConfig;
   }

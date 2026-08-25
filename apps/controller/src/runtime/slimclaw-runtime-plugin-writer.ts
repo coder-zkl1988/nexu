@@ -16,6 +16,7 @@ import { logger } from "../lib/logger.js";
 
 const BUNDLED_PLUGIN_IDS = new Set([
   "dingtalk-connector",
+  "memos-cloud-openclaw-plugin",
   "openclaw-lark",
   "openclaw-weixin",
   "openclaw-qqbot",

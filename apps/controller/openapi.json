@@ -23219,6 +23219,12 @@
                         "model": {
                           "type": "string",
                           "minLength": 1
+                        },
+                        "minScore": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1,
+                          "default": 0.2
                         }
                       }
                     }
@@ -23280,6 +23286,11 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 300
+                  },
+                  "minScore": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
                   }
                 }
               }
@@ -23337,6 +23348,12 @@
                         "model": {
                           "type": "string",
                           "minLength": 1
+                        },
+                        "minScore": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1,
+                          "default": 0.2
                         }
                       }
                     }
@@ -23417,6 +23434,186 @@
           },
           "409": {
             "description": "Memory is disabled or rebuilding failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memos/settings": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "responses": {
+          "200": {
+            "description": "MemOS Cloud memory settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "memos": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "userId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200,
+                          "default": "tabby-user"
+                        },
+                        "memoryLimitNumber": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 50,
+                          "default": 9
+                        },
+                        "preferenceLimitNumber": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 50,
+                          "default": 6
+                        },
+                        "relativity": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1,
+                          "default": 0.4
+                        },
+                        "apiKeyConfigured": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "apiKeyConfigured"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "memos"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Memory"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "userId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "memoryLimitNumber": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "preferenceLimitNumber": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  },
+                  "relativity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated MemOS Cloud memory settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "memos": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean",
+                          "default": false
+                        },
+                        "userId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200,
+                          "default": "tabby-user"
+                        },
+                        "memoryLimitNumber": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 50,
+                          "default": 9
+                        },
+                        "preferenceLimitNumber": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 50,
+                          "default": 6
+                        },
+                        "relativity": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1,
+                          "default": 0.4
+                        },
+                        "apiKeyConfigured": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "apiKeyConfigured"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "memos"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "MemOS settings could not be applied",
             "content": {
               "application/json": {
                 "schema": {

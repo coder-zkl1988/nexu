@@ -30,6 +30,7 @@ type MemoryPatch = {
   sources?: Array<"memory" | "sessions">;
   extraPaths?: string[];
   syncIntervalMinutes?: number;
+  minScore?: number;
 };
 
 function formatLastSync(value: number | undefined, locale: string): string {
@@ -45,6 +46,7 @@ export function MemorySettingsSection() {
   const queryClient = useQueryClient();
   const [extraPathsDraft, setExtraPathsDraft] = useState("");
   const [syncIntervalDraft, setSyncIntervalDraft] = useState("5");
+  const [minScoreDraft, setMinScoreDraft] = useState("0.2");
 
   const settingsQuery = useQuery({
     queryKey: SETTINGS_QUERY_KEY,
@@ -73,6 +75,7 @@ export function MemorySettingsSection() {
     if (!settingsQuery.data) return;
     setExtraPathsDraft((settingsQuery.data.extraPaths ?? []).join("\n"));
     setSyncIntervalDraft(String(settingsQuery.data.syncIntervalMinutes ?? 5));
+    setMinScoreDraft(String(settingsQuery.data.minScore ?? 0.2));
   }, [settingsQuery.data]);
 
   const updateMutation = useMutation({
@@ -109,12 +112,18 @@ export function MemorySettingsSection() {
       toast.error(t("memory.intervalInvalid"));
       return;
     }
+    const minScore = Number.parseFloat(minScoreDraft);
+    if (!Number.isFinite(minScore) || minScore < 0 || minScore > 1) {
+      toast.error(t("memory.minScoreInvalid"));
+      return;
+    }
     void updateMutation.mutateAsync({
       extraPaths: extraPathsDraft
         .split("\n")
         .map((value) => value.trim())
         .filter((value) => value.length > 0),
       syncIntervalMinutes: interval,
+      minScore,
     });
   };
 
@@ -301,6 +310,23 @@ export function MemorySettingsSection() {
                 value={syncIntervalDraft}
                 disabled={!memory.enabled}
                 onChange={(event) => setSyncIntervalDraft(event.target.value)}
+              />
+            </label>
+            <label
+              htmlFor="memory-min-score"
+              className="block w-full max-w-48 text-[11px] text-text-secondary"
+            >
+              {t("memory.minScore")}
+              <Input
+                id="memory-min-score"
+                className="mt-1"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={minScoreDraft}
+                disabled={!memory.enabled}
+                onChange={(event) => setMinScoreDraft(event.target.value)}
               />
             </label>
             <Button

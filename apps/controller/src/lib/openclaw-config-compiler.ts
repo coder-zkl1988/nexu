@@ -479,6 +479,9 @@ function compileAgentList(
     });
 }
 
+/** Key for the MemOS Cloud token inside the encrypted `secrets` table. */
+export const MEMOS_API_KEY_SECRET = "memos:apiKey";
+
 function compilePlugins(
   config: NexuConfig,
   env: ControllerEnv,
@@ -511,6 +514,20 @@ function compilePlugins(
   ];
   const analyticsEnabled = config.desktop.analyticsEnabled !== false;
   const deviceControlEnabled = config.deviceControl.enabled;
+  // Same shape as `config.memory` above: callers (and every compiler test
+  // fixture) predate this field, so treat it as absent rather than required.
+  const memosConfig = config.memos ?? {
+    enabled: false,
+    userId: "tabby-user",
+    memoryLimitNumber: 9,
+    preferenceLimitNumber: 6,
+    relativity: 0.4,
+  };
+  const memosApiKey = config.secrets[MEMOS_API_KEY_SECRET] ?? "";
+  // No key means no plugin. It would otherwise load, fail every call, and log
+  // nothing on the success path, so a missing key would look like working
+  // memory that simply never recalls anything.
+  const memosEnabled = memosConfig.enabled && memosApiKey.length > 0;
 
   return {
     load: {
@@ -520,6 +537,27 @@ function compilePlugins(
     // installed plugins by default, while `entries` below remains the source
     // of truth for Nexu-managed plugin settings and explicit enablement.
     entries: {
+      ...(memosEnabled
+        ? {
+            "memos-cloud-openclaw-plugin": {
+              enabled: true,
+              // The plugin reads the conversation to build its recall query
+              // and to capture the turn; without this OpenClaw blocks the
+              // hook at registration.
+              hooks: { allowConversationAccess: true },
+              config: {
+                apiKey: memosApiKey,
+                userId: memosConfig.userId,
+                // Pinned, not exposed. See memosConfigSchema.
+                multiAgentMode: true,
+                recallGlobal: true,
+                memoryLimitNumber: memosConfig.memoryLimitNumber,
+                preferenceLimitNumber: memosConfig.preferenceLimitNumber,
+                relativity: memosConfig.relativity,
+              },
+            },
+          }
+        : {}),
       ...(connectedPluginIds.includes("openclaw-lark")
         ? {
             "openclaw-lark": {
@@ -732,6 +770,7 @@ export function compileOpenClawConfig(
     extraPaths: [],
     syncIntervalMinutes: 5,
     provider: "none",
+    minScore: 0.2,
   };
   const sessionMemoryEnabled = memoryConfig.sources.includes("sessions");
   const memoryProvider = memoryConfig.provider ?? "none";
@@ -856,6 +895,10 @@ export function compileOpenClawConfig(
             fts: { tokenizer: "trigram" },
             vector: { enabled: semanticMemoryEnabled },
           },
+          // Without this OpenClaw applies its own 0.35 floor. Hybrid scoring
+          // caps a purely semantic hit at 0.7 * cosine, so that floor drops
+          // most of them and semantic recall reads as "no matches".
+          query: { minScore: memoryConfig.minScore },
           sync: {
             intervalMinutes: memoryConfig.syncIntervalMinutes,
           },

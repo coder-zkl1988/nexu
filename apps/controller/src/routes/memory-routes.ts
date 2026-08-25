@@ -5,8 +5,9 @@ import { HTTPException } from "hono/http-exception";
 import type { ControllerContainer } from "../app/container.js";
 import type { ControllerEnv } from "../app/env.js";
 import { logger } from "../lib/logger.js";
+import { MEMOS_API_KEY_SECRET } from "../lib/openclaw-config-compiler.js";
 import { getOpenClawCommandSpec } from "../runtime/slimclaw-runtime-resolution.js";
-import { memoryConfigSchema } from "../store/schemas.js";
+import { memoryConfigSchema, memosConfigSchema } from "../store/schemas.js";
 import type { ControllerBindings } from "../types.js";
 
 const memorySettingsPatchSchema = z.object({
@@ -20,6 +21,22 @@ const memorySettingsPatchSchema = z.object({
   syncIntervalMinutes: z.number().int().min(1).max(1440).optional(),
   provider: z.string().trim().min(1).max(100).optional(),
   model: z.string().trim().min(1).max(300).optional(),
+  minScore: z.number().min(0).max(1).optional(),
+});
+
+const memosSettingsPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  // Write-only: it goes into the encrypted secrets table and is never read
+  // back out over the API. An empty string clears it.
+  apiKey: z.string().trim().max(500).optional(),
+  userId: z.string().trim().min(1).max(200).optional(),
+  memoryLimitNumber: z.number().int().min(1).max(50).optional(),
+  preferenceLimitNumber: z.number().int().min(1).max(50).optional(),
+  relativity: z.number().min(0).max(1).optional(),
+});
+
+const memosSettingsEnvelopeSchema = z.object({
+  memos: memosConfigSchema.extend({ apiKeyConfigured: z.boolean() }),
 });
 
 const memorySettingsEnvelopeSchema = z.object({
@@ -508,6 +525,108 @@ export function registerMemoryRoutes(
       }
 
       return c.json({ ok: true as const, rebuiltAt: now().toISOString() }, 200);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/memos/settings",
+      tags: ["Memory"],
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: memosSettingsEnvelopeSchema },
+          },
+          description: "MemOS Cloud memory settings",
+        },
+      },
+    }),
+    async (c) => {
+      const memos = await container.configStore.getMemosConfig();
+      const apiKey =
+        await container.configStore.getSecret(MEMOS_API_KEY_SECRET);
+      return c.json(
+        { memos: { ...memos, apiKeyConfigured: (apiKey ?? "").length > 0 } },
+        200,
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "patch",
+      path: "/api/v1/memos/settings",
+      tags: ["Memory"],
+      request: {
+        body: {
+          content: {
+            "application/json": { schema: memosSettingsPatchSchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: memosSettingsEnvelopeSchema },
+          },
+          description: "Updated MemOS Cloud memory settings",
+        },
+        409: {
+          content: {
+            "application/json": { schema: z.object({ message: z.string() }) },
+          },
+          description: "MemOS settings could not be applied",
+        },
+      },
+    }),
+    async (c) => {
+      const { apiKey, ...rest } = c.req.valid("json");
+      const previous = await container.configStore.getMemosConfig();
+      const previousKey =
+        (await container.configStore.getSecret(MEMOS_API_KEY_SECRET)) ?? "";
+      if (apiKey !== undefined) {
+        await container.configStore.setSecret(MEMOS_API_KEY_SECRET, apiKey);
+      }
+      const memos = await container.configStore.setMemosConfig(rest);
+      try {
+        await container.openclawSyncService.syncAll();
+      } catch (error) {
+        logger.warn(
+          { errorName: error instanceof Error ? error.name : "UnknownError" },
+          "memos_settings_sync_failed",
+        );
+        await container.configStore.setMemosConfig(previous);
+        if (apiKey !== undefined) {
+          await container.configStore.setSecret(
+            MEMOS_API_KEY_SECRET,
+            previousKey,
+          );
+        }
+        await container.openclawSyncService.syncAll().catch((rollbackError) => {
+          logger.error(
+            {
+              errorName:
+                rollbackError instanceof Error
+                  ? rollbackError.name
+                  : "UnknownError",
+            },
+            "memos_settings_rollback_sync_failed",
+          );
+        });
+        throw new HTTPException(409, {
+          message: "MemOS settings could not be applied",
+        });
+      }
+      // OpenClaw builds its plugin set at boot, so a config write alone leaves
+      // the previous plugin state live.
+      await container.openclawProcess.restart("memos-settings-changed");
+      const effectiveKey =
+        (await container.configStore.getSecret(MEMOS_API_KEY_SECRET)) ?? "";
+      return c.json(
+        { memos: { ...memos, apiKeyConfigured: effectiveKey.length > 0 } },
+        200,
+      );
     },
   );
 }

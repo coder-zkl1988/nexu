@@ -7373,6 +7373,7 @@ export type GetApiV1MemorySettingsResponses = {
             syncIntervalMinutes?: number;
             provider?: string;
             model?: string;
+            minScore?: number;
         };
     };
 };
@@ -7387,6 +7388,7 @@ export type PatchApiV1MemorySettingsData = {
         syncIntervalMinutes?: number;
         provider?: string;
         model?: string;
+        minScore?: number;
     };
     path?: never;
     query?: never;
@@ -7416,6 +7418,7 @@ export type PatchApiV1MemorySettingsResponses = {
             syncIntervalMinutes?: number;
             provider?: string;
             model?: string;
+            minScore?: number;
         };
     };
 };
@@ -7453,6 +7456,74 @@ export type PostApiV1MemoryRebuildResponses = {
 };
 
 export type PostApiV1MemoryRebuildResponse = PostApiV1MemoryRebuildResponses[keyof PostApiV1MemoryRebuildResponses];
+
+export type GetApiV1MemosSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/memos/settings';
+};
+
+export type GetApiV1MemosSettingsResponses = {
+    /**
+     * MemOS Cloud memory settings
+     */
+    200: {
+        memos: {
+            enabled?: boolean;
+            userId?: string;
+            memoryLimitNumber?: number;
+            preferenceLimitNumber?: number;
+            relativity?: number;
+            apiKeyConfigured: boolean;
+        };
+    };
+};
+
+export type GetApiV1MemosSettingsResponse = GetApiV1MemosSettingsResponses[keyof GetApiV1MemosSettingsResponses];
+
+export type PatchApiV1MemosSettingsData = {
+    body?: {
+        enabled?: boolean;
+        apiKey?: string;
+        userId?: string;
+        memoryLimitNumber?: number;
+        preferenceLimitNumber?: number;
+        relativity?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/memos/settings';
+};
+
+export type PatchApiV1MemosSettingsErrors = {
+    /**
+     * MemOS settings could not be applied
+     */
+    409: {
+        message: string;
+    };
+};
+
+export type PatchApiV1MemosSettingsError = PatchApiV1MemosSettingsErrors[keyof PatchApiV1MemosSettingsErrors];
+
+export type PatchApiV1MemosSettingsResponses = {
+    /**
+     * Updated MemOS Cloud memory settings
+     */
+    200: {
+        memos: {
+            enabled?: boolean;
+            userId?: string;
+            memoryLimitNumber?: number;
+            preferenceLimitNumber?: number;
+            relativity?: number;
+            apiKeyConfigured: boolean;
+        };
+    };
+};
+
+export type PatchApiV1MemosSettingsResponse = PatchApiV1MemosSettingsResponses[keyof PatchApiV1MemosSettingsResponses];
 
 export type GetApiV1WorkspaceTemplatesData = {
     body?: never;

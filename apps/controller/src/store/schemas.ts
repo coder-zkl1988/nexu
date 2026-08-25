@@ -578,6 +578,12 @@ export const memoryConfigSchema = z
     syncIntervalMinutes: z.number().int().min(1).max(1440).default(5),
     provider: z.string().trim().min(1).default("none"),
     model: z.string().trim().min(1).optional(),
+    // Hybrid retrieval scores 0.7 * vector + 0.3 * BM25, so a query with no
+    // literal overlap tops out at 0.7 even on a perfect semantic match.
+    // OpenClaw's own default of 0.35 discarded most of those, which made
+    // semantic recall look broken once an embedding provider was finally
+    // configured. 0.2 lets them through.
+    minScore: z.number().min(0).max(1).default(0.2),
   })
   .superRefine((value, ctx) => {
     if (value.provider !== "none" && !value.model) {
@@ -588,6 +594,27 @@ export const memoryConfigSchema = z
       });
     }
   });
+
+/**
+ * MemOS Cloud memory plugin, which recalls and stores conversation memory
+ * outside OpenClaw's own file-backed memory.
+ *
+ * `multiAgentMode` and `recallGlobal` are deliberately absent: the plugin
+ * defaults to recallGlobal=true with multiAgentMode=false, and that pair was
+ * measured against two real bots — a second bot answered with the first bot's
+ * memory verbatim, because without multiAgentMode nothing carries an agent_id
+ * and recall spans the whole account. The compiler pins both. Memories written
+ * while multiAgentMode is off carry no agent_id at all and stay invisible to
+ * every later agent-scoped query, so there is no safe way to expose it.
+ */
+export const memosConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  // Stored in the encrypted `secrets` table, never here.
+  userId: z.string().trim().min(1).max(200).default("tabby-user"),
+  memoryLimitNumber: z.number().int().min(1).max(50).default(9),
+  preferenceLimitNumber: z.number().int().min(1).max(50).default(6),
+  relativity: z.number().min(0).max(1).default(0.4),
+});
 
 const nexuConfigObjectSchema = z.object({
   $schema: z.string(),
@@ -626,6 +653,7 @@ const nexuConfigObjectSchema = z.object({
     syncIntervalMinutes: 5,
     provider: "none",
   }),
+  memos: memosConfigSchema.default({}),
   secrets: z.record(z.string(), z.string()).default({}),
   schedules: z.array(scheduleResponseSchema).default([]),
 });
@@ -743,6 +771,10 @@ export const nexuConfigSchema = z.preprocess((input) => {
       typeof candidate.memory === "object" && candidate.memory !== null
         ? candidate.memory
         : {},
+    memos:
+      typeof candidate.memos === "object" && candidate.memos !== null
+        ? candidate.memos
+        : {},
     secrets:
       typeof candidate.secrets === "object" && candidate.secrets !== null
         ? candidate.secrets
@@ -779,6 +811,7 @@ export type ControllerRuntimeConfig = z.infer<
 export type DeviceControlConfig = z.infer<typeof deviceControlConfigSchema>;
 export type LocalAutomationConfig = z.infer<typeof localAutomationConfigSchema>;
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>;
+export type MemosConfig = z.infer<typeof memosConfigSchema>;
 export type ControllerProvider = z.infer<typeof controllerProviderSchema>;
 export type ControllerArtifact = z.infer<typeof controllerArtifactSchema>;
 export type ArtifactsIndex = z.infer<typeof artifactsIndexSchema>;

@@ -108,6 +108,7 @@ import { Switch } from "../components/ui/switch";
 import { HostExecutionSettingsSection } from "./host-execution-settings-section";
 import { LocalAutomationSettingsSection } from "./local-automation-settings-section";
 import { MemorySettingsSection } from "./memory-settings-section";
+import { MemosSettingsSection } from "./memos-settings-section";
 import { markSetupComplete } from "./welcome";
 
 // ── Types ──────────────────────────────────────────────────────
@@ -1162,6 +1163,8 @@ function _GeneralSettings() {
       <HostExecutionSettingsSection />
 
       <MemorySettingsSection />
+
+      <MemosSettingsSection />
 
       <div className="overflow-hidden rounded-xl border border-border bg-surface-1">
         <div className="border-b border-border px-5 py-4">
@@ -2594,9 +2597,6 @@ function ManagedProviderDetail({
         <div className="rounded-xl border border-[var(--color-brand-primary)]/25 bg-[var(--color-brand-subtle)] px-4 py-4 mb-6">
           <div className="text-[13px] font-semibold text-[var(--color-brand-primary)]">
             {t("models.managed.loginPrompt")}
-          </div>
-          <div className="text-[12px] leading-[1.7] text-text-secondary mt-1.5">
-            {t("models.managed.loginDescription")}
           </div>
           {loginBusy ? (
             <div className="mt-4 flex items-center gap-3">
