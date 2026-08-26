@@ -81,8 +81,16 @@ export function reportXhsPublishResults(
 }
 
 const DEVICE_IDLE_POLL_INTERVAL_MS = 2_000;
-const DEVICE_IDLE_WAIT_TIMEOUT_MS = 10 * 60_000;
-const XHS_TASK_IDLE_TIMEOUT_MS = 5 * 60_000;
+/**
+ * How long the device may stop reporting in before we treat it as gone.
+ *
+ * This is the only clock this component keeps, and it measures *silence*, not
+ * duration: publishing is a task like any other, and how long a task may run is
+ * the phone's and the desktop's call, not a UI component's. A wall-clock cap
+ * here meant a phone that was still working — heartbeating, making progress —
+ * had its row marked failed while it went on to publish.
+ */
+const DEVICE_UNRESPONSIVE_MS = 90_000;
 const XHS_MEDIA_ALBUM_NAME = "Tabby";
 
 interface XhsMediaSelection {
@@ -110,7 +118,6 @@ async function waitForDeviceIdle(
   deviceId: string,
   onPhase?: (phase: XHSPublishPhase) => void,
 ): Promise<void> {
-  const deadline = Date.now() + DEVICE_IDLE_WAIT_TIMEOUT_MS;
   while (true) {
     const { data, error } = await getApiV1DevicesByDeviceId({
       path: { deviceId },
@@ -122,8 +129,11 @@ async function waitForDeviceIdle(
     if (data.status === "error") {
       throw new Error("设备状态异常，请检查手机端后重试");
     }
-    if (Date.now() >= deadline) {
-      throw new Error("设备持续忙碌，本篇尚未开始发布");
+    // Busy is not a problem to time out of — the phone is working through the
+    // queue. Only a device that has stopped checking in is one we can no longer
+    // wait on, and `lastSeen` is what says so.
+    if (Date.now() - data.lastSeen > DEVICE_UNRESPONSIVE_MS) {
+      throw new Error("手机已失联，本篇尚未开始发布");
     }
     onPhase?.("waiting");
     await new Promise((resolve) =>
@@ -366,7 +376,10 @@ export async function publishXhsPost(
           ],
           allowedApps: ["com.xingin.xhs"],
         },
-        timeout: XHS_TASK_IDLE_TIMEOUT_MS,
+        // No `timeout`: how long a publish may run is the phone's call (it
+        // re-arms its own idle window on every progress heartbeat) with the
+        // desktop's ceiling behind it. A number chosen here would only ever be
+        // a third opinion that cuts the other two short.
       },
     });
     if (error) {

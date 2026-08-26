@@ -40,15 +40,21 @@ describe("XHS publish flow", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses an idle timeout for a long-running phone publish task", async () => {
+  it("sets no timeout of its own on the phone publish task", async () => {
     await publishXhsPost("device-1", POST);
 
-    expect(apiMocks.postApiV1DevicesByDeviceIdTasks).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: { deviceId: "device-1" },
-        body: expect.objectContaining({ timeout: 300_000 }),
-      }),
-    );
+    // Publishing is a task like any other: how long it may run is the phone's
+    // call (it re-arms its idle window on every progress heartbeat) with the
+    // desktop's ceiling behind it. This component used to send 300_000, which
+    // was a third opinion that cut the other two short — a phone still working
+    // had its row marked failed and went on to publish anyway.
+    const request = apiMocks.postApiV1DevicesByDeviceIdTasks.mock
+      .calls[0]?.[0] as {
+      path: { deviceId: string };
+      body: Record<string, unknown>;
+    };
+    expect(request.path).toEqual({ deviceId: "device-1" });
+    expect(request.body).not.toHaveProperty("timeout");
   });
 
   it("uses the text-only entry and skips media push when there are no images", async () => {
