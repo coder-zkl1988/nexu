@@ -1,5 +1,13 @@
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
+import { logger } from "../lib/logger.js";
 
 export interface LowDbStoreOptions<T> {
   /**
@@ -13,6 +21,18 @@ export interface LowDbStoreOptions<T> {
   /** POSIX mode for the persisted files. Credentials warrant 0o600. */
   fileMode?: number;
 }
+function isMissingFile(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class LowDbStore<T> {
   private cache: T | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -32,13 +52,50 @@ export class LowDbStore<T> {
     try {
       this.cache = await this.readAndParse(this.filePath);
       return this.cache;
-    } catch {
+    } catch (primaryError: unknown) {
+      const missing = isMissingFile(primaryError);
+      if (!missing) {
+        logger.warn(
+          { path: this.filePath, error: describe(primaryError) },
+          "store_read_failed_trying_backup",
+        );
+      }
+
       const backupPath = `${this.filePath}.bak`;
       try {
         this.cache = await this.readAndParse(backupPath);
+        if (!missing) {
+          logger.warn(
+            { path: this.filePath, backupPath },
+            "store_recovered_from_backup",
+          );
+        }
         await this.write(this.cache);
         return this.cache;
-      } catch {
+      } catch (backupError: unknown) {
+        // Falling back to defaults overwrites whatever is on disk. When the
+        // file existed and merely failed to parse, that silently destroys real
+        // user data — bots, channels, credentials — with nothing to recover
+        // from, because the backup is overwritten on the very next write. Keep
+        // a copy under a timestamped name and say so loudly; an unparseable
+        // config is a bug to fix, not data to discard.
+        if (!missing) {
+          const quarantinePath = `${this.filePath}.corrupt-${Date.now()}`;
+          try {
+            await copyFile(this.filePath, quarantinePath);
+          } catch {
+            // Best-effort: losing the copy must not stop the app from starting.
+          }
+          logger.error(
+            {
+              path: this.filePath,
+              quarantinePath,
+              error: describe(primaryError),
+              backupError: describe(backupError),
+            },
+            "store_reset_to_defaults_after_parse_failure",
+          );
+        }
         const fallback = this.createDefault();
         this.cache = this.schema.parse(fallback);
         await this.write(this.cache);
