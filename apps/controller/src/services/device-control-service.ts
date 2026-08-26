@@ -1,3 +1,4 @@
+import { request as httpRequest } from "node:http";
 import type {
   CancelTaskBody,
   DeviceExecuteTaskBody,
@@ -23,14 +24,92 @@ type RpcResponse<T> =
 const DEFAULT_RPC_TIMEOUT_MS = 10_000;
 const DEFAULT_LIST_TIMEOUT_MS = 5_000;
 const DEFAULT_HEALTH_TIMEOUT_MS = 5_000;
+
+/**
+ * Backstop for a device task, expressed against the caller's *idle* timeout.
+ *
+ * The phone's own limit is progress-based: the plugin re-arms `timeoutMs` on
+ * every heartbeat, so a task that keeps working runs as long as it needs. This
+ * ceiling therefore only has to outlast any legitimate run and catch a wedged
+ * RPC — it must never be the thing that ends healthy work, which is why it is a
+ * large multiple of the idle window rather than a duration of its own.
+ */
 const MIN_DEVICE_TASK_HARD_TIMEOUT_MS = 30 * 60_000;
 const MAX_DEVICE_TASK_HARD_TIMEOUT_MS = 24 * 60 * 60_000;
+const DEVICE_TASK_HARD_TIMEOUT_FACTOR = 6;
 
-function deviceTaskHardTimeoutMs(idleTimeoutMs: number): number {
+export function deviceTaskHardTimeoutMs(idleTimeoutMs: number): number {
   return Math.min(
     MAX_DEVICE_TASK_HARD_TIMEOUT_MS,
-    Math.max(MIN_DEVICE_TASK_HARD_TIMEOUT_MS, idleTimeoutMs * 6),
+    Math.max(
+      MIN_DEVICE_TASK_HARD_TIMEOUT_MS,
+      idleTimeoutMs * DEVICE_TASK_HARD_TIMEOUT_FACTOR,
+    ),
   );
+}
+
+/** A device task outlived the transport, not the device. */
+export class DeviceControlTimeoutError extends Error {
+  constructor(
+    message: string,
+    readonly timeoutMs: number,
+  ) {
+    super(message);
+    this.name = "DeviceControlTimeoutError";
+  }
+}
+
+/**
+ * POST JSON over `node:http` rather than `fetch`.
+ *
+ * `fetch` is undici, whose headersTimeout defaults to 300s and silently
+ * outranked the ceiling computed above: a phone still working at five minutes
+ * had its call killed with a bare "fetch failed", the caller marked the work
+ * failed, and the device's real result arrived minutes later with nobody left
+ * to receive it. Node's client applies no timeout of its own, so the only
+ * deadline here is the one we pass in.
+ */
+export function postJson(
+  port: number,
+  payload: unknown,
+  timeoutMs: number,
+): Promise<{ status: number; body: string }> {
+  const body = JSON.stringify(payload);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/rpc",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+        res.on("error", reject);
+      },
+    );
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(
+        new DeviceControlTimeoutError(
+          `device control RPC exceeded ${timeoutMs}ms without a response`,
+          timeoutMs,
+        ),
+      );
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
 }
 
 export class DeviceControlRpcError extends Error {
@@ -60,20 +139,13 @@ export class DeviceControlService {
     timeoutMs = DEFAULT_RPC_TIMEOUT_MS,
   ): Promise<T> {
     const port = await this.getRpcPort();
-    const response = await fetch(`http://127.0.0.1:${port}/rpc`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ method, params }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const response = await postJson(port, { method, params }, timeoutMs);
 
-    if (!response.ok) {
-      throw new Error(
-        `Device control RPC failed: ${response.status} ${response.statusText}`,
-      );
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Device control RPC failed: ${response.status}`);
     }
 
-    const data = (await response.json()) as RpcResponse<T>;
+    const data = JSON.parse(response.body) as RpcResponse<T>;
 
     if (data.error !== undefined) {
       throw new DeviceControlRpcError(data.error.code, data.error.message);
@@ -192,46 +264,79 @@ export class DeviceControlService {
   ): Promise<{ result: TaskResult }> {
     const taskTimeout = body.timeout ?? 120_000;
     const dispatchedAt = new Date().toISOString();
-    const result = await this.rpc<TaskResult>(
-      "device.execute_task",
-      {
-        deviceId,
-        task: body.task,
-        timeoutMs: taskTimeout,
-        guidance: body.guidance,
-        sessionId: body.sessionId,
-        maxSteps: body.maxSteps,
-        allowedActions: body.allowedActions,
-        allowedApps: body.allowedApps,
-        taskPolicy: body.taskPolicy,
-      },
-      // The plugin treats timeoutMs as an idle timeout and re-arms it on every
-      // phone progress heartbeat. Keep a much larger independent ceiling so a
-      // wedged RPC cannot leave the request and publishing UI pending forever.
-      deviceTaskHardTimeoutMs(taskTimeout),
-    );
+    let result: TaskResult;
     try {
-      await this.taskHistoryStore.append({
+      result = await this.rpc<TaskResult>(
+        "device.execute_task",
+        {
+          deviceId,
+          task: body.task,
+          timeoutMs: taskTimeout,
+          guidance: body.guidance,
+          sessionId: body.sessionId,
+          maxSteps: body.maxSteps,
+          allowedActions: body.allowedActions,
+          allowedApps: body.allowedApps,
+          taskPolicy: body.taskPolicy,
+        },
+        // The plugin treats timeoutMs as an idle timeout and re-arms it on every
+        // phone progress heartbeat. Keep a much larger independent ceiling so a
+        // wedged RPC cannot leave the request and publishing UI pending forever.
+        deviceTaskHardTimeoutMs(taskTimeout),
+      );
+    } catch (error: unknown) {
+      // Record the attempt before rethrowing. History used to be written only
+      // after a successful RPC, so precisely the runs worth investigating —
+      // the ones that errored or timed out — left nothing behind, and the only
+      // trace was whatever happened to be in the gateway log.
+      await this.appendHistory({
         deviceId,
-        taskId: result.taskId,
+        taskId: `failed-${dispatchedAt}`,
         task: body.task,
         maxSteps: body.maxSteps,
         dispatchedAt,
         completedAt: new Date().toISOString(),
-        result,
+        result: {
+          taskId: `failed-${dispatchedAt}`,
+          success: false,
+          message:
+            error instanceof DeviceControlTimeoutError
+              ? `transport timeout after ${error.timeoutMs}ms — the device may still be working: ${error.message}`
+              : error instanceof Error
+                ? error.message
+                : String(error),
+        },
       });
+      throw error;
+    }
+    await this.appendHistory({
+      deviceId,
+      taskId: result.taskId,
+      task: body.task,
+      maxSteps: body.maxSteps,
+      dispatchedAt,
+      completedAt: new Date().toISOString(),
+      result,
+    });
+    return { result };
+  }
+
+  /** History persistence is best-effort; never fail the user's task over it. */
+  private async appendHistory(
+    entry: Parameters<DeviceTaskHistoryStore["append"]>[0],
+  ): Promise<void> {
+    try {
+      await this.taskHistoryStore.append(entry);
     } catch (err) {
-      // History persistence is best-effort; never fail the user's task.
       logger.warn(
         {
           error: err instanceof Error ? err.message : String(err),
-          deviceId,
-          taskId: result.taskId,
+          deviceId: entry.deviceId,
+          taskId: entry.taskId,
         },
         "failed to persist device task history",
       );
     }
-    return { result };
   }
 
   async cancelTask(

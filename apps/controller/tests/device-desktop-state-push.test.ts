@@ -1,5 +1,13 @@
+import { createServer } from "node:http";
+import type { ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DeviceControlService } from "../src/services/device-control-service.js";
+import {
+  DeviceControlService,
+  DeviceControlTimeoutError,
+  deviceTaskHardTimeoutMs,
+  postJson,
+} from "../src/services/device-control-service.js";
 import { DevicePollingService } from "../src/services/device-polling-service.js";
 import type { DeviceTaskHistoryStore } from "../src/store/device-task-history-store.js";
 import type { NexuConfigStore } from "../src/store/nexu-config-store.js";
@@ -11,11 +19,39 @@ const CREDENTIAL = {
   reasoningEffort: "low",
 };
 
+/**
+ * A stand-in for the tabby-control RPC server.
+ *
+ * These used to assert against a stubbed global `fetch`, which stopped
+ * exercising the transport once the RPC moved to `node:http` — and a stub can
+ * never reproduce the bug that motivated the move: undici's 300s headersTimeout
+ * silently outranking the computed ceiling. A real socket can.
+ */
+function startRpcServer(handler: (body: unknown, res: ServerResponse) => void) {
+  const received: unknown[] = [];
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      received.push(body);
+      handler(body, res);
+    });
+  });
+  const ready = new Promise<number>((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve((server.address() as AddressInfo).port);
+    });
+  });
+  return { server, received, ready };
+}
+
 function makeService(
   getVlmGatewayCredential: () => Promise<typeof CREDENTIAL | null>,
+  rpcPort = 4310,
 ) {
   const configStore = {
-    getConfig: vi.fn().mockResolvedValue({ deviceControl: { rpcPort: 4310 } }),
+    getConfig: vi.fn().mockResolvedValue({ deviceControl: { rpcPort } }),
     getVlmGatewayCredential: vi
       .fn()
       .mockImplementation(getVlmGatewayCredential),
@@ -27,40 +63,41 @@ function makeService(
 }
 
 describe("DeviceControlService.pushVlmCredential", () => {
-  const fetchMock = vi.fn();
+  let rpc: ReturnType<typeof startRpcServer>;
+  let port: number;
 
-  beforeEach(() => {
-    fetchMock.mockReset();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ result: null }),
+  beforeEach(async () => {
+    rpc = startRpcServer((_body, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ result: null }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    port = await rpc.ready;
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    rpc.server.close();
   });
 
   it("pushes the credential when the read succeeds", async () => {
-    const service = makeService(async () => CREDENTIAL);
+    const service = makeService(async () => CREDENTIAL, port);
     await service.pushVlmCredential();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body).toEqual({
-      method: "device_set_vlm_credential",
-      params: { credential: CREDENTIAL },
-    });
+    expect(rpc.received).toEqual([
+      {
+        method: "device_set_vlm_credential",
+        params: { credential: CREDENTIAL },
+      },
+    ]);
   });
 
   it("pushes null when the user is genuinely logged out", async () => {
-    const service = makeService(async () => null);
+    const service = makeService(async () => null, port);
     await service.pushVlmCredential();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(body.params).toEqual({ credential: null });
+    expect(rpc.received).toHaveLength(1);
+    expect((rpc.received[0] as { params: unknown }).params).toEqual({
+      credential: null,
+    });
   });
 
   it("skips the push entirely when the credential read fails", async () => {
@@ -69,10 +106,10 @@ describe("DeviceControlService.pushVlmCredential", () => {
     // login change, followed by hours of phones lacking a model credential).
     const service = makeService(async () => {
       throw new Error("config read failed");
-    });
+    }, port);
     await service.pushVlmCredential();
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(rpc.received).toHaveLength(0);
   });
 });
 
@@ -124,64 +161,90 @@ describe("DeviceControlService.isAvailable", () => {
 });
 
 describe("DeviceControlService.executeTask", () => {
-  const fetchMock = vi.fn();
-
-  beforeEach(() => {
-    fetchMock.mockReset();
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        result: { taskId: "task-1", success: true },
-      }),
+  it("forwards the caller's idle timeout untouched and records the run", async () => {
+    const rpc = startRpcServer((_body, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ result: { taskId: "task-1", success: true } }));
     });
-    vi.stubGlobal("fetch", fetchMock);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("uses a generous hard ceiling above the heartbeat-driven idle timeout", async () => {
-    const service = makeService(async () => CREDENTIAL);
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const port = await rpc.ready;
+    const append = vi.fn();
+    const configStore = {
+      getConfig: vi
+        .fn()
+        .mockResolvedValue({ deviceControl: { rpcPort: port } }),
+    } as unknown as NexuConfigStore;
+    const service = new DeviceControlService(configStore, {
+      append,
+    } as unknown as DeviceTaskHistoryStore);
 
     await service.executeTask("device-1", {
       task: "发布一篇小红书图文笔记",
       timeout: 120_000,
       maxSteps: 40,
-      guidance: "只发布本次桌面端确认的内容",
-      sessionId: "session-1",
-      allowedActions: ["CLICK", "TYPE"],
-      allowedApps: ["com.xingin.xhs"],
-      taskPolicy: {
-        operationClass: "content.publish",
-        targetPackages: ["com.xingin.xhs"],
-        allowedAppRoles: ["target_app", "gallery"],
-      },
     });
 
-    const request = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(request.signal).toBeInstanceOf(AbortSignal);
-    expect(timeoutSpy).toHaveBeenCalledWith(30 * 60_000);
-    expect(JSON.parse(request.body as string)).toEqual({
-      method: "device.execute_task",
-      params: {
-        deviceId: "device-1",
-        task: "发布一篇小红书图文笔记",
-        timeoutMs: 120_000,
-        maxSteps: 40,
-        guidance: "只发布本次桌面端确认的内容",
-        sessionId: "session-1",
-        allowedActions: ["CLICK", "TYPE"],
-        allowedApps: ["com.xingin.xhs"],
-        taskPolicy: {
-          operationClass: "content.publish",
-          targetPackages: ["com.xingin.xhs"],
-          allowedAppRoles: ["target_app", "gallery"],
-        },
-      },
+    // The idle window belongs to the phone (it re-arms it on every heartbeat);
+    // the controller passes it through rather than substituting its own.
+    expect(
+      (rpc.received[0] as { params: { timeoutMs: number } }).params.timeoutMs,
+    ).toBe(120_000);
+    expect(append).toHaveBeenCalledTimes(1);
+    rpc.server.close();
+  });
+
+  it("keeps the ceiling far above the idle window it guards", () => {
+    // The ceiling only has to outlast a legitimate run — it must never be what
+    // ends healthy work, so it stays a large multiple of the idle window.
+    expect(deviceTaskHardTimeoutMs(120_000)).toBe(30 * 60_000);
+    expect(deviceTaskHardTimeoutMs(10 * 60_000)).toBe(60 * 60_000);
+    expect(deviceTaskHardTimeoutMs(120_000)).toBeGreaterThan(120_000);
+  });
+
+  it("reports a stalled transport as a timeout, not a generic failure", async () => {
+    // The regression this change exists for: the phone was still working when
+    // the transport gave up. `fetch` hid a 300s undici headersTimeout that
+    // outranked the computed ceiling and surfaced as a bare "fetch failed", so
+    // the caller read it as a failed publish while the device's real result
+    // arrived minutes later with nobody waiting. A stall has to be
+    // recognisable as a stall — that is what lets the UI say "unconfirmed".
+    const rpc = startRpcServer(() => {
+      /* never responds — the phone is still working */
     });
-    timeoutSpy.mockRestore();
+    const port = await rpc.ready;
+
+    await expect(postJson(port, { method: "x" }, 300)).rejects.toBeInstanceOf(
+      DeviceControlTimeoutError,
+    );
+    rpc.server.close();
+  });
+
+  it("records the attempt even when the RPC fails", async () => {
+    // History used to be written only after a successful RPC, so exactly the
+    // runs worth investigating — errored or timed out — left nothing behind.
+    const rpc = startRpcServer((_body, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({ error: { code: "DEVICE_OFFLINE", message: "gone" } }),
+      );
+    });
+    const port = await rpc.ready;
+    const append = vi.fn();
+    const configStore = {
+      getConfig: vi
+        .fn()
+        .mockResolvedValue({ deviceControl: { rpcPort: port } }),
+    } as unknown as NexuConfigStore;
+    const service = new DeviceControlService(configStore, {
+      append,
+    } as unknown as DeviceTaskHistoryStore);
+
+    await expect(
+      service.executeTask("device-1", { task: "t", timeout: 120_000 }),
+    ).rejects.toThrow("gone");
+
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(append.mock.calls[0][0].result.success).toBe(false);
+    rpc.server.close();
   });
 });
 

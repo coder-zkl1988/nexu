@@ -11,7 +11,10 @@ import {
 } from "@nexu/shared";
 import { streamSSE } from "hono/streaming";
 import type { ControllerContainer } from "../app/container.js";
-import { DeviceControlRpcError } from "../services/device-control-service.js";
+import {
+  DeviceControlRpcError,
+  DeviceControlTimeoutError,
+} from "../services/device-control-service.js";
 import {
   type DeviceChangeEvent,
   deviceEventEmitter,
@@ -41,6 +44,13 @@ function mapRpcErrorToStatus(err: unknown): {
       return { status: 504, message: err.message };
     }
     return { status: 500, message: err.message };
+  }
+  // A transport timeout is not a failed publish: the phone is very often still
+  // working and goes on to finish. It has to reach the caller as 504 so the UI
+  // can say "result unconfirmed" instead of "failed" — the old undici error was
+  // a bare TypeError, fell through to 500, and that 504 path never once ran.
+  if (err instanceof DeviceControlTimeoutError) {
+    return { status: 504, message: err.message };
   }
   if (err instanceof DOMException && err.name === "TimeoutError") {
     return { status: 504, message: "Device control request timed out" };
