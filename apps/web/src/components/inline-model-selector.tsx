@@ -1,3 +1,4 @@
+import { getProviderLabel } from "@/lib/provider-labels";
 import { getSpecialModelLabelKey } from "@/lib/special-models";
 import { track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
@@ -148,7 +149,7 @@ export function InlineModelSelector(props: InlineModelSelectorProps) {
             const filtered = models.filter((m) => m.id && m.name);
             const groups = new Map<string, typeof filtered>();
             for (const m of filtered) {
-              const provider = m.provider || "Other";
+              const provider = getProviderLabel(m.provider) || "Other";
               if (!groups.has(provider)) groups.set(provider, []);
               groups.get(provider)?.push(m);
             }

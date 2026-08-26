@@ -3468,8 +3468,9 @@ export function SessionsPage() {
           <ChatInputArea
             bots={bots}
             selectedBot={selectedBot}
-            onSelectBot={(next) => {
-              void updateBotModel(next.id, next.modelId);
+            onSelectBot={() => {}}
+            onSelectModel={(botId, modelId) => {
+              void updateBotModel(botId, modelId);
             }}
             onSend={handleSend}
             onTyping={handleDeskpetTyping}

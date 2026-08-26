@@ -4,6 +4,8 @@ import { useTeams } from "@/hooks/use-teams";
 import { subscribeExternalChatInput } from "@/lib/chat/external-chat-input";
 import { requestDesktopHost } from "@/lib/desktop-host";
 import { isImeComposing } from "@/lib/keyboard";
+import { getProviderLabel } from "@/lib/provider-labels";
+import { getSpecialModelLabelKey } from "@/lib/special-models";
 import { cn } from "@/lib/utils";
 import {
   CHAT_ATTACHMENT_LIMITS,
@@ -93,6 +95,16 @@ export interface ChatInputAreaProps {
   showModelSelector?: boolean;
   /** Show model as read-only label instead of changeable dropdown */
   modelReadOnly?: boolean;
+  /**
+   * Binds a model to a bot, or clears the binding (null) back to following the
+   * global default.
+   *
+   * Separate from onSelectBot: that one switches which bot you are talking to
+   * and is local to the page, while this one persists a property of the bot.
+   * Overloading onSelectBot with a modified copy made the model pick look like
+   * a bot switch, so pages that only tracked selection dropped it silently.
+   */
+  onSelectModel?: (botId: string, modelId: string | null) => void;
   /** Change this value to focus the text input from an external action. */
   focusToken?: string | null;
   /** Current session key for browser selections and annotated screenshots. */
@@ -449,7 +461,7 @@ function BotSelector({
                 <Plus size={13} className="shrink-0" />
                 {tab === "teams"
                   ? t("localChat.addTeam", { defaultValue: "新建团队" })
-                  : t("localChat.addBot", { defaultValue: "添加伙伴" })}
+                  : t("localChat.addBot", { defaultValue: "添加专家" })}
               </button>
             </div>
           )}
@@ -482,6 +494,7 @@ export function ChatInputArea({
   showBotSelector = true,
   showModelSelector = true,
   modelReadOnly = false,
+  onSelectModel,
   focusToken = null,
   externalInputSessionKey = null,
 }: ChatInputAreaProps) {
@@ -1165,7 +1178,7 @@ export function ChatInputArea({
                         type="button"
                         onClick={() => {
                           if (!selectedBot) return;
-                          onSelectBot({ ...selectedBot, modelId: null });
+                          onSelectModel?.(selectedBot.id, null);
                           setModelDropdownOpen(false);
                         }}
                         className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"
@@ -1186,10 +1199,21 @@ export function ChatInputArea({
                         )}
                       </button>
                       {(() => {
-                        const filtered = models.filter((m) => m.id && m.name);
+                        // Phone-control, image and video models are reserved
+                        // for their own pipelines and cannot answer a chat
+                        // turn, so they are not offered here at all. The
+                        // settings pickers grey them out with a purpose label
+                        // instead, where explaining them is the point.
+                        const filtered = models.filter(
+                          (m) =>
+                            m.id &&
+                            m.name &&
+                            getSpecialModelLabelKey(m.id) === null,
+                        );
                         const groups = new Map<string, typeof filtered>();
                         for (const m of filtered) {
-                          const provider = m.provider || "Other";
+                          const provider =
+                            getProviderLabel(m.provider) || "Other";
                           if (!groups.has(provider)) groups.set(provider, []);
                           groups.get(provider)?.push(m);
                         }
@@ -1211,10 +1235,10 @@ export function ChatInputArea({
                                   type="button"
                                   onClick={() => {
                                     if (!selectedBot) return;
-                                    onSelectBot({
-                                      ...selectedBot,
-                                      modelId: m.id ?? "",
-                                    });
+                                    onSelectModel?.(
+                                      selectedBot.id,
+                                      m.id ?? null,
+                                    );
                                     setModelDropdownOpen(false);
                                   }}
                                   className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-tabby-canvas)] transition-colors"

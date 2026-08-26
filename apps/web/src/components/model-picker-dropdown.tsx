@@ -1,4 +1,5 @@
 import { ModelLogo, ProviderLogo } from "@/components/provider-logo";
+import { getProviderLabel } from "@/lib/provider-labels";
 import { getSpecialModelLabelKey } from "@/lib/special-models";
 import { track } from "@/lib/tracking";
 import { cn } from "@/lib/utils";
@@ -11,21 +12,6 @@ export interface ModelPickerItem {
   name: string;
   provider: string;
 }
-
-const PROVIDER_LABELS: Record<string, string> = {
-  nexu: "Tabby Official",
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  google: "Google AI Studio",
-  siliconflow: "SiliconFlow",
-  ppio: "PPIO",
-  openrouter: "OpenRouter",
-  minimax: "MiniMax",
-  kimi: "Moonshot",
-  glm: "Zhipu",
-  moonshot: "Moonshot",
-  zai: "Zhipu",
-};
 
 function getGroupKey(model: ModelPickerItem): string {
   if (model.id.startsWith("link/")) {
@@ -115,7 +101,7 @@ export function ModelPickerDropdown({
 
     return entries.map(([providerId, providerModels]) => ({
       id: providerId,
-      name: PROVIDER_LABELS[providerId] ?? providerId,
+      name: getProviderLabel(providerId),
       models: providerModels,
     }));
   }, [models]);

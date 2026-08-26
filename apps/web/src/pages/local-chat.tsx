@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   getApiV1Bots,
   getApiV1BotsDefault,
+  patchApiV1BotsByBotId,
   postApiV1ChatLocalStart,
   putApiV1BotsDefault,
 } from "../../lib/api/sdk.gen";
@@ -122,6 +123,28 @@ export function LocalChatPage() {
   const handleSelectBot = useCallback((bot: BotItem) => {
     setSelectedBot(bot);
   }, []);
+
+  /**
+   * Binds a model to a bot, or clears it back to following the global default.
+   *
+   * Selection lives in local state here, so the persist has to be explicit —
+   * mutating the selected bot alone would show the new model until the next
+   * refetch and then quietly revert.
+   */
+  const updateBotModel = useCallback(
+    async (botId: string, modelId: string | null): Promise<void> => {
+      const { error } = await patchApiV1BotsByBotId({
+        path: { botId },
+        body: { modelId },
+      });
+      if (error) return;
+      setSelectedBot((current) =>
+        current && current.id === botId ? { ...current, modelId } : current,
+      );
+      await queryClient.invalidateQueries({ queryKey: ["bots"] });
+    },
+    [queryClient],
+  );
 
   const setDefaultBot = useMutation({
     mutationFn: async (botId: string) => {
@@ -330,6 +353,9 @@ export function LocalChatPage() {
                   bots={bots}
                   selectedBot={selectedBot}
                   onSelectBot={handleSelectBot}
+                  onSelectModel={(botId, modelId) => {
+                    void updateBotModel(botId, modelId);
+                  }}
                   defaultBotId={defaultBotData?.id ?? null}
                   onSetDefaultBot={handleSetDefaultBot}
                   onSend={sendMessage}
@@ -339,7 +365,6 @@ export function LocalChatPage() {
                   disabled={!selectedBot || isCreatingBot}
                   placeholder={placeholder}
                   showAddBot
-                  modelReadOnly
                 />
               </div>
             </div>
