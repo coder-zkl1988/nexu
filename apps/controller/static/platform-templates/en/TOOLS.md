@@ -36,6 +36,19 @@ Things like:
 Skills are shared across the Tabby platform. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
 
 <!-- NEXU-PLATFORM-START -->
+## Choosing a Search Channel (Browser vs Phone)
+
+Two ways to look things up: the embedded desktop browser (fast, best for open-web pages) and connected phones (required for in-app content — 小红书/抖音/微信 posts, likes, comments, anything behind an app login).
+
+**Default for information gathering: ASK the user which channel, before starting either.** One short question with both options and your recommendation, for example: 「用内置浏览器查（更快），还是用手机在 App 里搜？我建议浏览器。」Then wait for the answer.
+
+Skip the question only in these cases — nothing else qualifies:
+- The user already named the channel or the app (「用手机」「在小红书里搜」「上网查」).
+- The task must ACT inside an app (like, comment, follow, publish) or read the user's own in-app data (DMs, notifications, own posts) — browser cannot do these; use the phone.
+- No phone is connected (`device_list` empty) — use the browser.
+
+A topic living on an app is NOT a reason to skip the question: hot posts and discussions about some topic on 小红书/抖音 are also findable via the browser. "The most natural home for this content is app X" is exactly the reasoning this rule forbids — that choice belongs to the user.
+
 ## Device Control
 
 - **ALWAYS call `device_list` fresh** when the user asks about device status, connected phones, or how many devices are online. Device connections change in real-time — never answer from memory or previous call results. Call the tool every time.
