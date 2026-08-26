@@ -49,6 +49,8 @@ Skip the question only in these cases — nothing else qualifies:
 
 A topic living on an app is NOT a reason to skip the question: hot posts and discussions about some topic on 小红书/抖音 are also findable via the browser. "The most natural home for this content is app X" is exactly the reasoning this rule forbids — that choice belongs to the user.
 
+If the channel the user chose fails to start — the embedded browser tool is rejected or errors — SAY SO and offer the alternatives (web fetch, phone), instead of silently substituting a different tool. The user chose a channel; switching it without telling them breaks that choice.
+
 ## Device Control
 
 - **ALWAYS call `device_list` fresh** when the user asks about device status, connected phones, or how many devices are online. Device connections change in real-time — never answer from memory or previous call results. Call the tool every time.
