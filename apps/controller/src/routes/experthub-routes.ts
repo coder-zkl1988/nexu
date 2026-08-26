@@ -59,6 +59,8 @@ export type ExperthubRoutesDeps = {
   /** Delete a bot by ID (removes from config + syncs to OpenClaw). */
   botService: {
     deleteBot: (botId: string) => Promise<boolean>;
+    /** Ids of bots that currently exist, used to validate ledger entries. */
+    listBotIds: () => Promise<string[]>;
   };
   /** Root directory containing agent workspaces (`<agentsDir>/<botId>/`). */
   agentsDir: string;
@@ -125,7 +127,16 @@ export function buildExperthubRoutes(deps: ExperthubRoutesDeps) {
         deps.catalog.readLedger(),
         deps.catalog.getMeta(),
       ]);
-      const installedExperts = Object.values(ledger.entries);
+      // An expert is only installed if the bot backing it still exists. The
+      // ledger and the bot list live in different files, so they can drift —
+      // and when they did, the page kept listing experts whose bots were gone
+      // while nothing could use them: they never appear in a bot picker, which
+      // is what the rest of the app selects from. Trusting the ledger alone is
+      // what made that state invisible.
+      const liveBotIds = new Set(await deps.botService.listBotIds());
+      const installedExperts = Object.values(ledger.entries).filter(
+        (entry) => entry.botId && liveBotIds.has(entry.botId),
+      );
       const installedSlugs = installedExperts.map((entry) => entry.slug);
       return c.json(
         {

@@ -102,7 +102,11 @@ export function createApp(container: ControllerContainer) {
       installExpert: container.installExpertFn,
       createCustomExpert: container.createCustomExpertFn,
       updateExpertSkills: container.updateExpertSkillsFn,
-      botService: container.agentService,
+      botService: {
+        deleteBot: (botId) => container.agentService.deleteBot(botId),
+        listBotIds: async () =>
+          (await container.agentService.listBots()).map((bot) => bot.id),
+      },
       agentsDir: path.join(container.env.openclawStateDir, "agents"),
       platformTemplatesDir: container.env.platformTemplatesDir ?? "",
     }),

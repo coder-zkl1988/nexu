@@ -75,6 +75,9 @@ function buildApp(overrides: Partial<ExperthubRoutesDeps> = {}) {
       }),
     botService: overrides.botService ?? {
       deleteBot: vi.fn().mockResolvedValue(true),
+      // An expert now counts as installed only while its bot still exists, so
+      // the fixture ledger's bot has to be live for the catalog assertions.
+      listBotIds: vi.fn().mockResolvedValue(["bot_1"]),
     },
     agentsDir: overrides.agentsDir ?? "/tmp/nexu-experthub-test-agents",
     platformTemplatesDir:
