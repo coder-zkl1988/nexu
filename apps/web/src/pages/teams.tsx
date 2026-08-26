@@ -37,7 +37,11 @@ export function TeamsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTeam, setEditTeam] = useState<TeamResponse | null>(null);
 
-  const teams = data?.teams ?? [];
+  // The default team is infrastructure, not something the user assembled: it
+  // is created lazily so a plain bot can dispatch work without a team, its
+  // membership is every installed expert, and it cannot be edited or deleted.
+  // Listing it only invited the question of what it was.
+  const teams = (data?.teams ?? []).filter((team) => !team.isDefault);
 
   return (
     <div className="flex h-full flex-col">

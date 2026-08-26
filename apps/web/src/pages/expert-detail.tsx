@@ -626,7 +626,7 @@ export default function ExpertDetailPage() {
                 <p className="text-[12px] text-text-muted">
                   {t("experts.detail.switch_tab_hint", {
                     defaultValue:
-                      "切换上方标签页查看伙伴的 AGENTS、IDENTITY 和 SOUL 配置",
+                      "切换上方标签页查看专家的 AGENTS、IDENTITY 和 SOUL 配置",
                   })}
                 </p>
               )}

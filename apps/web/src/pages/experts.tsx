@@ -127,7 +127,7 @@ export default function ExpertsPage() {
           description?: string;
         }) => ({
           slug: entry.slug,
-          name: entry.name || "自定义伙伴",
+          name: entry.name || "自定义专家",
           emoji: entry.avatarDataUrl ? (undefined as unknown as string) : "🤖",
           avatarDataUrl: entry.avatarDataUrl,
           category: "自定义",
