@@ -14,7 +14,29 @@ export interface PreviewAutoOpenObservation {
   shouldOpen: boolean;
 }
 
-const INITIAL_PREVIEW_GRACE_MS = 15_000;
+/**
+ * How far before the baseline a preview may have been produced and still count
+ * as belonging to the moment. Covers the gap between the agent writing the file
+ * and the panel noticing it.
+ */
+export const PREVIEW_AUTO_OPEN_GRACE_MS = 15_000;
+
+/**
+ * Whether a preview is recent enough to open on its own.
+ *
+ * Local previews are discovered by scanning the *bot's* workspace for
+ * index.html files — the filesystem carries no session attribution, so the
+ * list includes everything that expert ever built. Opening the newest of those
+ * unconditionally meant a page from weeks ago took over the panel in every new
+ * conversation. Only something produced around or after the baseline can
+ * plausibly be what the user is here to see.
+ */
+export function isFreshPreview(createdAt: string, baseline: number): boolean {
+  const created = Date.parse(createdAt);
+  return (
+    Number.isFinite(created) && created >= baseline - PREVIEW_AUTO_OPEN_GRACE_MS
+  );
+}
 
 export function createPreviewAutoOpenTracker(): PreviewAutoOpenTracker {
   return {
@@ -50,14 +72,13 @@ export function observePreviewArtifact(input: {
     return { tracker, shouldOpen: false };
   }
 
-  const isInitialArtifact = tracker.lastArtifactId === null;
-  const createdAt = Date.parse(input.artifact.createdAt);
-  const isFreshInitialArtifact =
-    Number.isFinite(createdAt) &&
-    createdAt >= tracker.startedAt - INITIAL_PREVIEW_GRACE_MS;
-
+  // Freshness is required of every artifact, not just the first one seen. The
+  // old rule exempted later ones ("a change must be new work"), but the newest
+  // preview can change for reasons that have nothing to do with this
+  // conversation — a stale one resurfacing after a refetch, or the list
+  // reordering — and each of those hijacked the panel.
   return {
     tracker: { ...tracker, lastArtifactId: input.artifact.id },
-    shouldOpen: !isInitialArtifact || isFreshInitialArtifact,
+    shouldOpen: isFreshPreview(input.artifact.createdAt, tracker.startedAt),
   };
 }

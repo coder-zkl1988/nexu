@@ -39,6 +39,7 @@ import {
 } from "./agent-browser-relay";
 import { BrowserAnnotationEditor } from "./browser-annotation-editor";
 import type { BrowserNavigationRequest } from "./browser-panel-store";
+import { isFreshPreview } from "./browser-preview-auto-open";
 
 export interface PreviewArtifact {
   id: string;
@@ -362,6 +363,13 @@ export function EmbeddedBrowser({
   const historyPanelRef = useRef<HTMLElement>(null);
   const viewportMenuRef = useRef<HTMLDivElement>(null);
   const lastAutoArtifactIdRef = useRef<string | null>(null);
+  /**
+   * When this panel opened. Previews already on disk at that moment were not
+   * produced by the conversation the user is looking at — discovery scans the
+   * bot's whole workspace, which has no session attribution — so they must not
+   * take over the panel. They stay reachable from the history list.
+   */
+  const autoOpenBaselineRef = useRef(Date.now());
   const lastNavigationRequestIdRef = useRef<number | null>(null);
   const desktopBrowser = hasDesktopBrowserHost();
   const agentTabRequest = useAgentBrowserTabRequest();
@@ -499,6 +507,11 @@ export function EmbeddedBrowser({
     if (!latestArtifact || lastAutoArtifactIdRef.current === latestArtifact.id)
       return;
     lastAutoArtifactIdRef.current = latestArtifact.id;
+    if (
+      !isFreshPreview(latestArtifact.createdAt, autoOpenBaselineRef.current)
+    ) {
+      return;
+    }
     if (
       navigationRequest &&
       Date.parse(latestArtifact.createdAt) <= navigationRequest.requestedAt

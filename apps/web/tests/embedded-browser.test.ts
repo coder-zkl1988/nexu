@@ -27,6 +27,7 @@ import {
 } from "../src/lib/browser/browser-panel-store";
 import {
   createPreviewAutoOpenTracker,
+  isFreshPreview,
   observePreviewArtifact,
 } from "../src/lib/browser/browser-preview-auto-open";
 import {
@@ -456,6 +457,45 @@ describe("embedded browser helpers", () => {
     });
 
     expect(generated.shouldOpen).toBe(true);
+  });
+
+  it("does not auto-open a stale preview that surfaces after another one", () => {
+    const first = observePreviewArtifact({
+      tracker: createPreviewAutoOpenTracker(),
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "existing-preview",
+        createdAt: "2026-07-27T09:00:00.000Z",
+      },
+      now: Date.parse("2026-07-27T10:00:00.000Z"),
+    });
+    // A different id, but the file is weeks old: local previews are discovered
+    // by scanning the bot's whole workspace, so the newest one can change
+    // without anything new having been built. Treating any change as new work
+    // is what let a months-old page take over the panel.
+    const otherStale = observePreviewArtifact({
+      tracker: first.tracker,
+      sessionKey: "agent:bot:session",
+      artifact: {
+        id: "another-old-preview",
+        createdAt: "2026-06-01T09:00:00.000Z",
+      },
+      now: Date.parse("2026-07-27T10:00:05.000Z"),
+    });
+
+    expect(otherStale.shouldOpen).toBe(false);
+  });
+
+  it("judges preview freshness against the panel's own baseline", () => {
+    const baseline = Date.parse("2026-07-27T10:00:00.000Z");
+
+    // Produced while the panel was open — this is what the user came to see.
+    expect(isFreshPreview("2026-07-27T10:00:30.000Z", baseline)).toBe(true);
+    // Written just before it opened; still the moment's work.
+    expect(isFreshPreview("2026-07-27T09:59:52.000Z", baseline)).toBe(true);
+    // Left in the workspace weeks ago by some other conversation.
+    expect(isFreshPreview("2026-07-01T09:00:00.000Z", baseline)).toBe(false);
+    expect(isFreshPreview("not-a-date", baseline)).toBe(false);
   });
 
   it("closes an open browser when navigation switches sessions", () => {
