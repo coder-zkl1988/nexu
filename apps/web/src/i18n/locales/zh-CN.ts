@@ -1415,7 +1415,16 @@ const zhCN = {
   "feishu.permissions.policy.allowlist": "白名单",
   "feishu.permissions.policy.disabled": "关闭",
   "feishu.permissions.allowFrom": "白名单（open_id，每行一个）",
-  "feishu.permissions.browserOwners": "内置浏览器白名单（open_id，每行一个）",
+  "feishu.permissions.browserOwners": "内置浏览器白名单",
+  "feishu.permissions.browserOwnersEmpty": "尚未添加任何账号",
+  "feishu.permissions.browserOwnersRecent": "最近私聊过机器人的账号",
+  "feishu.permissions.browserOwnersRecentEmpty": "还没有人私聊过这个机器人",
+  "feishu.permissions.browserOwnersRecentError":
+    "无法读取最近私聊列表，可手动输入 open_id",
+  "feishu.permissions.browserOwnersAdd": "添加",
+  "feishu.permissions.browserOwnersAdded": "已添加",
+  "feishu.permissions.browserOwnersRemove": "移除",
+  "feishu.permissions.browserOwnersManualPlaceholder": "ou_ 开头的 open_id",
   "feishu.permissions.browserOwnersHint":
     "列出的飞书账号在与机器人的私聊中可以使用桌面端内置浏览器（带你的登录态）。群聊永远不放行；仅添加你本人的 open_id。",
   "feishu.permissions.openIdHelp": "如何查看飞书用户的 open_id",

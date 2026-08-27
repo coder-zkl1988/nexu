@@ -2448,6 +2448,52 @@ export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
 
 export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponse = PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses[keyof PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses];
 
+export type GetApiV1ChannelsByChannelIdFeishuDmPeersData = {
+    body?: never;
+    path: {
+        channelId: string;
+    };
+    query?: never;
+    url: '/api/v1/channels/{channelId}/feishu-dm-peers';
+};
+
+export type GetApiV1ChannelsByChannelIdFeishuDmPeersErrors = {
+    /**
+     * Not a Feishu channel
+     */
+    400: {
+        message: string;
+    };
+    /**
+     * Channel not found
+     */
+    404: {
+        message: string;
+    };
+    /**
+     * The runtime gateway did not answer
+     */
+    502: {
+        message: string;
+    };
+};
+
+export type GetApiV1ChannelsByChannelIdFeishuDmPeersError = GetApiV1ChannelsByChannelIdFeishuDmPeersErrors[keyof GetApiV1ChannelsByChannelIdFeishuDmPeersErrors];
+
+export type GetApiV1ChannelsByChannelIdFeishuDmPeersResponses = {
+    /**
+     * Recent direct-DM peers of the channel's bot, newest first — the candidate list for the browser-owner whitelist
+     */
+    200: {
+        peers: Array<{
+            openId: string;
+            lastActiveAt: number | null;
+        }>;
+    };
+};
+
+export type GetApiV1ChannelsByChannelIdFeishuDmPeersResponse = GetApiV1ChannelsByChannelIdFeishuDmPeersResponses[keyof GetApiV1ChannelsByChannelIdFeishuDmPeersResponses];
+
 export type PatchApiV1ChannelsByChannelIdCapabilitiesData = {
     body?: {
         channelType: 'slack';

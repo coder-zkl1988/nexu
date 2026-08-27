@@ -49,3 +49,24 @@ describe("OpenClawGatewayService.sessionHasActiveRun", () => {
     );
   });
 });
+
+describe("OpenClawGatewayService.listAgentDirectDmPeers", () => {
+  it("parses, dedupes and sorts direct-DM peers, ignoring deeper suffixes", async () => {
+    const service = serviceWith(() => ({
+      sessions: [
+        { key: "agent:bot-1:direct:ou_old", updatedAt: 100 },
+        { key: "agent:bot-1:direct:ou_new", updatedAt: 900 },
+        // Same peer seen twice — the newer timestamp must win.
+        { key: "agent:bot-1:direct:ou_old", updatedAt: 500 },
+        // Not plain DMs: must not become candidates.
+        { key: "agent:bot-1:main", updatedAt: 999 },
+        { key: "agent:bot-1:direct:ou_x:thread:1", updatedAt: 999 },
+      ],
+    }));
+
+    await expect(service.listAgentDirectDmPeers("bot-1")).resolves.toEqual([
+      { openId: "ou_new", lastActiveAt: 900 },
+      { openId: "ou_old", lastActiveAt: 500 },
+    ]);
+  });
+});

@@ -1528,8 +1528,18 @@ const en = {
   "feishu.permissions.policy.allowlist": "Allowlist",
   "feishu.permissions.policy.disabled": "Disabled",
   "feishu.permissions.allowFrom": "Allowlist (open_id, one per line)",
-  "feishu.permissions.browserOwners":
-    "Embedded-browser whitelist (open_id, one per line)",
+  "feishu.permissions.browserOwners": "Embedded-browser whitelist",
+  "feishu.permissions.browserOwnersEmpty": "No accounts added yet",
+  "feishu.permissions.browserOwnersRecent":
+    "Accounts that recently DMed the bot",
+  "feishu.permissions.browserOwnersRecentEmpty": "Nobody has DMed this bot yet",
+  "feishu.permissions.browserOwnersRecentError":
+    "Could not load recent DMs — enter the open_id manually",
+  "feishu.permissions.browserOwnersAdd": "Add",
+  "feishu.permissions.browserOwnersAdded": "Added",
+  "feishu.permissions.browserOwnersRemove": "Remove",
+  "feishu.permissions.browserOwnersManualPlaceholder":
+    "open_id starting with ou_",
   "feishu.permissions.browserOwnersHint":
     "Listed Feishu accounts may drive the desktop's embedded browser (carrying your logins) from their direct messages with the bot. Group chats are never allowed; add only your own open_id.",
   "feishu.permissions.openIdHelp": "How to find a Feishu user's open_id",

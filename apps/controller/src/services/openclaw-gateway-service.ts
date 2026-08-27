@@ -287,6 +287,37 @@ export class OpenClawGatewayService {
   }
 
   /**
+   * Recent Feishu direct-DM peers of one agent, newest first.
+   *
+   * Backs the browser-owner whitelist picker: nobody knows their own
+   * `ou_` open_id, but the runtime already holds one session per DM peer
+   * (`agent:<bot>:direct:<open_id>`), so the keys ARE the candidate list.
+   * `search` narrows the row scan without transcript reads; keys with any
+   * deeper suffix are ignored rather than mis-parsed.
+   */
+  async listAgentDirectDmPeers(
+    agentId: string,
+  ): Promise<Array<{ openId: string; lastActiveAt: number | null }>> {
+    const result = await this.wsClient.request<{
+      sessions?: Array<{ key?: string; updatedAt?: number }>;
+    }>("sessions.list", { agentId, search: ":direct:", limit: 100 });
+    const peers = new Map<string, number | null>();
+    for (const row of result?.sessions ?? []) {
+      const openId = /^agent:[^:]+:direct:([^:]+)$/i.exec(row.key ?? "")?.[1];
+      if (!openId) continue;
+      const lastActiveAt =
+        typeof row.updatedAt === "number" ? row.updatedAt : null;
+      const previous = peers.get(openId);
+      if (previous === undefined || (lastActiveAt ?? 0) > (previous ?? 0)) {
+        peers.set(openId, lastActiveAt);
+      }
+    }
+    return [...peers.entries()]
+      .map(([openId, lastActiveAt]) => ({ openId, lastActiveAt }))
+      .sort((a, b) => (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0));
+  }
+
+  /**
    * Live gateway check for an active run on one session.
    *
    * The SessionRunRegistry only sees webchat turns (chat.send + chat
