@@ -912,8 +912,13 @@ export function compileOpenClawConfig(
           },
           // Without this OpenClaw applies its own 0.35 floor. Hybrid scoring
           // caps a purely semantic hit at 0.7 * cosine, so that floor drops
-          // most of them and semantic recall reads as "no matches".
-          query: { minScore: memoryConfig.minScore },
+          // most of them and semantic recall reads as "no matches". Stored
+          // configs always carry the field (schema default 0.2); a raw legacy
+          // object that bypassed the schema gets no query block rather than
+          // `{ minScore: undefined }`.
+          ...(typeof memoryConfig.minScore === "number"
+            ? { query: { minScore: memoryConfig.minScore } }
+            : {}),
           sync: {
             intervalMinutes: memoryConfig.syncIntervalMinutes,
           },

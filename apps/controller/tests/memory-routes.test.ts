@@ -82,6 +82,9 @@ describe("memory routes", () => {
       extraPaths: [],
       syncIntervalMinutes: 5,
       provider: "none",
+      // Legacy configs gain the schema-defaulted recall floor on read; this
+      // is the value the settings UI shows and the compiler emits.
+      minScore: 0.2,
     });
   });
 
