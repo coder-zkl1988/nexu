@@ -1528,6 +1528,10 @@ const en = {
   "feishu.permissions.policy.allowlist": "Allowlist",
   "feishu.permissions.policy.disabled": "Disabled",
   "feishu.permissions.allowFrom": "Allowlist (open_id, one per line)",
+  "feishu.permissions.browserOwners":
+    "Embedded-browser whitelist (open_id, one per line)",
+  "feishu.permissions.browserOwnersHint":
+    "Listed Feishu accounts may drive the desktop's embedded browser (carrying your logins) from their direct messages with the bot. Group chats are never allowed; add only your own open_id.",
   "feishu.permissions.openIdHelp": "How to find a Feishu user's open_id",
   "feishu.permissions.save": "Save",
   "feishu.permissions.reset": "Reset",

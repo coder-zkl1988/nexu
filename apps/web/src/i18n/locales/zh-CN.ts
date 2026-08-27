@@ -1415,6 +1415,9 @@ const zhCN = {
   "feishu.permissions.policy.allowlist": "白名单",
   "feishu.permissions.policy.disabled": "关闭",
   "feishu.permissions.allowFrom": "白名单（open_id，每行一个）",
+  "feishu.permissions.browserOwners": "内置浏览器白名单（open_id，每行一个）",
+  "feishu.permissions.browserOwnersHint":
+    "列出的飞书账号在与机器人的私聊中可以使用桌面端内置浏览器（带你的登录态）。群聊永远不放行；仅添加你本人的 open_id。",
   "feishu.permissions.openIdHelp": "如何查看飞书用户的 open_id",
   "feishu.permissions.save": "保存",
   "feishu.permissions.reset": "重置",

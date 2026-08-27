@@ -1552,6 +1552,22 @@ const plugin = {
       typeof api.pluginConfig.hostExecution === "object"
         ? api.pluginConfig.hostExecution
         : {};
+    // Exact session keys allowed to drive the embedded browser from a
+    // channel: the paired owner's Feishu DMs. Compiled by the controller as
+    // full `agent:<bot>:direct:<open_id>` keys; anything not in that shape is
+    // dropped here so a mis-compiled entry can only fail closed. This widens
+    // ONLY the browser tools — desktop control and the runtime control plane
+    // stay desktop-session-only regardless of this list.
+    const browserOwnerSessions = new Set(
+      (Array.isArray(api.pluginConfig?.browserOwnerSessions)
+        ? api.pluginConfig.browserOwnerSessions
+        : []
+      ).filter(
+        (key) =>
+          typeof key === "string" &&
+          /^agent:[^:]+:direct:[^:]+$/i.test(key),
+      ),
+    );
 
     try {
       api.logger.info(
@@ -1747,7 +1763,23 @@ const plugin = {
       const protectedLocalTool =
         isLocalAutomationTool(event?.toolName) ||
         HOST_EXECUTION_TOOLS.has(event?.toolName);
-      if (protectedLocalTool && !isLocalInteractiveSession(ctx)) {
+      // Owner-DM carve-out: the paired owner's own Feishu DM may use the
+      // embedded browser. Exact-key membership means group chats, forks
+      // (`agent:<bot>:fork:<uuid>`), sub-agents and every other channel shape
+      // stay blocked, and the carve-out never extends past the browser tool
+      // set — a whitelisted DM still cannot touch desktop control or the
+      // runtime control plane.
+      if (
+        EMBEDDED_BROWSER_TOOLS.has(event?.toolName) &&
+        browserOwnerSessions.has(ctx?.sessionKey ?? "")
+      ) {
+        try {
+          api.logger.info(
+            `[nexu-toolcall-guard] embedded browser allowed for owner DM ` +
+              `(tool=${event.toolName} sessionKey=${ctx?.sessionKey})`,
+          );
+        } catch {}
+      } else if (protectedLocalTool && !isLocalInteractiveSession(ctx)) {
         try {
           // Name the failing condition: a refusal that does not say which of
           // "wrong channel" or "wrong session shape" tripped is guesswork to
@@ -1762,7 +1794,7 @@ const plugin = {
           block: true,
           blockReason: HOST_EXECUTION_TOOLS.has(event?.toolName)
             ? "外部渠道、子会话和来源不明的调用不能直接操作 Nexu 运行时控制面。请让用户在 Nexu 桌面主会话中完成节点、网关或定时任务管理。"
-            : "本机浏览器和桌面控制只允许从 Nexu 桌面主会话调用。外部渠道、子会话和来源不明的调用默认被拒绝。请让用户在桌面端打开对应机器人的主会话后重试。",
+            : "本机浏览器和桌面控制只允许从 Nexu 桌面主会话调用。外部渠道、子会话和来源不明的调用默认被拒绝。请让用户在桌面端打开对应机器人的主会话后重试；如果用户希望在自己的飞书私聊中使用内置浏览器，可以在桌面端渠道设置中把自己的飞书账号加入浏览器白名单。",
         };
       }
 

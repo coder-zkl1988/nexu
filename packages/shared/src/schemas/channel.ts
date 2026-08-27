@@ -90,6 +90,14 @@ export const feishuPermissionsSchema = z.object({
   dmPolicy: feishuPolicySchema.default("open"),
   groupPolicy: feishuPolicySchema.default("open"),
   allowFrom: z.array(z.string().min(1)).default([]),
+  /**
+   * Feishu open_ids whose one-on-one (p2p) sessions may drive the embedded
+   * browser. Separate from `allowFrom` on purpose: that list says who may
+   * talk to the bot at all, this one hands out the logged-in browser — a
+   * strictly higher privilege that must never be implied by the lower one.
+   * Group sessions are never eligible regardless of membership here.
+   */
+  browserOwnerIds: z.array(z.string().min(1)).default([]),
 });
 
 export type FeishuPolicy = z.infer<typeof feishuPolicySchema>;

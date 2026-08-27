@@ -10,6 +10,7 @@ const DEFAULTS: FeishuPermissions = {
   dmPolicy: "open",
   groupPolicy: "open",
   allowFrom: [],
+  browserOwnerIds: [],
 };
 
 /**
@@ -22,6 +23,7 @@ export type FeishuPermissionsDraft = {
   dmPolicy?: FeishuPolicy;
   groupPolicy?: FeishuPolicy;
   allowFrom?: string[];
+  browserOwnerIds?: string[];
 };
 
 function normalize(input: FeishuPermissionsDraft | null): FeishuPermissions {
@@ -31,6 +33,7 @@ function normalize(input: FeishuPermissionsDraft | null): FeishuPermissions {
     dmPolicy: input.dmPolicy ?? DEFAULTS.dmPolicy,
     groupPolicy: input.groupPolicy ?? DEFAULTS.groupPolicy,
     allowFrom: input.allowFrom ?? DEFAULTS.allowFrom,
+    browserOwnerIds: input.browserOwnerIds ?? DEFAULTS.browserOwnerIds,
   };
 }
 
@@ -149,6 +152,41 @@ export function FeishuPermissionsPanel({ channelId, initial }: Props) {
               />
             </div>
           ) : null}
+
+          <div>
+            <div className="flex items-center gap-1 text-[12px] text-text-primary mb-1">
+              <span>{t("feishu.permissions.browserOwners")}</span>
+              <a
+                href="https://open.feishu.cn/document/server-docs/contact-v3/user/get"
+                target="_blank"
+                rel="noreferrer"
+                className="text-text-muted hover:text-text-primary inline-flex"
+                title={t("feishu.permissions.openIdHelp")}
+                aria-label={t("feishu.permissions.openIdHelp")}
+              >
+                <HelpCircle size={12} />
+              </a>
+            </div>
+            <div className="text-[11px] text-text-muted mb-1">
+              {t("feishu.permissions.browserOwnersHint")}
+            </div>
+            <textarea
+              className="w-full font-mono text-[11px] p-2 rounded-md border border-border bg-surface-1 text-text-primary focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-60"
+              rows={2}
+              placeholder="ou_xxxxxxxx"
+              value={draft.browserOwnerIds.join("\n")}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  browserOwnerIds: e.target.value
+                    .split("\n")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+              disabled={controlsDisabled}
+            />
+          </div>
 
           <div className="flex items-center gap-2 pt-1">
             <button

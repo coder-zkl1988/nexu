@@ -1507,6 +1507,7 @@ export type GetApiV1ChannelsResponses = {
                 dmPolicy?: 'open' | 'allowlist' | 'disabled';
                 groupPolicy?: 'open' | 'allowlist' | 'disabled';
                 allowFrom?: Array<string>;
+                browserOwnerIds?: Array<string>;
             } | null;
             slackCapabilities?: {
                 replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -1610,6 +1611,7 @@ export type PostApiV1ChannelsSlackConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -1706,6 +1708,7 @@ export type PostApiV1ChannelsDiscordConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -1768,6 +1771,7 @@ export type PostApiV1ChannelsFeishuConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -1861,6 +1865,7 @@ export type PostApiV1ChannelsTelegramConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -1955,6 +1960,7 @@ export type PostApiV1ChannelsDingtalkConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2049,6 +2055,7 @@ export type PostApiV1ChannelsQqbotConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2143,6 +2150,7 @@ export type PostApiV1ChannelsWecomConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2235,6 +2243,7 @@ export type GetApiV1ChannelsByChannelIdStatusResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2349,6 +2358,7 @@ export type PatchApiV1ChannelsByChannelIdResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2373,6 +2383,7 @@ export type PatchApiV1ChannelsByChannelIdFeishuPermissionsData = {
         dmPolicy?: 'open' | 'allowlist' | 'disabled';
         groupPolicy?: 'open' | 'allowlist' | 'disabled';
         allowFrom?: Array<string>;
+        browserOwnerIds?: Array<string>;
     };
     path: {
         channelId: string;
@@ -2418,6 +2429,7 @@ export type PatchApiV1ChannelsByChannelIdFeishuPermissionsResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2498,6 +2510,7 @@ export type PatchApiV1ChannelsByChannelIdCapabilitiesResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2622,6 +2635,7 @@ export type PostApiV1ChannelsWhatsappConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';
@@ -2745,6 +2759,7 @@ export type PostApiV1ChannelsWechatConnectResponses = {
             dmPolicy?: 'open' | 'allowlist' | 'disabled';
             groupPolicy?: 'open' | 'allowlist' | 'disabled';
             allowFrom?: Array<string>;
+            browserOwnerIds?: Array<string>;
         } | null;
         slackCapabilities?: {
             replyToMode?: 'off' | 'first' | 'all' | 'batched';

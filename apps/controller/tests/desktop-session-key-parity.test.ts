@@ -21,7 +21,9 @@ type HookHandler = (
   context: Record<string, unknown>,
 ) => Promise<unknown> | unknown;
 
-async function loadBeforeToolCall(): Promise<HookHandler> {
+async function loadBeforeToolCall(
+  pluginConfig: Record<string, unknown> = {},
+): Promise<HookHandler> {
   const pluginUrl = pathToFileURL(
     path.resolve(
       process.cwd(),
@@ -45,7 +47,7 @@ async function loadBeforeToolCall(): Promise<HookHandler> {
 
   const handlers = new Map<string, HookHandler>();
   plugin.register({
-    pluginConfig: {},
+    pluginConfig,
     logger: { info: vi.fn(), warn: vi.fn() },
     on: (name, handler) => handlers.set(name, handler),
   });
@@ -97,6 +99,58 @@ describe("desktop session key parity", () => {
         ),
       ).resolves.toMatchObject({ block: true });
     }
+  });
+
+  it("lets a whitelisted owner DM use the browser and nothing else", async () => {
+    const ownerKey = "agent:bot-1:direct:ou_owner";
+    const beforeToolCall = await loadBeforeToolCall({
+      browserOwnerSessions: [ownerKey],
+    });
+
+    // Browser tools open up for exactly this key…
+    await expect(
+      beforeToolCall(
+        { toolName: DESKTOP_ONLY_TOOL, params: {} },
+        { sessionKey: ownerKey, channelId: "feishu" },
+      ),
+    ).resolves.toBeUndefined();
+
+    // …but the carve-out must not travel: not to desktop control, not to the
+    // runtime control plane, not to another DM peer.
+    await expect(
+      beforeToolCall(
+        { toolName: "peekaboo__see", params: {} },
+        { sessionKey: ownerKey, channelId: "feishu" },
+      ),
+    ).resolves.toMatchObject({ block: true });
+    await expect(
+      beforeToolCall(
+        { toolName: "gateway", params: {} },
+        { sessionKey: ownerKey, channelId: "feishu" },
+      ),
+    ).resolves.toMatchObject({ block: true });
+    await expect(
+      beforeToolCall(
+        { toolName: DESKTOP_ONLY_TOOL, params: {} },
+        { sessionKey: "agent:bot-1:direct:ou_stranger", channelId: "feishu" },
+      ),
+    ).resolves.toMatchObject({ block: true });
+  });
+
+  it("drops non-DM-shaped whitelist entries instead of honoring them", async () => {
+    // A compiler bug that emits a fork or desktop key into the whitelist must
+    // fail closed: only `agent:<bot>:direct:<peer>` survives config parsing.
+    const forkKey = "agent:bot-1:fork:0f8fad5b-d9cb-469f-a165-70867728950e";
+    const beforeToolCall = await loadBeforeToolCall({
+      browserOwnerSessions: [forkKey],
+    });
+
+    await expect(
+      beforeToolCall(
+        { toolName: DESKTOP_ONLY_TOOL, params: {} },
+        { sessionKey: forkKey },
+      ),
+    ).resolves.toMatchObject({ block: true });
   });
 
   it("keeps desktop-parent forks on the desktop surface", async () => {
