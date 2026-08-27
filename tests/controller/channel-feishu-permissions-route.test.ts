@@ -345,6 +345,9 @@ describe("PATCH /api/v1/channels/:id/feishu-permissions (HTTP)", () => {
       dmPolicy: "disabled",
       groupPolicy: "open",
       allowFrom: [],
+      // Filled in by the schema default: omitting it from a PATCH means "no
+      // one may drive the browser", not "leave the previous list alone".
+      browserOwnerIds: [],
     });
   });
 

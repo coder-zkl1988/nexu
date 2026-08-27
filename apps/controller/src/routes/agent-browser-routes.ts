@@ -39,6 +39,35 @@ export function isLocalDesktopSessionKey(sessionKey: string): boolean {
   return LOCAL_SESSION_KEY.test(sessionKey);
 }
 
+/**
+ * The one channel-shaped exception: the paired owner's Feishu DM. Read from
+ * the live config store on every request so a permissions PATCH takes effect
+ * without a controller restart, and matched as the exact compiled key shape —
+ * group chats, forks and sub-sessions can never satisfy it. Third gate in the
+ * chain (toolcall guard → nexu-browser plugin → here); each layer stays
+ * fail-closed on its own.
+ */
+async function isBrowserOwnerSessionKey(
+  container: ControllerContainer,
+  sessionKey: string,
+): Promise<boolean> {
+  if (!/^agent:[^:]+:direct:[^:]+$/i.test(sessionKey)) return false;
+  try {
+    const config = await container.configStore.getConfig();
+    return config.channels.some(
+      (channel) =>
+        channel.channelType === "feishu" &&
+        channel.status === "connected" &&
+        (channel.feishuPermissions?.browserOwnerIds ?? []).some(
+          (openId) => sessionKey === `agent:${channel.botId}:direct:${openId}`,
+        ),
+    );
+  } catch {
+    // A store read failure must close the gate, not open it.
+    return false;
+  }
+}
+
 export function registerAgentBrowserRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
@@ -135,7 +164,10 @@ export function registerAgentBrowserRoutes(
     }),
     async (c) => {
       const { sessionKey, command } = c.req.valid("json");
-      if (!isLocalDesktopSessionKey(sessionKey)) {
+      if (
+        !isLocalDesktopSessionKey(sessionKey) &&
+        !(await isBrowserOwnerSessionKey(container, sessionKey))
+      ) {
         return c.json(
           { message: "browser control is limited to the desktop main session" },
           403,
