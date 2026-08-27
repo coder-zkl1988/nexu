@@ -96,6 +96,40 @@ function renderEmbeddedBrowser() {
 }
 
 describe("embedded browser helpers", () => {
+  it("adopting a shared tab consumes the blank placeholder instead of stacking beside it", () => {
+    // The panel opens with one blank "New tab". Every adoption path used to
+    // append, so that blank sat beside the real page forever — and closing it
+    // as the last tab just manufactures a fresh blank, so the placeholder
+    // could never be dismissed.
+    const blank = {
+      id: "blank-1",
+      title: "New tab",
+      url: "",
+      address: "",
+      loading: false,
+      canGoBack: false,
+      canGoForward: false,
+      history: { entries: [], index: -1 },
+    };
+
+    const adopted = adoptSharedBrowserTab(
+      [blank],
+      {
+        id: "agent-tab",
+        title: "小红书",
+        url: "https://xiaohongshu.com/",
+        loading: true,
+        agentControlled: true,
+      },
+      "blank-1",
+      null,
+    );
+
+    expect(adopted).toHaveLength(1);
+    expect(adopted[0]?.id).toBe("agent-tab");
+    expect(adopted.find((tab) => !tab.url)).toBeUndefined();
+  });
+
   it("shows an unavailable state and retries a failed browser-center RPC", async () => {
     let centerAttempts = 0;
     const invoke = vi.fn(async (_channel: string, payload: unknown) => {

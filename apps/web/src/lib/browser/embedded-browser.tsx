@@ -165,6 +165,28 @@ function createBrowserTab(
   };
 }
 
+/**
+ * Insert an adopted tab, consuming a blank placeholder if one exists.
+ *
+ * Every adoption path used to append, so the initial blank "New tab" sat
+ * beside the real page forever — and closing the last tab manufactures a new
+ * blank, so it could never be dismissed. A blank panel tab has no main-process
+ * view behind it (views are created on first navigation), so replacing it in
+ * place is free and keeps the tab strip stable.
+ */
+function insertAdoptedTab(
+  tabs: BrowserTab[],
+  adopted: BrowserTab,
+): BrowserTab[] {
+  const blankIndex = tabs.findIndex((tab) => !tab.url);
+  if (blankIndex !== -1) {
+    const next = [...tabs];
+    next[blankIndex] = adopted;
+    return next;
+  }
+  return [...tabs, adopted];
+}
+
 export function adoptSharedBrowserTab(
   tabs: BrowserTab[],
   sharedTab: BrowserCenterState["tabs"][number],
@@ -191,7 +213,7 @@ export function adoptSharedBrowserTab(
     sharedTab.id,
   );
   adopted.loading = sharedTab.loading;
-  if (tabs.length < MAX_TABS) return [...tabs, adopted];
+  if (tabs.length < MAX_TABS) return insertAdoptedTab(tabs, adopted);
 
   const replacement =
     tabs.find((tab) => tab.id === activeTabId && tab.id !== protectedTabId) ??
@@ -556,7 +578,7 @@ export function EmbeddedBrowser({
       if (current.length >= MAX_TABS) return current;
       const created = createBrowserTab(url, latestArtifact.title);
       setActiveTabId(created.id);
-      return [...current, created];
+      return insertAdoptedTab(current, created);
     });
   }, [latestArtifact, navigationRequest]);
 
@@ -718,7 +740,7 @@ export function EmbeddedBrowser({
         ? current.map((tab) =>
             tab.id === tabId ? { ...tab, url, address: url } : tab,
           )
-        : [...current, createBrowserTab(url, "New tab", tabId)],
+        : insertAdoptedTab(current, createBrowserTab(url, "New tab", tabId)),
     );
     setActiveTabId(tabId);
   }, [agentTabRequest, sessionKey]);
