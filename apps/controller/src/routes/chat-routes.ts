@@ -524,10 +524,13 @@ export function registerChatRoutes(
     async (c) => {
       const { botId, sessionKey } = c.req.valid("query");
       const lookupKey = sessionKey || `agent:${botId}:main`;
-      return c.json(
-        { busy: container.sessionRunRegistry.isBusy(lookupKey) },
-        200,
-      );
+      // The registry only tracks webchat turns; channel-driven runs (e.g. a
+      // Feishu message that dispatched a fleet task) never enter it, so fall
+      // back to the gateway's own per-session run state before reporting idle.
+      const busy =
+        container.sessionRunRegistry.isBusy(lookupKey) ||
+        (await container.gatewayService.sessionHasActiveRun(lookupKey));
+      return c.json({ busy }, 200);
     },
   );
 

@@ -11,6 +11,7 @@ function createChatRoutesApp({
   sessionRunRegistry = new SessionRunRegistry(),
   sendSideQuestion = vi.fn(async () => ({ runId: "side-run-1" })),
   steerChatSession = vi.fn(async () => ({ runId: "steer-command-1" })),
+  sessionHasActiveRun = vi.fn(async () => false),
   classifyRunMessage = vi.fn(async () => ({
     intent: "side-question" as const,
     confidence: 0.9,
@@ -21,6 +22,7 @@ function createChatRoutesApp({
   sessionRunRegistry?: SessionRunRegistry;
   sendSideQuestion?: ControllerContainer["gatewayService"]["sendSideQuestion"];
   steerChatSession?: ControllerContainer["gatewayService"]["steerChatSession"];
+  sessionHasActiveRun?: ControllerContainer["gatewayService"]["sessionHasActiveRun"];
   classifyRunMessage?: ControllerContainer["runMessageIntentService"]["classify"];
 }) {
   const app = new OpenAPIHono<ControllerBindings>();
@@ -34,6 +36,7 @@ function createChatRoutesApp({
       sendToMainSession,
       sendSideQuestion,
       steerChatSession,
+      sessionHasActiveRun,
     },
     attachmentStore: {},
     teamService: {
@@ -70,6 +73,56 @@ function createChatRoutesApp({
 }
 
 describe("chat routes", () => {
+  it("reports busy from the gateway when the registry has no entry (channel-driven run)", async () => {
+    // A Feishu-originated turn never passes through chat.send, so the
+    // registry is empty while the gateway is mid-run. The status endpoint
+    // must surface the gateway's view instead of reporting idle.
+    const sessionHasActiveRun = vi.fn(async () => true);
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      sessionHasActiveRun,
+    });
+
+    const response = await app.request(
+      "/api/v1/chat/run-status?botId=bot-1&sessionKey=agent:bot-1:direct:ou_x",
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ busy: true });
+    expect(sessionHasActiveRun).toHaveBeenCalledWith("agent:bot-1:direct:ou_x");
+  });
+
+  it("reports idle when neither the registry nor the gateway sees a run", async () => {
+    const { app } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+    });
+
+    const response = await app.request(
+      "/api/v1/chat/run-status?botId=bot-1&sessionKey=agent:bot-1:main",
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ busy: false });
+  });
+
+  it("short-circuits on a registry hit without asking the gateway", async () => {
+    const sessionHasActiveRun = vi.fn(async () => false);
+    const { app, sessionRunRegistry } = createChatRoutesApp({
+      sendToMainSession: vi.fn(async () => ({})),
+      getSessionBySessionKey: vi.fn(async () => null),
+      sessionHasActiveRun,
+    });
+    sessionRunRegistry.markStarted("agent:bot-1:main");
+
+    const response = await app.request("/api/v1/chat/run-status?botId=bot-1");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ busy: true });
+    expect(sessionHasActiveRun).not.toHaveBeenCalled();
+  });
+
   it("classifies a busy-session message without touching the main session", async () => {
     const classifyRunMessage = vi.fn(async () => ({
       intent: "steer" as const,

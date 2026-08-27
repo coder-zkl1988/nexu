@@ -286,6 +286,35 @@ export class OpenClawGatewayService {
     return this.wsClient.request("system.info", {});
   }
 
+  /**
+   * Live gateway check for an active run on one session.
+   *
+   * The SessionRunRegistry only sees webchat turns (chat.send + chat
+   * lifecycle events); channel-driven runs (Feishu/Slack DMs) emit no chat
+   * events, so a minutes-long tool call in one of those reads as idle from
+   * the registry alone. `sessions.list` computes `hasActiveRun` from the
+   * gateway's own run tracking, which covers every origin. `search` matches
+   * the session key among its cheap fields and keeps the row scan narrow
+   * without any transcript reads.
+   */
+  async sessionHasActiveRun(sessionKey: string): Promise<boolean> {
+    try {
+      const result = await this.wsClient.request<{
+        sessions?: Array<{ key?: string; hasActiveRun?: boolean }>;
+      }>("sessions.list", { search: sessionKey, limit: 20 });
+      return (
+        result?.sessions?.some(
+          (session) =>
+            session.key === sessionKey && session.hasActiveRun === true,
+        ) ?? false
+      );
+    } catch {
+      // Availability beats accuracy for a 3s status poll: a gateway blip
+      // must degrade to "idle", never break the session view.
+      return false;
+    }
+  }
+
   /** Runtime-authenticated model catalog exposed by OpenClaw. */
   async listModels(
     view: "all" | "configured" = "all",
