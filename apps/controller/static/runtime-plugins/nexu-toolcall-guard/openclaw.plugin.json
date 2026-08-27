@@ -63,6 +63,13 @@
       "controllerUrl": {
         "type": "string",
         "description": "Loopback origin of the Nexu controller, used to report automation blocks so the owning schedule can surface them."
+      },
+      "browserOwnerSessions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Exact agent:<bot>:direct:<open_id> session keys (the paired owner's Feishu DMs) allowed to use the embedded browser tools; every other channel shape stays blocked."
       }
     }
   },

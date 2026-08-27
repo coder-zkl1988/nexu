@@ -452,6 +452,66 @@ describe("compileOpenClawConfig", () => {
     });
   });
 
+  it("compiles feishu browser owners into exact owner-DM session keys", () => {
+    const base = createConfig();
+    const config: NexuConfig = {
+      ...base,
+      channels: base.channels.map((channel) =>
+        channel.channelType === "feishu"
+          ? {
+              ...channel,
+              feishuPermissions: {
+                requireMention: true,
+                dmPolicy: "open" as const,
+                groupPolicy: "open" as const,
+                allowFrom: [],
+                browserOwnerIds: ["ou_owner_1", "ou_owner_2"],
+              },
+            }
+          : channel,
+      ),
+    };
+
+    const guardEntry = compileOpenClawConfig(config, createEnv()).plugins
+      ?.entries?.["nexu-toolcall-guard"] as
+      | { config?: { browserOwnerSessions?: string[] } }
+      | undefined;
+
+    expect(guardEntry?.config?.browserOwnerSessions).toEqual([
+      "agent:bot-1:direct:ou_owner_1",
+      "agent:bot-1:direct:ou_owner_2",
+    ]);
+  });
+
+  it("emits no browser owner sessions for disconnected or ownerless channels", () => {
+    const base = createConfig();
+    const config: NexuConfig = {
+      ...base,
+      channels: base.channels.map((channel) =>
+        channel.channelType === "feishu"
+          ? {
+              ...channel,
+              status: "disconnected" as const,
+              feishuPermissions: {
+                requireMention: true,
+                dmPolicy: "open" as const,
+                groupPolicy: "open" as const,
+                allowFrom: [],
+                browserOwnerIds: ["ou_owner_1"],
+              },
+            }
+          : channel,
+      ),
+    };
+
+    const guardEntry = compileOpenClawConfig(config, createEnv()).plugins
+      ?.entries?.["nexu-toolcall-guard"] as
+      | { config?: { browserOwnerSessions?: string[] } }
+      | undefined;
+
+    expect(guardEntry?.config?.browserOwnerSessions).toEqual([]);
+  });
+
   it("does not grant external command ownership or channel restarts", () => {
     const result = compileOpenClawConfig(createConfig(), createEnv());
 

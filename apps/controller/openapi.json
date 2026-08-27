@@ -4590,6 +4590,14 @@
                                   "minLength": 1
                                 },
                                 "default": []
+                              },
+                              "browserOwnerIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "default": []
                               }
                             }
                           },
@@ -4886,6 +4894,14 @@
                             "minLength": 1
                           },
                           "default": []
+                        },
+                        "browserOwnerIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
                         }
                       }
                     },
@@ -5117,6 +5133,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -5546,6 +5570,14 @@
                             "minLength": 1
                           },
                           "default": []
+                        },
+                        "browserOwnerIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
                         }
                       }
                     },
@@ -5767,6 +5799,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -6180,6 +6220,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -6676,6 +6724,14 @@
                             "minLength": 1
                           },
                           "default": []
+                        },
+                        "browserOwnerIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
                         }
                       }
                     },
@@ -6984,6 +7040,14 @@
                             "minLength": 1
                           },
                           "default": []
+                        },
+                        "browserOwnerIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
                         }
                       }
                     },
@@ -7268,6 +7332,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -7580,6 +7652,14 @@
                             "minLength": 1
                           },
                           "default": []
+                        },
+                        "browserOwnerIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
                         }
                       }
                     },
@@ -7773,6 +7853,14 @@
                       "minLength": 1
                     },
                     "default": []
+                  },
+                  "browserOwnerIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "default": []
                   }
                 }
               }
@@ -7864,6 +7952,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -8201,6 +8297,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -8580,6 +8684,14 @@
                             "minLength": 1
                           },
                           "default": []
+                        },
+                        "browserOwnerIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
                         }
                       }
                     },
@@ -8923,6 +9035,14 @@
                           "default": "open"
                         },
                         "allowFrom": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "default": []
+                        },
+                        "browserOwnerIds": {
                           "type": "array",
                           "items": {
                             "type": "string",
