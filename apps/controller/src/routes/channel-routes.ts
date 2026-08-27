@@ -1007,6 +1007,70 @@ export function registerChannelRoutes(
 
   app.openapi(
     createRoute({
+      method: "get",
+      path: "/api/v1/channels/{channelId}/feishu-dm-peers",
+      tags: ["Channels"],
+      request: {
+        params: channelIdParamSchema,
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                peers: z.array(
+                  z.object({
+                    openId: z.string(),
+                    lastActiveAt: z.number().nullable(),
+                  }),
+                ),
+              }),
+            },
+          },
+          description:
+            "Recent direct-DM peers of the channel's bot, newest first — the candidate list for the browser-owner whitelist",
+        },
+        400: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Not a Feishu channel",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "Channel not found",
+        },
+        502: {
+          content: { "application/json": { schema: errorSchema } },
+          description: "The runtime gateway did not answer",
+        },
+      },
+    }),
+    async (c) => {
+      const { channelId } = c.req.valid("param");
+      const channel = await container.channelService.getChannel(channelId);
+      if (!channel) {
+        return c.json({ message: "Channel not found" }, 404);
+      }
+      if (channel.channelType !== "feishu") {
+        return c.json({ message: "Not a Feishu channel" }, 400);
+      }
+      try {
+        const peers = await container.gatewayService.listAgentDirectDmPeers(
+          channel.botId,
+        );
+        return c.json({ peers }, 200);
+      } catch (error) {
+        // The picker degrades to manual open_id entry in the UI; say what
+        // happened instead of pretending the bot has never been messaged.
+        const message =
+          error instanceof Error ? error.message : "gateway unavailable";
+        logger.warn({ channelId, error: message }, "feishu_dm_peers_failed");
+        return c.json({ message }, 502);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
       method: "patch",
       path: "/api/v1/channels/{channelId}/capabilities",
       tags: ["Channels"],

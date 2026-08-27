@@ -210,11 +210,13 @@ function makeChannelRecord(overrides: Partial<Record<string, unknown>> = {}) {
 
 function createHttpTestContainer(opts: {
   updateFeishuPermissions?: ReturnType<typeof vi.fn>;
+  getChannel?: ReturnType<typeof vi.fn>;
+  listAgentDirectDmPeers?: ReturnType<typeof vi.fn>;
 }): ControllerContainer {
   const env = createEnv("/tmp/nexu-feishu-perms-route-http");
   const channelService = {
     listChannels: vi.fn().mockResolvedValue([]),
-    getChannel: vi.fn().mockResolvedValue(null),
+    getChannel: opts.getChannel ?? vi.fn().mockResolvedValue(null),
     updateFeishuPermissions:
       opts.updateFeishuPermissions ??
       vi.fn().mockResolvedValue(makeChannelRecord()),
@@ -294,6 +296,8 @@ function createHttpTestContainer(opts: {
         lastError: null,
         gatewayConnected: true,
       }),
+      listAgentDirectDmPeers:
+        opts.listAgentDirectDmPeers ?? vi.fn().mockResolvedValue([]),
     } as unknown as ControllerContainer["gatewayService"],
     runtimeState: createRuntimeState(),
     startBackgroundLoops: () => () => {},
@@ -398,5 +402,72 @@ describe("PATCH /api/v1/channels/:id/feishu-permissions (HTTP)", () => {
     );
 
     expect(resp.status).toBe(404);
+  });
+});
+
+describe("GET /api/v1/channels/:id/feishu-dm-peers (HTTP)", () => {
+  it("returns recent DM peers for a feishu channel", async () => {
+    const listAgentDirectDmPeers = vi
+      .fn()
+      .mockResolvedValue([{ openId: "ou_owner", lastActiveAt: 1000 }]);
+    const container = createHttpTestContainer({
+      getChannel: vi.fn().mockResolvedValue({
+        ...makeChannelRecord(),
+        channelType: "feishu",
+        botId: "bot-1",
+      }),
+      listAgentDirectDmPeers,
+    });
+    const app = createApp(container);
+
+    const response = await app.request(
+      "/api/v1/channels/chan-1/feishu-dm-peers",
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      peers: [{ openId: "ou_owner", lastActiveAt: 1000 }],
+    });
+    expect(listAgentDirectDmPeers).toHaveBeenCalledWith("bot-1");
+  });
+
+  it("404s for an unknown channel and 400s for a non-feishu one", async () => {
+    const missing = createApp(createHttpTestContainer({}));
+    expect(
+      (await missing.request("/api/v1/channels/nope/feishu-dm-peers")).status,
+    ).toBe(404);
+
+    const wrongType = createApp(
+      createHttpTestContainer({
+        getChannel: vi.fn().mockResolvedValue({
+          ...makeChannelRecord(),
+          channelType: "slack",
+        }),
+      }),
+    );
+    expect(
+      (await wrongType.request("/api/v1/channels/chan-1/feishu-dm-peers"))
+        .status,
+    ).toBe(400);
+  });
+
+  it("502s when the gateway cannot answer instead of returning an empty list", async () => {
+    const container = createHttpTestContainer({
+      getChannel: vi.fn().mockResolvedValue({
+        ...makeChannelRecord(),
+        channelType: "feishu",
+        botId: "bot-1",
+      }),
+      listAgentDirectDmPeers: vi
+        .fn()
+        .mockRejectedValue(new Error("gateway down")),
+    });
+    const app = createApp(container);
+
+    const response = await app.request(
+      "/api/v1/channels/chan-1/feishu-dm-peers",
+    );
+
+    expect(response.status).toBe(502);
   });
 });
