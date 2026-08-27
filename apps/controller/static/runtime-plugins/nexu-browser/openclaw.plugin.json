@@ -9,6 +9,12 @@
       "controllerUrl": {
         "type": "string",
         "description": "Base URL of the Nexu controller (loopback) that relays commands to the desktop browser panel."
+      },
+      "browserOwnerSessions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
       }
     }
   },

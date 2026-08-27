@@ -418,6 +418,37 @@ describe("compileOpenClawConfig", () => {
     }
   });
 
+  // The gateway refuses to boot on a plugin config key the manifest does not
+  // declare (additionalProperties: false) — adding a compiler field without
+  // its manifest entry took the whole runtime down, so pin the same
+  // compiler↔manifest contract for nexu-browser as for the guard.
+  it("emits nexu-browser config the plugin's own manifest accepts", async () => {
+    const manifest = JSON.parse(
+      await readFile(
+        path.resolve(
+          process.cwd(),
+          "static/runtime-plugins/nexu-browser/openclaw.plugin.json",
+        ),
+        "utf8",
+      ),
+    ) as {
+      configSchema: { properties: Record<string, unknown> };
+    };
+
+    const emitted = (
+      compileOpenClawConfig(createConfig(), createEnv()).plugins?.entries?.[
+        "nexu-browser"
+      ] as { config?: Record<string, unknown> }
+    )?.config;
+
+    expect(emitted).toBeDefined();
+    for (const key of Object.keys(emitted ?? {})) {
+      expect(
+        Object.keys(manifest.configSchema.properties),
+        `nexu-browser config key "${key}" is missing from the plugin manifest`,
+      ).toContain(key);
+    }
+  });
   it("emits only the bots that opted out of the host-execution default", () => {
     const base = createConfig();
     const config = {
@@ -478,6 +509,18 @@ describe("compileOpenClawConfig", () => {
       | undefined;
 
     expect(guardEntry?.config?.browserOwnerSessions).toEqual([
+      "agent:bot-1:direct:ou_owner_1",
+      "agent:bot-1:direct:ou_owner_2",
+    ]);
+
+    // Both browser-facing plugins keep independent fail-closed copies of this
+    // gate; the list must reach each of them or one layer blocks what the
+    // other allows.
+    const browserEntry = compileOpenClawConfig(config, createEnv()).plugins
+      ?.entries?.["nexu-browser"] as
+      | { config?: { browserOwnerSessions?: string[] } }
+      | undefined;
+    expect(browserEntry?.config?.browserOwnerSessions).toEqual([
       "agent:bot-1:direct:ou_owner_1",
       "agent:bot-1:direct:ou_owner_2",
     ]);

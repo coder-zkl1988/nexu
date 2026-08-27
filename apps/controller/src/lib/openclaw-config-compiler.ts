@@ -487,6 +487,22 @@ function compilePlugins(
   env: ControllerEnv,
   hasTeams: boolean,
 ): OpenClawConfig["plugins"] {
+  // Exact session keys whose runs may use the embedded browser even though
+  // they are channel-shaped: the paired owner's Feishu DMs. Handed to BOTH
+  // browser-facing plugins — the toolcall guard and nexu-browser keep
+  // independent fail-closed copies of this decision, so the whitelist has to
+  // reach each of them or the layer left behind blocks what the other allows.
+  const browserOwnerSessions = config.channels
+    .filter(
+      (channel) =>
+        channel.channelType === "feishu" && channel.status === "connected",
+    )
+    .flatMap((channel) =>
+      (channel.feishuPermissions?.browserOwnerIds ?? []).map(
+        (openId) => `agent:${channel.botId}:direct:${openId}`,
+      ),
+    );
+
   const modelProviderDescriptors = listModelProviderRuntimeDescriptors(config);
   const resolvedMiniMaxOauth = modelProviderDescriptors.some(
     (descriptor) =>
@@ -656,6 +672,7 @@ function compilePlugins(
           // Same loopback pattern: every tool POSTs the command here and the
           // controller relays it to the desktop browser panel.
           controllerUrl: `http://127.0.0.1:${env.port}`,
+          browserOwnerSessions,
         },
         hooks: {
           // OpenClaw gates `agent_end` behind this flag for non-bundled
@@ -694,21 +711,9 @@ function compilePlugins(
               )
               .map((bot) => [bot.id, bot.hostExecution]),
           ),
-          // Exact session keys whose runs may use the embedded browser even
-          // though they are channel-shaped: the paired owner's Feishu DMs.
           // Compiled to full keys (not bare open_ids) so the guard does a
           // plain string match and a group/forked session can never qualify.
-          browserOwnerSessions: config.channels
-            .filter(
-              (channel) =>
-                channel.channelType === "feishu" &&
-                channel.status === "connected",
-            )
-            .flatMap((channel) =>
-              (channel.feishuPermissions?.browserOwnerIds ?? []).map(
-                (openId) => `agent:${channel.botId}:direct:${openId}`,
-              ),
-            ),
+          browserOwnerSessions,
         },
       },
       ...(hasTeams

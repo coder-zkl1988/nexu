@@ -39,6 +39,13 @@ function textResult(text, isError) {
  * desktop main session.
  */
 const callContexts = new Map();
+
+// Exact channel-shaped session keys allowed to drive the browser: the paired
+// owner's Feishu DMs, compiled by the controller as full
+// `agent:<bot>:direct:<open_id>` keys. Independent fail-closed copy of the
+// toolcall guard's decision — a key must pass BOTH layers, and anything not
+// in the direct-DM shape is dropped on load so a bad entry cannot widen this.
+let browserOwnerSessions = new Set();
 const MAX_TRACKED_CALLS = 200;
 
 /**
@@ -105,7 +112,10 @@ async function act(toolCallId, command) {
     return textResult("browser unavailable (controller URL not configured)", true);
   }
   const context = callContexts.get(toolCallId);
-  if (!context?.sessionKey || context.channelId) {
+  const ownerDm =
+    Boolean(context?.sessionKey) &&
+    browserOwnerSessions.has(context.sessionKey);
+  if (!context?.sessionKey || (context.channelId && !ownerDm)) {
     return textResult(
       "The embedded browser can only be driven from the Nexu desktop main session.",
       true,
@@ -165,6 +175,16 @@ const plugin = {
     if (cfg && typeof cfg.controllerUrl === "string" && cfg.controllerUrl) {
       configuredControllerUrl = cfg.controllerUrl;
     }
+    browserOwnerSessions = new Set(
+      (Array.isArray(cfg?.browserOwnerSessions)
+        ? cfg.browserOwnerSessions
+        : []
+      ).filter(
+        (key) =>
+          typeof key === "string" &&
+          /^agent:[^:]+:direct:[^:]+$/i.test(key),
+      ),
+    );
 
     api.on("before_tool_call", (event, ctx) => {
       if (!event?.toolName?.startsWith("browser_")) return;
