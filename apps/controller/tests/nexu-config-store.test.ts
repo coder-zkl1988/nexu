@@ -1673,4 +1673,80 @@ describe("NexuConfigStore", () => {
       modelId: undefined,
     });
   });
+
+  describe("getVlmGatewayCredential phone model resolution", () => {
+    async function seedStore(phoneVlmModel: string | null) {
+      await mkdir(path.dirname(env.nexuConfigPath), { recursive: true });
+      await writeFile(
+        env.nexuConfigPath,
+        JSON.stringify({
+          models: {
+            mode: "merge",
+            providers: {
+              glm: {
+                enabled: true,
+                apiKey: "sk-glm-test",
+                // Deliberately dirty: leading tab + trailing slash, as seen in
+                // real user config — resolution must trim both.
+                baseUrl: "\thttps://open.bigmodel.cn/api/coding/paas/v4/",
+                models: [
+                  {
+                    id: "glm-5.3-flash",
+                    name: "glm-5.3-flash",
+                    api: "openai-completions",
+                    contextWindow: 1048576,
+                  },
+                ],
+              },
+            },
+          },
+          deviceControl: { phoneVlmModel },
+          desktop: {
+            cloud: {
+              connected: true,
+              linkUrl: "https://gw.example",
+              apiKey: "sk-cloud",
+            },
+          },
+        }),
+      );
+      return new NexuConfigStore(env);
+    }
+
+    it("resolves a namespaced BYOK model to the provider channel", async () => {
+      const store = await seedStore("glm/glm-5.3-flash");
+      await expect(store.getVlmGatewayCredential()).resolves.toMatchObject({
+        apiUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        apiKey: "sk-glm-test",
+        model: "glm-5.3-flash",
+        reasoningEffort: "none",
+        // 渠道模型条目的 contextWindow 随凭证下发（手机据此自适应压缩策略）
+        contextWindow: 1048576,
+      });
+    });
+
+    it("falls back to the gateway default when the BYOK model is not listed", async () => {
+      const store = await seedStore("glm/not-a-model");
+      // apiUrl comes from the active cloud profile (built-in default may
+      // override the seeded linkUrl) — assert the gateway shape, not the host.
+      await expect(store.getVlmGatewayCredential()).resolves.toMatchObject({
+        apiUrl: expect.stringMatching(/\/v1\/$/),
+        apiKey: "sk-cloud",
+        model: "tabby-phone",
+        reasoningEffort: "low",
+        // step-3.7-flash（tabby-phone 上游）已知 256K 上下文
+        contextWindow: 262144,
+      });
+    });
+
+    it("passes a bare gateway model name through with reasoning effort none", async () => {
+      const store = await seedStore("glm-5.3-flash");
+      await expect(store.getVlmGatewayCredential()).resolves.toMatchObject({
+        apiUrl: expect.stringMatching(/\/v1\/$/),
+        apiKey: "sk-cloud",
+        model: "glm-5.3-flash",
+        reasoningEffort: "none",
+      });
+    });
+  });
 });
