@@ -61,6 +61,7 @@ import { toast } from "sonner";
 import {
   deleteApiV1ModelProvidersMinimaxOauthLogin,
   getApiInternalDesktopDefaultModel,
+  getApiInternalDesktopPhoneVlmModel,
   getApiInternalDesktopPreferences,
   getApiInternalDesktopReady,
   getApiInternalDesktopUtilityModel,
@@ -80,6 +81,7 @@ import {
   postApiV1ModelProvidersInstancesValidate,
   postApiV1ModelProvidersMinimaxOauthLogin,
   putApiInternalDesktopDefaultModel,
+  putApiInternalDesktopPhoneVlmModel,
   putApiInternalDesktopUtilityModel,
   putApiV1ModelProvidersConfig,
 } from "../../lib/api/sdk.gen";
@@ -1619,6 +1621,17 @@ export function ModelsPage() {
     },
   });
   const currentUtilityModelId = utilityModelData?.modelId ?? "";
+
+  // Phone control VLM (device-control agent). Null means the gateway default
+  // (tabby-phone); the selected model is pushed live to connected phones.
+  const { data: phoneVlmModelData } = useQuery({
+    queryKey: ["desktop-phone-vlm-model"],
+    queryFn: async () => {
+      const { data } = await getApiInternalDesktopPhoneVlmModel();
+      return data as { modelId: string | null } | undefined;
+    },
+  });
+  const currentPhoneVlmModelId = phoneVlmModelData?.modelId ?? "";
   const models = modelsData?.models ?? [];
   const providerSurfaceError =
     modelsError || providerRegistryError || providerConfigError;
@@ -1764,6 +1777,24 @@ export function ModelsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["desktop-utility-model"] });
+    },
+  });
+
+  const updatePhoneVlmModel = useMutation({
+    // Empty string resets to the gateway default (tabby-phone).
+    mutationFn: async (modelId: string) => {
+      const toastId = toast.loading(t("models.switchingModel"));
+      const { error } = await putApiInternalDesktopPhoneVlmModel({
+        body: { modelId },
+      });
+      if (error) {
+        toast.error(t("models.modelSwitchFailed"), { id: toastId });
+        throw new Error("Failed to update phone control model");
+      }
+      toast.success(t("models.modelSwitched"), { id: toastId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["desktop-phone-vlm-model"] });
     },
   });
 
@@ -2147,6 +2178,41 @@ export function ModelsPage() {
                       emptyLabel={t("settings.providers.utilityModelFollow")}
                       onSelectModel={(modelId) =>
                         updateUtilityModel.mutate(modelId)
+                      }
+                      className="shrink-0"
+                      triggerClassName="min-w-[220px] justify-between"
+                      dropdownClassName="shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-4 border-t border-border-subtle pt-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-text-primary">
+                      {t("settings.providers.phoneVlmModelTitle")}
+                    </div>
+                    <div className="text-[11px] text-text-tertiary">
+                      {t("settings.providers.phoneVlmModelDesc")}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {currentPhoneVlmModelId ? (
+                      <button
+                        type="button"
+                        className="text-[11px] text-text-muted hover:text-text-secondary transition-colors"
+                        onClick={() => updatePhoneVlmModel.mutate("")}
+                      >
+                        {t("settings.providers.phoneVlmModelDefault")}
+                      </button>
+                    ) : null}
+                    <ModelPickerDropdown
+                      compact
+                      dropdownAlign="end"
+                      models={models}
+                      currentModelId={currentPhoneVlmModelId}
+                      emptyLabel={t("settings.providers.phoneVlmModelDefault")}
+                      onSelectModel={(modelId) =>
+                        updatePhoneVlmModel.mutate(modelId)
                       }
                       className="shrink-0"
                       triggerClassName="min-w-[220px] justify-between"

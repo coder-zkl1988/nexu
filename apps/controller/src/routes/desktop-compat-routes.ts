@@ -40,6 +40,16 @@ const utilityModelSetResponseSchema = z.object({
   modelId: z.string().nullable(),
   configPushed: z.boolean(),
 });
+// Phone control VLM (settings page "手机控制模型"). Empty string clears the
+// override back to the gateway default (tabby-phone), mirroring utility-model.
+const phoneVlmModelBodySchema = z.object({ modelId: z.string() });
+const phoneVlmModelResponseSchema = z.object({
+  modelId: z.string().nullable(),
+});
+const phoneVlmModelSetResponseSchema = z.object({
+  ok: z.boolean(),
+  modelId: z.string().nullable(),
+});
 const desktopAuthSessionResponseSchema = z.object({
   session: z.object({
     id: z.string(),
@@ -559,6 +569,63 @@ export function registerDesktopCompatRoutes(
         },
         200,
       );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/internal/desktop/phone-vlm-model",
+      tags: ["Desktop"],
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: phoneVlmModelResponseSchema },
+          },
+          description:
+            "Gateway model pushed to phones as the device-control VLM (null = gateway default tabby-phone)",
+        },
+      },
+    }),
+    async (c) => {
+      const config = await container.configStore.getConfig();
+      return c.json(
+        { modelId: config.deviceControl.phoneVlmModel ?? null },
+        200,
+      );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/api/internal/desktop/phone-vlm-model",
+      tags: ["Desktop"],
+      request: {
+        body: {
+          content: { "application/json": { schema: phoneVlmModelBodySchema } },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: phoneVlmModelSetResponseSchema },
+          },
+          description:
+            "Set the phone control VLM model (empty string resets to the gateway default)",
+        },
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid("json");
+      const modelId = body.modelId.trim() ? body.modelId.trim() : null;
+      await container.configStore.setDeviceControlConfig({
+        phoneVlmModel: modelId,
+      });
+      // Re-push the credential so already-connected phones pick up the new
+      // model live (tabby-control broadcasts it); best-effort like other pushes.
+      void container.deviceControlService.pushVlmCredential();
+      return c.json({ ok: true, modelId }, 200);
     },
   );
 }

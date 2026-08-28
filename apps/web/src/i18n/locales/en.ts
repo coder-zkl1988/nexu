@@ -621,6 +621,10 @@ const en = {
   "settings.providers.utilityModelDesc":
     "Route lightweight tasks like session title generation through a lower-cost model.",
   "settings.providers.utilityModelFollow": "Follow primary model",
+  "settings.providers.phoneVlmModelTitle": "Phone control model",
+  "settings.providers.phoneVlmModelDesc":
+    "Vision model the phone agent uses to run tasks. Changes push to connected devices instantly.",
+  "settings.providers.phoneVlmModelDefault": "Default (tabby-phone)",
   "settings.providers.workspace": "Workspace",
   "models.loading": "Loading models...",
   "models.retry": "Retry",

@@ -3720,6 +3720,81 @@
         }
       }
     },
+    "/api/internal/desktop/phone-vlm-model": {
+      "get": {
+        "tags": [
+          "Desktop"
+        ],
+        "responses": {
+          "200": {
+            "description": "Gateway model pushed to phones as the device-control VLM (null = gateway default tabby-phone)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "modelId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "modelId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Desktop"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "modelId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "modelId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Set the phone control VLM model (empty string resets to the gateway default)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "modelId": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "modelId"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/internal/desktop/rewards": {
       "get": {
         "tags": [
@@ -21218,6 +21293,11 @@
                         },
                         "localIp": {
                           "type": "string"
+                        },
+                        "phoneVlmModel": {
+                          "type": "string",
+                          "nullable": true,
+                          "minLength": 1
                         }
                       }
                     },

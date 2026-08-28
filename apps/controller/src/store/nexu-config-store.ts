@@ -2288,35 +2288,141 @@ export class NexuConfigStore {
    * appends `/chat/completions`. The gateway routes the phone model name to
    * StepFun's step_plan upstream internally, so no step_plan path is needed here.
    *
-   * Model name is the gateway's published name for the phone VLM (currently
-   * `tabby-phone`; was `step-3.7-flash`). Override via NEXU_PHONE_VLM_MODEL so a
-   * gateway rename doesn't need a code change.
+   * Model name is the gateway's published name for the phone VLM. Resolution
+   * order: settings-page choice (`deviceControl.phoneVlmModel`, the
+   * "手机控制模型" selector) → NEXU_PHONE_VLM_MODEL env (ops escape hatch for
+   * gateway renames) → gateway default `tabby-phone` (was `step-3.7-flash`).
+   *
+   * A namespaced selection (`<providerId>/<modelId>`, the id shape BYOK models
+   * carry in the models list) resolves against the desktop-configured provider
+   * channel instead: phones then talk to that provider's baseUrl directly with
+   * the channel's own API key (billed to the user's provider account, no cloud
+   * login required). Only plain-string api-key channels serving
+   * openai-completions are eligible — anything else logs a warning and falls
+   * back to the gateway default so phones keep working.
    *
    * reasoningEffort is StepFun's `reasoning_effort` tier (low/medium/high on
    * step-3.7-flash) forwarded to the phone alongside the credential, so the
    * desktop can tune per-step latency without an app rebuild. Defaults to
-   * "low" — step-3.7-flash's per-step reasoning generation (not network) is
-   * the dominant cost in the agent loop; override via
-   * NEXU_PHONE_VLM_REASONING_EFFORT for tasks that need deeper reasoning.
+   * "low" for the step family (per-step reasoning generation is the dominant
+   * cost in the agent loop) and to the sentinel "none" (phone omits the
+   * parameter) for any other model — non-StepFun endpoints may reject the
+   * unknown parameter. Override via NEXU_PHONE_VLM_REASONING_EFFORT.
+   *
+   * temperature/topP/frequencyPenalty/maxTokens are optional sampling
+   * overrides (NEXU_PHONE_VLM_TEMPERATURE / _TOP_P / _FREQUENCY_PENALTY /
+   * _MAX_TOKENS). Absent fields keep the phone's step-tuned defaults, so a
+   * model swap can be re-tuned without an app rebuild.
+   *
+   * contextWindow (tokens) drives the phone's adaptive history-compression
+   * policy (large windows → less/no compression). Source: for BYOK models,
+   * the provider model entry's `contextWindow` (settings page channel
+   * config); NEXU_PHONE_VLM_CONTEXT_WINDOW env overrides for both paths.
    */
   async getVlmGatewayCredential(): Promise<{
     apiUrl: string;
     apiKey: string;
     model: string;
     reasoningEffort: string;
+    temperature?: number;
+    topP?: number;
+    frequencyPenalty?: number;
+    maxTokens?: number;
+    contextWindow?: number;
   } | null> {
     const config = await this.getConfig();
+    const envNumber = (name: string): number | undefined => {
+      const raw = process.env[name];
+      if (raw === undefined || raw.trim() === "") return undefined;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+    const samplingOverrides = {
+      temperature: envNumber("NEXU_PHONE_VLM_TEMPERATURE"),
+      topP: envNumber("NEXU_PHONE_VLM_TOP_P"),
+      frequencyPenalty: envNumber("NEXU_PHONE_VLM_FREQUENCY_PENALTY"),
+      maxTokens: envNumber("NEXU_PHONE_VLM_MAX_TOKENS"),
+    };
+
+    let selected =
+      config.deviceControl.phoneVlmModel ??
+      process.env.NEXU_PHONE_VLM_MODEL ??
+      null;
+
+    // BYOK channel: "<providerId>/<modelId>" — phone talks to the provider
+    // directly with the channel's own key. Checked before the cloud gate so a
+    // BYOK phone model works without a cloud login.
+    if (selected !== null && selected.includes("/")) {
+      const slash = selected.indexOf("/");
+      const providerId = selected.slice(0, slash);
+      const modelId = selected.slice(slash + 1);
+      const provider = config.models.providers[providerId];
+      const entry = provider?.models.find((m) => m.id === modelId);
+      // Provider base URLs are user-entered — trim stray whitespace (a
+      // leading tab has been seen in the wild) and trailing slashes; the
+      // phone appends /chat/completions itself.
+      const baseUrl = provider?.baseUrl?.trim().replace(/\/+$/, "");
+      const apiKey =
+        typeof provider?.apiKey === "string" ? provider.apiKey.trim() : null;
+      const api = entry?.api ?? provider?.api;
+      const usable =
+        provider !== undefined &&
+        provider.enabled !== false &&
+        entry !== undefined &&
+        !!baseUrl &&
+        !!apiKey &&
+        (api === undefined || api === "openai-completions");
+      if (usable) {
+        const entryContextWindow =
+          typeof entry?.contextWindow === "number" && entry.contextWindow > 0
+            ? entry.contextWindow
+            : undefined;
+        return {
+          apiUrl: baseUrl,
+          apiKey,
+          model: modelId,
+          reasoningEffort:
+            process.env.NEXU_PHONE_VLM_REASONING_EFFORT ?? "none",
+          ...samplingOverrides,
+          contextWindow:
+            envNumber("NEXU_PHONE_VLM_CONTEXT_WINDOW") ?? entryContextWindow,
+        };
+      }
+      console.warn(
+        `[nexu-config] phone VLM model "${selected}" is not usable ` +
+          "(provider disabled/missing, model not listed, secret-ref key, or non-openai api) — " +
+          "falling back to the gateway default",
+      );
+      selected = null;
+    }
+
     const cloud = readDesktopCloud(config);
     const { activeProfile } =
       await this.readConfiguredDesktopCloudProfile(config);
     const linkUrl = activeProfile.linkUrl ?? cloud.linkUrl;
     if (!cloud.connected || !linkUrl || !cloud.apiKey) return null;
     const base = String(linkUrl).replace(/\/+$/, "");
+    const DEFAULT_PHONE_VLM_MODEL = "tabby-phone";
+    // step-3.7-flash (the upstream behind the tabby-phone alias) has a 256K
+    // context window — known fact, so the phone's adaptive compression can
+    // use the relaxed tier without per-model gateway metadata.
+    const STEP_PHONE_CONTEXT_WINDOW = 262144;
+    const model = selected ?? DEFAULT_PHONE_VLM_MODEL;
+    // tabby-phone is the gateway alias for the step upstream; step-* covers a
+    // direct model name. Everything else gets "none" → phone omits the param.
+    const isStepFamily =
+      model === DEFAULT_PHONE_VLM_MODEL || model.startsWith("step-");
     return {
       apiUrl: `${base}/v1/`,
       apiKey: cloud.apiKey,
-      model: process.env.NEXU_PHONE_VLM_MODEL ?? "tabby-phone",
-      reasoningEffort: process.env.NEXU_PHONE_VLM_REASONING_EFFORT ?? "low",
+      model,
+      reasoningEffort:
+        process.env.NEXU_PHONE_VLM_REASONING_EFFORT ??
+        (isStepFamily ? "low" : "none"),
+      ...samplingOverrides,
+      contextWindow:
+        envNumber("NEXU_PHONE_VLM_CONTEXT_WINDOW") ??
+        (isStepFamily ? STEP_PHONE_CONTEXT_WINDOW : undefined),
     };
   }
 
@@ -3571,6 +3677,7 @@ export class NexuConfigStore {
     enabled?: boolean;
     wsPort?: number;
     rpcPort?: number;
+    phoneVlmModel?: string | null;
   }): Promise<void> {
     await this.store.update((config) => ({
       ...config,
