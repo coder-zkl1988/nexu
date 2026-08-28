@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { extractMessage } from "@/lib/chat/chat-message-extract";
 import { cn } from "@/lib/utils";
 import {
   BellRing,
@@ -17,6 +18,7 @@ import {
   Clock,
   Edit3,
   Loader2,
+  MessagesSquare,
   Pause,
   Play,
   Plus,
@@ -36,10 +38,14 @@ import {
   getApiV1Channels,
   getApiV1Schedules,
   getApiV1SchedulesByScheduleIdRuns,
+  getApiV1SchedulesByScheduleIdRunsByTsMessages,
   patchApiV1SchedulesByScheduleId,
   postApiV1Schedules,
 } from "../../lib/api/sdk.gen";
-import type { GetApiV1SchedulesByScheduleIdRunsResponse } from "../../lib/api/types.gen";
+import type {
+  GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponse,
+  GetApiV1SchedulesByScheduleIdRunsResponse,
+} from "../../lib/api/types.gen";
 
 interface ScheduleItem {
   id: string;
@@ -242,6 +248,142 @@ function parseCronDays(daysPart: string): Set<DayKey> {
   }
 
   return selected;
+}
+
+type TranscriptMessage =
+  NonNullable<GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponse>["messages"][number];
+
+function TranscriptMessageBody({ message }: { message: TranscriptMessage }) {
+  const { t } = useTranslation();
+  const extracted = extractMessage(
+    message as unknown as Record<string, unknown>,
+  );
+
+  if (message.role === "toolResult") {
+    const text = extracted.text.trim();
+    if (!text) return null;
+    return (
+      <div className="rounded-md border border-[var(--color-tabby-border)] bg-neutral-50 px-2 py-1.5 text-[11px] text-[var(--color-tabby-muted)]">
+        <span className="font-medium text-[var(--color-tabby-foreground)]">
+          {message.toolName ?? t("automations.run.toolResult")}
+        </span>
+        <div className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap break-words">
+          {text}
+        </div>
+      </div>
+    );
+  }
+
+  const images = extracted.images.filter((image) => image.url || image.data);
+  const text = extracted.text.trim();
+  return (
+    <div className="space-y-1.5">
+      {images.map((image, index) => (
+        <img
+          key={`${image.url ?? image.data?.slice(0, 24) ?? "image"}-${index}`}
+          src={image.url ?? `data:${image.mimeType};base64,${image.data}`}
+          alt=""
+          className="max-h-48 max-w-full rounded-md border border-[var(--color-tabby-border)]"
+        />
+      ))}
+      {text && (
+        <div className="whitespace-pre-wrap break-words text-[12px] leading-5 text-[var(--color-tabby-foreground)]">
+          {text}
+        </div>
+      )}
+      {message.failed && (
+        <div className="text-[11px] text-red-600">
+          {t("automations.run.failed")}
+        </div>
+      )}
+      {message.aborted && !message.failed && (
+        <div className="text-[11px] text-[var(--color-tabby-muted)]">
+          {t("automations.run.aborted")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunTranscriptDialog({
+  target,
+  data,
+  loading,
+  unavailable,
+  onClose,
+}: {
+  target: {
+    scheduleId: string;
+    scheduleName: string;
+    ts: number;
+    runAtMs?: number;
+  } | null;
+  data: GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponse | null;
+  loading: boolean;
+  unavailable: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const messages = data?.messages ?? [];
+  return (
+    <Dialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="w-[min(680px,calc(100vw-32px))] h-[min(760px,calc(100vh-32px))] flex flex-col p-0 bg-white rounded-lg">
+        <div className="px-5 pt-5 pb-3 border-b border-[var(--color-tabby-border)]">
+          <DialogTitle className="text-[16px] font-semibold leading-tight text-[var(--color-tabby-foreground)]">
+            {target?.scheduleName} · {t("automations.run.transcriptTitle")}
+          </DialogTitle>
+          <DialogDescription className="text-[12px] text-[var(--color-tabby-muted)] mt-0.5">
+            {target
+              ? new Date(target.runAtMs ?? target.ts).toLocaleString()
+              : ""}
+          </DialogDescription>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2
+                size={16}
+                className="animate-spin text-[var(--color-tabby-muted)]"
+              />
+            </div>
+          ) : unavailable ? (
+            <div className="text-[12px] text-[var(--color-tabby-muted)] text-center py-10">
+              {t("automations.run.transcriptUnavailable")}
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="text-[12px] text-[var(--color-tabby-muted)] text-center py-10">
+              {t("automations.run.transcriptEmpty")}
+            </div>
+          ) : (
+            messages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  "flex flex-col",
+                  message.role === "user" ? "items-end" : "items-start",
+                )}
+              >
+                {message.role === "user" ? (
+                  <div className="max-w-[85%] rounded-2xl bg-[rgba(248,250,252,0.95)] border border-[var(--color-tabby-border)] px-3 py-2">
+                    <TranscriptMessageBody message={message} />
+                  </div>
+                ) : (
+                  <div className="max-w-full">
+                    <TranscriptMessageBody message={message} />
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function AutomationModal({
@@ -1126,6 +1268,42 @@ export function AutomationsPage() {
     }
   }
 
+  type TranscriptTarget = {
+    scheduleId: string;
+    scheduleName: string;
+    ts: number;
+    runAtMs?: number;
+  };
+  const [transcriptTarget, setTranscriptTarget] =
+    useState<TranscriptTarget | null>(null);
+  const [transcriptData, setTranscriptData] =
+    useState<GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponse | null>(
+      null,
+    );
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [transcriptUnavailable, setTranscriptUnavailable] = useState(false);
+
+  const openTranscript = useCallback((target: TranscriptTarget) => {
+    setTranscriptTarget(target);
+    setTranscriptData(null);
+    setTranscriptUnavailable(false);
+    setTranscriptLoading(true);
+    void (async () => {
+      try {
+        const response = await getApiV1SchedulesByScheduleIdRunsByTsMessages({
+          path: { scheduleId: target.scheduleId, ts: target.ts },
+          query: { limit: 500 },
+        });
+        if (response.error || !response.data) throw new Error("no data");
+        setTranscriptData(response.data);
+      } catch {
+        setTranscriptUnavailable(true);
+      } finally {
+        setTranscriptLoading(false);
+      }
+    })();
+  }, []);
+
   return (
     <div className="h-full flex flex-col">
       {/* Fixed header area */}
@@ -1405,9 +1583,19 @@ export function AutomationsPage() {
                       </div>
                     ) : (
                       runsData[schedule.id]?.entries?.map((run) => (
-                        <div
+                        <button
                           key={run.ts}
-                          className="flex items-center gap-2 px-3 py-2 text-[11px]"
+                          type="button"
+                          onClick={() =>
+                            openTranscript({
+                              scheduleId: schedule.id,
+                              scheduleName: schedule.name,
+                              ts: run.ts,
+                              runAtMs: run.runAtMs,
+                            })
+                          }
+                          title={t("automations.run.transcriptTitle")}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-left hover:bg-neutral-50 transition-colors cursor-pointer"
                         >
                           <span
                             className={cn(
@@ -1436,7 +1624,11 @@ export function AutomationsPage() {
                               ? run.error.slice(0, 80)
                               : (run.summary?.slice(0, 80) ?? "")}
                           </span>
-                        </div>
+                          <MessagesSquare
+                            size={12}
+                            className="text-[var(--color-tabby-muted)] shrink-0"
+                          />
+                        </button>
                       ))
                     )}
                   </div>
@@ -1520,6 +1712,14 @@ export function AutomationsPage() {
           onOpenChange={setShowModal}
           editingSchedule={editingSchedule}
           onSaved={fetchSchedules}
+        />
+
+        <RunTranscriptDialog
+          target={transcriptTarget}
+          data={transcriptData}
+          loading={transcriptLoading}
+          unavailable={transcriptUnavailable}
+          onClose={() => setTranscriptTarget(null)}
         />
       </div>
     </div>

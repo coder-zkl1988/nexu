@@ -144,6 +144,13 @@ export interface CronRunEntry {
   runAtMs?: number;
   durationMs?: number;
   nextRunAtMs?: number;
+  /**
+   * OpenClaw >=2026.7 isolated runs key each transcript
+   * `agent:<botId>:cron:<jobId>:run:<runUuid>`; the `:run:` suffix is the
+   * transcript file stem under the agent's sessions dir. Absent on older
+   * gateways / non-agent lanes.
+   */
+  sessionKey?: string;
 }
 
 export interface CronRunsResponse {

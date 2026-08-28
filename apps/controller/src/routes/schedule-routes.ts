@@ -196,6 +196,8 @@ export function registerScheduleRoutes(
     runAtMs: z.number().optional(),
     durationMs: z.number().optional(),
     nextRunAtMs: z.number().optional(),
+    // Isolated cron runs: identifies the per-run transcript (see cron gateway).
+    sessionKey: z.string().optional(),
   });
 
   app.openapi(
@@ -238,6 +240,69 @@ export function registerScheduleRoutes(
       });
       if (!result) {
         return c.json({ message: "Schedule not found" }, 404);
+      }
+      return c.json(result, 200);
+    },
+  );
+
+  // Conversation transcript of one automation run. OpenClaw >=2026.7 keys
+  // isolated cron run transcripts per run and never surfaces them as
+  // regular sessions, so the run history is the only place they are
+  // reachable from.
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/schedules/{scheduleId}/runs/{ts}/messages",
+      tags: ["Schedules"],
+      request: {
+        params: scheduleIdParamSchema.extend({
+          ts: z.coerce.number().int(),
+        }),
+        query: z.object({
+          limit: z.coerce.number().int().min(1).max(500).optional(),
+        }),
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                messages: z.array(
+                  z.object({
+                    id: z.string(),
+                    role: z.enum(["user", "assistant", "toolResult"]),
+                    content: z.unknown(),
+                    timestamp: z.number().nullable(),
+                    createdAt: z.string().nullable(),
+                    aborted: z.boolean().optional(),
+                    failed: z.boolean().optional(),
+                    toolName: z.string().optional(),
+                    toolCallId: z.string().optional(),
+                  }),
+                ),
+                sessionKey: z.string(),
+              }),
+            },
+          },
+          description: "Run conversation transcript",
+        },
+        404: {
+          content: { "application/json": { schema: errorSchema } },
+          description:
+            "Schedule or run not found, or the run transcript is no longer retained",
+        },
+      },
+    }),
+    async (c) => {
+      const { scheduleId, ts } = c.req.valid("param");
+      const { limit } = c.req.valid("query");
+      const result = await container.scheduleService.getRunTranscript(
+        scheduleId,
+        ts,
+        limit,
+      );
+      if (!result) {
+        return c.json({ message: "Run transcript not available" }, 404);
       }
       return c.json(result, 200);
     },

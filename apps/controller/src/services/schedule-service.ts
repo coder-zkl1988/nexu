@@ -740,6 +740,44 @@ export class ScheduleService {
     };
   }
 
+  /**
+   * Full conversation transcript for one automation run.
+   *
+   * OpenClaw >=2026.7 isolated cron runs write per-run transcripts keyed
+   * `agent:<botId>:cron:<jobId>:run:<runUuid>` without a sessions.json entry,
+   * so they never surface as regular sessions. Returns null when the
+   * schedule/job is unknown, the run has no transcript key, or the
+   * transcript file is already archived by the 24h cron session reaper.
+   */
+  async getRunTranscript(
+    scheduleId: string,
+    runTs: number,
+    limit?: number,
+  ): Promise<{
+    messages: import("./../runtime/sessions-runtime.js").ChatMessage[];
+    sessionKey: string;
+  } | null> {
+    const schedule = await this.findSchedule(scheduleId);
+    if (!schedule?.externalId) return null;
+    const result = await this.cronGateway.getRuns(schedule.externalId, {
+      limit: RECONCILE_RUN_PAGE_SIZE,
+      offset: 0,
+    });
+    const entry = result.entries.find((candidate) => candidate.ts === runTs);
+    const sessionKey = entry?.sessionKey;
+    if (!sessionKey) return null;
+    const match = /^agent:([^:]+):cron:[^:]+:run:([^:]+)$/.exec(sessionKey);
+    const runSessionId = match?.[2];
+    if (!runSessionId || match[1] !== schedule.botId) return null;
+    const messages = await this.sessionsRuntime.getRunTranscriptMessages(
+      schedule.botId,
+      runSessionId,
+      limit,
+    );
+    if (messages === null) return null;
+    return { messages, sessionKey };
+  }
+
   private async findSchedule(id: string): Promise<ScheduleResponse | null> {
     // Check NexuConfig first
     const config = await this.configStore.getConfig();

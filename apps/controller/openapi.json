@@ -26491,6 +26491,9 @@
                           },
                           "nextRunAtMs": {
                             "type": "number"
+                          },
+                          "sessionKey": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -26518,6 +26521,129 @@
           },
           "404": {
             "description": "Schedule not found or no cron job registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/schedules/{scheduleId}/runs/{ts}/messages": {
+      "get": {
+        "tags": [
+          "Schedules"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "scheduleId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true
+            },
+            "required": false,
+            "name": "ts",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Run conversation transcript",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "user",
+                              "assistant",
+                              "toolResult"
+                            ]
+                          },
+                          "content": {
+                            "nullable": true
+                          },
+                          "timestamp": {
+                            "type": "number",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "aborted": {
+                            "type": "boolean"
+                          },
+                          "failed": {
+                            "type": "boolean"
+                          },
+                          "toolName": {
+                            "type": "string"
+                          },
+                          "toolCallId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "role",
+                          "timestamp",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "sessionKey": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "messages",
+                    "sessionKey"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Schedule or run not found, or the run transcript is no longer retained",
             "content": {
               "application/json": {
                 "schema": {
