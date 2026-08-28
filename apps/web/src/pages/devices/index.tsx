@@ -50,6 +50,14 @@ function QrConnectPopover({
   );
 }
 
+/**
+ * Silence threshold for the device SSE dead-man switch. The server pings
+ * every 15s, so >45s without any traffic means the stream is a zombie (open
+ * but delivering nothing — e.g. left behind by a proxy when the backend died
+ * mid-stream) and must be reconnected.
+ */
+const DEVICE_STREAM_STALE_MS = 45_000;
+
 export function DevicesPage() {
   const { t } = useTranslation();
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
@@ -153,49 +161,17 @@ export function DevicesPage() {
     void fetchDevicesRef.current();
 
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    const es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
+    let es: EventSource | null = null;
     let fallbackInterval: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+    // Dead-man switch state: the server sends a ping every 15s, so any traffic
+    // proves the stream is alive. Silence must ALSO trigger recovery — a proxy
+    // can leave a zombie stream open (no events, no error) after the backend
+    // dies mid-stream, and onerror never fires in that mode.
+    let lastMessageAt = Date.now();
 
-    // Safety net: never let the spinner hang forever even if the initial fetch
-    // and the SSE both stall.
-    const loadingFallback = setTimeout(() => setLoading(false), 8000);
-
-    es.addEventListener("device_list", (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.devices) {
-          setDevices(data.devices);
-          setLoading(false);
-          setError(null);
-        }
-      } catch {
-        /* ignore */
-      }
-    });
-
-    es.addEventListener("device_connected", () => {
-      void fetchDevicesRef.current();
-    });
-
-    es.addEventListener("device_disconnected", (e) => {
-      // Drop the card immediately using the deviceId in the event, so it
-      // disappears even if the reconciling refetch transiently fails.
-      try {
-        const data = JSON.parse(e.data);
-        if (data?.deviceId) {
-          setDevices((prev) =>
-            prev.filter((d) => d.deviceId !== data.deviceId),
-          );
-        }
-      } catch {
-        /* ignore */
-      }
-      void fetchDevicesRef.current();
-    });
-
-    es.onerror = () => {
-      // SSE failed — fall back to polling
-      es.close();
+    const startFallbackPolling = () => {
       if (fallbackInterval === null) {
         fallbackInterval = setInterval(
           () => void fetchDevicesRef.current(),
@@ -203,13 +179,105 @@ export function DevicesPage() {
         );
       }
     };
-
-    return () => {
-      clearTimeout(loadingFallback);
-      es.close();
+    const stopFallbackPolling = () => {
       if (fallbackInterval !== null) {
         clearInterval(fallbackInterval);
+        fallbackInterval = null;
       }
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      es = new EventSource(`${baseUrl}/api/v1/devices/stream`);
+      lastMessageAt = Date.now();
+
+      const bumpAlive = () => {
+        lastMessageAt = Date.now();
+      };
+
+      es.onopen = () => {
+        // The fresh connection always re-delivers a device_list snapshot, so
+        // live SSE replaces the polling fallback as soon as it is back.
+        stopFallbackPolling();
+      };
+
+      es.addEventListener("ping", bumpAlive);
+
+      es.addEventListener("device_list", (e) => {
+        bumpAlive();
+        try {
+          const data = JSON.parse(e.data);
+          if (data.devices) {
+            setDevices(data.devices);
+            setLoading(false);
+            setError(null);
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+
+      es.addEventListener("device_connected", () => {
+        bumpAlive();
+        void fetchDevicesRef.current();
+      });
+
+      es.addEventListener("device_disconnected", (e) => {
+        bumpAlive();
+        // Drop the card immediately using the deviceId in the event, so it
+        // disappears even if the reconciling refetch transiently fails.
+        try {
+          const data = JSON.parse(e.data);
+          if (data?.deviceId) {
+            setDevices((prev) =>
+              prev.filter((d) => d.deviceId !== data.deviceId),
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+        void fetchDevicesRef.current();
+      });
+
+      es.onerror = () => {
+        // SSE failed — poll while we retry the stream in the background.
+        es?.close();
+        startFallbackPolling();
+        if (reconnectTimer === null) {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+          }, 5000);
+        }
+      };
+    };
+
+    connect();
+
+    // Zombie detection: the stream went silent for >3 missed pings. onerror
+    // alone is not enough (see lastMessageAt above) — close the dead stream,
+    // cover the gap with polling, and reconnect for the snapshot.
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastMessageAt > DEVICE_STREAM_STALE_MS) {
+        es?.close();
+        startFallbackPolling();
+        connect();
+      }
+    }, 15_000);
+
+    // Safety net: never let the spinner hang forever even if the initial fetch
+    // and the SSE both stall.
+    const loadingFallback = setTimeout(() => setLoading(false), 8000);
+
+    return () => {
+      disposed = true;
+      clearTimeout(loadingFallback);
+      clearInterval(watchdog);
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer);
+      }
+      es?.close();
+      stopFallbackPolling();
     };
   }, []);
 
