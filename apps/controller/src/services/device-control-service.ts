@@ -160,7 +160,11 @@ export class DeviceControlService {
    * cloud login state changes. Best-effort: if the plugin isn't up, ignore.
    */
   async pushVlmCredential(): Promise<void> {
-    let credential: { apiUrl: string; apiKey: string; model: string } | null;
+    // Full credential shape (model + reasoningEffort + sampling overrides)
+    // comes from the store; forwarded verbatim over RPC to tabby-control.
+    let credential: Awaited<
+      ReturnType<NexuConfigStore["getVlmGatewayCredential"]>
+    >;
     try {
       credential = await this.configStore.getVlmGatewayCredential();
     } catch (err) {

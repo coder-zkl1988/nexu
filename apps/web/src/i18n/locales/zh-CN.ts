@@ -561,6 +561,10 @@ const zhCN = {
   "settings.providers.utilityModelDesc":
     "用低成本小模型处理会话标题生成等轻量任务，节省主模型用量。",
   "settings.providers.utilityModelFollow": "跟随主模型",
+  "settings.providers.phoneVlmModelTitle": "手机控制模型",
+  "settings.providers.phoneVlmModelDesc":
+    "手机端智能体执行任务时使用的视觉模型，改动会即时下发到已连接设备。",
+  "settings.providers.phoneVlmModelDefault": "默认（tabby-phone）",
   "settings.providers.workspace": "工作区",
   "models.loading": "正在加载模型...",
   "models.retry": "重试",

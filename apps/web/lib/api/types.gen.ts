@@ -1262,6 +1262,45 @@ export type PutApiInternalDesktopUtilityModelResponses = {
 
 export type PutApiInternalDesktopUtilityModelResponse = PutApiInternalDesktopUtilityModelResponses[keyof PutApiInternalDesktopUtilityModelResponses];
 
+export type GetApiInternalDesktopPhoneVlmModelData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/internal/desktop/phone-vlm-model';
+};
+
+export type GetApiInternalDesktopPhoneVlmModelResponses = {
+    /**
+     * Gateway model pushed to phones as the device-control VLM (null = gateway default tabby-phone)
+     */
+    200: {
+        modelId: string | null;
+    };
+};
+
+export type GetApiInternalDesktopPhoneVlmModelResponse = GetApiInternalDesktopPhoneVlmModelResponses[keyof GetApiInternalDesktopPhoneVlmModelResponses];
+
+export type PutApiInternalDesktopPhoneVlmModelData = {
+    body?: {
+        modelId: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/internal/desktop/phone-vlm-model';
+};
+
+export type PutApiInternalDesktopPhoneVlmModelResponses = {
+    /**
+     * Set the phone control VLM model (empty string resets to the gateway default)
+     */
+    200: {
+        ok: boolean;
+        modelId: string | null;
+    };
+};
+
+export type PutApiInternalDesktopPhoneVlmModelResponse = PutApiInternalDesktopPhoneVlmModelResponses[keyof PutApiInternalDesktopPhoneVlmModelResponses];
+
 export type GetApiInternalDesktopRewardsData = {
     body?: never;
     path?: never;
@@ -6770,6 +6809,7 @@ export type GetApiV1RuntimeConfigResponses = {
             wsPort?: number;
             rpcPort?: number;
             localIp?: string;
+            phoneVlmModel?: string | null;
         };
         localAutomation: {
             browser?: {

@@ -552,6 +552,12 @@ export const deviceControlConfigSchema = z.object({
   wsPort: z.number().int().positive().default(18790),
   rpcPort: z.number().int().positive().default(18801),
   localIp: z.string().optional(),
+  /**
+   * Gateway model name pushed to phones as the device-control VLM
+   * (settings page "手机控制模型"). null/absent = gateway default
+   * (tabby-phone). Free-form string: the new-api gateway routes it.
+   */
+  phoneVlmModel: z.string().min(1).nullable().optional(),
 });
 
 export const localAutomationConfigSchema = z.object({
