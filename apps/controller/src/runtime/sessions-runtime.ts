@@ -1430,6 +1430,43 @@ export class SessionsRuntime {
   }
 
   /**
+   * Read an isolated cron run's transcript directly.
+   *
+   * OpenClaw >=2026.7 keys per-run automation transcripts
+   * `agent:<botId>:cron:<jobId>:run:<runUuid>` but never references them in
+   * sessions.json, so the regular getSession* lookups cannot see them. The
+   * `:run:` suffix is the transcript file stem under the agent's sessions
+   * dir. Returns null when the transcript is gone (the 24h cron session
+   * reaper archives expired run transcripts) or the path escapes the
+   * sessions dir.
+   */
+  async getRunTranscriptMessages(
+    botId: string,
+    runSessionId: string,
+    limit?: number,
+  ): Promise<ChatMessage[] | null> {
+    const sessionsDir = path.join(
+      this.env.openclawStateDir,
+      "agents",
+      botId,
+      "sessions",
+    );
+    const resolved = path.resolve(sessionsDir, `${runSessionId}.jsonl`);
+    if (
+      !resolved.startsWith(sessionsDir + path.sep) &&
+      resolved !== sessionsDir
+    ) {
+      return null;
+    }
+    try {
+      await stat(resolved);
+    } catch {
+      return null;
+    }
+    return this.readMessages(resolved, limit ?? 200, null);
+  }
+
+  /**
    * Returns the full conversation history for a bot's main webchat session,
    * aggregating across all compacted sessions in chronological order.
    *

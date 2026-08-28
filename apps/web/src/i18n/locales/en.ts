@@ -1831,6 +1831,13 @@ const en = {
   "automations.detail.noHistory": "No run history",
   "automations.detail.historyError": "Failed to load run history",
   "automations.detail.historyRetry": "Retry history",
+  "automations.run.transcriptTitle": "Run Transcript",
+  "automations.run.transcriptUnavailable":
+    "This run's transcript has been archived or is unavailable",
+  "automations.run.transcriptEmpty": "No conversation messages for this run",
+  "automations.run.toolResult": "Tool result",
+  "automations.run.failed": "This run failed",
+  "automations.run.aborted": "This run was interrupted",
   "automations.detail.nextRun": "Next",
   "automations.detail.destination": "Output",
   "automations.detail.lastDuration": "Last run",

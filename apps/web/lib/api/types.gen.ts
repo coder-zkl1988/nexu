@@ -8446,6 +8446,7 @@ export type GetApiV1SchedulesByScheduleIdRunsResponses = {
             runAtMs?: number;
             durationMs?: number;
             nextRunAtMs?: number;
+            sessionKey?: string;
         }>;
         total: number;
         hasMore: boolean;
@@ -8453,6 +8454,51 @@ export type GetApiV1SchedulesByScheduleIdRunsResponses = {
 };
 
 export type GetApiV1SchedulesByScheduleIdRunsResponse = GetApiV1SchedulesByScheduleIdRunsResponses[keyof GetApiV1SchedulesByScheduleIdRunsResponses];
+
+export type GetApiV1SchedulesByScheduleIdRunsByTsMessagesData = {
+    body?: never;
+    path: {
+        scheduleId: string;
+        ts?: number | null;
+    };
+    query?: {
+        limit?: number;
+    };
+    url: '/api/v1/schedules/{scheduleId}/runs/{ts}/messages';
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsByTsMessagesErrors = {
+    /**
+     * Schedule or run not found, or the run transcript is no longer retained
+     */
+    404: {
+        message: string;
+    };
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsByTsMessagesError = GetApiV1SchedulesByScheduleIdRunsByTsMessagesErrors[keyof GetApiV1SchedulesByScheduleIdRunsByTsMessagesErrors];
+
+export type GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponses = {
+    /**
+     * Run conversation transcript
+     */
+    200: {
+        messages: Array<{
+            id: string;
+            role: 'user' | 'assistant' | 'toolResult';
+            content?: unknown;
+            timestamp: number | null;
+            createdAt: string | null;
+            aborted?: boolean;
+            failed?: boolean;
+            toolName?: string;
+            toolCallId?: string;
+        }>;
+        sessionKey: string;
+    };
+};
+
+export type GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponse = GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponses[keyof GetApiV1SchedulesByScheduleIdRunsByTsMessagesResponses];
 
 export type PostApiV1MediaImageJobsData = {
     body?: {
