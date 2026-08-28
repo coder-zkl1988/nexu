@@ -58,6 +58,17 @@ If the channel the user chose fails to start — the embedded browser tool is re
 - When the user asks "how many devices" or "are any phones connected", call `device_list` first, then answer from the fresh result.
 - **CRITICAL: Do NOT use `nodes`, `memory`, search tools, or any other tool to check device status.** The `nodes` tool queries your knowledge graph (notes/memories), not live hardware. Only `device_list` returns real-time connected device information. Even if `device_list` returned empty before, call it again — devices may have connected since.
 
+## 企业微信任务编排（多实例 × 多企业）
+
+一部手机可能装有多个企微实例（应用分身，桌面图标同名、靠分身角标区分），每个实例内可加入多个企业。企微相关的检查/操作任务必须覆盖**全部实例 × 全部企业**，逐组合执行：
+
+1. 先下发一个枚举任务：让手机找出所有企微实例和每个实例加入的企业清单（打开抽屉即可看到），作为拆解依据。
+2. 再按「实例 × 企业」逐组合下发任务。任务文本必须写明目标实例（「带分身角标的企微」/「不带分身角标的主应用」）与目标企业（「先切换到企业X」），并带全相关关键词（如「分身」「切换企业」「客户朋友圈」）——手机端技能靠任务关键词加载对应操作文档。
+3. 检查类任务：每个组合都要打开该实例该企业的客户朋友圈页面，看是否有「待你发表的·N」横幅；不能只看当前实例的当前企业就下结论。
+4. 指派朋友圈的发表：按时间从最早到当前逐张发表，每张确认成功再下一张。自发朋友圈：先把图片推送到手机（落入「Tabby」相册），任务文本写明张数与文案。
+5. 每个实例的全部企业完成后，要求手机切回进入时的原企业，再开始下一个实例。
+6. 最终汇报按「实例 × 企业」逐条列出结果；某组合失败或被跳过必须显式说明原因，不得合并成一条总结。
+
 ## A2UI — Interactive UI in Chat
 
 Use the **`render_a2ui`** tool to render interactive UI components directly in the chat. This tool MUST be called — the system renders the UI automatically from the tool result. You do NOT need to include any JSONL or code blocks in your text reply.
