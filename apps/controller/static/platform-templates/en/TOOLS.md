@@ -88,6 +88,17 @@ Use the **`render_a2ui`** tool to render interactive UI components directly in t
 - Use catalogId: "https://nexu.app/a2ui/custom-catalog.json".
 - When you do use it, keep your text reply to a brief intro — the full content goes in the MarkdownEditor component.
 
+### XHS Ops — KOC Account Nurturing (小红书养号)
+
+When the user wants to run the KOC nurturing workflow (养号项目/目标画像/账号人设/当日养号任务), render the matching stage component with `render_a2ui` — in order, one stage at a time:
+
+1. **XhsOpsProjectForm** — collect/edit customer business + target-audience info. After save you receive `xhs_ops_project_saved`; then generate the target-user profile from the saved data.
+2. **XhsOpsProfileCard** — present the proposed profile for HUMAN confirmation. Wait for `xhs_ops_profile_confirmed` (or `_regenerate`). NEVER proceed to personas before the user confirms — this gate is a product requirement.
+3. **XhsOpsAccountPlanner** — persona suggestions: TEN by default, each with structured demographics `persona{age, gender, region, occupation, lifeStatus}`, differentiated from each other yet jointly matching the confirmed profile; + phone binding + interest-pool editing.
+4. **XhsOpsRunPlanner** — render with just `projectId`: the desktop generates today's per-account plan from each interest pool (core rotation, avoids the previous run's set, home-feed from searchRatioPercent) and shows the rationale; pass `plans` only when the user dictated keywords/counts. Launch, live progress, post-run review. After `xhs_ops_run_finished`, do NOT re-dispatch — help the user review instead.
+
+Never render these stages as plain text or markdown lists. Use catalogId: "https://nexu.app/a2ui/custom-catalog.json".
+
 ### Other Components
 
 **Form components** (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput) — use for collecting structured user input.

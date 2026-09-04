@@ -29,6 +29,10 @@ import { XHSBatchTable } from "./custom-components/XHSBatchTable";
 import { XHSEditor } from "./custom-components/XHSEditor";
 // ── Register Nexu custom components ───────────────────────────
 import { registerCustomComponent } from "./custom-components/registry";
+import { XhsOpsAccountPlanner } from "./custom-components/xhs-ops/XhsOpsAccountPlanner";
+import { XhsOpsProfileCard } from "./custom-components/xhs-ops/XhsOpsProfileCard";
+import { XhsOpsProjectForm } from "./custom-components/xhs-ops/XhsOpsProjectForm";
+import { XhsOpsRunPlanner } from "./custom-components/xhs-ops/XhsOpsRunPlanner";
 
 const NEXU_CATALOG = "https://nexu.app/a2ui/custom-catalog.json";
 
@@ -39,3 +43,11 @@ registerCustomComponent(NEXU_CATALOG, "TeamRunCard", TeamRunCard);
 registerCustomComponent(NEXU_CATALOG, "TeamRunPanel", TeamRunPanel);
 registerCustomComponent(NEXU_CATALOG, "XHSEditor", XHSEditor);
 registerCustomComponent(NEXU_CATALOG, "XHSBatchTable", XHSBatchTable);
+registerCustomComponent(NEXU_CATALOG, "XhsOpsProjectForm", XhsOpsProjectForm);
+registerCustomComponent(NEXU_CATALOG, "XhsOpsProfileCard", XhsOpsProfileCard);
+registerCustomComponent(
+  NEXU_CATALOG,
+  "XhsOpsAccountPlanner",
+  XhsOpsAccountPlanner,
+);
+registerCustomComponent(NEXU_CATALOG, "XhsOpsRunPlanner", XhsOpsRunPlanner);

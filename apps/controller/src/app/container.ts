@@ -76,11 +76,13 @@ import { WorkflowComposer } from "../services/teams/team-workflow-composer.js";
 import { TeamWorkflowLedgerStore } from "../services/teams/team-workflow-ledger.js";
 import { TeamWorkflowService } from "../services/teams/team-workflow-service.js";
 import { TemplateService } from "../services/template-service.js";
+import { XhsOpsRunService } from "../services/xhs-ops-run-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
 import { DeviceNameStore } from "../store/device-name-store.js";
 import { DeviceTaskHistoryStore } from "../store/device-task-history-store.js";
 import { NexuConfigStore } from "../store/nexu-config-store.js";
+import { XhsOpsStore } from "../store/xhs-ops-store.js";
 import { type ControllerEnv, env } from "./env.js";
 
 export interface ControllerContainer {
@@ -140,6 +142,8 @@ export interface ControllerContainer {
   quotaFallbackService: QuotaFallbackService;
   githubStarVerificationService: GithubStarVerificationService;
   deviceControlService: DeviceControlService;
+  xhsOpsStore: XhsOpsStore;
+  xhsOpsRunService: XhsOpsRunService;
   deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
@@ -316,6 +320,11 @@ export async function createContainer(): Promise<ControllerContainer> {
     configStore,
     deviceTaskHistoryStore,
   );
+  const xhsOpsStore = new XhsOpsStore(env.xhsOpsStorePath);
+  const xhsOpsRunService = new XhsOpsRunService({
+    store: xhsOpsStore,
+    deviceControl: deviceControlService,
+  });
   // The tabby-control plugin loses its in-memory VLM credential on every
   // OpenClaw (re)start, so re-push it once the plugin RPC is reachable after
   // any restart (provider change, watchdog, skills nudge, cloud login, ...).
@@ -841,6 +850,8 @@ export async function createContainer(): Promise<ControllerContainer> {
     quotaFallbackService,
     githubStarVerificationService,
     deviceControlService,
+    xhsOpsStore,
+    xhsOpsRunService,
     deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,
@@ -853,6 +864,14 @@ export async function createContainer(): Promise<ControllerContainer> {
     scheduleService,
     runtimeState,
     startBackgroundLoops: () => {
+      // 控制器重启后，把上次残留 running 的养号 run 标记为 interrupted，
+      // 运营侧才不会看到永远卡在执行中的 run。
+      void xhsOpsRunService.recoverInterruptedRuns().catch((err) => {
+        logger.warn(
+          { error: err instanceof Error ? err.message : String(err) },
+          "xhs-ops: recoverInterruptedRuns failed",
+        );
+      });
       let isRefreshingNexuOfficialModels = false;
       const stopHealthLoop = startHealthLoop({
         env,

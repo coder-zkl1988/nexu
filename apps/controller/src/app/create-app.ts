@@ -33,6 +33,7 @@ import {
 } from "../routes/team-workflow-routes.js";
 import { registerUserRoutes } from "../routes/user-routes.js";
 import { registerWorkspaceTemplateRoutes } from "../routes/workspace-template-routes.js";
+import { registerXhsOpsRoutes } from "../routes/xhs-ops-routes.js";
 import type { ControllerBindings } from "../types.js";
 import type { ControllerContainer } from "./container.js";
 
@@ -137,6 +138,7 @@ export function createApp(container: ControllerContainer) {
   registerWorkspaceTemplateRoutes(app, container);
   registerDeviceTaskHistoryRoutes(app, container);
   registerDeviceControlRoutes(app, container);
+  registerXhsOpsRoutes(app, container);
   registerScheduleRoutes(app, container);
   registerMediaRoutes(app, container);
   registerCanvasRoutes(app);

@@ -468,6 +468,129 @@ const COMPONENT_SCHEMAS = [
       },
     },
   },
+  {
+    type: "XhsOpsProjectForm",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsProjectForm" },
+      projectId: {
+        type: "string",
+        description:
+          "Existing project id to edit; omit when creating a new nurturing project.",
+      },
+      prefill: {
+        type: "object",
+        description:
+          "Initial values for a NEW project: name plus business={industry,product,regions[],sellingPoints[],priceBand,scene}, audience={ageRange,genderRatio,regions[],occupations[],spendingPower,knownInterests[],painPoints[]}, opsNotes={forbiddenTopics[],boostKeywords[],avoidContentTypes[]}. Fill from what the user already told you; leave the rest for them to complete.",
+      },
+    },
+  },
+  {
+    type: "XhsOpsProfileCard",
+    required: ["id", "type", "projectId", "profile"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsProfileCard" },
+      projectId: {
+        type: "string",
+        description: "The nurturing project this profile belongs to.",
+      },
+      profile: {
+        type: "object",
+        description:
+          "Proposed target-user profile for HUMAN confirmation: summary (one paragraph), base={ageRange,genderRatio,regions[]}, verticalInterests[] (business-related), generalInterests[] (everyday interests). The user can edit fields inline; you receive xhs_ops_profile_confirmed or xhs_ops_profile_regenerate actions.",
+      },
+    },
+  },
+  {
+    type: "XhsOpsAccountPlanner",
+    required: ["id", "type", "projectId", "suggestions"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsAccountPlanner" },
+      projectId: {
+        type: "string",
+        description: "The nurturing project these personas belong to.",
+      },
+      suggestions: {
+        type: "array",
+        description:
+          "Differentiated KOC persona suggestions — generate TEN by default unless the user asks for another count (the ops spec's minimal loop generates 10 personas, then binds 2-3 to phones). Each: {label (<=40 chars, unique), positioning (one sentence), persona {age, gender, region, occupation, lifeStatus} (REQUIRED structured demographics), interestPool {core[], extended[], general[]}}. Personas must differ from each other (age band / city district / occupation / life status / interest mix) while their overall distribution matches the CONFIRMED target profile (e.g. ~70% female if the profile says so). The card lists connected phones for binding.",
+        items: {
+          type: "object",
+          properties: {
+            label: { type: "string", description: "Short persona name" },
+            positioning: {
+              type: "string",
+              description: "One-sentence account direction",
+            },
+            persona: {
+              type: "object",
+              description:
+                "Structured demographics, all short strings: age ('32岁'), gender ('女'), region ('北京海淀'), occupation ('互联网产品经理'), lifeStatus ('2岁娃新手妈妈'). Vary them across personas.",
+              properties: {
+                age: { type: "string" },
+                gender: { type: "string" },
+                region: { type: "string" },
+                occupation: { type: "string" },
+                lifeStatus: { type: "string" },
+              },
+              required: ["age", "gender", "region", "occupation", "lifeStatus"],
+            },
+            interestPool: {
+              type: "object",
+              properties: {
+                core: { type: "array", items: { type: "string" } },
+                extended: { type: "array", items: { type: "string" } },
+                general: { type: "array", items: { type: "string" } },
+              },
+            },
+          },
+          required: ["label", "positioning", "persona"],
+        },
+      },
+    },
+  },
+  {
+    type: "XhsOpsRunPlanner",
+    required: ["id", "type", "projectId"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsRunPlanner" },
+      projectId: {
+        type: "string",
+        description: "The nurturing project to run today.",
+      },
+      plans: {
+        type: "array",
+        description:
+          "OPTIONAL. Omit it in the normal flow: the desktop generates today's plan per bound account deterministically from its interest pool (core keywords rotate by round, extended/general add variety, the previous run's exact set is avoided, home-feed count derives from searchRatioPercent) and shows the rationale. Pass plans ONLY when the user dictated specific keywords/counts: one per account {accountId (must already exist), keywords: [{keyword, count 1-8}] up to 8, homeFeedCount 0-12}. The user adjusts before starting; you receive xhs_ops_run_started and exactly one xhs_ops_run_finished with the summary. NEVER re-dispatch after finished — help the user review instead.",
+        items: {
+          type: "object",
+          properties: {
+            accountId: { type: "string", description: "Existing account id" },
+            keywords: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  keyword: { type: "string" },
+                  count: { type: "number", description: "Posts to browse, 1-8" },
+                },
+                required: ["keyword"],
+              },
+            },
+            homeFeedCount: {
+              type: "number",
+              description: "Home-feed posts, 0-12",
+            },
+          },
+          required: ["accountId", "keywords"],
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -501,6 +624,12 @@ WHEN TO USE:
     • CONTENT FORMAT: title and body are SEPARATE fields. Write the body as PLAIN TEXT — Xiaohongshu does not render Markdown. No \`#\` headings, no \`**bold**\`, no \`-\`/\`*\` bullets, and NEVER repeat the title as a \`# heading\` on the first body line. Emojis and line breaks are encouraged.
     • Images are OPTIONAL and are NOT a prerequisite for publishing: render the post(s) immediately with images:[] and let the user add images afterwards. NEVER stall, loop, or refuse to render just because there are no images yet.
 - Updating an existing XHSEditor or XHSBatchTable in the chat, including putting a generated image into it. Reuse the exact prior surfaceId and preserve all existing post fields. For a requested generated image, first call image_generate and wait for its real media path, then call render_a2ui with that path appended to the XHS images. NEVER use canvas_read or canvas_op for a chat XHS component.
+- Running the Xiaohongshu KOC account-nurturing (小红书养号) workflow — render the stage component IN ORDER, one stage at a time, in the same conversation:
+    • collect / edit customer business + target-audience info → XhsOpsProjectForm (it fires xhs_ops_project_saved; then generate the target-user profile from the saved business/audience/opsNotes)
+    • present the generated profile for HUMAN confirmation → XhsOpsProfileCard (wait for xhs_ops_profile_confirmed or xhs_ops_profile_regenerate; NEVER proceed to personas before confirmed — this gate is a product requirement)
+    • batch persona suggestions + phone binding → XhsOpsAccountPlanner (TEN personas by default, each with structured persona demographics {age, gender, region, occupation, lifeStatus}; differentiated from each other but jointly matching the confirmed profile)
+    • today's per-account plan + execution + progress → XhsOpsRunPlanner (render it with just projectId — the desktop generates each account's plan from its interest pool and shows the rationale; pass plans only when the user dictated keywords; the user adjusts and starts; xhs_ops_run_finished carries the summary — do NOT re-dispatch afterwards, help review instead)
+    • Never render these stages as plain text or Markdown lists — the components own the form, confirmation and progress UX.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
 - Offering selectable actions (confirm/cancel, option selection)
@@ -544,7 +673,11 @@ CUSTOM COMPONENTS:
 - MarkdownEditor: Display markdown/copywriting content with a copy button.
 - XHSEditor: Inline Xiaohongshu/RedNote content editor card with title, body, image upload or AI image generation, hashtags, and a device picker + publish button.
 - XHSBatchTable: Inline chat table for multiple XHS posts (fixed height, max ~5 rows). Each row shows thumbnail/title/preview/target-phone/status; clicking a row expands that post's XHSEditor directly below the table; a "全部发布" button publishes all posts to their assigned phones. Pass each post's title/content/images/hashtags; omit deviceId to auto-assign phones round-robin.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, or XHSBatchTable.`;
+- XhsOpsProjectForm: KOC nurturing project form — customer business, target audience, ops notes; saves via the controller API and reports back xhs_ops_project_saved.
+- XhsOpsProfileCard: Target-user profile proposal with inline editing and human confirm/regenerate (xhs_ops_profile_confirmed / xhs_ops_profile_regenerate).
+- XhsOpsAccountPlanner: Persona suggestion table with phone binding and three-layer interest pool editing.
+- XhsOpsRunPlanner: Today's per-account nurture plan (keywords × counts + home feed), launch button, live chunk progress, and post-run review notes.
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, or XhsOpsRunPlanner.`;
 
 const plugin = {
   id: "nexu-a2ui",
