@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { pickProjectByName } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsDashboard";
 import {
   buildRunMatrix,
   collectObservations,
@@ -10,6 +11,7 @@ import {
 } from "../src/lib/a2ui/custom-components/xhs-ops/xhs-ops-dashboard-data";
 import type {
   XhsOpsAccount,
+  XhsOpsProject,
   XhsOpsRun,
   XhsOpsRunChunk,
 } from "../src/lib/a2ui/custom-components/xhs-ops/xhs-ops-types";
@@ -327,5 +329,19 @@ describe("xhs-ops dashboard data (P2-2 复盘看板)", () => {
       interactions: 0,
       observations: 1,
     });
+  });
+
+  it("pickProjectByName: exact > unique substring > single project > null", () => {
+    const projects = [
+      { id: "p1", name: "新氧青春·亲子度假" },
+      { id: "p2", name: "新氧青春·医美" },
+      { id: "p3", name: "露营装备" },
+    ] as XhsOpsProject[];
+    expect(pickProjectByName(projects, "新氧青春·亲子度假")?.id).toBe("p1");
+    expect(pickProjectByName(projects, "亲子度假")?.id).toBe("p1");
+    expect(pickProjectByName(projects, "「露营装备」项目")?.id).toBe("p3");
+    expect(pickProjectByName(projects, "新氧青春")).toBeNull(); // ambiguous
+    expect(pickProjectByName(projects, "")).toBeNull(); // several, nothing asked
+    expect(pickProjectByName(projects.slice(2), "")?.id).toBe("p3"); // only one
   });
 });

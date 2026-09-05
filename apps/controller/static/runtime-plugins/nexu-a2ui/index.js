@@ -609,13 +609,19 @@ const COMPONENT_SCHEMAS = [
   },
   {
     type: "XhsOpsDashboard",
-    required: ["id", "type", "projectId"],
+    required: ["id", "type"],
     properties: {
       id: { type: "string", description: "Unique component ID" },
       type: { const: "XhsOpsDashboard" },
       projectId: {
         type: "string",
-        description: "The nurturing project to review.",
+        description:
+          "The nurturing project to review, when you know its id (e.g. from xhs_ops_project_saved in this session). Omit it otherwise — the component lists the projects and lets the user pick.",
+      },
+      projectName: {
+        type: "string",
+        description:
+          "Optional: the project name the user mentioned; the component auto-selects it when it matches, else shows the picker.",
       },
       accountId: {
         type: "string",
@@ -667,7 +673,7 @@ WHEN TO USE:
     • batch persona suggestions + phone binding → XhsOpsAccountPlanner (TEN personas by default, each with structured persona demographics {age, gender, region, occupation, lifeStatus}; differentiated from each other but jointly matching the confirmed profile)
     • (optional, after personas are saved) account profile material → XhsOpsProfileMaterial (render with just projectId; the DESKTOP generates nickname/bio and 3 avatar + 3 cover candidates on button click, the user picks and edits, and only the user's 「应用到手机」 changes the public profile — you receive xhs_ops_profile_applied; never trigger profile changes yourself)
     • today's per-account plan + execution + progress → XhsOpsRunPlanner (render it with just projectId — the desktop generates each account's plan from its interest pool and shows the rationale; pass plans only when the user dictated keywords; the user adjusts and starts; xhs_ops_run_finished carries the summary — do NOT re-dispatch afterwards, help review instead)
-    • reviewing results across days (复盘/看板/这周效果如何/推荐流有没有变/哪些关键词不行) → XhsOpsDashboard (render with just projectId; READ-ONLY: it builds the account × date matrix, keyword verdicts, anomaly summary and observation timeline from the stored runs — never answer these questions from memory or by re-dispatching phone tasks; the user may save a 运营备注 there, you receive xhs_ops_dashboard_note_saved)
+    • reviewing results across days (复盘/看板/效果如何/推荐流有没有变/哪些关键词不行/异常多不多) → XhsOpsDashboard, IMMEDIATELY and as the FIRST tool call. Pass projectId if this session already has it, otherwise pass projectName (what the user called it) or nothing — the component lets the user pick. The run data lives ONLY in the desktop's xhs-ops store, which this board reads; it is NOT in sessions_history, memory_search, files or exec output — do not search for it there. READ-ONLY: never re-dispatch phone tasks to "refresh" results. The user may save a 运营备注 there; you receive xhs_ops_dashboard_note_saved.
     • Never render these stages as plain text or Markdown lists — the components own the form, confirmation and progress UX.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)

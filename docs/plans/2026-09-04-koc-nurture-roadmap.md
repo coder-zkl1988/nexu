@@ -57,7 +57,8 @@
 ### 2.2 复盘看板 `XhsOpsDashboard` —— ✅ 已完成（2026-09-05）
 - 纯读组件：项目 × 账号 × 日期矩阵（计划/实际/首页量/互动次数）、异常汇总（按 type）、observation 时间线、notes 编辑。数据全来自 `GET /runs`。
 - 验收：运营不看聊天记录也能判断"推荐流是否更接近目标兴趣"并决定改兴趣池。
-> 落地：无新增接口，数据来自 `GET /runs?projectId` + 账号列表。纯函数层 `xhs-ops-dashboard-data.ts`（`lastNDates`/`buildRunMatrix`/`summarizeAnomalies`/`collectObservations`/`keywordStats`）+ 组件 `XhsOpsDashboard{projectId, accountId?, days?}`：顶部汇总（运行次数/计划·实际/首页/互动/异常）→「账号 × 日期」矩阵（每格 实际/计划 + 首页/互动/异常，最差状态点；已绑定账号无运行也占行以暴露断档，已删账号沿用 label 快照）→ 点格子展开当日明细（每个 run 的环节表：实际/计划、跳过、赞藏关、状态·异常 chips、手机端观察）+ 运营备注（PATCH notes，上报 `xhs_ops_dashboard_note_saved` 并附 agentInstruction：只给兴趣池建议、不复述）→ 关键词表现表（按搜索词汇总，标注核心池账号；判断规则：出现无结果/内容不匹配 → 建议调整，样本 ≥4 且完成率 <50% → 观察，否则正常；首页推荐流单独一行）→ 异常汇总（按类型计数 + 最近一次位置）→ 观察时间线（手机端观察 + 运营备注，倒序，默认 8 条可展开）。有执行中的 run 时 5s 轮询。7/14/30 天可切。插件 schema + 路由描述（复盘/看板/推荐流有没有变 → 只读看板，禁止凭记忆回答或重派）+ TOOLS.md 第 5 步。测试：数据层 5 条（矩阵/异常/时间线/关键词判定/日期）+ 渲染 1 条。
+> 落地：无新增接口，数据来自 `GET /runs?projectId` + 账号列表。纯函数层 `xhs-ops-dashboard-data.ts`（`lastNDates`/`buildRunMatrix`/`summarizeAnomalies`/`collectObservations`/`keywordStats`）+ 组件 `XhsOpsDashboard{projectId, accountId?, days?}`：顶部汇总（运行次数/计划·实际/首页/互动/异常）→「账号 × 日期」矩阵（每格 实际/计划 + 首页/互动/异常，最差状态点；已绑定账号无运行也占行以暴露断档，已删账号沿用 label 快照）→ 点格子展开当日明细（每个 run 的环节表：实际/计划、跳过、赞藏关、状态·异常 chips、手机端观察）+ 运营备注（PATCH notes，上报 `xhs_ops_dashboard_note_saved` 并附 agentInstruction：只给兴趣池建议、不复述）→ 关键词表现表（按搜索词汇总，标注核心池账号；判断规则：出现无结果/内容不匹配 → 建议调整，样本 ≥4 且完成率 <50% → 观察，否则正常；首页推荐流单独一行）→ 异常汇总（按类型计数 + 最近一次位置）→ 观察时间线（手机端观察 + 运营备注，倒序，默认 8 条可展开）。有执行中的 run 时 5s 轮询。7/14/30 天可切。插件 schema + 路由描述（复盘/看板/推荐流有没有变 → 只读看板，禁止凭记忆回答或重派）+ TOOLS.md 第 5 步。测试：数据层 6 条（矩阵/异常/时间线/关键词判定/日期/项目名匹配）+ 渲染 2 条。
+> 无头 e2e（2026-09-05）：新会话直接问「帮我复盘一下「新氧青春·亲子度假」最近一周的效果」。**首跑失败两处**：① agent 没走看板，去 `sessions_history`/`memory_search`/`exec` 翻用户目录找运行数据（跑了 5 分钟被我取消）——原因是 bot 工作区 TOOLS.md 还是旧块（模板块靠 `syncAll` 同步，需 `POST /api/internal/desktop/cloud-refresh` 或重启 controller），且 agent 在新会话里根本没有 projectId、也没有列项目的工具；② 同步后 agent 第一步就渲染看板，但 `render_a2ui` 校验报 `type must be equal to constant`——网关加载的是 `state/extensions/nexu-a2ui` 副本，只有 controller 启动时的插件写入器会刷新它，`pnpm dev restart openclaw` 不够（详见记忆 nexu-plugin-and-template-deploy-path）。修复：看板 `projectId` 改为可选，新增 `projectName`，匹配不到就在卡片内让用户点选项目（`pickProjectByName`：精确 > 唯一子串 > 唯一项目）；TOOLS.md/插件描述改成「结果类问题第一步就渲染看板；运行数据只在桌面 xhs-ops 存储，不在会话/记忆/文件里」。**复跑 24s 通过**：agent 第一个工具调用即 `render_a2ui XhsOpsDashboard{projectName}`，渲染成功并只做导读，不复述数据。同类「新会话无 projectId」问题也适用于 ProfileMaterial/RunPlanner——记入 P2 尾项。
 
 ### 2.3 每日容量（脑图 80-100 篇/天）
 - 现实：单 run ≤76 篇、约 100 分钟；风控风险随篇数上升。
@@ -80,6 +81,7 @@
 - 不在一期验收里，但设计与审核队列的基建可与 P2 并行推进。
 
 ### 3.2 其他
+- 新会话无 projectId 的兜底：`XhsOpsProfileMaterial`/`XhsOpsRunPlanner` 也应像看板一样支持省略 `projectId`（按 `projectName` 匹配或卡片内点选），否则 agent 只能在同一会话里从 `xhs_ops_project_saved` 拿到 id。
 - 登录保活（`login_required` 会停整轮；需预检或定期 login 任务）。
 - 兴趣池轮次快照（复盘"改了什么"）。
 - run 归档（LowDB 500 条上限≈10 账号×50 天）。

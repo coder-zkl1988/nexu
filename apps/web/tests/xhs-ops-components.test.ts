@@ -172,4 +172,22 @@ describe("xhs-ops a2ui components render (wiring smoke)", () => {
     expect(html).toContain("最近 14 天");
     expect(html).toContain("正在加载运行记录");
   });
+
+  it("XhsOpsDashboard without projectId falls back to the project picker (agent has no project-list tool)", () => {
+    const html = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsDashboard,
+          renderProps({
+            id: "c7",
+            type: "XhsOpsDashboard",
+            projectName: "新氧青春",
+          }),
+        ),
+      ),
+    );
+    expect(html).toContain("养号复盘看板");
+    expect(html).toContain("正在加载项目列表");
+    expect(html).not.toContain("正在加载运行记录");
+  });
 });

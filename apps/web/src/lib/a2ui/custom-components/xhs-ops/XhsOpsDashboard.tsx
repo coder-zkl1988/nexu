@@ -58,7 +58,8 @@ export function XhsOpsDashboard({
   resolve,
   onAction,
 }: CustomComponentProps) {
-  const projectId = asString(readProp(comp, resolve, "projectId"));
+  const propProjectId = asString(readProp(comp, resolve, "projectId"));
+  const projectName = asString(readProp(comp, resolve, "projectName")).trim();
   const onlyAccountId = asString(readProp(comp, resolve, "accountId")) || null;
   const initialDays = asInt(
     readProp(comp, resolve, "days"),
@@ -66,6 +67,35 @@ export function XhsOpsDashboard({
     1,
     DASHBOARD_MAX_DAYS,
   );
+
+  // Agent 在新会话里通常拿不到 projectId（没有列项目的工具），所以 projectId
+  // 可省略：按 projectName 匹配，匹配不到就让用户在卡片里点选项目。
+  const [projectId, setProjectId] = useState(propProjectId);
+  const [projectChoices, setProjectChoices] = useState<XhsOpsProject[] | null>(
+    propProjectId ? [] : null,
+  );
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  useEffect(() => {
+    if (propProjectId) return;
+    let cancelled = false;
+    xhsOpsApi
+      .listProjects()
+      .then((list) => {
+        if (cancelled) return;
+        const match = pickProjectByName(list, projectName);
+        if (match) setProjectId(match.id);
+        setProjectChoices(list);
+        setPickerError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setProjectChoices([]);
+        setPickerError(describeXhsOpsError(err, "项目列表加载失败"));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propProjectId, projectName]);
 
   const [days, setDays] = useState(initialDays);
   const [project, setProject] = useState<XhsOpsProject | null>(null);
@@ -80,9 +110,9 @@ export function XhsOpsDashboard({
 
   const load = useCallback(async () => {
     if (!projectId) {
-      setLoadError("缺少 projectId");
-      setAccounts([]);
-      setRuns([]);
+      setProject(null);
+      setAccounts(null);
+      setRuns(null);
       return;
     }
     try {
@@ -181,10 +211,21 @@ export function XhsOpsDashboard({
         </div>
       }
     >
-      <ErrorLine message={loadError} />
-      {loading ? <HintLine>正在加载运行记录…</HintLine> : null}
+      <ErrorLine message={loadError ?? pickerError} />
+      {!projectId ? (
+        <ProjectPicker
+          choices={projectChoices}
+          wanted={projectName}
+          onPick={(id) => {
+            setProjectId(id);
+            setSelected(null);
+          }}
+        />
+      ) : loading ? (
+        <HintLine>正在加载运行记录…</HintLine>
+      ) : null}
 
-      {!loading ? (
+      {projectId && !loading ? (
         <>
           <div className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-5">
             <Stat label="运行次数" value={String(totals.runs)} />
@@ -276,6 +317,60 @@ export function XhsOpsDashboard({
         </>
       ) : null}
     </CardShell>
+  );
+}
+
+// ── Project picker ────────────────────────────────────────────
+
+/** Exact name first, then unique substring match (either direction). */
+export function pickProjectByName(
+  projects: XhsOpsProject[],
+  wanted: string,
+): XhsOpsProject | null {
+  const name = wanted.trim();
+  if (!name) return projects.length === 1 ? (projects[0] ?? null) : null;
+  const exact = projects.find((p) => p.name.trim() === name);
+  if (exact) return exact;
+  const loose = projects.filter(
+    (p) => p.name.includes(name) || name.includes(p.name.trim()),
+  );
+  return loose.length === 1 ? (loose[0] ?? null) : null;
+}
+
+function ProjectPicker({
+  choices,
+  wanted,
+  onPick,
+}: {
+  choices: XhsOpsProject[] | null;
+  wanted: string;
+  onPick: (projectId: string) => void;
+}) {
+  if (choices === null) return <HintLine>正在加载项目列表…</HintLine>;
+  if (choices.length === 0) {
+    return (
+      <HintLine>还没有养号项目；先用「养号项目」表单创建一个再复盘。</HintLine>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <SectionTitle
+        hint={
+          wanted
+            ? `没有找到名为「${wanted}」的项目，请选择要复盘的项目`
+            : "请选择要复盘的项目"
+        }
+      >
+        选择项目
+      </SectionTitle>
+      <div className="flex flex-wrap gap-1.5">
+        {choices.map((p) => (
+          <SecondaryButton key={p.id} onClick={() => onPick(p.id)}>
+            {p.name}
+          </SecondaryButton>
+        ))}
+      </div>
+    </div>
   );
 }
 
