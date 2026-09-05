@@ -82,7 +82,7 @@
 ### 3.1 评论（脑图 3%；文档一期不做）—— **已拍板：现在立项，排在 P3 首位**
 - 前提：先设计评论内容审核与风控（文档原话）；立项后先出设计稿再动代码。方案雏形：生成规则「正向认同、≤10 字、不含营销、针对帖子内容」→ 桌面审核队列（人工放行）→ 每日上限与稀疏分布 → 手机 `interact` 子技能执行 → 回填。TaskPolicy 需新增 comment 阻断标签，保证未审核内容不会被发出。
 - 不在一期验收里，但设计与审核队列的基建可与 P2 并行推进。
-> 设计稿已出（2026-09-05）：[2026-09-05-xhs-ops-comment-design.md](2026-09-05-xhs-ops-comment-design.md)——风控规则表、数据模型（comments 集合 / interaction.comment / plan.kind=comment）、五段流程（手机只标注 commentWorthy → 桌面生成候选 → 人工审核组件 XhsOpsCommentReview → 评论 run → 回填看板）、桌面配额公式（min(dailyCap, 5, floor(今日浏览/8))）、**TabbyApp TaskPolicy `comment` 标签 + 文本白名单的机械阻断**、D0–D5 分期与验收。待评审后进 D1（桌面基建，可与 P2 收尾并行）。
+> 设计稿已出（2026-09-05）：[2026-09-05-xhs-ops-comment-design.md](2026-09-05-xhs-ops-comment-design.md)——风控规则表、数据模型（comments 集合 / interaction.comment / plan.kind=comment）、五段流程（手机只标注 commentWorthy → 桌面生成候选 → 人工审核组件 XhsOpsCommentReview → 评论 run → 回填看板）、桌面配额公式（min(dailyCap, 5, floor(今日浏览/8))）、**TabbyApp TaskPolicy `comment` 标签 + 文本白名单的机械阻断**、D0–D5 分期与验收。**2026-09-06 评审通过**：八项决策全部按稿子推荐值确认（频次 2/5、≤10 字、灰度 1 号×1 条×5 天、a11y 摘要、复用 generateText、搜不到即跳过、限流当日停评连续 2 天自动关、先推送→小修→D1），记录在设计稿 §11。下一步 D1 桌面基建。
 
 ### 3.2 其他
 - ~~新会话无 projectId 的兜底~~ ✅ 2026-09-06：`useProjectResolution` + `ProjectPicker` 抽成 `xhs-ops-project-picker.tsx`，看板/RunPlanner/ProfileMaterial 三个组件都支持省略 `projectId`（按 `projectName` 匹配或卡片内点选）；插件 schema 中 projectId 改为可选并写明「新会话不要去记忆/会话/文件里找 projectId」。
