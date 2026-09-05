@@ -14,6 +14,7 @@ import type {
   XhsOpsAccountCreateInput,
   XhsOpsAccountUpdateInput,
   XhsOpsPlanSuggestion,
+  XhsOpsProfilePart,
   XhsOpsProject,
   XhsOpsProjectCreateInput,
   XhsOpsProjectUpdateInput,
@@ -222,6 +223,34 @@ export const xhsOpsApi = {
       () => client.delete({ url: `${BASE}/accounts/${enc(accountId)}` }),
       "账号删除失败",
     );
+  },
+
+  // ── Profile draft (P2-1) ──
+  async generateProfileDraft(
+    accountId: string,
+    parts: XhsOpsProfilePart[],
+  ): Promise<XhsOpsAccount> {
+    const data = await unwrap(
+      () =>
+        client.post<{ account: XhsOpsAccount }>({
+          url: `${BASE}/accounts/${enc(accountId)}/profile-draft/generate`,
+          body: { parts },
+        }),
+      "资料生成失败",
+    );
+    return data.account;
+  },
+
+  async applyProfileDraft(accountId: string): Promise<XhsOpsAccount> {
+    const data = await unwrap(
+      () =>
+        client.post<{ account: XhsOpsAccount }>({
+          url: `${BASE}/accounts/${enc(accountId)}/profile-draft/apply`,
+          body: {},
+        }),
+      "资料应用到手机失败",
+    );
+    return data.account;
   },
 
   // ── Plan suggestion ──

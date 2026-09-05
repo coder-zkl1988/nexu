@@ -553,6 +553,22 @@ const COMPONENT_SCHEMAS = [
     },
   },
   {
+    type: "XhsOpsProfileMaterial",
+    required: ["id", "type", "projectId"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsProfileMaterial" },
+      projectId: {
+        type: "string",
+        description: "The nurturing project whose bound accounts get profile material.",
+      },
+      accountId: {
+        type: "string",
+        description: "Optional: show only this account.",
+      },
+    },
+  },
+  {
     type: "XhsOpsRunPlanner",
     required: ["id", "type", "projectId"],
     properties: {
@@ -628,6 +644,7 @@ WHEN TO USE:
     • collect / edit customer business + target-audience info → XhsOpsProjectForm (it fires xhs_ops_project_saved; then generate the target-user profile from the saved business/audience/opsNotes)
     • present the generated profile for HUMAN confirmation → XhsOpsProfileCard (wait for xhs_ops_profile_confirmed or xhs_ops_profile_regenerate; NEVER proceed to personas before confirmed — this gate is a product requirement)
     • batch persona suggestions + phone binding → XhsOpsAccountPlanner (TEN personas by default, each with structured persona demographics {age, gender, region, occupation, lifeStatus}; differentiated from each other but jointly matching the confirmed profile)
+    • (optional, after personas are saved) account profile material → XhsOpsProfileMaterial (render with just projectId; the DESKTOP generates nickname/bio and 3 avatar + 3 cover candidates on button click, the user picks and edits, and only the user's 「应用到手机」 changes the public profile — you receive xhs_ops_profile_applied; never trigger profile changes yourself)
     • today's per-account plan + execution + progress → XhsOpsRunPlanner (render it with just projectId — the desktop generates each account's plan from its interest pool and shows the rationale; pass plans only when the user dictated keywords; the user adjusts and starts; xhs_ops_run_finished carries the summary — do NOT re-dispatch afterwards, help review instead)
     • Never render these stages as plain text or Markdown lists — the components own the form, confirmation and progress UX.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
@@ -676,8 +693,9 @@ CUSTOM COMPONENTS:
 - XhsOpsProjectForm: KOC nurturing project form — customer business, target audience, ops notes; saves via the controller API and reports back xhs_ops_project_saved.
 - XhsOpsProfileCard: Target-user profile proposal with inline editing and human confirm/regenerate (xhs_ops_profile_confirmed / xhs_ops_profile_regenerate).
 - XhsOpsAccountPlanner: Persona suggestion table with phone binding and three-layer interest pool editing.
+- XhsOpsProfileMaterial: Per-account profile material — AI-generated nickname/bio, 3 avatar + 3 cover candidates to pick from, and a user-triggered 「应用到手机」 that edits the public profile via the phone.
 - XhsOpsRunPlanner: Today's per-account nurture plan (keywords × counts + home feed), launch button, live chunk progress, and post-run review notes.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, or XhsOpsRunPlanner.`;
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, XhsOpsProfileMaterial, or XhsOpsRunPlanner.`;
 
 const plugin = {
   id: "nexu-a2ui",

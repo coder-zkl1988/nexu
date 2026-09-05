@@ -305,3 +305,94 @@ export function extractBrowsedFromMessage(
     planned: Number.parseInt(last[2] ?? "0", 10),
   };
 }
+
+// ─── 资料维护（P2-1 账号基础资料应用到手机）────────────────────────────────
+
+export interface XhsOpsProfileApplyTaskInput {
+  label: string;
+  nickname?: string | null;
+  bio?: string | null;
+  /** 已推送到手机「Tabby」相册的文件名（不含路径） */
+  avatarFilename?: string | null;
+  coverFilename?: string | null;
+}
+
+export const PROFILE_JSON_MARKER = "PROFILE_JSON:";
+
+/**
+ * 按 xhs profile 子技能的纪律组织：每次只改一个字段、保存后回「我」页核对；
+ * 头像/背景从刚推送的相册图片里按文件名选；未列出的字段一律不碰。
+ * 结束时最后一行 PROFILE_JSON 给桌面回读各字段 done/failed/skipped。
+ */
+export function buildProfileApplyTask(
+  input: XhsOpsProfileApplyTaskInput,
+): string {
+  const steps: string[] = [];
+  let n = 1;
+  if (input.nickname?.trim()) {
+    steps.push(
+      `${n++}) 名字：点「名字」进入编辑页，点输入框后**只执行一次 TYPE**，整体替换为「${input.nickname.trim()}」，点保存/完成；遇到修改次数、字符或敏感词限制就停止并原样记下提示。`,
+    );
+  }
+  if (input.bio?.trim()) {
+    steps.push(
+      `${n++}) 简介：点「简介」，**只执行一次 TYPE**，整体替换为下面这段（原样输入，不改写、不追加）：\n${input.bio.trim()}`,
+    );
+  }
+  if (input.avatarFilename) {
+    steps.push(
+      `${n++}) 头像：点编辑主页顶部头像/「更换头像」（不要点「背景图」）→ 从相册选择「Tabby」相册里文件名为 ${input.avatarFilename} 的图片（刚推送的那张）→ 检查裁剪预览主体正确 → 完成/保存。系统请求相册权限时选「选择部分照片和视频」只授权这张。`,
+    );
+  }
+  if (input.coverFilename) {
+    steps.push(
+      `${n++}) 背景图：只点「背景图」字段（不要点头像）→ 从「Tabby」相册选文件名为 ${input.coverFilename} 的图片 → 保存。`,
+    );
+  }
+  return [
+    `【小红书资料维护任务｜账号定位：${input.label}】`,
+    "AWAKE 小红书 → 底部「我」→ 头像附近的「编辑主页」（不得点底部中央「+」，那是发布入口）。按下面顺序逐项修改，**每次只改一个字段**，保存后回到「我」页核对再改下一项：",
+    ...steps,
+    "禁止改动小红书号、实名认证、生日、地区、职业、学校等未列出的字段；出现登录页/账号异常/验证码 → 停止并记为 failed。",
+    "隐私：key_process 与汇报里不要复述名字、简介的具体内容，只记「已修改/失败/跳过」。",
+    '结束：回到「我」页核对已改字段确实更新，按通用规则 HOME 回桌面后 COMPLETE。COMPLETE 的 return 先写 2–4 行人读汇报，最后一行必须是 PROFILE_JSON: 加一行紧凑 JSON：{"nickname":"done|failed|skipped","bio":"done|failed|skipped","avatar":"done|failed|skipped","cover":"done|failed|skipped","note":"一句话"}，未要求修改的字段写 skipped。',
+  ].join("\n");
+}
+
+export type XhsOpsProfileFieldOutcome = "done" | "failed" | "skipped";
+export interface XhsOpsProfileJson {
+  nickname: XhsOpsProfileFieldOutcome;
+  bio: XhsOpsProfileFieldOutcome;
+  avatar: XhsOpsProfileFieldOutcome;
+  cover: XhsOpsProfileFieldOutcome;
+  note: string;
+}
+
+function outcome(v: unknown): XhsOpsProfileFieldOutcome {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (s === "done" || s === "failed") return s;
+  return "skipped";
+}
+
+/** 与 parseRecordJson 同样宽容：字面 \\n 归一化、marker 位置无关、尾随文本容忍。 */
+export function parseProfileJson(
+  message: string | null | undefined,
+): XhsOpsProfileJson | null {
+  if (!message) return null;
+  const normalized = message.replace(/\\n/g, "\n");
+  const idx = normalized.lastIndexOf(PROFILE_JSON_MARKER);
+  if (idx < 0) return null;
+  const rest = normalized.slice(idx + PROFILE_JSON_MARKER.length);
+  const lineEnd = rest.indexOf("\n");
+  const payload = parseJsonObject(
+    (lineEnd < 0 ? rest : rest.slice(0, lineEnd)).trim(),
+  );
+  if (payload === null) return null;
+  return {
+    nickname: outcome(payload.nickname),
+    bio: outcome(payload.bio),
+    avatar: outcome(payload.avatar),
+    cover: outcome(payload.cover),
+    note: typeof payload.note === "string" ? payload.note.slice(0, 200) : "",
+  };
+}

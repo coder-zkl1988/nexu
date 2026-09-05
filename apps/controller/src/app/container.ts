@@ -76,6 +76,7 @@ import { WorkflowComposer } from "../services/teams/team-workflow-composer.js";
 import { TeamWorkflowLedgerStore } from "../services/teams/team-workflow-ledger.js";
 import { TeamWorkflowService } from "../services/teams/team-workflow-service.js";
 import { TemplateService } from "../services/template-service.js";
+import { XhsOpsProfileService } from "../services/xhs-ops-profile-service.js";
 import { XhsOpsRunService } from "../services/xhs-ops-run-service.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
@@ -144,6 +145,7 @@ export interface ControllerContainer {
   deviceControlService: DeviceControlService;
   xhsOpsStore: XhsOpsStore;
   xhsOpsRunService: XhsOpsRunService;
+  xhsOpsProfileService: XhsOpsProfileService;
   deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
@@ -852,6 +854,12 @@ export async function createContainer(): Promise<ControllerContainer> {
     deviceControlService,
     xhsOpsStore,
     xhsOpsRunService,
+    xhsOpsProfileService: new XhsOpsProfileService({
+      store: xhsOpsStore,
+      media: mediaGenerationService,
+      deviceControl: deviceControlService,
+      mediaRoot: path.resolve(env.openclawStateDir, "media"),
+    }),
     deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,

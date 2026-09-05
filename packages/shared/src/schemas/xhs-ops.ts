@@ -132,6 +132,38 @@ export const xhsOpsPersonaSchema = z.object({
   lifeStatus: text(),
 });
 
+/**
+ * 账号基础资料草稿（运营文档 §四「账号基础资料」+ 脑图「素材生成/账号创建」）：
+ * 昵称/简介由服务端文本生成；头像/背景图各生成 3 张备选（已拍板：AI 生成备选、
+ * 人工上传仅兜底），运营点选后「应用到手机」走 xhs profile 子技能改资料。
+ */
+export const xhsOpsProfileApplyStatusSchema = z.enum([
+  "applied",
+  "partial",
+  "failed",
+]);
+
+export const xhsOpsProfileDraftSchema = z.object({
+  nickname: text(),
+  /** 星座+MBTI / 自我介绍 / 兴趣介绍 三段，≤100 字 */
+  bio: text(),
+  /** media 目录下的绝对路径 */
+  avatarCandidates: textList(),
+  coverCandidates: textList(),
+  avatarPath: z.string().nullable().default(null),
+  coverPath: z.string().nullable().default(null),
+  generatedAt: z.string().nullable().default(null),
+  appliedAt: z.string().nullable().default(null),
+  applyStatus: xhsOpsProfileApplyStatusSchema.nullable().default(null),
+  /** 手机回报摘要（各字段 done/failed/skipped + 一句话），不含资料具体值 */
+  applyResult: z.string().nullable().default(null),
+});
+
+export const xhsOpsProfilePartSchema = z.enum(["text", "avatar", "cover"]);
+export const xhsOpsProfileGenerateBodySchema = z.object({
+  parts: z.array(xhsOpsProfilePartSchema).min(1).max(3),
+});
+
 export const xhsOpsAccountSchema = z.object({
   id: z.string(),
   projectId: z.string(),
@@ -140,6 +172,7 @@ export const xhsOpsAccountSchema = z.object({
   /** 一句话内容方向与风格 */
   positioning: text(),
   persona: xhsOpsPersonaSchema.default({}),
+  profileDraft: xhsOpsProfileDraftSchema.default({}),
   deviceId: z.string().nullable().default(null),
   deviceName: z.string().nullable().default(null),
   interestPool: xhsOpsInterestPoolSchema.default({}),
@@ -410,3 +443,8 @@ export type XhsOpsRunListResponse = z.infer<typeof xhsOpsRunListResponseSchema>;
 export type XhsOpsRunResponse = z.infer<typeof xhsOpsRunResponseSchema>;
 
 export type XhsOpsPlanSuggestion = z.infer<typeof xhsOpsPlanSuggestionSchema>;
+export type XhsOpsProfileDraft = z.infer<typeof xhsOpsProfileDraftSchema>;
+export type XhsOpsProfilePart = z.infer<typeof xhsOpsProfilePartSchema>;
+export type XhsOpsProfileApplyStatus = z.infer<
+  typeof xhsOpsProfileApplyStatusSchema
+>;

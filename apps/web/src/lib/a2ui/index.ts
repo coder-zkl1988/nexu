@@ -31,6 +31,7 @@ import { XHSEditor } from "./custom-components/XHSEditor";
 import { registerCustomComponent } from "./custom-components/registry";
 import { XhsOpsAccountPlanner } from "./custom-components/xhs-ops/XhsOpsAccountPlanner";
 import { XhsOpsProfileCard } from "./custom-components/xhs-ops/XhsOpsProfileCard";
+import { XhsOpsProfileMaterial } from "./custom-components/xhs-ops/XhsOpsProfileMaterial";
 import { XhsOpsProjectForm } from "./custom-components/xhs-ops/XhsOpsProjectForm";
 import { XhsOpsRunPlanner } from "./custom-components/xhs-ops/XhsOpsRunPlanner";
 
@@ -51,3 +52,8 @@ registerCustomComponent(
   XhsOpsAccountPlanner,
 );
 registerCustomComponent(NEXU_CATALOG, "XhsOpsRunPlanner", XhsOpsRunPlanner);
+registerCustomComponent(
+  NEXU_CATALOG,
+  "XhsOpsProfileMaterial",
+  XhsOpsProfileMaterial,
+);

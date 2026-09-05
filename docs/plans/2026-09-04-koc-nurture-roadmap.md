@@ -45,12 +45,14 @@
 
 ## P2 · 运营化（脑图项主要落在这里）
 
-### 2.1 账号基础资料与素材生成（脑图「素材生成」+「账号创建」）
+### 2.1 账号基础资料与素材生成（脑图「素材生成」+「账号创建」）—— ✅ 已完成（2026-09-05）
 - 数据：account 增 `profileDraft{nickname, bio, avatarPath, coverPath, appliedAt}`。bio 按脑图结构生成：星座+MBTI / 自我介绍 / 兴趣介绍，与 persona、兴趣池一致，避免营销感。
 - 生成：昵称/简介由 agent 生成（与 1.2 同一轮）；头像「人物半身照+自然环境背景」、背景图「知名地区风景+人物背身」走现有 `image_generate`，**每槽位直接生成 3 张备选**落 media 目录，运营在组件里点选（已拍板：直接 AI 生成备选；人工上传仅作兜底）。
 - 应用到手机（脑图「按流程创建账号」）：新任务模板「资料维护」——先 `pushMedia` 推头像/背景到相册，再按 xhs `profile` 子技能改名/性别/生日/地区/职业/头像/背景/简介/兴趣标签；结果回填 `appliedAt`。执行器复用 `XhsOpsRunService` 的 waitForIdle/executeTask，taskPolicy 仍禁 publish/payment。
 - 组件：`XhsOpsProfileMaterial`（预览昵称/简介/头像/背景，可改、可重生成、可「应用到手机」）。
 - 验收：2-3 个账号资料在真机上被改成生成值；档案库（account 列表）可查每个账号的资料与应用时间。
+> 落地：`account.profileDraft{nickname,bio,avatarCandidates[3],coverCandidates[3],avatarPath,coverPath,generatedAt,appliedAt,applyStatus,applyResult}`；`XhsOpsProfileService.generate(accountId, parts)` 走 `MediaGenerationService`（文本：JSON-only 提示词，昵称 ≤12 字、简介三段 ≤100 字、带人设/兴趣池/禁忌、禁营销话术；头像 1:1「人像半身+自然环境」、背景 16:9「地区风景+背身」各 3 张落 media 目录）；`apply(accountId)` = 校验图片在 media 根目录内 → `pushMedia` 推入「Tabby」相册（`tabby-avatar-<id8>`/`tabby-cover-<id8>`）→ 下发「资料维护」任务（只改请求的字段、单次 TYPE、隐私规则、末尾 `PROFILE_JSON:{nickname,bio,avatar,cover: done|failed|skipped}` 契约）→ 回读写 `applyStatus/applyResult/appliedAt`；设备忙 409、未绑定/无内容 400。REST：`POST /api/v1/xhs-ops/accounts/{id}/profile-draft/generate|apply`。组件 `XhsOpsProfileMaterial`（按账号：昵称/简介可改 + 生成、头像/背景 3 选 1 缩略图走 `/api/v1/media/state-file`、保存草稿、「应用到手机」二次确认；上报 `xhs_ops_profile_material_saved` / `xhs_ops_profile_applied`）；插件 schema + 四阶段描述加 3b 可选阶段（明确「应用到手机」只由用户触发）；TOOLS.md 同步。测试：profile-service 8、routes +1、web 渲染 +1，controller/web 全绿。
+> 实盘（2026-09-05，测试账号「豆豆妈…」）：文本生成 54s 得「豆豆妈周末不折腾 / 处女座ENTJ，计划控。32岁海淀互联网妈妈…」（结构与脑图一致、无营销感）；头像 3 张 69s，每张 ~2.2MB PNG，state-file 端点 200 可显示。**未做**：真机「应用到手机」（会改真实公开资料，留给运营在组件里点）。
 
 ### 2.2 复盘看板 `XhsOpsDashboard`
 - 纯读组件：项目 × 账号 × 日期矩阵（计划/实际/首页量/互动次数）、异常汇总（按 type）、observation 时间线、notes 编辑。数据全来自 `GET /runs`。

@@ -7,6 +7,7 @@ import type { SurfaceState } from "../src/lib/a2ui/a2ui-types";
 import type { CustomComponentProps } from "../src/lib/a2ui/custom-components/registry";
 import { XhsOpsAccountPlanner } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsAccountPlanner";
 import { XhsOpsProfileCard } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProfileCard";
+import { XhsOpsProfileMaterial } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProfileMaterial";
 import { XhsOpsProjectForm } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProjectForm";
 import { XhsOpsRunPlanner } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsRunPlanner";
 
@@ -133,5 +134,22 @@ describe("xhs-ops a2ui components render (wiring smoke)", () => {
     );
     // 账号列表异步加载：静态渲染断言卡片骨架与标题（渲染路径通）即可
     expect(html).toContain("今日浏览计划");
+  });
+
+  it("XhsOpsProfileMaterial renders its shell and loading state (P2-1)", () => {
+    const html = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsProfileMaterial,
+          renderProps({
+            id: "c5",
+            type: "XhsOpsProfileMaterial",
+            projectId: "p1",
+          }),
+        ),
+      ),
+    );
+    expect(html).toContain("账号资料与素材");
+    expect(html).toContain("正在加载账号");
   });
 });

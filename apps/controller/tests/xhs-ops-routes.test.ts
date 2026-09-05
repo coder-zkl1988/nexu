@@ -5,6 +5,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { afterAll, describe, expect, it } from "vitest";
 import type { ControllerContainer } from "../src/app/container.js";
 import { registerXhsOpsRoutes } from "../src/routes/xhs-ops-routes.js";
+import { XhsOpsProfileService } from "../src/services/xhs-ops-profile-service.js";
 import { XhsOpsRunService } from "../src/services/xhs-ops-run-service.js";
 import { XhsOpsStore } from "../src/store/xhs-ops-store.js";
 import type { ControllerBindings } from "../src/types.js";
@@ -23,11 +24,30 @@ const runService = new XhsOpsRunService({
   },
 });
 
+const profileService = new XhsOpsProfileService({
+  store,
+  mediaRoot: tempDir,
+  media: {
+    generateText: async () => ({
+      text: '{"nickname":"路由昵称","bio":"路由简介"}',
+    }),
+    generateImage: async () => ({ path: "", items: [] }),
+  },
+  deviceControl: {
+    getDevice: async () => null,
+    executeTask: async () => {
+      throw new Error("not used in route smoke test");
+    },
+    pushMedia: async () => ({ results: [] }),
+  },
+});
+
 function buildApp() {
   const app = new OpenAPIHono<ControllerBindings>();
   registerXhsOpsRoutes(app, {
     xhsOpsStore: store,
     xhsOpsRunService: runService,
+    xhsOpsProfileService: profileService,
   } as ControllerContainer);
   return app;
 }
@@ -205,6 +225,66 @@ describe("xhs-ops routes wiring", () => {
 
     const missing = await app.request(
       "/api/v1/xhs-ops/projects/nope/plan-suggest",
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it("profile-draft generate persists text and apply refuses an empty draft with 400", async () => {
+    const app = buildApp();
+    const proj = (
+      (await (
+        await app.request("/api/v1/xhs-ops/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "资料路由" }),
+        })
+      ).json()) as { project: { id: string } }
+    ).project;
+    const account = (
+      (await (
+        await app.request(`/api/v1/xhs-ops/projects/${proj.id}/accounts`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ label: "资料账号", deviceId: "dev-1" }),
+        })
+      ).json()) as { account: { id: string } }
+    ).account;
+
+    const gen = await app.request(
+      `/api/v1/xhs-ops/accounts/${account.id}/profile-draft/generate`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parts: ["text"] }),
+      },
+    );
+    expect(gen.status).toBe(200);
+    const genned = (
+      (await gen.json()) as {
+        account: { profileDraft: { nickname: string; bio: string } };
+      }
+    ).account;
+    expect(genned.profileDraft).toMatchObject({
+      nickname: "路由昵称",
+      bio: "路由简介",
+    });
+
+    await app.request(`/api/v1/xhs-ops/accounts/${account.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profileDraft: { nickname: "", bio: "" } }),
+    });
+    const apply = await app.request(
+      `/api/v1/xhs-ops/accounts/${account.id}/profile-draft/apply`,
+      { method: "POST" },
+    );
+    expect(apply.status).toBe(400);
+
+    const missing = await app.request(
+      "/api/v1/xhs-ops/accounts/nope/profile-draft/apply",
+      {
+        method: "POST",
+      },
     );
     expect(missing.status).toBe(404);
   });

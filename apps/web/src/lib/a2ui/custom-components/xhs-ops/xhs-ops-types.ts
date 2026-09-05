@@ -94,6 +94,23 @@ export interface XhsOpsInterestPool {
   general: string[];
 }
 
+export type XhsOpsProfilePart = "text" | "avatar" | "cover";
+export type XhsOpsProfileApplyStatus = "applied" | "partial" | "failed";
+
+export interface XhsOpsProfileDraft {
+  nickname: string;
+  bio: string;
+  /** media 目录下的绝对路径 */
+  avatarCandidates: string[];
+  coverCandidates: string[];
+  avatarPath: string | null;
+  coverPath: string | null;
+  generatedAt: string | null;
+  appliedAt: string | null;
+  applyStatus: XhsOpsProfileApplyStatus | null;
+  applyResult: string | null;
+}
+
 export interface XhsOpsPersona {
   age: string;
   gender: string;
@@ -111,6 +128,8 @@ export interface XhsOpsAccount {
   positioning: string;
   /** 人设人口学字段（年龄/性别/地区/职业/生活状态） */
   persona: XhsOpsPersona;
+  /** 账号基础资料草稿（昵称/简介/头像背景备选/应用状态） */
+  profileDraft: XhsOpsProfileDraft;
   deviceId: string | null;
   deviceName: string | null;
   interestPool: XhsOpsInterestPool;
@@ -261,6 +280,7 @@ export interface XhsOpsAccountCreateInput {
   label: string;
   positioning?: string;
   persona?: XhsOpsPersona;
+  profileDraft?: XhsOpsProfileDraft;
   deviceId?: string | null;
   deviceName?: string | null;
   interestPool?: XhsOpsInterestPool;
@@ -640,4 +660,46 @@ export interface XhsOpsPlanSuggestion {
   dwellSecMax: number;
   interaction: XhsOpsInteractionConfig;
   rationale: string[];
+}
+
+export function emptyProfileDraft(): XhsOpsProfileDraft {
+  return {
+    nickname: "",
+    bio: "",
+    avatarCandidates: [],
+    coverCandidates: [],
+    avatarPath: null,
+    coverPath: null,
+    generatedAt: null,
+    appliedAt: null,
+    applyStatus: null,
+    applyResult: null,
+  };
+}
+
+export function normalizeProfileDraft(value: unknown): XhsOpsProfileDraft {
+  const v = asRecord(value);
+  const status = asString(v.applyStatus);
+  return {
+    nickname: asString(v.nickname).slice(0, 20),
+    bio: asString(v.bio).slice(0, 200),
+    avatarCandidates: asStringArray(v.avatarCandidates),
+    coverCandidates: asStringArray(v.coverCandidates),
+    avatarPath:
+      typeof v.avatarPath === "string" && v.avatarPath ? v.avatarPath : null,
+    coverPath:
+      typeof v.coverPath === "string" && v.coverPath ? v.coverPath : null,
+    generatedAt: typeof v.generatedAt === "string" ? v.generatedAt : null,
+    appliedAt: typeof v.appliedAt === "string" ? v.appliedAt : null,
+    applyStatus:
+      status === "applied" || status === "partial" || status === "failed"
+        ? status
+        : null,
+    applyResult: typeof v.applyResult === "string" ? v.applyResult : null,
+  };
+}
+
+/** media 目录绝对路径 → 桌面可显示的 URL（controller 的 state-file 端点）。 */
+export function mediaFileUrl(absPath: string): string {
+  return `/api/v1/media/state-file?path=${encodeURIComponent(absPath)}`;
 }

@@ -5,6 +5,7 @@ import {
   xhsOpsAccountResponseSchema,
   xhsOpsAccountUpdateSchema,
   xhsOpsPlanSuggestResponseSchema,
+  xhsOpsProfileGenerateBodySchema,
   xhsOpsProjectCreateSchema,
   xhsOpsProjectListResponseSchema,
   xhsOpsProjectResponseSchema,
@@ -54,7 +55,86 @@ export function registerXhsOpsRoutes(
   app: OpenAPIHono<ControllerBindings>,
   container: ControllerContainer,
 ): void {
-  const { xhsOpsStore: store, xhsOpsRunService: runService } = container;
+  const {
+    xhsOpsStore: store,
+    xhsOpsRunService: runService,
+    xhsOpsProfileService: profileService,
+  } = container;
+  const mutationErrors = {
+    400: jsonError("Invalid request"),
+    404: jsonError("Not found"),
+    409: jsonError("Conflict"),
+    500: jsonError("Failed"),
+  };
+
+  // ─── Profile draft (P2-1) ────────────────────────────────────────────────
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/xhs-ops/accounts/{accountId}/profile-draft/generate",
+      tags: TAGS,
+      request: {
+        params: accountIdParamSchema,
+        body: {
+          content: {
+            "application/json": { schema: xhsOpsProfileGenerateBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: xhsOpsAccountResponseSchema },
+          },
+          description: "Account with regenerated profile draft parts",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      try {
+        const account = await profileService.generate(
+          c.req.valid("param").accountId,
+          c.req.valid("json").parts,
+        );
+        return c.json({ account }, 200);
+      } catch (err) {
+        const mapped = mapError(err);
+        return c.json({ message: mapped.message }, mapped.status);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/xhs-ops/accounts/{accountId}/profile-draft/apply",
+      tags: TAGS,
+      request: { params: accountIdParamSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: xhsOpsAccountResponseSchema },
+          },
+          description:
+            "Profile applied on the bound phone; draft carries applyStatus/applyResult",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      try {
+        const account = await profileService.apply(
+          c.req.valid("param").accountId,
+        );
+        return c.json({ account }, 200);
+      } catch (err) {
+        const mapped = mapError(err);
+        return c.json({ message: mapped.message }, mapped.status);
+      }
+    },
+  );
 
   // ─── Plan suggestion ──────────────────────────────────────────────────────
 
