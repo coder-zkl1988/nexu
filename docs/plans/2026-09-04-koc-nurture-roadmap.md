@@ -82,6 +82,7 @@
 ### 3.1 评论（脑图 3%；文档一期不做）—— **已拍板：现在立项，排在 P3 首位**
 - 前提：先设计评论内容审核与风控（文档原话）；立项后先出设计稿再动代码。方案雏形：生成规则「正向认同、≤10 字、不含营销、针对帖子内容」→ 桌面审核队列（人工放行）→ 每日上限与稀疏分布 → 手机 `interact` 子技能执行 → 回填。TaskPolicy 需新增 comment 阻断标签，保证未审核内容不会被发出。
 - 不在一期验收里，但设计与审核队列的基建可与 P2 并行推进。
+> 设计稿已出（2026-09-05）：[2026-09-05-xhs-ops-comment-design.md](2026-09-05-xhs-ops-comment-design.md)——风控规则表、数据模型（comments 集合 / interaction.comment / plan.kind=comment）、五段流程（手机只标注 commentWorthy → 桌面生成候选 → 人工审核组件 XhsOpsCommentReview → 评论 run → 回填看板）、桌面配额公式（min(dailyCap, 5, floor(今日浏览/8))）、**TabbyApp TaskPolicy `comment` 标签 + 文本白名单的机械阻断**、D0–D5 分期与验收。待评审后进 D1（桌面基建，可与 P2 收尾并行）。
 
 ### 3.2 其他
 - 新会话无 projectId 的兜底：`XhsOpsProfileMaterial`/`XhsOpsRunPlanner` 也应像看板一样支持省略 `projectId`（按 `projectName` 匹配或卡片内点选），否则 agent 只能在同一会话里从 `xhs_ops_project_saved` 拿到 id。
