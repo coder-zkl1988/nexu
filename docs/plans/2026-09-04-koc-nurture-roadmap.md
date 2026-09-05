@@ -72,7 +72,7 @@
 - 验收：早 10 点自动跑起 2-3 个账号，同一手机的两个账号先后执行。
 > 落地：project 增 `schedule{enabled, time HH:mm, lastTriggeredDate, lastResult}`；controller 新增 `XhsOpsScheduler`（每 60s tick：启用 + 本地时间 ≥ time + 今天未触发 → `suggestPlans` → 逐条 `createRun(segment)` + `startRun`；先写 `lastTriggeredDate` 再派发 + 进程内 in-flight 锁，重叠/重启都不会当天二次点火；结果写 `lastResult` 如「10:00 定时：2 个开始、1 个排队」），`POST /projects/{id}/schedule/run-now` 手动点火（忽略开关/时间，同样盖今天）。设备队列在 `XhsOpsRunService`：`startRun` 发现同一手机已有 run 在跑 → 保持 planned 并写 `queuedBehindRunId`，前一个 run 的 executor 收尾时 `drainDeviceQueue` 自动启动下一个（FIFO，跳过已取消/删除的）；排队中的 run 可直接取消不碰手机；进程重启清掉孤儿排队标记。多账号同机、多段同账号都由这一个队列串行。RunPlanner 顶部「每日自动执行」开关 + 时间（回传完整 schedule 防止默认值抹掉 lastTriggeredDate）+ 最近结果；卡片状态显示「排队中」。插件描述/TOOLS.md：不要为 xhs-ops 建 OpenClaw cron，指引用户打开开关。测试：scheduler 3、设备队列 2（同机排队→前者结束后自动开始、异机不受影响、重复 start 不重复入队、排队取消不下发 cancelTask、重启清标记）、routes +1；controller 全量绿。**未做**：真机上等到 10 点自动跑（当前无手机在线；可在测试项目上开开关、把时间设为一分钟后验证）。
 
-### 2.5 脑图浏览细节进手机技能（research.md）—— ✅ 文案已落地（2026-09-05，待真机验收）
+### 2.5 脑图浏览细节进手机技能（research.md）—— ✅ 已落地并真机验收（2026-09-06，遵从度见验收记录）
 - 「不要每篇都点进去」：结果页随机跳过 20-40% 卡片（只滑不进）；「时不时点首页刷新切换内容」：首页模式每 3-5 篇回顶/下拉刷新一次；下滑距离随机化（SCROLL distance 在 250-650 间变化）。
 - 验收：一次 run 的 logcat 里能看到跳过与刷新动作。
 > 落地（tabby-control xhs skill v32 / bundle 51，已镜像到 TabbyApp assets）：research.md §三 新增「像真人一样"不是每篇都点"」——每 3–5 张相关卡片至少 1–2 张只滑过不点（≈20–40%，不记账、不算 skipped，跳哪张要变化）；列表与正文 `SCROLL distance` 在 250–650 间变化、偶尔小滑露半张再决定；首页模式每 3–5 篇回顶下拉刷新一次（`SCROLL direction:up distance:400` 或点「首页」tab，刷新不记账，key_process 记「已刷新 1 次」，关键词模式不刷新）；§七 加「连续两次 SCROLL 不要同 distance」。**未做**：真机 logcat 验收——写文案时三台手机都不在线；下次手机在线后用 `xhs-research-e2e.sh` 跑 1 个关键词 3 篇，看 logcat 里是否出现跳过与随机 distance。
@@ -87,6 +87,8 @@
 ### 3.2 其他
 - ~~新会话无 projectId 的兜底~~ ✅ 2026-09-06：`useProjectResolution` + `ProjectPicker` 抽成 `xhs-ops-project-picker.tsx`，看板/RunPlanner/ProfileMaterial 三个组件都支持省略 `projectId`（按 `projectName` 匹配或卡片内点选）；插件 schema 中 projectId 改为可选并写明「新会话不要去记忆/会话/文件里找 projectId」。
 - 登录保活（`login_required` 会停整轮；需预检或定期 login 任务）。
+- SCROLL 距离机械抖动（TabbyApp 侧）：09-06 第 3 轮搜索块 35 次 SCROLL 里 22 次是 450、其中 18 次连续，说明 GLM-5.3-flash 对「距离要变化」这类提示词规则遵从很弱；建议在 `GelabActionParser` 对 distance ≥ 250 的列表滚动加 ±10–15% 随机抖动（<250 的小步精调保持精确），把"像真人"从提示词约束改成机械保证。随机跳过卡片无法机械化，只能靠提示词，验收时按"有没有跳过"而不是比例看。
+- 荣耀「"iTabby"想要打开"小红书"」系统管家提示：目前靠模型点「允许」（多耗 1–2 步），可加入 `dismissKnownSystemInterruptionIfPresent` 的已知打断列表自动点掉（或勾「今日不再提醒」）。
 - 兴趣池轮次快照（复盘"改了什么"）。
 - run 归档（LowDB 500 条上限≈10 账号×50 天）。
 - 停留时长设备侧度量（RECORD_JSON 加 dwellSec；目前只能信模型自述）。
@@ -95,6 +97,13 @@
 - **P2-4 ✅**：验收项目「验收·荣耀定时 0906」把 `schedule.time` 设为 00:19，调度器 00:19:49 按时点火（`reason=schedule`），2 段计划 → 2 个 run：第 1 段直接 running，第 2 段 `queuedBehindRunId` 指向第 1 段；第 1 段结束后队列自动启动第 2 段（日志 `queued run started`）。`lastResult`=「2026-09-06 00:19 定时：1 个开始、1 个排队」。
 - **P2-3 / P2-5 ❌ 被手机侧拦住**：两段 run 的全部 4 个 chunk 在第 0 步失败 `POLICY_APP_ROLE_NOT_ALLOWED: StartApp role=other`——这正是 09-04 在 TabbyApp 修掉的「策略用原始应用名判角色」问题（f269cf7），说明这台荣耀跑的是旧 APK（昨天只给 Redmi 装了新包；公网 release 也是 1.0.20，无法靠版本号区分）。技能包已确认同步到 bundle 51（xhs v32），所以一旦装上新 APK，重跑同一项目即可同时验收 P2-3 与 P2-5。
 - 附带结论：设备队列 + 「连续 2 个任务块失败即停」的组合在坏设备上表现正确——两段各 10 秒内失败收尾，没有卡住手机。
+
+**续（同日 00:41–01:33，荣耀装上新 APK 后再跑两轮）**
+- 第 2 轮（00:43 手动点火，仍是 09-04 修复版 APK）：两段的搜索块都在第 0 步失败——新原因 `POLICY_APP_ROLE_NOT_ALLOWED: FOREGROUND_VERIFY role=other`：AWAKE 成功后运行器只采样一次前台就交给策略，荣耀启动应用先经过自身界面/桌面 → `com.hihonor.systemmanager`「"iTabby"想要打开"小红书"」提示 → 目标，采样落在前两者。两段的首页块都跑通（4/4、2/4），第 2 段 2/4 是模型以「推荐流与定位不匹配」提前结束。修复：TabbyApp `LaunchForegroundGate` + `awaitLaunchForeground`（等过渡最多 6s，过渡态 = 自身/桌面/来源应用/厂商过渡页；未落定则跳过本次校验），`hihonor/huawei systemmanager` 归 `system_dialog`（TabbyApp `10d001b`，527/527 单测）；xhs 技能 v33 明确首页模式冷启动不匹配也按目标篇数浏览完（bundle 52）。
+- 第 3 轮（00:57 手动建两段 run 并启动，新 APK，手机起跑时故意停在 Tabby 界面）：**P2-3 ✅** 第 2 段排在第 1 段后面、第 1 段结束后自动启动；**前台校验修复 ✅** 日志 `FOREGROUND_VERIFY skipped: launch still in transition after 6000ms`，两段搜索块均 4/4 完成（第 1 段 42 步、第 2 段 25 步），RECORD_JSON 与 `[回执]` 正常。第 2 段整段 8/8、0 异常、943s；第 1 段首页块在 60 步上限处被终止（2/4 浏览 + 2 篇因评论不足 3 条跳过），账本被抢救回填。
+- **P2-5 遵从度（logcat 证据）**：① 跳过：模型推理里明确引用「随机跳过20-40%的卡片」，实际跳过的是广告/直播/评论不足的帖子，未观察到对正常相关卡片的随机滑过；② 滑动距离：出现 300/350/400/450/500 五种值（v31 时只有 350/450），但 450 占 36/79 且最长 18 次连续相同——「连续两次不同 distance」基本没被遵守；③ 首页刷新：两个首页块各只浏览 2–4 篇，未触发「每 3–5 篇刷新」，无法判定。结论：文案生效但 GLM-5.3-flash 对"要变化/随机"类规则遵从弱，建议按 3.2 的机械抖动方案落地。
+- **意外收获**：第 2 轮首页推荐流是脱口秀/羽毛球/机票（与定位无关），第 3 轮在两个搜索块之后首页推荐已变成希尔顿/全季/亚朵/汉庭等酒店笔记——一次搜索浏览就能把新号推荐流往定位方向推，正是养号要看的信号，看板的观察时间线里能直接读到。
+- 后续：首页块步数预算（`chunkMaxSteps = 20 + 篇数×10`）在需要跳过多篇时偏紧，建议按模式区分（首页 30 + 篇数×12）或把跳过计入预算；验收项目「验收·荣耀定时 0906」的定时已关闭，运行记录保留作首个真机样本。
 
 ## 决策记录（2026-09-04 已拍板）
 1. 80-100 篇/天**不是硬性要求**——一期 30-50 篇观察，多 run 拆分为可选能力（2.3）。
