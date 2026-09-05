@@ -35,6 +35,16 @@ export interface XhsOpsBrowseDefaults {
   postsPerKeyword: number;
   /** 0..12 */
   homeFeedCount: number;
+  /** 日目标篇数（0 = 不设目标）；>0 时按 dailySegments 拆段 */
+  dailyTargetPosts: number;
+  /** 当日拆成几个 run 串行执行，1..3；1 = 单 run */
+  dailySegments: number;
+}
+
+/** 当日多段执行时本 run 的段序；单 run 为 null。 */
+export interface XhsOpsRunSegment {
+  index: number;
+  count: number;
 }
 
 export interface XhsOpsBusiness {
@@ -243,6 +253,7 @@ export interface XhsOpsRun {
   date: string;
   status: XhsOpsRunStatus;
   plan: XhsOpsRunPlan;
+  segment: XhsOpsRunSegment | null;
   chunks: XhsOpsRunChunk[];
   summary: XhsOpsRunSummary;
   /** 运营观察（人工填写） */
@@ -298,6 +309,7 @@ export interface XhsOpsRunCreateInput {
   /** YYYY-MM-DD; server defaults to today (local time zone). */
   date?: string;
   plan: XhsOpsRunPlan;
+  segment?: XhsOpsRunSegment | null;
 }
 
 export interface XhsOpsRunUpdateInput {
@@ -328,6 +340,8 @@ export function defaultBrowseDefaults(): XhsOpsBrowseDefaults {
     searchRatioPercent: 80,
     postsPerKeyword: 5,
     homeFeedCount: 6,
+    dailyTargetPosts: 0,
+    dailySegments: 1,
   };
 }
 
@@ -530,7 +544,26 @@ export function normalizeBrowseDefaults(value: unknown): XhsOpsBrowseDefaults {
     ),
     postsPerKeyword: asInt(v.postsPerKeyword, d.postsPerKeyword, 1, 8),
     homeFeedCount: asInt(v.homeFeedCount, d.homeFeedCount, 0, 12),
+    dailyTargetPosts: asInt(v.dailyTargetPosts, d.dailyTargetPosts, 0, 150),
+    dailySegments: asInt(v.dailySegments, d.dailySegments, 1, 3),
   };
+}
+
+export function normalizeRunSegment(value: unknown): XhsOpsRunSegment | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const count = asInt(v.count, 0, 0, 3);
+  const index = asInt(v.index, 0, 0, 3);
+  if (count < 1 || index < 1 || index > count) return null;
+  return { index, count };
+}
+
+export function segmentLabel(
+  segment: XhsOpsRunSegment | null | undefined,
+): string {
+  return segment && segment.count > 1
+    ? `第 ${segment.index}/${segment.count} 段`
+    : "";
 }
 
 export function emptyPersona(): XhsOpsPersona {
@@ -660,6 +693,7 @@ export interface XhsOpsPlanSuggestion {
   dwellSecMax: number;
   interaction: XhsOpsInteractionConfig;
   rationale: string[];
+  segment: XhsOpsRunSegment | null;
 }
 
 export function emptyProfileDraft(): XhsOpsProfileDraft {

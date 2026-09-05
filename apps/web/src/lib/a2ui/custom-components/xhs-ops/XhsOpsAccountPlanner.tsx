@@ -687,8 +687,10 @@ function AccountRowEditor({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <SectionTitle>浏览默认值</SectionTitle>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <SectionTitle hint="日目标 0 = 不设；分段 >1 时当日拆成几段串行执行（一期建议 30–50 篇/天观察）">
+              浏览默认值
+            </SectionTitle>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Field label="最短停留（秒）">
                 <NumberInput
                   value={row.browseDefaults.dwellSecMin}
@@ -751,6 +753,26 @@ function AccountRowEditor({
                   max={12}
                   disabled={disabled}
                   onChange={(homeFeedCount) => patchBrowse({ homeFeedCount })}
+                />
+              </Field>
+              <Field label="日目标篇数（0=不设）">
+                <NumberInput
+                  value={row.browseDefaults.dailyTargetPosts}
+                  min={0}
+                  max={150}
+                  disabled={disabled}
+                  onChange={(dailyTargetPosts) =>
+                    patchBrowse({ dailyTargetPosts })
+                  }
+                />
+              </Field>
+              <Field label="当日分段数（1=单次）">
+                <NumberInput
+                  value={row.browseDefaults.dailySegments}
+                  min={1}
+                  max={3}
+                  disabled={disabled}
+                  onChange={(dailySegments) => patchBrowse({ dailySegments })}
                 />
               </Field>
             </div>

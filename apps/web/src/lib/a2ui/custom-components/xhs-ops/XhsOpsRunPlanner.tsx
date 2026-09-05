@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { CustomComponentProps } from "../registry";
 import { describeXhsOpsError, xhsOpsApi } from "./xhs-ops-api";
+import { localDateString } from "./xhs-ops-dashboard-data";
 import {
   type XhsOpsAccount,
   type XhsOpsInteractionConfig,
@@ -17,12 +18,15 @@ import {
   type XhsOpsRun,
   type XhsOpsRunChunk,
   type XhsOpsRunKeyword,
+  type XhsOpsRunSegment,
   asInt,
   asString,
   defaultBrowseDefaults,
   defaultInteractionConfig,
   emptyInteractionCounts,
   isRunActive,
+  normalizeRunSegment,
+  segmentLabel,
 } from "./xhs-ops-types";
 import {
   CardShell,
@@ -54,6 +58,16 @@ interface PlanInput {
   accountId: string;
   keywords: XhsOpsRunKeyword[];
   homeFeedCount: number | null;
+  /** P2-3 当日多段：第几段/共几段；单 run 为 null。 */
+  segment: XhsOpsRunSegment | null;
+}
+
+/** One card per (account, segment). */
+function planKey(plan: {
+  accountId: string;
+  segment: XhsOpsRunSegment | null;
+}) {
+  return `${plan.accountId}#${plan.segment?.index ?? 0}`;
 }
 
 function normalizePlans(raw: unknown): PlanInput[] {
@@ -87,6 +101,7 @@ function normalizePlans(raw: unknown): PlanInput[] {
         p.homeFeedCount === undefined || p.homeFeedCount === null
           ? null
           : asInt(p.homeFeedCount, 6, 0, 12),
+      segment: normalizeRunSegment(p.segment),
     });
   }
   return plans;
@@ -220,9 +235,20 @@ export function XhsOpsRunPlanner({
             accountId: p.accountId,
             keywords: p.keywords,
             homeFeedCount: p.homeFeedCount,
+            segment: normalizeRunSegment(p.segment),
           })),
         );
-        setAutoRationale(new Map(list.map((p) => [p.accountId, p.rationale])));
+        setAutoRationale(
+          new Map(
+            list.map((p) => [
+              planKey({
+                accountId: p.accountId,
+                segment: normalizeRunSegment(p.segment),
+              }),
+              p.rationale,
+            ]),
+          ),
+        );
         setAutoError(null);
       })
       .catch((err) => {
@@ -235,6 +261,24 @@ export function XhsOpsRunPlanner({
     };
   }, [plansKey, projectId, plans.length]);
   const effectivePlans = plans.length > 0 ? plans : (autoPlans ?? []);
+
+  // P2-3 串行分段：第 k 段要等第 k-1 段结束才可开始；默认自动接续。
+  const [finishedKeys, setFinishedKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [autoChain, setAutoChain] = useState(true);
+  const hasSegments = effectivePlans.some(
+    (p) => p.segment !== null && p.segment.count > 1,
+  );
+  const isLocked = (plan: PlanInput) =>
+    plan.segment !== null &&
+    plan.segment.index > 1 &&
+    !finishedKeys.has(
+      planKey({
+        accountId: plan.accountId,
+        segment: { index: plan.segment.index - 1, count: plan.segment.count },
+      }),
+    );
 
   useEffect(() => {
     if (!projectId) {
@@ -276,7 +320,7 @@ export function XhsOpsRunPlanner({
         <ErrorLine
           message={
             autoError ??
-            "没有可执行的计划：项目下还没有已绑定手机的账号，或 plans 缺少 accountId"
+            "没有可执行的计划：项目下没有已绑定手机的账号、plans 缺少 accountId，或今日各段已全部执行（复盘请打开看板）"
           }
         />
       </CardShell>
@@ -294,22 +338,50 @@ export function XhsOpsRunPlanner({
   return (
     <div className="flex w-full max-w-[720px] flex-col gap-3">
       {accountsError ? <ErrorLine message={accountsError} /> : null}
-      {effectivePlans.map((plan) => (
-        <div key={plan.accountId} className="flex flex-col gap-1">
-          {autoRationale.get(plan.accountId)?.length ? (
-            <HintLine>
-              桌面生成依据：{autoRationale.get(plan.accountId)?.join("；")}
-            </HintLine>
-          ) : null}
-          <RunPlanCard
-            projectId={projectId}
-            plan={plan}
-            account={accounts.get(plan.accountId)}
-            onAction={onAction}
-            firedRef={firedRef as MutableRefObject<Set<string>>}
-          />
+      {hasSegments ? (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2/40 px-3 py-1.5 text-[12px]">
+          <span className="text-text-secondary">
+            当日多段：同一账号的各段串行执行，上一段结束后才能开始下一段
+          </span>
+          <div className="flex items-center gap-2 text-text-primary">
+            <span>自动接续下一段</span>
+            <Switch
+              checked={autoChain}
+              onCheckedChange={setAutoChain}
+              aria-label="自动接续下一段"
+            />
+          </div>
         </div>
-      ))}
+      ) : null}
+      {effectivePlans.map((plan) => {
+        const key = planKey(plan);
+        return (
+          <div key={key} className="flex flex-col gap-1">
+            {autoRationale.get(key)?.length ? (
+              <HintLine>
+                桌面生成依据：{autoRationale.get(key)?.join("；")}
+              </HintLine>
+            ) : null}
+            <RunPlanCard
+              projectId={projectId}
+              plan={plan}
+              account={accounts.get(plan.accountId)}
+              onAction={onAction}
+              firedRef={firedRef as MutableRefObject<Set<string>>}
+              locked={isLocked(plan)}
+              autoStart={autoChain}
+              onFinished={() =>
+                setFinishedKeys((prev) => {
+                  if (prev.has(key)) return prev;
+                  const next = new Set(prev);
+                  next.add(key);
+                  return next;
+                })
+              }
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -346,14 +418,23 @@ function RunPlanCard({
   account,
   onAction,
   firedRef,
+  locked = false,
+  autoStart = false,
+  onFinished,
 }: {
   projectId: string;
   plan: PlanInput;
   account: XhsOpsAccount | undefined;
   onAction: CustomComponentProps["onAction"];
   firedRef: MutableRefObject<Set<string>>;
+  /** P2-3：上一段还没结束，本段不可开始。 */
+  locked?: boolean;
+  /** P2-3：解锁瞬间自动派发（仅对分段计划生效）。 */
+  autoStart?: boolean;
+  onFinished?: () => void;
 }) {
   const accountId = plan.accountId;
+  const segment = plan.segment;
   const browse = account?.browseDefaults ?? defaultBrowseDefaults();
 
   // ── Plan editing ──
@@ -386,6 +467,8 @@ function RunPlanCard({
   const [recentOpen, setRecentOpen] = useState(false);
   /** Runs this card started or adopted while active — only these may fire finished. */
   const trackedRef = useRef<Set<string>>(new Set());
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
 
   const refreshRecent = useCallback(async (): Promise<XhsOpsRun[] | null> => {
     if (!projectId) return null;
@@ -405,17 +488,35 @@ function RunPlanCard({
     void (async () => {
       const runs = await refreshRecent();
       if (cancelled || !runs) return;
-      const active = runs.find((r) => isRunActive(r.status));
+      // 分段卡只认今天同段序的 run，否则两张卡会抢同一个 run。
+      const mine = segment
+        ? runs.filter(
+            (r) =>
+              r.date === localDateString(new Date()) &&
+              r.segment?.index === segment.index &&
+              r.segment?.count === segment.count,
+          )
+        : runs;
+      const active = mine.find((r) => isRunActive(r.status));
       if (active) {
         trackedRef.current.add(active.id);
         setRun(active);
         setNotes(active.notes ?? "");
+        return;
+      }
+      if (segment) {
+        const done = mine.find((r) => r.status !== "cancelled");
+        if (done) {
+          setRun(done);
+          setNotes(done.notes ?? "");
+          onFinishedRef.current?.();
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshRecent]);
+  }, [refreshRecent, segment]);
 
   // Poll while the executor owns the run.
   const runId = run?.id ?? null;
@@ -450,7 +551,11 @@ function RunPlanCard({
     if (firedRef.current.has(run.id)) return;
     firedRef.current.add(run.id);
     persistFiredRunId(firedRef.current);
-    onAction?.("xhs_ops_run_finished", buildFinishedContext(run));
+    onAction?.("xhs_ops_run_finished", {
+      ...buildFinishedContext(run),
+      segment: run.segment,
+    });
+    onFinishedRef.current?.();
     void refreshRecent();
   }, [run, onAction, firedRef, refreshRecent]);
 
@@ -485,6 +590,7 @@ function RunPlanCard({
         created = await xhsOpsApi.createRun({
           projectId,
           accountId,
+          segment,
           plan: {
             keywords: cleanKeywords,
             homeFeedCount,
@@ -588,12 +694,34 @@ function RunPlanCard({
     ? run.chunks.reduce((n, c) => n + (c.plannedCount ?? 0), 0)
     : cleanKeywords.reduce((n, k) => n + k.count, 0) + homeFeedCount;
   const canStart =
-    busy === "idle" && (!account || Boolean(account.deviceId)) && editing;
+    busy === "idle" &&
+    (!account || Boolean(account.deviceId)) &&
+    editing &&
+    !locked;
+
+  // P2-3 自动接续：本段在本次挂载期间从"锁定"变为"可开始"且尚未派发 → 自动开始。
+  const startRef = useRef(start);
+  startRef.current = start;
+  const wasLockedRef = useRef(locked);
+  useEffect(() => {
+    if (!segment || !autoStart) {
+      wasLockedRef.current = locked;
+      return;
+    }
+    if (locked) {
+      wasLockedRef.current = true;
+      return;
+    }
+    if (wasLockedRef.current && !run && !pendingRun && busy === "idle") {
+      wasLockedRef.current = false;
+      void startRef.current();
+    }
+  }, [locked, autoStart, segment, run, pendingRun, busy]);
 
   return (
     <CardShell
       testId="run-plan-card"
-      title={`今日浏览计划 · ${title}`}
+      title={`今日浏览计划 · ${title}${segment && segment.count > 1 ? ` · ${segmentLabel(segment)}` : ""}`}
       subtitle={subtitle}
       actions={
         run ? (
@@ -608,7 +736,7 @@ function RunPlanCard({
         <>
           <div className="min-w-0 text-[11px] text-text-tertiary">
             {editing
-              ? `共 ${plannedTotal} 篇 · 关键词 ${cleanKeywords.length} 个 · 首页 ${homeFeedCount} 篇`
+              ? `共 ${plannedTotal} 篇 · 关键词 ${cleanKeywords.length} 个 · 首页 ${homeFeedCount} 篇${locked && segment ? ` · 等待第 ${segment.index - 1} 段结束后${autoStart ? "自动开始" : "可开始"}` : ""}`
               : run && runActive
                 ? `已浏览 ${liveBrowsed}/${plannedTotal} · 赞 ${liveInteractions?.like ?? 0} 藏 ${liveInteractions?.collect ?? 0} 关 ${liveInteractions?.follow ?? 0}${run.startedAt ? ` · ${formatClock(run.startedAt)} 开始` : ""}`
                 : run
@@ -621,10 +749,18 @@ function RunPlanCard({
                 onClick={() => void start()}
                 disabled={!canStart}
                 title={
-                  account && !account.deviceId ? "该账号未绑定设备" : undefined
+                  account && !account.deviceId
+                    ? "该账号未绑定设备"
+                    : locked
+                      ? "上一段尚未结束"
+                      : undefined
                 }
               >
-                {busy === "starting" ? "派发中…" : "开始执行"}
+                {busy === "starting"
+                  ? "派发中…"
+                  : locked
+                    ? "等待上一段"
+                    : "开始执行"}
               </PrimaryButton>
             ) : null}
             {run && runActive ? (

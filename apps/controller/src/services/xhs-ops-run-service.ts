@@ -22,7 +22,7 @@ import {
   DeviceControlRpcError,
   type DeviceControlService,
 } from "./device-control-service.js";
-import { suggestPlan } from "./xhs-ops-plan-suggest.js";
+import { suggestDailyPlans } from "./xhs-ops-plan-suggest.js";
 import {
   type XhsOpsChunkQuota,
   buildHomeChunkTask,
@@ -332,7 +332,13 @@ export class XhsOpsRunService {
     for (const account of accounts) {
       if (!account.deviceId) continue;
       const runs = await this.store.listRuns({ accountId: account.id });
-      plans.push(suggestPlan(account, runs));
+      plans.push(
+        ...suggestDailyPlans(
+          account,
+          runs,
+          localDateString(new Date(this.now())),
+        ),
+      );
     }
     return plans;
   }
@@ -356,6 +362,7 @@ export class XhsOpsRunService {
       date: input.date ?? localDateString(new Date(this.now())),
       status: "planned",
       plan: input.plan,
+      segment: input.segment ?? null,
       chunks,
       summary: summarizeRun(chunks, null, null),
       notes: "",

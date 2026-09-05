@@ -46,6 +46,13 @@ export const xhsOpsBrowseDefaultsSchema = z.object({
   searchRatioPercent: z.number().int().min(0).max(100).default(80),
   postsPerKeyword: z.number().int().min(1).max(8).default(5),
   homeFeedCount: z.number().int().min(0).max(12).default(6),
+  /**
+   * 日目标篇数（P2-3，可选）。0 = 不设目标，按 每词篇数 × 词数 走；>0 时当日
+   * 计划按 dailySegments 拆成几段，每段总量 ≈ 目标 ÷ 段数。已拍板一期 30–50。
+   */
+  dailyTargetPosts: z.number().int().min(0).max(150).default(0),
+  /** 当日拆成几个 run 串行执行（上午/下午/晚上）；1 = 单 run（默认）。 */
+  dailySegments: z.number().int().min(1).max(3).default(1),
 });
 
 // ─── Project ─────────────────────────────────────────────────────────────────
@@ -287,6 +294,12 @@ export const xhsOpsRunSummarySchema = z.object({
   durationMs: z.number().int().nullable().default(null),
 });
 
+/** 当日多段执行时本 run 是第几段（P2-3）；单 run 为 null。 */
+export const xhsOpsRunSegmentSchema = z.object({
+  index: z.number().int().min(1).max(3),
+  count: z.number().int().min(1).max(3),
+});
+
 export const xhsOpsRunStatusSchema = z.enum([
   "planned",
   "running",
@@ -306,6 +319,7 @@ export const xhsOpsRunSchema = z.object({
   date: xhsOpsDateSchema,
   status: xhsOpsRunStatusSchema,
   plan: xhsOpsRunPlanSchema,
+  segment: xhsOpsRunSegmentSchema.nullable().default(null),
   chunks: z.array(xhsOpsRunChunkSchema).default([]),
   summary: xhsOpsRunSummarySchema.default({}),
   /** 运营观察（人工填写） */
@@ -323,6 +337,7 @@ export const xhsOpsRunCreateSchema = z.object({
   /** Defaults to today in the controller's local time zone. */
   date: xhsOpsDateSchema.optional(),
   plan: xhsOpsRunPlanSchema,
+  segment: xhsOpsRunSegmentSchema.nullable().optional(),
 });
 
 export const xhsOpsRunUpdateSchema = z.object({
@@ -340,6 +355,8 @@ export const xhsOpsPlanSuggestionSchema = z.object({
   interaction: xhsOpsInteractionConfigSchema,
   /** 生成依据，给运营看：轮换第几轮、避开了什么、比例怎么算的。 */
   rationale: z.array(z.string()),
+  /** 多段执行时的段序（P2-3）；单 run 为 null。 */
+  segment: xhsOpsRunSegmentSchema.nullable().default(null),
 });
 
 export const xhsOpsPlanSuggestResponseSchema = z.object({
@@ -425,6 +442,7 @@ export type XhsOpsRunPlan = z.infer<typeof xhsOpsRunPlanSchema>;
 export type XhsOpsRunPlanInput = z.input<typeof xhsOpsRunPlanSchema>;
 export type XhsOpsRunSummary = z.infer<typeof xhsOpsRunSummarySchema>;
 export type XhsOpsRunStatus = z.infer<typeof xhsOpsRunStatusSchema>;
+export type XhsOpsRunSegment = z.infer<typeof xhsOpsRunSegmentSchema>;
 export type XhsOpsRun = z.infer<typeof xhsOpsRunSchema>;
 export type XhsOpsRunCreate = z.infer<typeof xhsOpsRunCreateSchema>;
 export type XhsOpsRunCreateInput = z.input<typeof xhsOpsRunCreateSchema>;

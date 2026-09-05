@@ -25,6 +25,7 @@ import {
   asInt,
   asString,
   isRunActive,
+  segmentLabel,
 } from "./xhs-ops-types";
 import {
   CardShell,
@@ -558,6 +559,11 @@ function RunDetail({
         <span className={`font-medium ${runStatusTextClass(run.status)}`}>
           {runStatusLabel(run.status)}
         </span>
+        {run.segment && run.segment.count > 1 ? (
+          <span className="rounded-full bg-surface-2 px-1.5 text-[10px] text-text-secondary">
+            {segmentLabel(run.segment)}
+          </span>
+        ) : null}
         <span className="text-text-tertiary">
           {formatClock(run.startedAt ?? run.createdAt)}
           {run.completedAt ? ` → ${formatClock(run.completedAt)}` : ""} ·{" "}

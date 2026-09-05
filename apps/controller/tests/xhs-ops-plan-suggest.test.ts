@@ -2,6 +2,7 @@ import type { XhsOpsAccount, XhsOpsRun } from "@nexu/shared";
 import { describe, expect, it } from "vitest";
 import {
   homeFeedFromRatio,
+  suggestDailyPlans,
   suggestPlan,
 } from "../src/services/xhs-ops-plan-suggest.js";
 import { computeChunkQuota } from "../src/services/xhs-ops-run-service.js";
@@ -38,6 +39,8 @@ function account(overrides: Partial<XhsOpsAccount> = {}): XhsOpsAccount {
       searchRatioPercent: 80,
       postsPerKeyword: 5,
       homeFeedCount: 6,
+      dailyTargetPosts: 0,
+      dailySegments: 1,
     },
     createdAt: "2026-09-04T00:00:00.000Z",
     updatedAt: "2026-09-04T00:00:00.000Z",
@@ -156,5 +159,74 @@ describe("computeChunkQuota with ratioPercent (P1-4 触发比例生效)", () => 
     expect(
       computeChunkQuota(config, { like: 4, collect: 0, follow: 0 }, 4).like,
     ).toEqual({ enabled: true, max: 1 });
+  });
+});
+
+describe("suggestDailyPlans (P2-3 当日容量拆分，可选能力)", () => {
+  const browse = account().browseDefaults;
+  it("single segment (default) is exactly suggestPlan with segment=null", () => {
+    const plans = suggestDailyPlans(account(), [], "2026-09-05");
+    expect(plans).toHaveLength(1);
+    expect(plans[0]?.segment).toBeNull();
+    expect(plans[0]?.keywords).toEqual(suggestPlan(account(), []).keywords);
+  });
+
+  it("dailySegments=2 yields two serial segments with rotated keyword sets sized from the daily target", () => {
+    const acct = account({
+      browseDefaults: { ...browse, dailyTargetPosts: 40, dailySegments: 2 },
+    });
+    const plans = suggestDailyPlans(acct, [], "2026-09-05");
+    expect(plans.map((p) => p.segment)).toEqual([
+      { index: 1, count: 2 },
+      { index: 2, count: 2 },
+    ]);
+    const words = plans.map((p) => p.keywords.map((k) => k.keyword).join(","));
+    expect(words[0]).not.toBe(words[1]); // 第 2 段视作下一轮，核心词轮换
+    for (const p of plans) {
+      // 40 ÷ 2 = 20 篇/段；搜索占比 80% → 搜索 16 → 每词 ceil(16/5)=4 → 20 篇，首页补 0
+      expect(p.keywords.every((k) => k.count === 4)).toBe(true);
+      expect(
+        p.keywords.reduce((n, k) => n + k.count, 0) + p.homeFeedCount,
+      ).toBe(20);
+      expect(p.rationale[0]).toContain("第 ");
+      expect(p.rationale.join(" ")).toContain("日目标 40 篇 ÷ 2 段");
+    }
+  });
+
+  it("skips segments that already ran today, keeps cancelled ones open", () => {
+    const acct = account({
+      browseDefaults: { ...browse, dailyTargetPosts: 0, dailySegments: 3 },
+    });
+    const ran = (index: number, status: string, date = "2026-09-05") =>
+      ({
+        ...runWith(["亲子酒店"]),
+        date,
+        status,
+        segment: { index, count: 3 },
+      }) as unknown as XhsOpsRun;
+    const plans = suggestDailyPlans(
+      acct,
+      [
+        ran(2, "cancelled"),
+        ran(1, "completed"),
+        ran(1, "completed", "2026-09-04"),
+      ],
+      "2026-09-05",
+    );
+    expect(plans.map((p) => p.segment?.index)).toEqual([2, 3]);
+    // 目标为 0 时每词沿用 postsPerKeyword
+    expect(plans[0]?.keywords.every((k) => k.count === 5)).toBe(true);
+  });
+
+  it("a daily target without segments resizes the single run", () => {
+    const acct = account({
+      browseDefaults: { ...browse, dailyTargetPosts: 30, dailySegments: 1 },
+    });
+    const [plan] = suggestDailyPlans(acct, [], "2026-09-05");
+    // 30 篇 × 80% = 24 搜索 → 每词 ceil(24/5)=5 → 25；首页 = 30-25 = 5
+    expect(plan?.segment).toBeNull();
+    expect(plan?.keywords.reduce((n, k) => n + k.count, 0)).toBe(25);
+    expect(plan?.homeFeedCount).toBe(5);
+    expect(plan?.rationale.join(" ")).toContain("本次目标 30 篇");
   });
 });

@@ -288,4 +288,91 @@ describe("xhs-ops routes wiring", () => {
     );
     expect(missing.status).toBe(404);
   });
+
+  it("runs persist their segment and plan-suggest splits accounts with dailySegments>1 (P2-3)", async () => {
+    const app = buildApp();
+    const proj = (
+      (await (
+        await app.request("/api/v1/xhs-ops/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "分段测试" }),
+        })
+      ).json()) as { project: { id: string } }
+    ).project;
+    const account = (
+      (await (
+        await app.request(`/api/v1/xhs-ops/projects/${proj.id}/accounts`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            label: "分段账号",
+            deviceId: "dev-1",
+            interestPool: {
+              core: ["亲子酒店", "周末遛娃", "带娃攻略", "周边游"],
+              extended: [],
+              general: [],
+            },
+            browseDefaults: { dailyTargetPosts: 40, dailySegments: 2 },
+          }),
+        })
+      ).json()) as {
+        account: {
+          id: string;
+          browseDefaults: { dailySegments: number; dailyTargetPosts: number };
+        };
+      }
+    ).account;
+    expect(account.browseDefaults).toMatchObject({
+      dailyTargetPosts: 40,
+      dailySegments: 2,
+    });
+
+    const suggest = (await (
+      await app.request(`/api/v1/xhs-ops/projects/${proj.id}/plan-suggest`)
+    ).json()) as {
+      plans: Array<{ segment: { index: number; count: number } | null }>;
+    };
+    expect(suggest.plans.map((p) => p.segment)).toEqual([
+      { index: 1, count: 2 },
+      { index: 2, count: 2 },
+    ]);
+
+    const created = (await (
+      await app.request("/api/v1/xhs-ops/runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectId: proj.id,
+          accountId: account.id,
+          segment: { index: 1, count: 2 },
+          plan: {
+            keywords: [{ keyword: "亲子酒店", count: 4 }],
+            homeFeedCount: 0,
+            dwellSecMin: 10,
+            dwellSecMax: 20,
+            interaction: {
+              like: { enabled: false, dailyCap: 0, ratioPercent: 0 },
+              collect: { enabled: false, dailyCap: 0, ratioPercent: 0 },
+              follow: { enabled: false, dailyCap: 0, ratioPercent: 0 },
+              comment: { enabled: false },
+            },
+          },
+        }),
+      })
+    ).json()) as { run: { id: string; segment: unknown } };
+    expect(created.run.segment).toEqual({ index: 1, count: 2 });
+    const got = (await (
+      await app.request(`/api/v1/xhs-ops/runs/${created.run.id}`)
+    ).json()) as {
+      run: { segment: unknown };
+    };
+    expect(got.run.segment).toEqual({ index: 1, count: 2 });
+
+    // 第 1 段已有 planned run → 今日建议只剩第 2 段
+    const again = (await (
+      await app.request(`/api/v1/xhs-ops/projects/${proj.id}/plan-suggest`)
+    ).json()) as { plans: Array<{ segment: { index: number } | null }> };
+    expect(again.plans.map((p) => p.segment?.index)).toEqual([2]);
+  });
 });

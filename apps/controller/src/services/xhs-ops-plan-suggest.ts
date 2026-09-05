@@ -2,6 +2,7 @@ import type {
   XhsOpsAccount,
   XhsOpsPlanSuggestion,
   XhsOpsRun,
+  XhsOpsRunSegment,
 } from "@nexu/shared";
 
 /**
@@ -61,16 +62,63 @@ export function suggestPlan(
   account: XhsOpsAccount,
   previousRuns: readonly XhsOpsRun[],
 ): XhsOpsPlanSuggestion {
+  const last = previousRuns[0];
+  return suggestPlanAt(
+    account,
+    previousRuns.length,
+    new Set((last?.plan.keywords ?? []).map((k) => k.keyword.trim())),
+    null,
+  );
+}
+
+/**
+ * P2-3 当日多段：账号 `dailySegments` > 1 时，把当天拆成 N 个串行 run，每段
+ * 轮次递进（第 k 段视作"下一轮"，避开上一段的关键词集合），每段总量 ≈
+ * `dailyTargetPosts ÷ N`（目标为 0 时沿用每词篇数）。当天已有的段不再建议，
+ * 所以下午打开计划卡只剩下未跑的段。单段账号退化为 `suggestPlan`。
+ */
+export function suggestDailyPlans(
+  account: XhsOpsAccount,
+  previousRuns: readonly XhsOpsRun[],
+  today: string,
+): XhsOpsPlanSuggestion[] {
+  const segments = Math.max(
+    1,
+    Math.min(3, account.browseDefaults.dailySegments ?? 1),
+  );
+  if (segments <= 1) return [suggestPlan(account, previousRuns)];
+  const doneToday = new Set(
+    previousRuns
+      .filter((r) => r.date === today && r.segment && r.status !== "cancelled")
+      .map((r) => r.segment?.index ?? 0),
+  );
+  const out: XhsOpsPlanSuggestion[] = [];
+  let round = previousRuns.length;
+  let lastSet = new Set(
+    (previousRuns[0]?.plan.keywords ?? []).map((k) => k.keyword.trim()),
+  );
+  for (let index = 1; index <= segments; index++) {
+    const segment: XhsOpsRunSegment = { index, count: segments };
+    if (doneToday.has(index)) continue;
+    const plan = suggestPlanAt(account, round, lastSet, segment);
+    out.push(plan);
+    round += 1;
+    lastSet = new Set(plan.keywords.map((k) => k.keyword));
+  }
+  return out;
+}
+
+function suggestPlanAt(
+  account: XhsOpsAccount,
+  round: number,
+  lastSet: ReadonlySet<string>,
+  segment: XhsOpsRunSegment | null,
+): XhsOpsPlanSuggestion {
   const core = uniq(account.interestPool.core);
   const extended = uniq(account.interestPool.extended);
   const general = uniq(account.interestPool.general);
-  const round = previousRuns.length;
   const rationale: string[] = [];
 
-  const last = previousRuns[0];
-  const lastSet = new Set(
-    (last?.plan.keywords ?? []).map((k) => k.keyword.trim()),
-  );
   let offset = core.length > 0 ? round % core.length : 0;
   let picks = rotate(core, offset, CORE_PICK);
   if (
@@ -86,14 +134,39 @@ export function suggestPlan(
   const ext = rotate(extended, round, EXTENDED_PICK);
   const gen = rotate(general, round, GENERAL_PICK);
   const words = uniq([...picks, ...ext, ...gen]).slice(0, MAX_KEYWORDS);
-  const perKeyword = account.browseDefaults.postsPerKeyword;
+  const target = account.browseDefaults.dailyTargetPosts ?? 0;
+  const segmentCount = segment?.count ?? 1;
+  let perKeyword = account.browseDefaults.postsPerKeyword;
+  let homeFeedCount = 0;
+  let targetLine: string | null = null;
+  if (target > 0 && words.length > 0) {
+    // 日目标 ÷ 段数 = 本段目标；按搜索占比切成 搜索/首页，每词篇数取整并钳 1..8。
+    const segmentTarget = Math.ceil(target / segmentCount);
+    const r =
+      Math.max(0, Math.min(100, account.browseDefaults.searchRatioPercent)) /
+      100;
+    const searchTarget = Math.max(words.length, Math.round(segmentTarget * r));
+    perKeyword = Math.max(
+      1,
+      Math.min(8, Math.ceil(searchTarget / words.length)),
+    );
+    const searchTotalPlanned = perKeyword * words.length;
+    homeFeedCount = Math.max(
+      0,
+      Math.min(MAX_HOME, segmentTarget - searchTotalPlanned),
+    );
+    const total = searchTotalPlanned + homeFeedCount;
+    targetLine = `日目标 ${target} 篇${segmentCount > 1 ? ` ÷ ${segmentCount} 段` : ""} → 本${segmentCount > 1 ? "段" : "次"}目标 ${segmentTarget} 篇：搜索 ${searchTotalPlanned} + 首页 ${homeFeedCount}${total < segmentTarget ? `（受每词 ≤8、首页 ≤${MAX_HOME} 限制，实际 ${total} 篇）` : ""}`;
+  }
   const keywords = words.map((keyword) => ({ keyword, count: perKeyword }));
   const searchTotal = keywords.reduce((n, k) => n + k.count, 0);
-  const homeFeedCount = homeFeedFromRatio(
-    searchTotal,
-    account.browseDefaults.searchRatioPercent,
-    account.browseDefaults.homeFeedCount,
-  );
+  if (targetLine === null) {
+    homeFeedCount = homeFeedFromRatio(
+      searchTotal,
+      account.browseDefaults.searchRatioPercent,
+      account.browseDefaults.homeFeedCount,
+    );
+  }
 
   rationale.unshift(
     core.length > 0
@@ -102,9 +175,17 @@ export function suggestPlan(
   );
   if (ext.length > 0) rationale.push(`扩展兴趣补 ${ext.join("、")}`);
   if (gen.length > 0) rationale.push(`泛内容补 ${gen.join("、")}`);
-  rationale.push(
-    `搜索占比 ${account.browseDefaults.searchRatioPercent}%：搜索 ${searchTotal} 篇 → 首页 ${homeFeedCount} 篇`,
-  );
+  if (targetLine) rationale.push(targetLine);
+  else {
+    rationale.push(
+      `搜索占比 ${account.browseDefaults.searchRatioPercent}%：搜索 ${searchTotal} 篇 → 首页 ${homeFeedCount} 篇`,
+    );
+  }
+  if (segment && segment.count > 1) {
+    rationale.unshift(
+      `第 ${segment.index}/${segment.count} 段（当日多段串行执行）`,
+    );
+  }
 
   return {
     accountId: account.id,
@@ -115,5 +196,6 @@ export function suggestPlan(
     dwellSecMax: account.browseDefaults.dwellSecMax,
     interaction: account.interaction,
     rationale,
+    segment,
   };
 }
