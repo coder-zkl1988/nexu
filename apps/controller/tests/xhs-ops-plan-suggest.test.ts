@@ -5,7 +5,10 @@ import {
   suggestDailyPlans,
   suggestPlan,
 } from "../src/services/xhs-ops-plan-suggest.js";
-import { computeChunkQuota } from "../src/services/xhs-ops-run-service.js";
+import {
+  chunkMaxSteps,
+  computeChunkQuota,
+} from "../src/services/xhs-ops-run-service.js";
 
 function account(overrides: Partial<XhsOpsAccount> = {}): XhsOpsAccount {
   return {
@@ -229,5 +232,14 @@ describe("suggestDailyPlans (P2-3 当日容量拆分，可选能力)", () => {
     expect(plan?.keywords.reduce((n, k) => n + k.count, 0)).toBe(25);
     expect(plan?.homeFeedCount).toBe(5);
     expect(plan?.rationale.join(" ")).toContain("本次目标 30 篇");
+  });
+
+  it("chunkMaxSteps gives home-feed chunks more headroom than search, capped at the phone's 100", () => {
+    expect(chunkMaxSteps(4)).toBe(60);
+    expect(chunkMaxSteps(4, "search")).toBe(60);
+    expect(chunkMaxSteps(4, "home")).toBe(78);
+    expect(chunkMaxSteps(6, "home")).toBe(100);
+    expect(chunkMaxSteps(12, "home")).toBe(100);
+    expect(chunkMaxSteps(8, "search")).toBe(100);
   });
 });

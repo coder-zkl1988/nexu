@@ -251,8 +251,22 @@ export function computeChunkQuota(
   };
 }
 
-export function chunkMaxSteps(plannedCount: number): number {
-  return Math.min(100, 20 + plannedCount * 10);
+/**
+ * Step budget per chunk. The phone's `maxSteps` schema caps at 100.
+ *
+ * Home-feed chunks need more headroom than search chunks: the model skips
+ * ads/live/low-comment cards before finding a countable post, and every skip
+ * costs 5–8 steps. Measured on the 2026-09-06 HONOR run (4 posts planned):
+ * search chunks used 25 and 42 steps, home chunks 22, 33, 50 and one hit the
+ * old 60 cap at 2/4 browsed. Search keeps 20 + 10/post; home gets 30 + 12/post.
+ */
+export function chunkMaxSteps(
+  plannedCount: number,
+  mode: "search" | "home" = "search",
+): number {
+  const budget =
+    mode === "home" ? 30 + plannedCount * 12 : 20 + plannedCount * 10;
+  return Math.min(100, budget);
 }
 
 /** Turn a phone result into chunk fields (spec §4.3 + §6 fallback). */
@@ -760,7 +774,7 @@ export class XhsOpsRunService {
         : buildHomeChunkTask({ ...base, count: chunk.plannedCount });
     const body: DeviceExecuteTaskBody = {
       task,
-      maxSteps: chunkMaxSteps(chunk.plannedCount),
+      maxSteps: chunkMaxSteps(chunk.plannedCount, chunk.mode),
       timeout: XHS_CHUNK_TIMEOUT_MS,
       allowedApps: [XHS_PACKAGE],
       taskPolicy: XHS_TASK_POLICY,
