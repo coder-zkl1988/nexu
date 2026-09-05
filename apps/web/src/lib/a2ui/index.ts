@@ -30,6 +30,7 @@ import { XHSEditor } from "./custom-components/XHSEditor";
 // ── Register Nexu custom components ───────────────────────────
 import { registerCustomComponent } from "./custom-components/registry";
 import { XhsOpsAccountPlanner } from "./custom-components/xhs-ops/XhsOpsAccountPlanner";
+import { XhsOpsDashboard } from "./custom-components/xhs-ops/XhsOpsDashboard";
 import { XhsOpsProfileCard } from "./custom-components/xhs-ops/XhsOpsProfileCard";
 import { XhsOpsProfileMaterial } from "./custom-components/xhs-ops/XhsOpsProfileMaterial";
 import { XhsOpsProjectForm } from "./custom-components/xhs-ops/XhsOpsProjectForm";
@@ -57,3 +58,4 @@ registerCustomComponent(
   "XhsOpsProfileMaterial",
   XhsOpsProfileMaterial,
 );
+registerCustomComponent(NEXU_CATALOG, "XhsOpsDashboard", XhsOpsDashboard);

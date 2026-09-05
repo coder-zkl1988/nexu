@@ -607,6 +607,27 @@ const COMPONENT_SCHEMAS = [
       },
     },
   },
+  {
+    type: "XhsOpsDashboard",
+    required: ["id", "type", "projectId"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsDashboard" },
+      projectId: {
+        type: "string",
+        description: "The nurturing project to review.",
+      },
+      accountId: {
+        type: "string",
+        description: "Optional: limit the board to one account.",
+      },
+      days: {
+        type: "number",
+        description:
+          "Optional: how many recent days to show (default 7; 7/14/30 are the user-switchable presets).",
+      },
+    },
+  },
 ];
 
 /**
@@ -646,6 +667,7 @@ WHEN TO USE:
     • batch persona suggestions + phone binding → XhsOpsAccountPlanner (TEN personas by default, each with structured persona demographics {age, gender, region, occupation, lifeStatus}; differentiated from each other but jointly matching the confirmed profile)
     • (optional, after personas are saved) account profile material → XhsOpsProfileMaterial (render with just projectId; the DESKTOP generates nickname/bio and 3 avatar + 3 cover candidates on button click, the user picks and edits, and only the user's 「应用到手机」 changes the public profile — you receive xhs_ops_profile_applied; never trigger profile changes yourself)
     • today's per-account plan + execution + progress → XhsOpsRunPlanner (render it with just projectId — the desktop generates each account's plan from its interest pool and shows the rationale; pass plans only when the user dictated keywords; the user adjusts and starts; xhs_ops_run_finished carries the summary — do NOT re-dispatch afterwards, help review instead)
+    • reviewing results across days (复盘/看板/这周效果如何/推荐流有没有变/哪些关键词不行) → XhsOpsDashboard (render with just projectId; READ-ONLY: it builds the account × date matrix, keyword verdicts, anomaly summary and observation timeline from the stored runs — never answer these questions from memory or by re-dispatching phone tasks; the user may save a 运营备注 there, you receive xhs_ops_dashboard_note_saved)
     • Never render these stages as plain text or Markdown lists — the components own the form, confirmation and progress UX.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
@@ -695,7 +717,8 @@ CUSTOM COMPONENTS:
 - XhsOpsAccountPlanner: Persona suggestion table with phone binding and three-layer interest pool editing.
 - XhsOpsProfileMaterial: Per-account profile material — AI-generated nickname/bio, 3 avatar + 3 cover candidates to pick from, and a user-triggered 「应用到手机」 that edits the public profile via the phone.
 - XhsOpsRunPlanner: Today's per-account nurture plan (keywords × counts + home feed), launch button, live chunk progress, and post-run review notes.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, XhsOpsProfileMaterial, or XhsOpsRunPlanner.`;
+- XhsOpsDashboard: Read-only review board for a nurturing project — account × date matrix (actual/planned browsed, home feed, interactions, anomalies), per-keyword verdicts (正常/观察/建议调整), anomaly summary, phone + ops observation timeline, and inline 运营备注 editing.
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, XhsOpsProfileMaterial, XhsOpsRunPlanner, or XhsOpsDashboard.`;
 
 const plugin = {
   id: "nexu-a2ui",

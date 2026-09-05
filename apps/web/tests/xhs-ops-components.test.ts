@@ -6,6 +6,7 @@ import type { SurfaceManager } from "../src/lib/a2ui/a2ui-surface";
 import type { SurfaceState } from "../src/lib/a2ui/a2ui-types";
 import type { CustomComponentProps } from "../src/lib/a2ui/custom-components/registry";
 import { XhsOpsAccountPlanner } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsAccountPlanner";
+import { XhsOpsDashboard } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsDashboard";
 import { XhsOpsProfileCard } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProfileCard";
 import { XhsOpsProfileMaterial } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProfileMaterial";
 import { XhsOpsProjectForm } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProjectForm";
@@ -151,5 +152,24 @@ describe("xhs-ops a2ui components render (wiring smoke)", () => {
     );
     expect(html).toContain("账号资料与素材");
     expect(html).toContain("正在加载账号");
+  });
+
+  it("XhsOpsDashboard renders its shell, range switch and loading state (P2-2)", () => {
+    const html = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsDashboard,
+          renderProps({
+            id: "c6",
+            type: "XhsOpsDashboard",
+            projectId: "p1",
+            days: 14,
+          }),
+        ),
+      ),
+    );
+    expect(html).toContain("养号复盘看板");
+    expect(html).toContain("最近 14 天");
+    expect(html).toContain("正在加载运行记录");
   });
 });

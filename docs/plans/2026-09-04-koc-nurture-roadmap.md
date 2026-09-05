@@ -54,9 +54,10 @@
 > 落地：`account.profileDraft{nickname,bio,avatarCandidates[3],coverCandidates[3],avatarPath,coverPath,generatedAt,appliedAt,applyStatus,applyResult}`；`XhsOpsProfileService.generate(accountId, parts)` 走 `MediaGenerationService`（文本：JSON-only 提示词，昵称 ≤12 字、简介三段 ≤100 字、带人设/兴趣池/禁忌、禁营销话术；头像 1:1「人像半身+自然环境」、背景 16:9「地区风景+背身」各 3 张落 media 目录）；`apply(accountId)` = 校验图片在 media 根目录内 → `pushMedia` 推入「Tabby」相册（`tabby-avatar-<id8>`/`tabby-cover-<id8>`）→ 下发「资料维护」任务（只改请求的字段、单次 TYPE、隐私规则、末尾 `PROFILE_JSON:{nickname,bio,avatar,cover: done|failed|skipped}` 契约）→ 回读写 `applyStatus/applyResult/appliedAt`；设备忙 409、未绑定/无内容 400。REST：`POST /api/v1/xhs-ops/accounts/{id}/profile-draft/generate|apply`。组件 `XhsOpsProfileMaterial`（按账号：昵称/简介可改 + 生成、头像/背景 3 选 1 缩略图走 `/api/v1/media/state-file`、保存草稿、「应用到手机」二次确认；上报 `xhs_ops_profile_material_saved` / `xhs_ops_profile_applied`）；插件 schema + 四阶段描述加 3b 可选阶段（明确「应用到手机」只由用户触发）；TOOLS.md 同步。测试：profile-service 8、routes +1、web 渲染 +1，controller/web 全绿。
 > 实盘（2026-09-05，测试账号「豆豆妈…」）：文本生成 54s 得「豆豆妈周末不折腾 / 处女座ENTJ，计划控。32岁海淀互联网妈妈…」（结构与脑图一致、无营销感）；头像 3 张 69s，每张 ~2.2MB PNG，state-file 端点 200 可显示。**未做**：真机「应用到手机」（会改真实公开资料，留给运营在组件里点）。
 
-### 2.2 复盘看板 `XhsOpsDashboard`
+### 2.2 复盘看板 `XhsOpsDashboard` —— ✅ 已完成（2026-09-05）
 - 纯读组件：项目 × 账号 × 日期矩阵（计划/实际/首页量/互动次数）、异常汇总（按 type）、observation 时间线、notes 编辑。数据全来自 `GET /runs`。
 - 验收：运营不看聊天记录也能判断"推荐流是否更接近目标兴趣"并决定改兴趣池。
+> 落地：无新增接口，数据来自 `GET /runs?projectId` + 账号列表。纯函数层 `xhs-ops-dashboard-data.ts`（`lastNDates`/`buildRunMatrix`/`summarizeAnomalies`/`collectObservations`/`keywordStats`）+ 组件 `XhsOpsDashboard{projectId, accountId?, days?}`：顶部汇总（运行次数/计划·实际/首页/互动/异常）→「账号 × 日期」矩阵（每格 实际/计划 + 首页/互动/异常，最差状态点；已绑定账号无运行也占行以暴露断档，已删账号沿用 label 快照）→ 点格子展开当日明细（每个 run 的环节表：实际/计划、跳过、赞藏关、状态·异常 chips、手机端观察）+ 运营备注（PATCH notes，上报 `xhs_ops_dashboard_note_saved` 并附 agentInstruction：只给兴趣池建议、不复述）→ 关键词表现表（按搜索词汇总，标注核心池账号；判断规则：出现无结果/内容不匹配 → 建议调整，样本 ≥4 且完成率 <50% → 观察，否则正常；首页推荐流单独一行）→ 异常汇总（按类型计数 + 最近一次位置）→ 观察时间线（手机端观察 + 运营备注，倒序，默认 8 条可展开）。有执行中的 run 时 5s 轮询。7/14/30 天可切。插件 schema + 路由描述（复盘/看板/推荐流有没有变 → 只读看板，禁止凭记忆回答或重派）+ TOOLS.md 第 5 步。测试：数据层 5 条（矩阵/异常/时间线/关键词判定/日期）+ 渲染 1 条。
 
 ### 2.3 每日容量（脑图 80-100 篇/天）
 - 现实：单 run ≤76 篇、约 100 分钟；风控风险随篇数上升。
