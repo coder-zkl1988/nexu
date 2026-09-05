@@ -193,7 +193,7 @@ describe("suggestDailyPlans (P2-3 当日容量拆分，可选能力)", () => {
     }
   });
 
-  it("skips segments that already ran today, keeps cancelled ones open", () => {
+  it("skips segments already planned/running/completed today; cancelled, failed and interrupted stay open", () => {
     const acct = account({
       browseDefaults: { ...browse, dailyTargetPosts: 0, dailySegments: 3 },
     });
@@ -207,6 +207,7 @@ describe("suggestDailyPlans (P2-3 当日容量拆分，可选能力)", () => {
     const plans = suggestDailyPlans(
       acct,
       [
+        ran(3, "failed"),
         ran(2, "cancelled"),
         ran(1, "completed"),
         ran(1, "completed", "2026-09-04"),

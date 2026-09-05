@@ -14,6 +14,11 @@ import type {
  */
 
 const CORE_PICK = 3;
+const RETRYABLE_STATUSES: ReadonlySet<string> = new Set([
+  "cancelled",
+  "failed",
+  "interrupted",
+]);
 const EXTENDED_PICK = 1;
 const GENERAL_PICK = 1;
 const MAX_KEYWORDS = 8;
@@ -87,9 +92,14 @@ export function suggestDailyPlans(
     Math.min(3, account.browseDefaults.dailySegments ?? 1),
   );
   if (segments <= 1) return [suggestPlan(account, previousRuns)];
+  // 当天已计划/在跑/完成的段不再建议；失败、中断、取消的段保持开放，
+  // 让「立即执行」能重跑（定时器本身因 lastTriggeredDate 一天只点火一次）。
   const doneToday = new Set(
     previousRuns
-      .filter((r) => r.date === today && r.segment && r.status !== "cancelled")
+      .filter(
+        (r) =>
+          r.date === today && r.segment && !RETRYABLE_STATUSES.has(r.status),
+      )
       .map((r) => r.segment?.index ?? 0),
   );
   const out: XhsOpsPlanSuggestion[] = [];
