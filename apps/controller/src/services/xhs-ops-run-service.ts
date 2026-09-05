@@ -297,6 +297,8 @@ export function interpretTaskResult(result: TaskResult): ChunkOutcome {
 
 export class XhsOpsRunService {
   private readonly active = new Map<string, RunController>();
+  /** P2-4 设备队列：deviceId → 等待启动的 runId（FIFO）。进程内状态，重启即清。 */
+  private readonly deviceQueues = new Map<string, string[]>();
   private readonly store: XhsOpsStore;
   private readonly deviceControl: XhsOpsDeviceControl;
   private readonly idlePollIntervalMs: number;
@@ -363,6 +365,7 @@ export class XhsOpsRunService {
       status: "planned",
       plan: input.plan,
       segment: input.segment ?? null,
+      queuedBehindRunId: null,
       chunks,
       summary: summarizeRun(chunks, null, null),
       notes: "",
@@ -385,11 +388,37 @@ export class XhsOpsRunService {
           : "运行已结束，不能重新启动",
       );
     }
+    // 同一手机上已有 xhs-ops run 在跑：排队，前一个结束后自动启动（P2-4）。
+    // 否则两个 run 各自 3s 轮询设备空闲，会一起冲进 TASK_ALREADY_RUNNING。
+    const busyRunId = this.activeRunOnDevice(run.deviceId);
+    if (busyRunId !== null && busyRunId !== runId) {
+      const queue = this.deviceQueues.get(run.deviceId) ?? [];
+      if (!queue.includes(runId)) queue.push(runId);
+      this.deviceQueues.set(run.deviceId, queue);
+      const now = this.nowIso();
+      const queued = await this.store.updateRun(runId, (current) => ({
+        ...current,
+        queuedBehindRunId: busyRunId,
+        updatedAt: now,
+      }));
+      if (!queued) throw new XhsOpsError(404, "运行记录不存在");
+      logger.info(
+        {
+          runId,
+          deviceId: run.deviceId,
+          behind: busyRunId,
+          position: queue.length,
+        },
+        "xhs-ops: run queued behind another run on the same device",
+      );
+      return queued;
+    }
     const account = await this.store.getAccount(run.accountId);
     const startedAt = this.nowIso();
     const started = await this.store.updateRun(runId, (current) => ({
       ...current,
       status: "running",
+      queuedBehindRunId: null,
       startedAt,
       completedAt: null,
       error: null,
@@ -424,6 +453,7 @@ export class XhsOpsRunService {
       })
       .finally(() => {
         this.active.delete(runId);
+        void this.drainDeviceQueue(started.deviceId);
       });
     this.active.set(runId, controller);
     logger.info(
@@ -437,6 +467,34 @@ export class XhsOpsRunService {
   async cancelRun(runId: string): Promise<XhsOpsRun> {
     const run = await this.store.getRun(runId);
     if (!run) throw new XhsOpsError(404, "运行记录不存在");
+    if (run.status === "planned" && run.queuedBehindRunId) {
+      // 还在设备队列里等着：出队即取消，不碰手机。
+      const queue = this.deviceQueues.get(run.deviceId);
+      if (queue) {
+        const idx = queue.indexOf(runId);
+        if (idx >= 0) queue.splice(idx, 1);
+        if (queue.length === 0) this.deviceQueues.delete(run.deviceId);
+      }
+      const now = this.nowIso();
+      const dequeued = await this.store.updateRun(runId, (current) => ({
+        ...current,
+        status: "cancelled",
+        queuedBehindRunId: null,
+        chunks: current.chunks.map((chunk) =>
+          chunk.status === "pending"
+            ? { ...chunk, status: "cancelled" }
+            : chunk,
+        ),
+        completedAt: now,
+        updatedAt: now,
+      }));
+      if (!dequeued) throw new XhsOpsError(404, "运行记录不存在");
+      logger.info(
+        { runId, deviceId: run.deviceId },
+        "xhs-ops: queued run cancelled",
+      );
+      return dequeued;
+    }
     if (run.status !== "running") {
       throw new XhsOpsError(409, "运行未在进行中，无法取消");
     }
@@ -465,6 +523,15 @@ export class XhsOpsRunService {
     const runs = await this.store.listRuns();
     let recovered = 0;
     for (const run of runs) {
+      if (run.status === "planned" && run.queuedBehindRunId) {
+        // 队列是进程内的：上次进程留下的"排队中"只是个孤儿标记，清掉让它回到可手动开始。
+        await this.store.updateRun(run.id, (current) => ({
+          ...current,
+          queuedBehindRunId: null,
+          updatedAt: this.nowIso(),
+        }));
+        continue;
+      }
       if (run.status !== "running" || this.active.has(run.id)) continue;
       const now = this.nowIso();
       const updated = await this.store.updateRun(run.id, (current) => {
@@ -508,6 +575,45 @@ export class XhsOpsRunService {
 
   isRunning(runId: string): boolean {
     return this.active.has(runId);
+  }
+
+  /** runId of the run currently executing on `deviceId`, if any. */
+  activeRunOnDevice(deviceId: string): string | null {
+    for (const [runId, controller] of this.active) {
+      if (controller.deviceId === deviceId) return runId;
+    }
+    return null;
+  }
+
+  /** Queued runIds for `deviceId`, in start order. */
+  queuedRunIds(deviceId: string): readonly string[] {
+    return this.deviceQueues.get(deviceId) ?? [];
+  }
+
+  /** After a run drains, start the next planned run waiting on the same phone. */
+  private async drainDeviceQueue(deviceId: string): Promise<void> {
+    const queue = this.deviceQueues.get(deviceId);
+    if (!queue) return;
+    while (queue.length > 0) {
+      const nextId = queue.shift();
+      if (!nextId) break;
+      const next = await this.store.getRun(nextId).catch(() => null);
+      if (!next || next.status !== "planned") continue;
+      try {
+        await this.startRun(nextId);
+        logger.info(
+          { runId: nextId, deviceId, remaining: queue.length },
+          "xhs-ops: queued run started",
+        );
+        break;
+      } catch (error: unknown) {
+        logger.warn(
+          { runId: nextId, deviceId, error: describe(error) },
+          "xhs-ops: starting queued run failed, trying the next one",
+        );
+      }
+    }
+    if (queue.length === 0) this.deviceQueues.delete(deviceId);
   }
 
   /** Resolves once the executor for `runId` has drained (immediately if idle). */

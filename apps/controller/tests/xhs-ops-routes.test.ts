@@ -7,6 +7,7 @@ import type { ControllerContainer } from "../src/app/container.js";
 import { registerXhsOpsRoutes } from "../src/routes/xhs-ops-routes.js";
 import { XhsOpsProfileService } from "../src/services/xhs-ops-profile-service.js";
 import { XhsOpsRunService } from "../src/services/xhs-ops-run-service.js";
+import { XhsOpsScheduler } from "../src/services/xhs-ops-scheduler.js";
 import { XhsOpsStore } from "../src/store/xhs-ops-store.js";
 import type { ControllerBindings } from "../src/types.js";
 
@@ -42,12 +43,15 @@ const profileService = new XhsOpsProfileService({
   },
 });
 
+const scheduler = new XhsOpsScheduler({ store, runService });
+
 function buildApp() {
   const app = new OpenAPIHono<ControllerBindings>();
   registerXhsOpsRoutes(app, {
     xhsOpsStore: store,
     xhsOpsRunService: runService,
     xhsOpsProfileService: profileService,
+    xhsOpsScheduler: scheduler,
   } as ControllerContainer);
   return app;
 }
@@ -374,5 +378,75 @@ describe("xhs-ops routes wiring", () => {
       await app.request(`/api/v1/xhs-ops/projects/${proj.id}/plan-suggest`)
     ).json()) as { plans: Array<{ segment: { index: number } | null }> };
     expect(again.plans.map((p) => p.segment?.index)).toEqual([2]);
+  });
+
+  it("project schedule round-trips via PATCH and run-now dispatches nothing for a project without bound accounts (P2-4)", async () => {
+    const app = buildApp();
+    const proj = (
+      (await (
+        await app.request("/api/v1/xhs-ops/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "定时项目" }),
+        })
+      ).json()) as {
+        project: { id: string; schedule: { enabled: boolean; time: string } };
+      }
+    ).project;
+    expect(proj.schedule).toEqual({
+      enabled: false,
+      time: "10:00",
+      lastTriggeredDate: null,
+      lastResult: null,
+    });
+
+    const patched = (
+      (await (
+        await app.request(`/api/v1/xhs-ops/projects/${proj.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            schedule: {
+              enabled: true,
+              time: "09:30",
+              lastTriggeredDate: null,
+              lastResult: null,
+            },
+          }),
+        })
+      ).json()) as { project: { schedule: { enabled: boolean; time: string } } }
+    ).project;
+    expect(patched.schedule).toMatchObject({ enabled: true, time: "09:30" });
+
+    const bad = await app.request(`/api/v1/xhs-ops/projects/${proj.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ schedule: { enabled: true, time: "9:30" } }),
+    });
+    expect(bad.status).toBe(400);
+
+    const now = await app.request(
+      `/api/v1/xhs-ops/projects/${proj.id}/schedule/run-now`,
+      { method: "POST" },
+    );
+    expect(now.status).toBe(200);
+    const body = (await now.json()) as {
+      result: { planned: number; created: number; summary: string };
+      project: {
+        schedule: {
+          lastTriggeredDate: string | null;
+          lastResult: string | null;
+        };
+      };
+    };
+    expect(body.result).toMatchObject({ planned: 0, created: 0 });
+    expect(body.project.schedule.lastTriggeredDate).not.toBeNull();
+    expect(body.project.schedule.lastResult).toContain("手动");
+
+    const missing = await app.request(
+      "/api/v1/xhs-ops/projects/nope/schedule/run-now",
+      { method: "POST" },
+    );
+    expect(missing.status).toBe(404);
   });
 });

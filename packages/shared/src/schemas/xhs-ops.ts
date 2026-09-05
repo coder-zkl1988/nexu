@@ -102,6 +102,25 @@ export const xhsOpsProfileInputSchema = xhsOpsProfileSchema.extend({
   updatedAt: z.string().optional(),
 });
 
+/**
+ * 每日自动执行（P2-4）。controller 内的 XhsOpsScheduler 每分钟检查：启用且本地
+ * 时间 ≥ `time` 且今天还没触发 → 对项目下每个已绑设备的账号 plan-suggest →
+ * createRun → startRun（同一手机的 run 由设备队列串行）。OpenClaw cron 只能投递
+ * agentTurn、带不了账目，所以这里自己做胶水。
+ */
+export const xhsOpsScheduleSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** 本地时间 HH:mm */
+  time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .default("10:00"),
+  /** 最近一次触发的本地日期 YYYY-MM-DD；一天只触发一次。 */
+  lastTriggeredDate: z.string().nullable().default(null),
+  /** 最近一次触发的结果摘要（给运营看）。 */
+  lastResult: z.string().nullable().default(null),
+});
+
 export const xhsOpsProjectSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(80),
@@ -109,6 +128,7 @@ export const xhsOpsProjectSchema = z.object({
   audience: xhsOpsProjectAudienceSchema.default({}),
   opsNotes: xhsOpsProjectOpsNotesSchema.default({}),
   profile: xhsOpsProfileSchema.nullable().default(null),
+  schedule: xhsOpsScheduleSchema.default({}),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -320,6 +340,11 @@ export const xhsOpsRunSchema = z.object({
   status: xhsOpsRunStatusSchema,
   plan: xhsOpsRunPlanSchema,
   segment: xhsOpsRunSegmentSchema.nullable().default(null),
+  /**
+   * 设备队列（P2-4）：startRun 时同一手机上已有 xhs-ops run 在跑，本 run 保持
+   * `planned` 并记下排在谁后面；前一个结束后由服务自动启动并清空此字段。
+   */
+  queuedBehindRunId: z.string().nullable().default(null),
   chunks: z.array(xhsOpsRunChunkSchema).default([]),
   summary: xhsOpsRunSummarySchema.default({}),
   /** 运营观察（人工填写） */
@@ -443,6 +468,7 @@ export type XhsOpsRunPlanInput = z.input<typeof xhsOpsRunPlanSchema>;
 export type XhsOpsRunSummary = z.infer<typeof xhsOpsRunSummarySchema>;
 export type XhsOpsRunStatus = z.infer<typeof xhsOpsRunStatusSchema>;
 export type XhsOpsRunSegment = z.infer<typeof xhsOpsRunSegmentSchema>;
+export type XhsOpsSchedule = z.infer<typeof xhsOpsScheduleSchema>;
 export type XhsOpsRun = z.infer<typeof xhsOpsRunSchema>;
 export type XhsOpsRunCreate = z.infer<typeof xhsOpsRunCreateSchema>;
 export type XhsOpsRunCreateInput = z.input<typeof xhsOpsRunCreateSchema>;

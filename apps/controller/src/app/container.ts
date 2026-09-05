@@ -78,6 +78,7 @@ import { TeamWorkflowService } from "../services/teams/team-workflow-service.js"
 import { TemplateService } from "../services/template-service.js";
 import { XhsOpsProfileService } from "../services/xhs-ops-profile-service.js";
 import { XhsOpsRunService } from "../services/xhs-ops-run-service.js";
+import { XhsOpsScheduler } from "../services/xhs-ops-scheduler.js";
 import { ArtifactsStore } from "../store/artifacts-store.js";
 import { CompiledOpenClawStore } from "../store/compiled-openclaw-store.js";
 import { DeviceNameStore } from "../store/device-name-store.js";
@@ -146,6 +147,7 @@ export interface ControllerContainer {
   xhsOpsStore: XhsOpsStore;
   xhsOpsRunService: XhsOpsRunService;
   xhsOpsProfileService: XhsOpsProfileService;
+  xhsOpsScheduler: XhsOpsScheduler;
   deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
@@ -326,6 +328,11 @@ export async function createContainer(): Promise<ControllerContainer> {
   const xhsOpsRunService = new XhsOpsRunService({
     store: xhsOpsStore,
     deviceControl: deviceControlService,
+  });
+  // P2-4 每日自动执行：每分钟检查各项目 schedule，到点后按兴趣池生成当日计划并派发。
+  const xhsOpsScheduler = new XhsOpsScheduler({
+    store: xhsOpsStore,
+    runService: xhsOpsRunService,
   });
   // The tabby-control plugin loses its in-memory VLM credential on every
   // OpenClaw (re)start, so re-push it once the plugin RPC is reachable after
@@ -860,6 +867,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       deviceControl: deviceControlService,
       mediaRoot: path.resolve(env.openclawStateDir, "media"),
     }),
+    xhsOpsScheduler,
     deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,
@@ -921,6 +929,7 @@ export async function createContainer(): Promise<ControllerContainer> {
       nexuOfficialModelRefreshInterval.unref?.();
       skillhubService.start();
       devicePollingService.start();
+      xhsOpsScheduler.start();
 
       // On cold start, push the signed-in user's VLM gateway credential to the
       // device-control plugin once its RPC is up, so phones connecting before
@@ -934,6 +943,7 @@ export async function createContainer(): Promise<ControllerContainer> {
         clearInterval(nexuOfficialModelRefreshInterval);
         skillhubService.dispose();
         devicePollingService.dispose();
+        xhsOpsScheduler.stop();
         deviceMirrorProxy.close();
         openclawAuthService.dispose();
         channelFallbackService.stop();

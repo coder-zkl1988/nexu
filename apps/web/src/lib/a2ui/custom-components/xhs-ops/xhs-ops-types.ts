@@ -87,6 +87,15 @@ export interface XhsOpsProfile {
   updatedAt: string;
 }
 
+/** 每日自动执行（P2-4）：桌面 controller 内的调度器按本地时间点火。 */
+export interface XhsOpsSchedule {
+  enabled: boolean;
+  /** HH:mm 本地时间 */
+  time: string;
+  lastTriggeredDate: string | null;
+  lastResult: string | null;
+}
+
 export interface XhsOpsProject {
   id: string;
   name: string;
@@ -94,6 +103,7 @@ export interface XhsOpsProject {
   audience: XhsOpsAudience;
   opsNotes: XhsOpsOpsNotes;
   profile: XhsOpsProfile | null;
+  schedule: XhsOpsSchedule;
   createdAt: string;
   updatedAt: string;
 }
@@ -254,6 +264,8 @@ export interface XhsOpsRun {
   status: XhsOpsRunStatus;
   plan: XhsOpsRunPlan;
   segment: XhsOpsRunSegment | null;
+  /** 设备队列：排在同一手机上哪个 run 后面；null = 未排队 */
+  queuedBehindRunId: string | null;
   chunks: XhsOpsRunChunk[];
   summary: XhsOpsRunSummary;
   /** 运营观察（人工填写） */
@@ -282,6 +294,7 @@ export interface XhsOpsProjectCreateInput {
   audience?: Partial<XhsOpsAudience>;
   opsNotes?: Partial<XhsOpsOpsNotes>;
   profile?: XhsOpsProfileInput | null;
+  schedule?: XhsOpsSchedule;
 }
 
 export type XhsOpsProjectUpdateInput = Partial<XhsOpsProjectCreateInput>;
@@ -547,6 +560,35 @@ export function normalizeBrowseDefaults(value: unknown): XhsOpsBrowseDefaults {
     dailyTargetPosts: asInt(v.dailyTargetPosts, d.dailyTargetPosts, 0, 150),
     dailySegments: asInt(v.dailySegments, d.dailySegments, 1, 3),
   };
+}
+
+export function defaultSchedule(): XhsOpsSchedule {
+  return {
+    enabled: false,
+    time: "10:00",
+    lastTriggeredDate: null,
+    lastResult: null,
+  };
+}
+
+export function normalizeSchedule(value: unknown): XhsOpsSchedule {
+  const v = asRecord(value);
+  const d = defaultSchedule();
+  const time = asString(v.time).trim();
+  return {
+    enabled: asBoolean(v.enabled, d.enabled),
+    time: /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : d.time,
+    lastTriggeredDate:
+      typeof v.lastTriggeredDate === "string" ? v.lastTriggeredDate : null,
+    lastResult: typeof v.lastResult === "string" ? v.lastResult : null,
+  };
+}
+
+/** 排队中的 run：planned 且记着排在谁后面。 */
+export function isRunQueued(
+  run: Pick<XhsOpsRun, "status" | "queuedBehindRunId"> | null | undefined,
+): boolean {
+  return Boolean(run && run.status === "planned" && run.queuedBehindRunId);
 }
 
 export function normalizeRunSegment(value: unknown): XhsOpsRunSegment | null {

@@ -66,14 +66,16 @@
 - **已拍板：80-100 不是硬性要求。** 一期按 30-50 篇/账号/天跑一周观察风控与推荐流变化；`dailyTargetPosts` 与多 run 拆分作为可选能力实现，默认单 run。
 > 落地：`browseDefaults` 增 `dailyTargetPosts`（0..150，0=不设）与 `dailySegments`（1..3，默认 1）；run/计划建议增 `segment{index,count}`（单 run 为 null）。`suggestDailyPlans(account, runs, today)`：段数 1 时等价原 `suggestPlan`；>1 时每段视作"下一轮"轮换核心词、避开上一段集合，每段总量 ≈ 日目标 ÷ 段数（按搜索占比切搜索/首页，每词篇数取整并钳 1..8，首页 ≤12，超限在依据里说明）；当天已有的段（非取消）不再建议，下午打开只剩未跑的段；日目标 >0 且单段时也按目标重算篇数。RunPlanner：每段一张卡（标题带「第 k/n 段」），第 k 段锁定到第 k-1 段结束（含页面重载后从当日 run 恢复），顶部「自动接续下一段」开关默认开，解锁瞬间自动派发；`xhs_ops_run_finished` 载荷带 `segment`。AccountPlanner 浏览默认值多两格；看板当日明细显示段徽标。插件描述/TOOLS.md 说明「每段一个 finished，等最后一段再复盘」。测试：plan-suggest +4、routes +1（segment 落库 + 建议跳过已跑段）、web 类型 +3；全绿。**未做**：真机上跑一次 2 段串行（会占用手机约 40 分钟）；建议运营在一个账号上把分段数设 2、日目标 30 试跑一天。
 
-### 2.4 定时触发 + 设备队列
+### 2.4 定时触发 + 设备队列 —— ✅ 已完成（2026-09-05）
 - OpenClaw cron（已启用）→ controller 内 xhs-ops 调度器（cron 只投递 agentTurn 无法带账目，需胶水）→ 对每个启用账号 `plan-suggest` + `createRun` + `startRun`。
 - per-device 串行队列：多账号绑同一手机时按设备排队，避免各自 3s 轮询抢 `TASK_ALREADY_RUNNING`；绑定时校验设备在线。
 - 验收：早 10 点自动跑起 2-3 个账号，同一手机的两个账号先后执行。
+> 落地：project 增 `schedule{enabled, time HH:mm, lastTriggeredDate, lastResult}`；controller 新增 `XhsOpsScheduler`（每 60s tick：启用 + 本地时间 ≥ time + 今天未触发 → `suggestPlans` → 逐条 `createRun(segment)` + `startRun`；先写 `lastTriggeredDate` 再派发 + 进程内 in-flight 锁，重叠/重启都不会当天二次点火；结果写 `lastResult` 如「10:00 定时：2 个开始、1 个排队」），`POST /projects/{id}/schedule/run-now` 手动点火（忽略开关/时间，同样盖今天）。设备队列在 `XhsOpsRunService`：`startRun` 发现同一手机已有 run 在跑 → 保持 planned 并写 `queuedBehindRunId`，前一个 run 的 executor 收尾时 `drainDeviceQueue` 自动启动下一个（FIFO，跳过已取消/删除的）；排队中的 run 可直接取消不碰手机；进程重启清掉孤儿排队标记。多账号同机、多段同账号都由这一个队列串行。RunPlanner 顶部「每日自动执行」开关 + 时间（回传完整 schedule 防止默认值抹掉 lastTriggeredDate）+ 最近结果；卡片状态显示「排队中」。插件描述/TOOLS.md：不要为 xhs-ops 建 OpenClaw cron，指引用户打开开关。测试：scheduler 3、设备队列 2（同机排队→前者结束后自动开始、异机不受影响、重复 start 不重复入队、排队取消不下发 cancelTask、重启清标记）、routes +1；controller 全量绿。**未做**：真机上等到 10 点自动跑（当前无手机在线；可在测试项目上开开关、把时间设为一分钟后验证）。
 
-### 2.5 脑图浏览细节进手机技能（research.md）
+### 2.5 脑图浏览细节进手机技能（research.md）—— ✅ 文案已落地（2026-09-05，待真机验收）
 - 「不要每篇都点进去」：结果页随机跳过 20-40% 卡片（只滑不进）；「时不时点首页刷新切换内容」：首页模式每 3-5 篇回顶/下拉刷新一次；下滑距离随机化（SCROLL distance 在 250-650 间变化）。
 - 验收：一次 run 的 logcat 里能看到跳过与刷新动作。
+> 落地（tabby-control xhs skill v32 / bundle 51，已镜像到 TabbyApp assets）：research.md §三 新增「像真人一样"不是每篇都点"」——每 3–5 张相关卡片至少 1–2 张只滑过不点（≈20–40%，不记账、不算 skipped，跳哪张要变化）；列表与正文 `SCROLL distance` 在 250–650 间变化、偶尔小滑露半张再决定；首页模式每 3–5 篇回顶下拉刷新一次（`SCROLL direction:up distance:400` 或点「首页」tab，刷新不记账，key_process 记「已刷新 1 次」，关键词模式不刷新）；§七 加「连续两次 SCROLL 不要同 distance」。**未做**：真机 logcat 验收——写文案时三台手机都不在线；下次手机在线后用 `xhs-research-e2e.sh` 跑 1 个关键词 3 篇，看 logcat 里是否出现跳过与随机 distance。
 
 ## P3 · 延后 / 单独设计
 

@@ -9,6 +9,7 @@ import {
   xhsOpsProjectCreateSchema,
   xhsOpsProjectListResponseSchema,
   xhsOpsProjectResponseSchema,
+  xhsOpsProjectSchema,
   xhsOpsProjectUpdateSchema,
   xhsOpsRunCreateSchema,
   xhsOpsRunListQuerySchema,
@@ -59,6 +60,7 @@ export function registerXhsOpsRoutes(
     xhsOpsStore: store,
     xhsOpsRunService: runService,
     xhsOpsProfileService: profileService,
+    xhsOpsScheduler: scheduler,
   } = container;
   const mutationErrors = {
     400: jsonError("Invalid request"),
@@ -137,6 +139,52 @@ export function registerXhsOpsRoutes(
   );
 
   // ─── Plan suggestion ──────────────────────────────────────────────────────
+
+  // P2-4 立即执行一次：忽略开关/时间，按今日计划建议 createRun+startRun（设备队列串行）。
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/xhs-ops/projects/{projectId}/schedule/run-now",
+      tags: TAGS,
+      request: { params: projectIdParamSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                project: xhsOpsProjectSchema,
+                result: z.object({
+                  date: z.string(),
+                  planned: z.number(),
+                  created: z.number(),
+                  started: z.number(),
+                  queued: z.number(),
+                  skipped: z.array(z.string()),
+                  summary: z.string(),
+                }),
+              }),
+            },
+          },
+          description: "Today's plans dispatched (or queued) for the project",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      const { projectId } = c.req.valid("param");
+      try {
+        const result = await scheduler.triggerProject(projectId, {
+          reason: "manual",
+        });
+        const project = await store.getProject(projectId);
+        if (!project) return c.json({ message: "项目不存在" }, 404);
+        return c.json({ project, result }, 200);
+      } catch (err) {
+        const { status, message } = mapError(err);
+        return c.json({ message }, status);
+      }
+    },
+  );
 
   app.openapi(
     createRoute({

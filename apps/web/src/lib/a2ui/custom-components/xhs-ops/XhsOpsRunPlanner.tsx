@@ -19,13 +19,16 @@ import {
   type XhsOpsRunChunk,
   type XhsOpsRunKeyword,
   type XhsOpsRunSegment,
+  type XhsOpsSchedule,
   asInt,
   asString,
   defaultBrowseDefaults,
   defaultInteractionConfig,
   emptyInteractionCounts,
   isRunActive,
+  isRunQueued,
   normalizeRunSegment,
+  normalizeSchedule,
   segmentLabel,
 } from "./xhs-ops-types";
 import {
@@ -338,6 +341,7 @@ export function XhsOpsRunPlanner({
   return (
     <div className="flex w-full max-w-[720px] flex-col gap-3">
       {accountsError ? <ErrorLine message={accountsError} /> : null}
+      <ScheduleBar projectId={projectId} />
       {hasSegments ? (
         <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface-2/40 px-3 py-1.5 text-[12px]">
           <span className="text-text-secondary">
@@ -382,6 +386,90 @@ export function XhsOpsRunPlanner({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * P2-4 每日自动执行：开关 + 本地时间，存在项目上，由桌面 controller 的调度器
+ * 每分钟检查点火（同一手机上的多个 run 走设备队列串行）。保存时回传完整
+ * schedule（含 lastTriggeredDate），否则服务端默认值会把"今天已触发"抹掉。
+ */
+function ScheduleBar({ projectId }: { projectId: string }) {
+  const [schedule, setSchedule] = useState<XhsOpsSchedule | null>(null);
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    xhsOpsApi
+      .getProject(projectId)
+      .then((p) => {
+        if (!cancelled) setSchedule(normalizeSchedule(p.schedule));
+      })
+      .catch(() => {
+        if (!cancelled) setSchedule(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  if (!schedule) return null;
+
+  const save = async (next: XhsOpsSchedule) => {
+    setSchedule(next);
+    setState("saving");
+    setError(null);
+    try {
+      const p = await xhsOpsApi.updateProject(projectId, { schedule: next });
+      setSchedule(normalizeSchedule(p.schedule));
+      setState("saved");
+    } catch (err) {
+      setState("error");
+      setError(describeXhsOpsError(err, "自动执行设置保存失败"));
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border bg-surface-2/40 px-3 py-1.5 text-[12px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-text-primary">
+          <Switch
+            checked={schedule.enabled}
+            onCheckedChange={(enabled) => void save({ ...schedule, enabled })}
+            aria-label="每日自动执行"
+            disabled={state === "saving"}
+          />
+          <span>每日自动执行</span>
+          <input
+            type="time"
+            className={`${inputClass} w-[92px]`}
+            value={schedule.time}
+            aria-label="自动执行时间"
+            disabled={state === "saving"}
+            onChange={(e) => {
+              const time = e.target.value;
+              if (/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+                void save({ ...schedule, time });
+              }
+            }}
+          />
+          <span className="text-text-tertiary">
+            到点后桌面自动按各账号兴趣池生成当日计划并派发；同一手机上的账号排队串行
+          </span>
+        </div>
+        <span className="text-[11px] text-text-tertiary">
+          {state === "saving" ? "保存中…" : state === "saved" ? "已保存" : ""}
+        </span>
+      </div>
+      {schedule.lastResult ? (
+        <div className="text-[11px] text-text-tertiary">
+          最近：{schedule.lastResult}
+        </div>
+      ) : null}
+      <ErrorLine message={error} />
     </div>
   );
 }
@@ -728,7 +816,7 @@ function RunPlanCard({
           <span
             className={`text-[12px] font-medium ${runStatusTextClass(run.status)}`}
           >
-            {runStatusLabel(run.status)}
+            {isRunQueued(run) ? "排队中" : runStatusLabel(run.status)}
           </span>
         ) : null
       }
@@ -737,11 +825,13 @@ function RunPlanCard({
           <div className="min-w-0 text-[11px] text-text-tertiary">
             {editing
               ? `共 ${plannedTotal} 篇 · 关键词 ${cleanKeywords.length} 个 · 首页 ${homeFeedCount} 篇${locked && segment ? ` · 等待第 ${segment.index - 1} 段结束后${autoStart ? "自动开始" : "可开始"}` : ""}`
-              : run && runActive
-                ? `已浏览 ${liveBrowsed}/${plannedTotal} · 赞 ${liveInteractions?.like ?? 0} 藏 ${liveInteractions?.collect ?? 0} 关 ${liveInteractions?.follow ?? 0}${run.startedAt ? ` · ${formatClock(run.startedAt)} 开始` : ""}`
-                : run
-                  ? `${runStatusLabel(run.status)}${run.completedAt ? ` · ${formatClock(run.completedAt)}` : ""} · 用时 ${formatDurationMs(run.summary?.durationMs)}`
-                  : ""}
+              : run && isRunQueued(run)
+                ? "排队中：同一手机上还有任务在执行，结束后自动开始"
+                : run && runActive
+                  ? `已浏览 ${liveBrowsed}/${plannedTotal} · 赞 ${liveInteractions?.like ?? 0} 藏 ${liveInteractions?.collect ?? 0} 关 ${liveInteractions?.follow ?? 0}${run.startedAt ? ` · ${formatClock(run.startedAt)} 开始` : ""}`
+                  : run
+                    ? `${runStatusLabel(run.status)}${run.completedAt ? ` · ${formatClock(run.completedAt)}` : ""} · 用时 ${formatDurationMs(run.summary?.durationMs)}`
+                    : ""}
           </div>
           <div className="flex items-center gap-2">
             {editing ? (
