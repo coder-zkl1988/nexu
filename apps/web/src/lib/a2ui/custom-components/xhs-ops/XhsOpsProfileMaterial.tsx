@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CustomComponentProps } from "../registry";
 import { describeXhsOpsError, xhsOpsApi } from "./xhs-ops-api";
+import { ProjectPicker, useProjectResolution } from "./xhs-ops-project-picker";
 import {
   type XhsOpsAccount,
   type XhsOpsProfileDraft,
@@ -34,17 +35,16 @@ export function XhsOpsProfileMaterial({
   resolve,
   onAction,
 }: CustomComponentProps) {
-  const projectId = asString(readProp(comp, resolve, "projectId"));
+  const propProjectId = asString(readProp(comp, resolve, "projectId"));
+  const projectName = asString(readProp(comp, resolve, "projectName")).trim();
+  const resolution = useProjectResolution(propProjectId, projectName);
+  const projectId = resolution.projectId;
   const onlyAccountId = asString(readProp(comp, resolve, "accountId")) || null;
   const [accounts, setAccounts] = useState<XhsOpsAccount[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!projectId) {
-      setAccounts([]);
-      setLoadError("缺少 projectId");
-      return;
-    }
+    if (!projectId) return;
     let cancelled = false;
     xhsOpsApi
       .listAccounts(projectId)
@@ -78,8 +78,17 @@ export function XhsOpsProfileMaterial({
       title="账号资料与素材"
       subtitle="昵称/简介由 AI 生成，头像/背景各 3 张备选；点选后「应用到手机」会修改该账号的公开资料"
     >
-      <ErrorLine message={loadError} />
-      {accounts === null ? <HintLine>正在加载账号…</HintLine> : null}
+      <ErrorLine message={loadError ?? resolution.error} />
+      {!projectId ? (
+        <ProjectPicker
+          resolution={resolution}
+          wanted={projectName}
+          purpose="生成资料"
+        />
+      ) : null}
+      {projectId && accounts === null ? (
+        <HintLine>正在加载账号…</HintLine>
+      ) : null}
       {accounts && accounts.length === 0 && !loadError ? (
         <HintLine>没有已绑定手机的账号；先在账号配置里绑定设备。</HintLine>
       ) : null}

@@ -85,11 +85,16 @@
 > 设计稿已出（2026-09-05）：[2026-09-05-xhs-ops-comment-design.md](2026-09-05-xhs-ops-comment-design.md)——风控规则表、数据模型（comments 集合 / interaction.comment / plan.kind=comment）、五段流程（手机只标注 commentWorthy → 桌面生成候选 → 人工审核组件 XhsOpsCommentReview → 评论 run → 回填看板）、桌面配额公式（min(dailyCap, 5, floor(今日浏览/8))）、**TabbyApp TaskPolicy `comment` 标签 + 文本白名单的机械阻断**、D0–D5 分期与验收。待评审后进 D1（桌面基建，可与 P2 收尾并行）。
 
 ### 3.2 其他
-- 新会话无 projectId 的兜底：`XhsOpsProfileMaterial`/`XhsOpsRunPlanner` 也应像看板一样支持省略 `projectId`（按 `projectName` 匹配或卡片内点选），否则 agent 只能在同一会话里从 `xhs_ops_project_saved` 拿到 id。
+- ~~新会话无 projectId 的兜底~~ ✅ 2026-09-06：`useProjectResolution` + `ProjectPicker` 抽成 `xhs-ops-project-picker.tsx`，看板/RunPlanner/ProfileMaterial 三个组件都支持省略 `projectId`（按 `projectName` 匹配或卡片内点选）；插件 schema 中 projectId 改为可选并写明「新会话不要去记忆/会话/文件里找 projectId」。
 - 登录保活（`login_required` 会停整轮；需预检或定期 login 任务）。
 - 兴趣池轮次快照（复盘"改了什么"）。
 - run 归档（LowDB 500 条上限≈10 账号×50 天）。
 - 停留时长设备侧度量（RECORD_JSON 加 dwellSec；目前只能信模型自述）。
+
+## 真机验收记录（2026-09-06 凌晨，荣耀 PTP-AN10，仅此一台在线）
+- **P2-4 ✅**：验收项目「验收·荣耀定时 0906」把 `schedule.time` 设为 00:19，调度器 00:19:49 按时点火（`reason=schedule`），2 段计划 → 2 个 run：第 1 段直接 running，第 2 段 `queuedBehindRunId` 指向第 1 段；第 1 段结束后队列自动启动第 2 段（日志 `queued run started`）。`lastResult`=「2026-09-06 00:19 定时：1 个开始、1 个排队」。
+- **P2-3 / P2-5 ❌ 被手机侧拦住**：两段 run 的全部 4 个 chunk 在第 0 步失败 `POLICY_APP_ROLE_NOT_ALLOWED: StartApp role=other`——这正是 09-04 在 TabbyApp 修掉的「策略用原始应用名判角色」问题（f269cf7），说明这台荣耀跑的是旧 APK（昨天只给 Redmi 装了新包；公网 release 也是 1.0.20，无法靠版本号区分）。技能包已确认同步到 bundle 51（xhs v32），所以一旦装上新 APK，重跑同一项目即可同时验收 P2-3 与 P2-5。
+- 附带结论：设备队列 + 「连续 2 个任务块失败即停」的组合在坏设备上表现正确——两段各 10 秒内失败收尾，没有卡住手机。
 
 ## 决策记录（2026-09-04 已拍板）
 1. 80-100 篇/天**不是硬性要求**——一期 30-50 篇观察，多 run 拆分为可选能力（2.3）。

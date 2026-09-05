@@ -11,6 +11,7 @@ import {
 import type { CustomComponentProps } from "../registry";
 import { describeXhsOpsError, xhsOpsApi } from "./xhs-ops-api";
 import { localDateString } from "./xhs-ops-dashboard-data";
+import { ProjectPicker, useProjectResolution } from "./xhs-ops-project-picker";
 import {
   type XhsOpsAccount,
   type XhsOpsInteractionConfig,
@@ -206,7 +207,11 @@ export function XhsOpsRunPlanner({
   resolve,
   onAction,
 }: CustomComponentProps) {
-  const projectId = asString(readProp(comp, resolve, "projectId"));
+  const propProjectId = asString(readProp(comp, resolve, "projectId"));
+  const projectName = asString(readProp(comp, resolve, "projectName")).trim();
+  // 新会话里 agent 往往没有 projectId：按项目名匹配，或让用户在卡片里点选。
+  const resolution = useProjectResolution(propProjectId, projectName);
+  const projectId = resolution.projectId;
   const rawPlans = readProp(comp, resolve, "plans");
   const plansKey = JSON.stringify(rawPlans ?? []);
   const plans = useMemo(() => normalizePlans(JSON.parse(plansKey)), [plansKey]);
@@ -284,11 +289,7 @@ export function XhsOpsRunPlanner({
     );
 
   useEffect(() => {
-    if (!projectId) {
-      setAccounts(new Map());
-      setAccountsError("缺少 projectId");
-      return;
-    }
+    if (!projectId) return;
     let cancelled = false;
     xhsOpsApi
       .listAccounts(projectId)
@@ -309,7 +310,20 @@ export function XhsOpsRunPlanner({
     };
   }, [projectId]);
 
-  if (plans.length === 0 && autoPlans === null && projectId) {
+  if (!projectId) {
+    return (
+      <CardShell testId="run-planner" title="今日浏览计划">
+        <ErrorLine message={resolution.error} />
+        <ProjectPicker
+          resolution={resolution}
+          wanted={projectName}
+          purpose="执行"
+        />
+      </CardShell>
+    );
+  }
+
+  if (plans.length === 0 && autoPlans === null) {
     return (
       <CardShell testId="run-planner" title="今日浏览计划">
         <HintLine>正在按各账号兴趣池生成今日计划…</HintLine>

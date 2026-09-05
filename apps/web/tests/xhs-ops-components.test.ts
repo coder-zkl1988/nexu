@@ -190,4 +190,32 @@ describe("xhs-ops a2ui components render (wiring smoke)", () => {
     expect(html).toContain("正在加载项目列表");
     expect(html).not.toContain("正在加载运行记录");
   });
+
+  it("XhsOpsRunPlanner and XhsOpsProfileMaterial without projectId show the project picker (3.2 兜底)", () => {
+    const planner = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsRunPlanner,
+          renderProps({
+            id: "c8",
+            type: "XhsOpsRunPlanner",
+            projectName: "新氧青春",
+          }),
+        ),
+      ),
+    );
+    expect(planner).toContain("今日浏览计划");
+    expect(planner).toContain("正在加载项目列表");
+    const material = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsProfileMaterial,
+          renderProps({ id: "c9", type: "XhsOpsProfileMaterial" }),
+        ),
+      ),
+    );
+    expect(material).toContain("账号资料与素材");
+    expect(material).toContain("正在加载项目列表");
+    expect(material).not.toContain("正在加载账号");
+  });
 });

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { pickProjectByName } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsDashboard";
 import {
   buildRunMatrix,
   collectObservations,
@@ -9,6 +8,7 @@ import {
   sumTotals,
   summarizeAnomalies,
 } from "../src/lib/a2ui/custom-components/xhs-ops/xhs-ops-dashboard-data";
+import { pickProjectByName } from "../src/lib/a2ui/custom-components/xhs-ops/xhs-ops-project-picker";
 import type {
   XhsOpsAccount,
   XhsOpsProject,
