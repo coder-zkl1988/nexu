@@ -644,6 +644,27 @@ const COMPONENT_SCHEMAS = [
       },
     },
   },
+  {
+    type: "XhsOpsCommentReview",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string", description: "Unique component ID" },
+      type: { const: "XhsOpsCommentReview" },
+      projectId: {
+        type: "string",
+        description:
+          "The nurturing project whose comment queue to review. Omit when unknown (optionally pass projectName) — the component lets the user pick.",
+      },
+      projectName: {
+        type: "string",
+        description: "Optional: the project name the user mentioned.",
+      },
+      accountId: {
+        type: "string",
+        description: "Optional: limit the queue to one account.",
+      },
+    },
+  },
 ];
 
 /**
@@ -685,6 +706,7 @@ WHEN TO USE:
     • today's per-account plan + execution + progress → XhsOpsRunPlanner (render it with just projectId — the desktop generates each account's plan from its interest pool and shows the rationale; pass plans only when the user dictated keywords; the user adjusts and starts; xhs_ops_run_finished carries the summary — do NOT re-dispatch afterwards, help review instead. Accounts whose browse defaults set dailySegments>1 get one card per segment; the desktop runs them serially and auto-chains them, so you receive one xhs_ops_run_finished per segment (payload.segment = {index, count}) — do not re-render the planner between segments. Daily auto-run (每日自动执行/定时/每天早上自动跑) is a switch + time on this planner card, stored on the project and fired by the desktop's own scheduler — do NOT create OpenClaw cron jobs or schedules for xhs-ops; just render the planner and tell the user to flip the switch)
     • reviewing results across days (复盘/看板/效果如何/推荐流有没有变/哪些关键词不行/异常多不多) → XhsOpsDashboard, IMMEDIATELY and as the FIRST tool call. Pass projectId if this session already has it, otherwise pass projectName (what the user called it) or nothing — the component lets the user pick. The run data lives ONLY in the desktop's xhs-ops store, which this board reads; it is NOT in sessions_history, memory_search, files or exec output — do not search for it there. READ-ONLY: never re-dispatch phone tasks to "refresh" results. The user may save a 运营备注 there; you receive xhs_ops_dashboard_note_saved.
     • Never render these stages as plain text or Markdown lists — the components own the form, confirmation and progress UX.
+    • comment review (评论审核/评论队列/给帖子评论/批准评论) → XhsOpsCommentReview. The DESKTOP generates candidate comments from browsed posts and the HUMAN approves each one there; comments are only ever sent by a later desktop comment task. You NEVER write, approve or send a comment yourself, never dispatch a phone task to comment, and never call device tools for it — render the queue and stop. You receive xhs_ops_comments_reviewed per decision; acknowledge briefly, do not restate the comment.
     • projectId is only known inside the session that saved the project. In any other session (今天跑一下养号 / 给账号生成资料 / 复盘) render XhsOpsRunPlanner / XhsOpsProfileMaterial / XhsOpsDashboard WITHOUT projectId (pass projectName if the user named it) — the component shows a project picker. Never search memory/sessions/files for a projectId.
 - Showing a generated/edited image to the user in webchat — use an Image component (pass the local file path produced by image_generate)
 - Collecting structured input from the user (forms, date/time, choices)
@@ -734,8 +756,9 @@ CUSTOM COMPONENTS:
 - XhsOpsAccountPlanner: Persona suggestion table with phone binding and three-layer interest pool editing.
 - XhsOpsProfileMaterial: Per-account profile material — AI-generated nickname/bio, 3 avatar + 3 cover candidates to pick from, and a user-triggered 「应用到手机」 that edits the public profile via the phone.
 - XhsOpsRunPlanner: Today's per-account nurture plan (keywords × counts + home feed), launch button, live chunk progress, and post-run review notes.
+- XhsOpsCommentReview: Human review queue for comment drafts — per-account quota, AI candidates per browsed post, edit/approve/reject; nothing is sent from here and the agent never comments on its own.
 - XhsOpsDashboard: Read-only review board for a nurturing project — account × date matrix (actual/planned browsed, home feed, interactions, anomalies), per-keyword verdicts (正常/观察/建议调整), anomaly summary, phone + ops observation timeline, and inline 运营备注 editing.
-Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, XhsOpsProfileMaterial, XhsOpsRunPlanner, or XhsOpsDashboard.`;
+Use catalogId: "https://nexu.app/a2ui/custom-catalog.json" when using PhonePreview, MarkdownEditor, XHSEditor, XHSBatchTable, XhsOpsProjectForm, XhsOpsProfileCard, XhsOpsAccountPlanner, XhsOpsProfileMaterial, XhsOpsRunPlanner, XhsOpsDashboard, or XhsOpsCommentReview.`;
 
 const plugin = {
   id: "nexu-a2ui",

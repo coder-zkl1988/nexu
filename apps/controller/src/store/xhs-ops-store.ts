@@ -3,6 +3,8 @@ import {
   type XhsOpsAccount,
   type XhsOpsAccountCreateInput,
   type XhsOpsAccountUpdateInput,
+  type XhsOpsCommentDraft,
+  type XhsOpsCommentListQuery,
   type XhsOpsProject,
   type XhsOpsProjectCreateInput,
   type XhsOpsProjectUpdateInput,
@@ -19,6 +21,14 @@ import { LowDbStore } from "./lowdb-store.js";
 
 /** Oldest runs are dropped past this many (spec §2). */
 export const XHS_OPS_MAX_RUNS = 500;
+/** Comment drafts are small; keep a generous window for 复盘. */
+export const XHS_OPS_MAX_COMMENTS = 2000;
+
+/** Everything a comment draft carries except the store-assigned id/timestamps. */
+export type XhsOpsCommentSeed = Omit<
+  XhsOpsCommentDraft,
+  "id" | "createdAt" | "updatedAt"
+>;
 
 /** Everything a run carries except the store-assigned id/timestamps. */
 export type XhsOpsRunSeed = Omit<XhsOpsRun, "id" | "createdAt" | "updatedAt">;
@@ -54,7 +64,13 @@ export class XhsOpsStore {
     this.store = new LowDbStore<XhsOpsStoreData>(
       filePath,
       xhsOpsStoreDataSchema,
-      () => ({ schemaVersion: 1, projects: [], accounts: [], runs: [] }),
+      () => ({
+        schemaVersion: 1,
+        projects: [],
+        accounts: [],
+        runs: [],
+        comments: [],
+      }),
     );
     this.now = deps.now ?? (() => new Date().toISOString());
     this.genId = deps.genId ?? (() => randomUUID());
@@ -291,6 +307,67 @@ export class XhsOpsStore {
         data: { ...current, runs: current.runs.filter((r) => r.id !== runId) },
         result: existing,
       };
+    });
+  }
+
+  // ─── Comment drafts (P3-1 D1) ──────────────────────────────────────────────
+
+  /** Newest first. */
+  async listComments(
+    filter: XhsOpsCommentListQuery & { projectId?: string } = {},
+  ): Promise<XhsOpsCommentDraft[]> {
+    const comments = (await this.store.read()).comments.filter(
+      (c) =>
+        (filter.projectId === undefined || c.projectId === filter.projectId) &&
+        (filter.accountId === undefined || c.accountId === filter.accountId) &&
+        (filter.status === undefined || c.status === filter.status),
+    );
+    return comments
+      .reverse()
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async getComment(commentId: string): Promise<XhsOpsCommentDraft | null> {
+    return (
+      (await this.store.read()).comments.find((c) => c.id === commentId) ?? null
+    );
+  }
+
+  async createComment(seed: XhsOpsCommentSeed): Promise<XhsOpsCommentDraft> {
+    const now = this.now();
+    const draft: XhsOpsCommentDraft = {
+      ...seed,
+      id: this.genId(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    return this.mutate((current) => {
+      const comments = [...current.comments, draft];
+      const overflow = Math.max(0, comments.length - XHS_OPS_MAX_COMMENTS);
+      return {
+        data: {
+          ...current,
+          comments: overflow > 0 ? comments.slice(overflow) : comments,
+        },
+        result: draft,
+      };
+    });
+  }
+
+  async updateComment(
+    commentId: string,
+    updater: (current: XhsOpsCommentDraft) => XhsOpsCommentDraft,
+  ): Promise<XhsOpsCommentDraft | null> {
+    return this.mutate((current) => {
+      const index = current.comments.findIndex((c) => c.id === commentId);
+      const existing = current.comments[index];
+      if (!existing) {
+        return { data: current, result: null };
+      }
+      const next = { ...updater(existing), id: existing.id };
+      const comments = [...current.comments];
+      comments[index] = next;
+      return { data: { ...current, comments }, result: next };
     });
   }
 }

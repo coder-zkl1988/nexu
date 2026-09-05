@@ -76,6 +76,7 @@ import { WorkflowComposer } from "../services/teams/team-workflow-composer.js";
 import { TeamWorkflowLedgerStore } from "../services/teams/team-workflow-ledger.js";
 import { TeamWorkflowService } from "../services/teams/team-workflow-service.js";
 import { TemplateService } from "../services/template-service.js";
+import { XhsOpsCommentService } from "../services/xhs-ops-comment-service.js";
 import { XhsOpsProfileService } from "../services/xhs-ops-profile-service.js";
 import { XhsOpsRunService } from "../services/xhs-ops-run-service.js";
 import { XhsOpsScheduler } from "../services/xhs-ops-scheduler.js";
@@ -148,6 +149,7 @@ export interface ControllerContainer {
   xhsOpsRunService: XhsOpsRunService;
   xhsOpsProfileService: XhsOpsProfileService;
   xhsOpsScheduler: XhsOpsScheduler;
+  xhsOpsCommentService: XhsOpsCommentService;
   deviceMirrorProxy: DeviceMirrorProxy;
   devicePollingService: DevicePollingService;
   deviceTaskHistoryStore: DeviceTaskHistoryStore;
@@ -868,6 +870,10 @@ export async function createContainer(): Promise<ControllerContainer> {
       mediaRoot: path.resolve(env.openclawStateDir, "media"),
     }),
     xhsOpsScheduler,
+    xhsOpsCommentService: new XhsOpsCommentService({
+      store: xhsOpsStore,
+      media: mediaGenerationService,
+    }),
     deviceMirrorProxy,
     devicePollingService,
     deviceTaskHistoryStore,

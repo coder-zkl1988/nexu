@@ -20,6 +20,11 @@ export const xhsOpsInteractionRuleSchema = z.object({
   ratioPercent: z.number().int().min(0).max(100),
 });
 
+export const xhsOpsCommentRuleSchema = z.object({
+  enabled: z.boolean().default(false),
+  dailyCap: z.number().int().min(0).max(5).default(2),
+});
+
 export const xhsOpsInteractionConfigSchema = z.object({
   like: xhsOpsInteractionRuleSchema.default({
     enabled: true,
@@ -36,8 +41,11 @@ export const xhsOpsInteractionConfigSchema = z.object({
     dailyCap: 0,
     ratioPercent: 0,
   }),
-  /** Phase 1: comments are never enabled. */
-  comment: z.object({ enabled: z.literal(false) }).default({ enabled: false }),
+  /**
+   * 评论（P3-1，评审 2026-09-06）：默认关；开启后也只是允许进入审核队列，
+   * 每一条都要人工批准，由独立的评论任务发出。硬上限 5，默认 2。
+   */
+  comment: xhsOpsCommentRuleSchema.default({}),
 });
 
 export const xhsOpsBrowseDefaultsSchema = z.object({
@@ -260,6 +268,8 @@ export const xhsOpsRunPostActionSchema = z.enum([
   "collect",
   "follow",
   "none",
+  /** 点进去但没计数（评论不足/广告）——手机实际会报，保留而不是抹成 none。 */
+  "skip",
 ]);
 
 export const xhsOpsRunPostSchema = z.object({
@@ -267,6 +277,10 @@ export const xhsOpsRunPostSchema = z.object({
   author: z.string(),
   action: xhsOpsRunPostActionSchema,
   commentsRead: count(),
+  /** P3-1 D3：手机只标注"这帖值不值得评"，不写评论。 */
+  commentWorthy: z.boolean().default(false),
+  /** 正文一句话摘要（a11y 文本），给桌面生成评论候选用。 */
+  summary: z.string().max(120).default(""),
 });
 
 export const xhsOpsRunChunkSchema = z.object({
@@ -394,6 +408,108 @@ export const xhsOpsRunListQuerySchema = z.object({
   date: xhsOpsDateSchema.optional(),
 });
 
+// ─── Comment drafts (P3-1 D1) ───────────────────────────────────────────────
+
+/**
+ * 评论草稿状态机：pending → approved | rejected；approved → sent | failed；
+ * 当天未执行的 approved 次日 expired（帖子时效）。任何一条发出去的评论都必须
+ * 先有 approved 记录，且 text 与手机 TYPE 的文字逐字一致（D2 的策略白名单）。
+ */
+export const xhsOpsCommentStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "rejected",
+  "sent",
+  "failed",
+  "expired",
+]);
+
+export const xhsOpsCommentPostSchema = z.object({
+  title: z.string().max(60),
+  author: z.string().max(40),
+  summary: z.string().max(120).default(""),
+});
+
+export const xhsOpsCommentDraftSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  accountId: z.string(),
+  deviceId: z.string().nullable().default(null),
+  /** 候选来自哪次浏览 run 的哪篇帖子。 */
+  sourceRunId: z.string(),
+  sourceChunkIndex: z.number().int().min(0),
+  sourcePostIndex: z.number().int().min(0),
+  post: xhsOpsCommentPostSchema,
+  /** 桌面生成的候选（已过硬校验），运营点选或改写。 */
+  candidates: z.array(z.string().max(30)).max(5).default([]),
+  /** 审核后的最终文案；批准前为 null。 */
+  text: z.string().max(30).nullable().default(null),
+  status: xhsOpsCommentStatusSchema.default("pending"),
+  reviewedAt: z.string().nullable().default(null),
+  reviewNote: text(),
+  sentRunId: z.string().nullable().default(null),
+  sentAt: z.string().nullable().default(null),
+  sendResult: z.string().nullable().default(null),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const xhsOpsCommentGenerateBodySchema = z.object({
+  /** 省略 = 该 run 里所有 commentWorthy 的帖子。 */
+  posts: z
+    .array(
+      z.object({
+        chunkIndex: z.number().int().min(0),
+        postIndex: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(10)
+    .optional(),
+});
+
+export const xhsOpsCommentReviewBodySchema = z.object({
+  decision: z.enum(["approved", "rejected"]),
+  /** 批准时的最终文案；省略则取第一条候选。 */
+  text: z.string().max(30).optional(),
+  note: z.string().max(200).optional(),
+});
+
+export const xhsOpsCommentListQuerySchema = z.object({
+  status: xhsOpsCommentStatusSchema.optional(),
+  accountId: z.string().optional(),
+});
+
+/** 桌面配额：cap = min(dailyCap, 5, floor(今日浏览/8))；remaining = cap − 今日已发 − 已批未发。 */
+export const xhsOpsCommentQuotaSchema = z.object({
+  accountId: z.string(),
+  accountLabel: z.string(),
+  date: xhsOpsDateSchema,
+  enabled: z.boolean(),
+  dailyCap: z.number().int(),
+  todayBrowsed: z.number().int(),
+  byBrowse: z.number().int(),
+  cap: z.number().int(),
+  sentToday: z.number().int(),
+  approvedPending: z.number().int(),
+  remaining: z.number().int(),
+});
+
+export const xhsOpsCommentListResponseSchema = z.object({
+  drafts: z.array(xhsOpsCommentDraftSchema),
+  quotas: z.array(xhsOpsCommentQuotaSchema),
+});
+export const xhsOpsCommentResponseSchema = z.object({
+  draft: xhsOpsCommentDraftSchema,
+});
+export const xhsOpsCommentGenerateResponseSchema = z.object({
+  drafts: z.array(xhsOpsCommentDraftSchema),
+  skipped: z.array(z.string()),
+});
+export const xhsOpsCommentQuotaResponseSchema = z.object({
+  quota: xhsOpsCommentQuotaSchema,
+});
+
 // ─── Persistence root ────────────────────────────────────────────────────────
 
 export const xhsOpsStoreDataSchema = z.object({
@@ -401,6 +517,7 @@ export const xhsOpsStoreDataSchema = z.object({
   projects: z.array(xhsOpsProjectSchema).default([]),
   accounts: z.array(xhsOpsAccountSchema).default([]),
   runs: z.array(xhsOpsRunSchema).default([]),
+  comments: z.array(xhsOpsCommentDraftSchema).default([]),
 });
 
 // ─── REST response envelopes ─────────────────────────────────────────────────
@@ -469,6 +586,19 @@ export type XhsOpsRunSummary = z.infer<typeof xhsOpsRunSummarySchema>;
 export type XhsOpsRunStatus = z.infer<typeof xhsOpsRunStatusSchema>;
 export type XhsOpsRunSegment = z.infer<typeof xhsOpsRunSegmentSchema>;
 export type XhsOpsSchedule = z.infer<typeof xhsOpsScheduleSchema>;
+export type XhsOpsCommentRule = z.infer<typeof xhsOpsCommentRuleSchema>;
+export type XhsOpsCommentStatus = z.infer<typeof xhsOpsCommentStatusSchema>;
+export type XhsOpsCommentDraft = z.infer<typeof xhsOpsCommentDraftSchema>;
+export type XhsOpsCommentGenerateBody = z.infer<
+  typeof xhsOpsCommentGenerateBodySchema
+>;
+export type XhsOpsCommentReviewBody = z.infer<
+  typeof xhsOpsCommentReviewBodySchema
+>;
+export type XhsOpsCommentListQuery = z.infer<
+  typeof xhsOpsCommentListQuerySchema
+>;
+export type XhsOpsCommentQuota = z.infer<typeof xhsOpsCommentQuotaSchema>;
 export type XhsOpsRun = z.infer<typeof xhsOpsRunSchema>;
 export type XhsOpsRunCreate = z.infer<typeof xhsOpsRunCreateSchema>;
 export type XhsOpsRunCreateInput = z.input<typeof xhsOpsRunCreateSchema>;

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  commentTextProblem,
   isRunQueued,
   normalizeBrowseDefaults,
+  normalizeInteractionConfig,
   normalizeRunSegment,
   normalizeSchedule,
   segmentLabel,
@@ -74,5 +76,28 @@ describe("xhs-ops web normalizers (P2-3 daily segments)", () => {
       false,
     );
     expect(isRunQueued(null)).toBe(false);
+  });
+
+  it("normalizeInteractionConfig upgrades the legacy comment literal and clamps the cap to 5 (P3-1)", () => {
+    expect(
+      normalizeInteractionConfig({ comment: { enabled: false } }).comment,
+    ).toEqual({ enabled: false, dailyCap: 2 });
+    expect(
+      normalizeInteractionConfig({ comment: { enabled: true, dailyCap: 9 } })
+        .comment,
+    ).toEqual({ enabled: true, dailyCap: 5 });
+    expect(normalizeInteractionConfig(undefined).comment).toEqual({
+      enabled: false,
+      dailyCap: 2,
+    });
+  });
+
+  it("commentTextProblem mirrors the server's length rules", () => {
+    expect(commentTextProblem("儿童用品齐全太省心")).toBeNull();
+    expect(commentTextProblem("好")).toBe("至少 2 个字");
+    expect(commentTextProblem("这家酒店的亲子房真的很不错啊")).toContain(
+      "超过 10 字",
+    );
+    expect(commentTextProblem("好看\n真好看")).toBe("不能换行");
   });
 });

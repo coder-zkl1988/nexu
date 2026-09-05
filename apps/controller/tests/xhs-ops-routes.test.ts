@@ -5,6 +5,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { afterAll, describe, expect, it } from "vitest";
 import type { ControllerContainer } from "../src/app/container.js";
 import { registerXhsOpsRoutes } from "../src/routes/xhs-ops-routes.js";
+import { XhsOpsCommentService } from "../src/services/xhs-ops-comment-service.js";
 import { XhsOpsProfileService } from "../src/services/xhs-ops-profile-service.js";
 import { XhsOpsRunService } from "../src/services/xhs-ops-run-service.js";
 import { XhsOpsScheduler } from "../src/services/xhs-ops-scheduler.js";
@@ -44,6 +45,14 @@ const profileService = new XhsOpsProfileService({
 });
 
 const scheduler = new XhsOpsScheduler({ store, runService });
+const commentService = new XhsOpsCommentService({
+  store,
+  media: {
+    generateText: async () => ({
+      text: '{"candidates":["这家亲子房太省心了","带娃住这儿真不错","海洋球池娃能玩一天"]}',
+    }),
+  },
+});
 
 function buildApp() {
   const app = new OpenAPIHono<ControllerBindings>();
@@ -52,6 +61,7 @@ function buildApp() {
     xhsOpsRunService: runService,
     xhsOpsProfileService: profileService,
     xhsOpsScheduler: scheduler,
+    xhsOpsCommentService: commentService,
   } as ControllerContainer);
   return app;
 }
@@ -448,5 +458,210 @@ describe("xhs-ops routes wiring", () => {
       { method: "POST" },
     );
     expect(missing.status).toBe(404);
+  });
+
+  it("comment queue: generate from a run's posts, quota gates approval, review is single-shot (P3-1 D1)", async () => {
+    const app = buildApp();
+    const proj = (
+      (await (
+        await app.request("/api/v1/xhs-ops/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "评论队列" }),
+        })
+      ).json()) as { project: { id: string } }
+    ).project;
+    const account = (
+      (await (
+        await app.request(`/api/v1/xhs-ops/projects/${proj.id}/accounts`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            label: "评论账号",
+            deviceId: "dev-1",
+            interaction: {
+              like: { enabled: false, dailyCap: 0, ratioPercent: 0 },
+              collect: { enabled: false, dailyCap: 0, ratioPercent: 0 },
+              follow: { enabled: false, dailyCap: 0, ratioPercent: 0 },
+              comment: { enabled: true, dailyCap: 2 },
+            },
+          }),
+        })
+      ).json()) as {
+        account: {
+          id: string;
+          interaction: { comment: { enabled: boolean; dailyCap: number } };
+        };
+      }
+    ).account;
+    expect(account.interaction.comment).toEqual({ enabled: true, dailyCap: 2 });
+
+    // 一个已完成 8 篇的浏览 run（直接落库，带 commentWorthy 标注）
+    const run = await store.createRun({
+      projectId: proj.id,
+      accountId: account.id,
+      deviceId: "dev-1",
+      accountLabel: "评论账号",
+      date: new Date().toLocaleDateString("sv-SE"),
+      status: "completed",
+      plan: {
+        keywords: [{ keyword: "亲子酒店", count: 8 }],
+        homeFeedCount: 0,
+        dwellSecMin: 10,
+        dwellSecMax: 20,
+        interaction: account.interaction as never,
+      },
+      segment: null,
+      queuedBehindRunId: null,
+      chunks: [
+        {
+          index: 0,
+          mode: "search",
+          keyword: "亲子酒店",
+          plannedCount: 8,
+          status: "completed",
+          taskId: null,
+          startedAt: null,
+          completedAt: null,
+          browsed: 8,
+          skipped: 1,
+          interactions: { like: 0, collect: 0, follow: 0 },
+          anomalies: [],
+          observation: null,
+          message: null,
+          totalSteps: 40,
+          finalScreenshot: null,
+          error: null,
+          posts: [
+            {
+              title: "亲子房天花板！带娃住这太省事",
+              author: "满哥铛弟",
+              action: "none",
+              commentsRead: 4,
+              commentWorthy: true,
+              summary: "两大一小套房，儿童洗漱用品齐全",
+            },
+            {
+              title: "暑假避暑酒店TOP10",
+              author: "乐妈",
+              action: "skip",
+              commentsRead: 0,
+              commentWorthy: true,
+              summary: "",
+            },
+            {
+              title: "带娃住过最夯的亲子酒店",
+              author: "吐司椰椰",
+              action: "none",
+              commentsRead: 448,
+              commentWorthy: false,
+              summary: "",
+            },
+          ],
+        },
+      ],
+      summary: {
+        plannedTotal: 8,
+        browsedTotal: 8,
+        searchBrowsed: 8,
+        homeBrowsed: 0,
+        interactions: { like: 0, collect: 0, follow: 0 },
+        anomalyCount: 0,
+        durationMs: 1000,
+      },
+      notes: "",
+      error: null,
+      startedAt: null,
+      completedAt: null,
+    });
+
+    const gen = await app.request(
+      `/api/v1/xhs-ops/runs/${run.id}/comments/generate`,
+      { method: "POST" },
+    );
+    expect(gen.status).toBe(200);
+    const generated = (await gen.json()) as {
+      drafts: Array<{
+        id: string;
+        candidates: string[];
+        post: { title: string };
+      }>;
+      skipped: string[];
+    };
+    expect(generated.drafts).toHaveLength(1); // commentWorthy 且非 skip 的只有第一篇
+    expect(generated.drafts[0]?.candidates).toHaveLength(3);
+    expect(generated.skipped[0]).toContain("没看完");
+
+    const list = (await (
+      await app.request(`/api/v1/xhs-ops/projects/${proj.id}/comments`)
+    ).json()) as {
+      drafts: Array<{ status: string }>;
+      quotas: Array<{ cap: number; remaining: number; byBrowse: number }>;
+    };
+    expect(list.drafts.map((d) => d.status)).toEqual(["pending"]);
+    // 8 篇浏览 → byBrowse 1 → cap = min(2, 5, 1) = 1
+    expect(list.quotas[0]).toMatchObject({ byBrowse: 1, cap: 1, remaining: 1 });
+
+    const draftId = generated.drafts[0]?.id ?? "";
+    const bad = await app.request(
+      `/api/v1/xhs-ops/comments/${draftId}/review`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          decision: "approved",
+          text: "加微信聊聊这家酒店",
+        }),
+      },
+    );
+    expect(bad.status).toBe(400);
+    const ok = await app.request(`/api/v1/xhs-ops/comments/${draftId}/review`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        decision: "approved",
+        text: "儿童用品齐全太省心",
+      }),
+    });
+    expect(ok.status).toBe(200);
+    const approved = (await ok.json()) as {
+      draft: { status: string; text: string };
+    };
+    expect(approved.draft).toMatchObject({
+      status: "approved",
+      text: "儿童用品齐全太省心",
+    });
+    const again = await app.request(
+      `/api/v1/xhs-ops/comments/${draftId}/review`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision: "rejected" }),
+      },
+    );
+    expect(again.status).toBe(409);
+
+    const quota = (await (
+      await app.request(`/api/v1/xhs-ops/accounts/${account.id}/comment-quota`)
+    ).json()) as { quota: { remaining: number; approvedPending: number } };
+    expect(quota.quota).toMatchObject({ approvedPending: 1, remaining: 0 });
+
+    // 第二篇（显式指定）生成后，配额已满 → 批准 409
+    const gen2 = (await (
+      await app.request(`/api/v1/xhs-ops/runs/${run.id}/comments/generate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ posts: [{ chunkIndex: 0, postIndex: 2 }] }),
+      })
+    ).json()) as { drafts: Array<{ id: string }> };
+    const full = await app.request(
+      `/api/v1/xhs-ops/comments/${gen2.drafts[0]?.id}/review`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision: "approved" }),
+      },
+    );
+    expect(full.status).toBe(409);
   });
 });

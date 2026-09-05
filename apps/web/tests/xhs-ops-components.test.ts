@@ -6,6 +6,7 @@ import type { SurfaceManager } from "../src/lib/a2ui/a2ui-surface";
 import type { SurfaceState } from "../src/lib/a2ui/a2ui-types";
 import type { CustomComponentProps } from "../src/lib/a2ui/custom-components/registry";
 import { XhsOpsAccountPlanner } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsAccountPlanner";
+import { XhsOpsCommentReview } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsCommentReview";
 import { XhsOpsDashboard } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsDashboard";
 import { XhsOpsProfileCard } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProfileCard";
 import { XhsOpsProfileMaterial } from "../src/lib/a2ui/custom-components/xhs-ops/XhsOpsProfileMaterial";
@@ -217,5 +218,31 @@ describe("xhs-ops a2ui components render (wiring smoke)", () => {
     expect(material).toContain("账号资料与素材");
     expect(material).toContain("正在加载项目列表");
     expect(material).not.toContain("正在加载账号");
+  });
+
+  it("XhsOpsCommentReview renders its shell (P3-1 D1) with and without projectId", () => {
+    const withId = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsCommentReview,
+          renderProps({
+            id: "c10",
+            type: "XhsOpsCommentReview",
+            projectId: "p1",
+          }),
+        ),
+      ),
+    );
+    expect(withId).toContain("评论审核队列");
+    expect(withId).toContain("正在加载评论队列");
+    const withoutId = renderToStaticMarkup(
+      withProviders(
+        createElement(
+          XhsOpsCommentReview,
+          renderProps({ id: "c11", type: "XhsOpsCommentReview" }),
+        ),
+      ),
+    );
+    expect(withoutId).toContain("正在加载项目列表");
   });
 });

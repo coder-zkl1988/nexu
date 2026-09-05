@@ -1,6 +1,6 @@
 # 小红书养号 · 评论功能设计稿（P3-1，D0）
 
-> 状态：**已评审通过（2026-09-06），决策见文末 §11**，进入 D1 排期（排在三个真机小修之后）。拍板记录（2026-09-04）：评论**现在立项**，排 P3 首位，**先设计后实现**；运营文档原话「评论需先设计内容审核与风控」。脑图给评论的权重是 3%，即它是浏览之外的点缀，不是主线。
+> 状态：**已评审通过（2026-09-06），决策见 §11；D1 桌面基建已落地（同日，见 §12）**，下一步 D2 手机阻断。拍板记录（2026-09-04）：评论**现在立项**，排 P3 首位，**先设计后实现**；运营文档原话「评论需先设计内容审核与风控」。脑图给评论的权重是 3%，即它是浏览之外的点缀，不是主线。
 
 ## 1. 目标与非目标
 
@@ -141,3 +141,13 @@ remaining      = cap − 今日已 sent − 今日已 approved 未执行
 | 搜不到原帖 | 跳过 + `post_not_found`，不补发 |
 | 限流恢复 | 当日停评；连续 2 天自动关开关；人工重开 |
 | 开工顺序 | 先推送三仓 → 三个真机小修（SCROLL 抖动 / 首页块步数预算 / 荣耀提示自动点掉）→ D1 桌面基建 |
+
+## 12. D1 落地记录（2026-09-06）
+
+- **数据**：`interaction.comment` 从 `literal false` 变为 `{enabled=false, dailyCap 0..5=2}`（旧数据默认补齐）；`RECORD_JSON.posts[]` 增 `commentWorthy`/`summary`（解析器宽容，旧技能不带也能过），`action` 枚举增 `skip`（手机实际会报，之前被抹成 none）；新增 `comments` 集合（`xhsOpsCommentDraftSchema`，状态机 pending → approved|rejected → sent|failed，次日 expired）。`plan.kind` / `chunk.mode=comment` / `interactions.comment` 计数移到 D2 随执行一起加，避免半成品字段。
+- **服务** `XhsOpsCommentService`：`generateForRun(runId, posts?)`（省略取 commentWorthy 帖；`skip` 帖不评；同帖不重复；候选过硬校验 `validateCommentText`——2–10 字、不换行、营销/引流/交易词黑名单、项目禁忌词、表情 ≤1、非纯符号——并与近 30 天已批/已发文案去重；全不合规仍建空候选草稿让运营手写）；`computeCommentQuota`（`min(dailyCap, 5, floor(今日浏览/8)) − 今日已发 − 已批未发`，开关关则 0）；`review`（只审 pending；批准要过文案校验 + 配额；拒绝可带备注）；`expireStale`（列表时顺手把非今天建的 approved 标 expired）。
+- **REST**：`GET /projects/{id}/comments?status&accountId` → {drafts, quotas}；`POST /runs/{id}/comments/generate` {posts?}；`POST /comments/{id}/review` {decision, text?, note?}；`GET /accounts/{id}/comment-quota`。
+- **组件** `XhsOpsCommentReview{projectId?, projectName?, accountId?}`：配额条（每账号 剩余/上限、开关状态）→ 待审核卡（帖子标题/作者/摘要、候选 chips 点选填入、文案框实时计数与校验、备注、批准/拒绝，配额用完或开关未开时批准禁用并说明）→ 「从最近 3 天浏览记录挑帖子生成候选」（每篇一个按钮，★ 标手机认为值得评的）→ 已处理折叠列表。上报 `xhs_ops_comments_reviewed`。AccountPlanner 互动配置多一行「评论」开关 + 每日上限（0–5）。
+- **agent 侧**：插件 schema + 路由描述 + TOOLS.md 第 6 步：评论审核/批准 → 渲染队列；agent 永不代写/代批/代发，也不派手机任务。无头 e2e：新会话「打开评论审核队列」→ 第一个工具调用即 `render_a2ui XhsOpsCommentReview{projectName}`，渲染成功，回复只做导读。
+- **测试**：controller 服务单测 6（校验/解析/配额/生成与去重/审核与过期）+ 路由 +1（生成→配额→批准→重复审核 409→配额满 409）；web 类型 +2、渲染 +1；controller 1117/1117、web xhs-ops 用例全绿。
+- **D2 待办**：TaskPolicy `comment` 标签 + 逐字白名单（TabbyApp）、评论 run（plan.kind=comment、chunk.mode=comment、每条一个 chunk、RECORD_JSON.comments 回填 → draft.status sent/failed）、summary.interactions.comment、看板「评」列；**D3**：research.md 标注 `commentWorthy/summary`、新 `comment.md` 子技能、interact.md 改口。

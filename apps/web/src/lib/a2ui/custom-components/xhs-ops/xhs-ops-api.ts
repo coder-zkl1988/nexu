@@ -13,6 +13,9 @@ import type {
   XhsOpsAccount,
   XhsOpsAccountCreateInput,
   XhsOpsAccountUpdateInput,
+  XhsOpsCommentDraft,
+  XhsOpsCommentQuota,
+  XhsOpsCommentStatus,
   XhsOpsPlanSuggestion,
   XhsOpsProfilePart,
   XhsOpsProject,
@@ -251,6 +254,56 @@ export const xhsOpsApi = {
       "资料应用到手机失败",
     );
     return data.account;
+  },
+
+  // ── Comment review queue (P3-1 D1) ──
+  async listComments(
+    projectId: string,
+    filter: { status?: XhsOpsCommentStatus; accountId?: string } = {},
+  ): Promise<{ drafts: XhsOpsCommentDraft[]; quotas: XhsOpsCommentQuota[] }> {
+    const query: Record<string, string> = {};
+    if (filter.status) query.status = filter.status;
+    if (filter.accountId) query.accountId = filter.accountId;
+    return unwrap(
+      () =>
+        client.get<{
+          drafts: XhsOpsCommentDraft[];
+          quotas: XhsOpsCommentQuota[];
+        }>({
+          url: `${BASE}/projects/${enc(projectId)}/comments`,
+          query,
+        }),
+      "评论队列加载失败",
+    );
+  },
+
+  async generateComments(
+    runId: string,
+    posts?: Array<{ chunkIndex: number; postIndex: number }>,
+  ): Promise<{ drafts: XhsOpsCommentDraft[]; skipped: string[] }> {
+    return unwrap(
+      () =>
+        client.post<{ drafts: XhsOpsCommentDraft[]; skipped: string[] }>({
+          url: `${BASE}/runs/${enc(runId)}/comments/generate`,
+          body: posts ? { posts } : {},
+        }),
+      "评论候选生成失败",
+    );
+  },
+
+  async reviewComment(
+    commentId: string,
+    body: { decision: "approved" | "rejected"; text?: string; note?: string },
+  ): Promise<XhsOpsCommentDraft> {
+    const data = await unwrap(
+      () =>
+        client.post<{ draft: XhsOpsCommentDraft }>({
+          url: `${BASE}/comments/${enc(commentId)}/review`,
+          body,
+        }),
+      "评论审核失败",
+    );
+    return data.draft;
   },
 
   // ── Plan suggestion ──

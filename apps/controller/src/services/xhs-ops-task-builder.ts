@@ -180,11 +180,19 @@ const lenientAnomaly = z.preprocess(
   }),
 );
 
+const lenientBoolean = z.preprocess(
+  (value) => value === true || value === "true" || value === 1 || value === "1",
+  z.boolean(),
+);
+
 const lenientPost = z.object({
   title: lenientText(MAX_TITLE_CHARS),
   author: lenientText(MAX_TITLE_CHARS),
   action: xhsOpsRunPostActionSchema.catch("none"),
   commentsRead: lenientCount,
+  // P3-1：手机标注"值不值得评" + 一句正文摘要；旧版技能不带这两个字段。
+  commentWorthy: lenientBoolean.catch(false),
+  summary: lenientText(120),
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

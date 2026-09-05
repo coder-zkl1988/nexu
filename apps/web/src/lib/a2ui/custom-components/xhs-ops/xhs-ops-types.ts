@@ -16,12 +16,18 @@ export interface XhsOpsInteractionRule {
   ratioPercent: number;
 }
 
+/** 评论开关（P3-1）：开启只意味着允许进审核队列，每条仍需人工批准；硬上限 5。 */
+export interface XhsOpsCommentRule {
+  enabled: boolean;
+  /** 0..5，默认 2 */
+  dailyCap: number;
+}
+
 export interface XhsOpsInteractionConfig {
   like: XhsOpsInteractionRule;
   collect: XhsOpsInteractionRule;
   follow: XhsOpsInteractionRule;
-  /** Literal false — comments are closed in Phase 1. */
-  comment: { enabled: false };
+  comment: XhsOpsCommentRule;
 }
 
 export interface XhsOpsBrowseDefaults {
@@ -193,8 +199,11 @@ export type XhsOpsChunkStatus =
 export interface XhsOpsRunChunkPost {
   title: string;
   author: string;
-  action: "like" | "collect" | "follow" | "none";
+  action: "like" | "collect" | "follow" | "none" | "skip";
   commentsRead: number;
+  /** P3-1：手机标注的"值不值得评" + 正文一句话摘要 */
+  commentWorthy: boolean;
+  summary: string;
 }
 
 export interface XhsOpsRunChunk {
@@ -342,7 +351,7 @@ export function defaultInteractionConfig(): XhsOpsInteractionConfig {
     like: { enabled: true, dailyCap: 5, ratioPercent: 10 },
     collect: { enabled: false, dailyCap: 2, ratioPercent: 3 },
     follow: { enabled: false, dailyCap: 0, ratioPercent: 0 },
-    comment: { enabled: false },
+    comment: { enabled: false, dailyCap: 2 },
   };
 }
 
@@ -534,7 +543,18 @@ export function normalizeInteractionConfig(
     like: normalizeRule(v.like, d.like),
     collect: normalizeRule(v.collect, d.collect),
     follow: normalizeRule(v.follow, d.follow),
-    comment: { enabled: false },
+    comment: normalizeCommentRule(v.comment, d.comment),
+  };
+}
+
+export function normalizeCommentRule(
+  value: unknown,
+  fallback: XhsOpsCommentRule = { enabled: false, dailyCap: 2 },
+): XhsOpsCommentRule {
+  const v = asRecord(value);
+  return {
+    enabled: asBoolean(v.enabled, fallback.enabled),
+    dailyCap: asInt(v.dailyCap, fallback.dailyCap, 0, 5),
   };
 }
 
@@ -778,4 +798,69 @@ export function normalizeProfileDraft(value: unknown): XhsOpsProfileDraft {
 /** media 目录绝对路径 → 桌面可显示的 URL（controller 的 state-file 端点）。 */
 export function mediaFileUrl(absPath: string): string {
   return `/api/v1/media/state-file?path=${encodeURIComponent(absPath)}`;
+}
+
+// ── Comment review queue (P3-1 D1) ────────────────────────────
+
+export type XhsOpsCommentStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "sent"
+  | "failed"
+  | "expired";
+
+export interface XhsOpsCommentDraft {
+  id: string;
+  projectId: string;
+  accountId: string;
+  deviceId: string | null;
+  sourceRunId: string;
+  sourceChunkIndex: number;
+  sourcePostIndex: number;
+  post: { title: string; author: string; summary: string };
+  candidates: string[];
+  text: string | null;
+  status: XhsOpsCommentStatus;
+  reviewedAt: string | null;
+  reviewNote: string;
+  sentRunId: string | null;
+  sentAt: string | null;
+  sendResult: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface XhsOpsCommentQuota {
+  accountId: string;
+  accountLabel: string;
+  date: string;
+  enabled: boolean;
+  dailyCap: number;
+  todayBrowsed: number;
+  byBrowse: number;
+  cap: number;
+  sentToday: number;
+  approvedPending: number;
+  remaining: number;
+}
+
+export const COMMENT_STATUS_LABEL: Record<XhsOpsCommentStatus, string> = {
+  pending: "待审核",
+  approved: "已批准",
+  rejected: "已拒绝",
+  sent: "已发出",
+  failed: "发送失败",
+  expired: "已过期",
+};
+
+/** 与服务端一致的评论文案硬校验（≤10 字、非空、不换行）；营销词由服务端兜底。 */
+export const COMMENT_MAX_CHARS = 10;
+export function commentTextProblem(text: string): string | null {
+  const t = text.trim();
+  const len = [...t].length;
+  if (len < 2) return "至少 2 个字";
+  if (len > COMMENT_MAX_CHARS) return `超过 ${COMMENT_MAX_CHARS} 字（${len}）`;
+  if (/[\r\n]/.test(t)) return "不能换行";
+  return null;
 }

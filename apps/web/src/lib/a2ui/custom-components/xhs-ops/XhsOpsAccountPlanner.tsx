@@ -282,10 +282,8 @@ export function XhsOpsAccountPlanner({
         deviceId: row.deviceId || null,
         deviceName: row.deviceId ? deviceName : null,
         interestPool: row.interestPool,
-        interaction: {
-          ...row.interaction,
-          comment: { enabled: false as const },
-        },
+        // 评论开关按运营设置保存；发出仍需逐条人工批准（P3-1）
+        interaction: row.interaction,
         browseDefaults: row.browseDefaults,
       };
       try {
@@ -680,8 +678,48 @@ function AccountRowEditor({
                   </div>
                 );
               })}
+              <div className="grid grid-cols-[48px_auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 text-[12px]">
+                <span>评论</span>
+                <Switch
+                  size="xs"
+                  checked={row.interaction.comment.enabled}
+                  disabled={disabled}
+                  aria-label="评论开关"
+                  onCheckedChange={(enabled) =>
+                    onPatch({
+                      interaction: {
+                        ...row.interaction,
+                        comment: { ...row.interaction.comment, enabled },
+                      },
+                    })
+                  }
+                />
+                <div className="flex items-center gap-1 text-[11px] text-text-secondary">
+                  <span>每日上限</span>
+                  <NumberInput
+                    value={row.interaction.comment.dailyCap}
+                    min={0}
+                    max={5}
+                    disabled={disabled || !row.interaction.comment.enabled}
+                    ariaLabel="评论每日上限"
+                    className="w-16"
+                    onChange={(dailyCap) =>
+                      onPatch({
+                        interaction: {
+                          ...row.interaction,
+                          comment: { ...row.interaction.comment, dailyCap },
+                        },
+                      })
+                    }
+                  />
+                </div>
+                <span className="text-[11px] text-text-tertiary">
+                  开启只表示允许进审核队列；每条评论仍需人工批准，每浏览 8
+                  篇最多 1 条
+                </span>
+              </div>
               <div className="text-[11px] text-text-tertiary">
-                评论：已关闭（第一阶段不开放）；发布、私信、分享一律不做。
+                发布、私信、分享一律不做。
               </div>
             </div>
           </div>

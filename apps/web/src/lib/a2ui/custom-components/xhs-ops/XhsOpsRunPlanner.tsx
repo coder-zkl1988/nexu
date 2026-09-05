@@ -698,7 +698,11 @@ function RunPlanCard({
             homeFeedCount,
             dwellSecMin: dwellMin,
             dwellSecMax: dwellMax,
-            interaction: { ...interaction, comment: { enabled: false } },
+            // 浏览 run 从不评论；评论走独立的评论任务（P3-1）
+            interaction: {
+              ...interaction,
+              comment: { enabled: false, dailyCap: 0 },
+            },
           },
         });
         setPendingRun(created);

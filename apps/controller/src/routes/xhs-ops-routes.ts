@@ -4,6 +4,13 @@ import {
   xhsOpsAccountListResponseSchema,
   xhsOpsAccountResponseSchema,
   xhsOpsAccountUpdateSchema,
+  xhsOpsCommentGenerateBodySchema,
+  xhsOpsCommentGenerateResponseSchema,
+  xhsOpsCommentListQuerySchema,
+  xhsOpsCommentListResponseSchema,
+  xhsOpsCommentQuotaResponseSchema,
+  xhsOpsCommentResponseSchema,
+  xhsOpsCommentReviewBodySchema,
   xhsOpsPlanSuggestResponseSchema,
   xhsOpsProfileGenerateBodySchema,
   xhsOpsProjectCreateSchema,
@@ -61,6 +68,7 @@ export function registerXhsOpsRoutes(
     xhsOpsRunService: runService,
     xhsOpsProfileService: profileService,
     xhsOpsScheduler: scheduler,
+    xhsOpsCommentService: commentService,
   } = container;
   const mutationErrors = {
     400: jsonError("Invalid request"),
@@ -139,6 +147,152 @@ export function registerXhsOpsRoutes(
   );
 
   // ─── Plan suggestion ──────────────────────────────────────────────────────
+
+  // ─── P3-1 D1 评论审核队列 ───────────────────────────────────────────────
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/xhs-ops/projects/{projectId}/comments",
+      tags: TAGS,
+      request: {
+        params: projectIdParamSchema,
+        query: xhsOpsCommentListQuerySchema,
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: xhsOpsCommentListResponseSchema },
+          },
+          description:
+            "Comment drafts (newest first) + today's per-account quota",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      try {
+        const result = await commentService.listForProject(
+          c.req.valid("param").projectId,
+          c.req.valid("query"),
+        );
+        return c.json(result, 200);
+      } catch (err) {
+        const { status, message } = mapError(err);
+        return c.json({ message }, status);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/xhs-ops/runs/{runId}/comments/generate",
+      tags: TAGS,
+      request: {
+        params: z.object({ runId: z.string().min(1) }),
+        body: {
+          content: {
+            "application/json": { schema: xhsOpsCommentGenerateBodySchema },
+          },
+          required: false,
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: xhsOpsCommentGenerateResponseSchema,
+            },
+          },
+          description:
+            "Drafts created for the run's posts (commentWorthy or explicit)",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      const { runId } = c.req.valid("param");
+      const body = c.req.valid("json") as
+        | { posts?: Array<{ chunkIndex: number; postIndex: number }> }
+        | undefined;
+      try {
+        const result = await commentService.generateForRun(runId, body?.posts);
+        return c.json(result, 200);
+      } catch (err) {
+        const { status, message } = mapError(err);
+        return c.json({ message }, status);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/xhs-ops/comments/{commentId}/review",
+      tags: TAGS,
+      request: {
+        params: z.object({ commentId: z.string().min(1) }),
+        body: {
+          content: {
+            "application/json": { schema: xhsOpsCommentReviewBodySchema },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: xhsOpsCommentResponseSchema },
+          },
+          description: "Reviewed draft",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      try {
+        const draft = await commentService.review(
+          c.req.valid("param").commentId,
+          c.req.valid("json"),
+        );
+        return c.json({ draft }, 200);
+      } catch (err) {
+        const { status, message } = mapError(err);
+        return c.json({ message }, status);
+      }
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/api/v1/xhs-ops/accounts/{accountId}/comment-quota",
+      tags: TAGS,
+      request: { params: accountIdParamSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: xhsOpsCommentQuotaResponseSchema },
+          },
+          description: "Today's comment quota for the account",
+        },
+        404: jsonError("Account not found"),
+      },
+    }),
+    async (c) => {
+      try {
+        const quota = await commentService.quotaFor(
+          c.req.valid("param").accountId,
+        );
+        return c.json({ quota }, 200);
+      } catch (err) {
+        const { status, message } = mapError(err);
+        return c.json(
+          { message: status === 404 ? message : `${message}` },
+          404,
+        );
+      }
+    },
+  );
 
   // P2-4 立即执行一次：忽略开关/时间，按今日计划建议 createRun+startRun（设备队列串行）。
   app.openapi(
