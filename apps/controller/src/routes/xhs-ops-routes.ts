@@ -294,6 +294,54 @@ export function registerXhsOpsRoutes(
     },
   );
 
+  // P3-1 D2：把账号已批准的评论打成评论 run 并启动（设备队列串行）。
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/api/v1/xhs-ops/projects/{projectId}/comment-runs",
+      tags: TAGS,
+      request: {
+        params: projectIdParamSchema,
+        body: {
+          content: {
+            "application/json": {
+              schema: z.object({
+                accountId: z.string().min(1),
+                draftIds: z.array(z.string().min(1)).max(5).optional(),
+              }),
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": { schema: xhsOpsRunResponseSchema },
+          },
+          description:
+            "Comment run created and started (or queued behind the phone's current run)",
+        },
+        ...mutationErrors,
+      },
+    }),
+    async (c) => {
+      const { projectId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      try {
+        const created = await runService.createCommentRun({
+          projectId,
+          accountId: body.accountId,
+          draftIds: body.draftIds,
+        });
+        const run = await runService.startRun(created.id);
+        return c.json({ run }, 200);
+      } catch (err) {
+        const { status, message } = mapError(err);
+        return c.json({ message }, status);
+      }
+    },
+  );
+
   // P2-4 立即执行一次：忽略开关/时间，按今日计划建议 createRun+startRun（设备队列串行）。
   app.openapi(
     createRoute({

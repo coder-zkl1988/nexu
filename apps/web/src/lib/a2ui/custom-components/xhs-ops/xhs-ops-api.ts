@@ -306,6 +306,23 @@ export const xhsOpsApi = {
     return data.draft;
   },
 
+  /** P3-1 D2：把账号已批准的评论打成评论 run 并启动（同一手机排队串行）。 */
+  async createCommentRun(
+    projectId: string,
+    accountId: string,
+    draftIds?: string[],
+  ): Promise<XhsOpsRun> {
+    const data = await unwrap(
+      () =>
+        client.post<{ run: XhsOpsRun }>({
+          url: `${BASE}/projects/${enc(projectId)}/comment-runs`,
+          body: draftIds ? { accountId, draftIds } : { accountId },
+        }),
+      "评论任务派发失败",
+    );
+    return data.run;
+  },
+
   // ── Plan suggestion ──
   async suggestPlans(projectId: string): Promise<XhsOpsPlanSuggestion[]> {
     const data = await unwrap(

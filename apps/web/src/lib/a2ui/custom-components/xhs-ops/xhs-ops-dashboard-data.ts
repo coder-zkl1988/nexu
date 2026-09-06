@@ -40,16 +40,24 @@ export function shortDate(date: string): string {
 }
 
 export function chunkTitle(chunk: XhsOpsRunChunk): string {
+  if (chunk.mode === "comment") return "评论";
   return chunk.mode === "home"
     ? "首页推荐流"
     : `搜索「${chunk.keyword ?? ""}」`;
 }
 
 function interactionTotal(c: {
-  interactions?: { like?: number; collect?: number; follow?: number } | null;
+  interactions?: {
+    like?: number;
+    collect?: number;
+    follow?: number;
+    comment?: number;
+  } | null;
 }): number {
   const i = c.interactions;
-  return (i?.like ?? 0) + (i?.collect ?? 0) + (i?.follow ?? 0);
+  return (
+    (i?.like ?? 0) + (i?.collect ?? 0) + (i?.follow ?? 0) + (i?.comment ?? 0)
+  );
 }
 
 // ── Matrix ────────────────────────────────────────────────────

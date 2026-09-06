@@ -71,6 +71,8 @@ export const deviceTaskConfirmationPolicySchema = z.object({
   login: z.enum(["required", "forbidden"]).optional(),
   publish: z.enum(["required", "forbidden"]).optional(),
   payment: z.literal("forbidden").optional(),
+  /** xhs-ops P3-1：默认 forbidden；评论任务传 allowed 且必须带 commentAllowlist。 */
+  comment: z.enum(["forbidden", "allowed"]).optional(),
 });
 
 export const deviceTaskPolicySchema = z.object({
@@ -82,6 +84,8 @@ export const deviceTaskPolicySchema = z.object({
   allowedActions: z.array(z.string().min(1)).optional(),
   allowedApps: z.array(z.string().min(1)).optional(),
   confirmationPolicy: deviceTaskConfirmationPolicySchema.optional(),
+  /** 人工审核通过、允许手机逐字 TYPE 的评论原文（≤5 条，每条 ≤30 字）。 */
+  commentAllowlist: z.array(z.string().min(1).max(30)).max(5).optional(),
 });
 
 export const deviceExecuteTaskBodySchema = z.object({

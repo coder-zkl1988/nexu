@@ -184,9 +184,11 @@ export interface XhsOpsInteractionCounts {
   like: number;
   collect: number;
   follow: number;
+  /** 评论 run 里成功发出的评论数（浏览 run 无此字段） */
+  comment?: number;
 }
 
-export type XhsOpsChunkMode = "search" | "home";
+export type XhsOpsChunkMode = "search" | "home" | "comment";
 
 export type XhsOpsChunkStatus =
   | "pending"
@@ -221,6 +223,8 @@ export interface XhsOpsRunChunk {
   anomalies: XhsOpsAnomaly[];
   observation: string | null;
   posts: XhsOpsRunChunkPost[];
+  /** mode=comment：本 chunk 发的评论草稿 id */
+  commentDraftId?: string | null;
   message: string | null;
   totalSteps: number | null;
   finalScreenshot: string | null;
@@ -234,14 +238,24 @@ export interface XhsOpsRunKeyword {
   count: number;
 }
 
+export interface XhsOpsRunPlanComment {
+  draftId: string;
+  postTitle: string;
+  postAuthor: string;
+  text: string;
+}
+
 export interface XhsOpsRunPlan {
-  /** 1..8 entries */
+  /** 省略/browse = 浏览；comment = 发人工审核通过的评论（P3-1 D2） */
+  kind?: "browse" | "comment";
+  /** browse 1..8 entries；comment 为空 */
   keywords: XhsOpsRunKeyword[];
   /** 0..12 */
   homeFeedCount: number;
   dwellSecMin: number;
   dwellSecMax: number;
   interaction: XhsOpsInteractionConfig;
+  comments?: XhsOpsRunPlanComment[];
 }
 
 export interface XhsOpsRunSummary {

@@ -250,9 +250,11 @@ export const xhsOpsInteractionCountsSchema = z.object({
   like: count(),
   collect: count(),
   follow: count(),
+  /** P3-1 D2：评论 run 里成功发出的评论数；浏览 run 不带此字段。 */
+  comment: z.number().int().min(0).optional(),
 });
 
-export const xhsOpsRunChunkModeSchema = z.enum(["search", "home"]);
+export const xhsOpsRunChunkModeSchema = z.enum(["search", "home", "comment"]);
 
 export const xhsOpsRunChunkStatusSchema = z.enum([
   "pending",
@@ -298,6 +300,8 @@ export const xhsOpsRunChunkSchema = z.object({
   anomalies: z.array(xhsOpsAnomalySchema).default([]),
   observation: z.string().nullable().default(null),
   posts: z.array(xhsOpsRunPostSchema).default([]),
+  /** mode=comment 时：本 chunk 要发的评论草稿 id（一条评论一个 chunk）。 */
+  commentDraftId: z.string().nullable().optional(),
   /** Raw phone message, truncated to 4000 chars. */
   message: z.string().nullable().default(null),
   totalSteps: z.number().int().nullable().default(null),
@@ -310,12 +314,24 @@ export const xhsOpsRunPlanKeywordSchema = z.object({
   count: z.number().int().min(1).max(8),
 });
 
+/** 评论 run 的一条待发评论（来自 approved 草稿的快照）。 */
+export const xhsOpsRunPlanCommentSchema = z.object({
+  draftId: z.string(),
+  postTitle: z.string().max(60),
+  postAuthor: z.string().max(40),
+  text: z.string().min(1).max(30),
+});
+
 export const xhsOpsRunPlanSchema = z.object({
-  keywords: z.array(xhsOpsRunPlanKeywordSchema).min(1).max(8),
+  /** 省略/browse = 搜索/首页浏览；comment = 发人工审核通过的评论（P3-1 D2）。 */
+  kind: z.enum(["browse", "comment"]).optional(),
+  /** browse 至少 1 个关键词（由服务校验）；comment 为空。 */
+  keywords: z.array(xhsOpsRunPlanKeywordSchema).max(8),
   homeFeedCount: z.number().int().min(0).max(12),
   dwellSecMin: z.number().int().min(1),
   dwellSecMax: z.number().int().min(1),
   interaction: xhsOpsInteractionConfigSchema,
+  comments: z.array(xhsOpsRunPlanCommentSchema).max(5).optional(),
 });
 
 export const xhsOpsRunSummarySchema = z.object({
@@ -585,6 +601,7 @@ export type XhsOpsRunPlanInput = z.input<typeof xhsOpsRunPlanSchema>;
 export type XhsOpsRunSummary = z.infer<typeof xhsOpsRunSummarySchema>;
 export type XhsOpsRunStatus = z.infer<typeof xhsOpsRunStatusSchema>;
 export type XhsOpsRunSegment = z.infer<typeof xhsOpsRunSegmentSchema>;
+export type XhsOpsRunPlanComment = z.infer<typeof xhsOpsRunPlanCommentSchema>;
 export type XhsOpsSchedule = z.infer<typeof xhsOpsScheduleSchema>;
 export type XhsOpsCommentRule = z.infer<typeof xhsOpsCommentRuleSchema>;
 export type XhsOpsCommentStatus = z.infer<typeof xhsOpsCommentStatusSchema>;

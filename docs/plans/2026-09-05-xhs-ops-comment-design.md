@@ -1,6 +1,6 @@
 # 小红书养号 · 评论功能设计稿（P3-1，D0）
 
-> 状态：**已评审通过（2026-09-06），决策见 §11；D1 桌面基建已落地（同日，见 §12）**，下一步 D2 手机阻断。拍板记录（2026-09-04）：评论**现在立项**，排 P3 首位，**先设计后实现**；运营文档原话「评论需先设计内容审核与风控」。脑图给评论的权重是 3%，即它是浏览之外的点缀，不是主线。
+> 状态：**已评审通过（2026-09-06）；D1 桌面基建、D2 手机阻断 + 评论 run 均已落地（见 §12/§13）**，下一步 D3 手机技能，然后 D4 灰度。拍板记录（2026-09-04）：评论**现在立项**，排 P3 首位，**先设计后实现**；运营文档原话「评论需先设计内容审核与风控」。脑图给评论的权重是 3%，即它是浏览之外的点缀，不是主线。
 
 ## 1. 目标与非目标
 
@@ -151,3 +151,12 @@ remaining      = cap − 今日已 sent − 今日已 approved 未执行
 - **agent 侧**：插件 schema + 路由描述 + TOOLS.md 第 6 步：评论审核/批准 → 渲染队列；agent 永不代写/代批/代发，也不派手机任务。无头 e2e：新会话「打开评论审核队列」→ 第一个工具调用即 `render_a2ui XhsOpsCommentReview{projectName}`，渲染成功，回复只做导读。
 - **测试**：controller 服务单测 6（校验/解析/配额/生成与去重/审核与过期）+ 路由 +1（生成→配额→批准→重复审核 409→配额满 409）；web 类型 +2、渲染 +1；controller 1117/1117、web xhs-ops 用例全绿。
 - **D2 待办**：TaskPolicy `comment` 标签 + 逐字白名单（TabbyApp）、评论 run（plan.kind=comment、chunk.mode=comment、每条一个 chunk、RECORD_JSON.comments 回填 → draft.status sent/failed）、summary.interactions.comment、看板「评」列；**D3**：research.md 标注 `commentWorthy/summary`、新 `comment.md` 子技能、interact.md 改口。
+
+## 13. D2 落地记录（2026-09-06）
+
+- **手机阻断（TabbyApp `10d001b` 之后的 comment-gate 提交）**：`ConfirmationPolicy.comment` 默认 FORBIDDEN；`TaskPolicy.commentAllowlist`；`TaskPolicyResolver` 只有在请求 `allowed` **且**白名单非空时才放宽。`ActionPolicyEngine.evaluateCommentGate`：评论编辑态 = 窗口/目标出现「说点什么」「写评论」等占位文案（`inspect` 现在把 TYPE 解析到焦点控件并带 hintText）；FORBIDDEN 下评论框里任何 TYPE 与点「发送」都拦（`POLICY_COMMENT_FORBIDDEN`）；allowed 下 TYPE 文字必须逐字等于白名单一条（`POLICY_COMMENT_TEXT_NOT_ALLOWLISTED`），每条一次（`POLICY_COMMENT_ALREADY_SENT`，运行器在 TYPE 成功后 `CommentGateState.consume`）。看评论（点「评论 452」）和搜索框输入不受影响。单测 533/533。**待办**：荣耀已拔线，新包未装；下次 USB 连上后装包并跑一次浏览 run 确认无误拦。
+- **协议透传（tabby-control `38318ab`）**：`ConfirmationPolicySchema.comment` + `TaskPolicySchema.commentAllowlist`（strict schema，allowed 无白名单在派发时即拒）。
+- **桌面执行（nexu）**：`plan.kind=comment` + `plan.comments[]`（approved 草稿快照），`chunk.mode=comment` + `commentDraftId`，一条评论一个 chunk；`buildCommentChunkTask`（按标题搜帖 → 核对作者 → 慢滑 5–10s → 评论框一次 TYPE 原文 → 发送 → 确认出现 → BACK；`COMMENT_JSON:{status: sent|failed|skipped, detail, anomalies}`）；手机策略 `commentTaskPolicy(text)` = 禁发布/付款 + comment allowed + 白名单只含这一条；`interpretCommentTaskResult`：sent 必须配合 `[回执]` 里小红书 ≥1 次生效点击，否则降为 failed 并记「汇报与回执不一致」；结果回写草稿 `sent/failed + sentAt + sendResult`；run 结束时把认领了但没处理的草稿放回池子。`createCommentRun`：时间窗 08:00–23:00、距最近一次浏览 run 结束 ≥10 分钟、只取 approved 且未认领的草稿（≤5）、认领后创建。`POST /projects/{id}/comment-runs {accountId, draftIds?}` 创建并启动（设备队列串行）。`summarizeRun` 评论 chunk 不算浏览篇数，计入 `interactions.comment`；步数预算 40。
+- **前端**：审核队列配额条上多了「派发已批准的评论（N）」（二次确认，上报 `xhs_ops_comment_run_started`）；看板明细显示「评 N」；plan/chunk 类型扩展。插件/TOOLS：派发只由用户在队列里点，agent 不派、不重试、不代发。
+- **测试**：controller 新增 6（任务文本/解析/回执交叉校验/chunk 生成与汇总/时间窗与认领/执行回写）+ 路由未变；全量 1123/1123；web 23/23（xhs-ops 用例）。
+- **未做**：真机发评论——这就是 D4 灰度本身（1 账号 × 1 条/天 × 5 天，人工全审），需要先装新 APK，并由运营在队列里批准后点派发。

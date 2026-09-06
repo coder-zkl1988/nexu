@@ -48,11 +48,7 @@ function switchText(entry: XhsOpsChunkQuotaEntry): string {
 }
 
 function interactionLine(scope: string, quota: XhsOpsChunkQuota): string {
-  return (
-    `互动配置（只对与${scope}强相关且真正感兴趣的少数帖子，分散不相邻，第 1–2 篇纯浏览）：` +
-    `点赞 ${switchText(quota.like)}；收藏 ${switchText(quota.collect)}；关注 ${switchText(quota.follow)}；` +
-    "禁止评论、禁止发布、禁止私信、禁止分享。"
-  );
+  return `互动配置（只对与${scope}强相关且真正感兴趣的少数帖子，分散不相邻，第 1–2 篇纯浏览）：点赞 ${switchText(quota.like)}；收藏 ${switchText(quota.collect)}；关注 ${switchText(quota.follow)}；禁止评论、禁止发布、禁止私信、禁止分享。`;
 }
 
 function dwellRange(input: XhsOpsChunkTaskBase): string {
@@ -65,11 +61,7 @@ function browseStandardLine(
   input: XhsOpsChunkTaskBase,
   backTo: string,
 ): string {
-  return (
-    "浏览标准：每篇进入后第一动作 WAIT 2 秒；阅读正文并慢速滑到评论区至少看 3 条评论；" +
-    `单篇总停留 ${dwellRange(input)} 秒，用 WAIT（1–4 秒、时长要变化）与慢滑组合凑够，不要连续 3 次以上只 WAIT 不滑动；` +
-    `看完用一次 BACK 返回${backTo}并确认。`
-  );
+  return `浏览标准：每篇进入后第一动作 WAIT 2 秒；阅读正文并慢速滑到评论区至少看 3 条评论；单篇总停留 ${dwellRange(input)} 秒，用 WAIT（1–4 秒、时长要变化）与慢滑组合凑够，不要连续 3 次以上只 WAIT 不滑动；看完用一次 BACK 返回${backTo}并确认。`;
 }
 
 const COMMON_ANOMALIES =
@@ -106,11 +98,7 @@ export function formatPersona(
 
 function headerLine(input: XhsOpsChunkTaskBase): string {
   const persona = (input.persona ?? "").trim();
-  return (
-    `【小红书内容研究任务｜账号定位：${input.label}｜` +
-    (persona ? `人设：${persona}｜` : "") +
-    `${input.positioning}】`
-  );
+  return `【小红书内容研究任务｜账号定位：${input.label}｜${persona ? `人设：${persona}｜` : ""}${input.positioning}】`;
 }
 
 function ledgerLine(count: number): string {
@@ -403,4 +391,102 @@ export function parseProfileJson(
     cover: outcome(payload.cover),
     note: typeof payload.note === "string" ? payload.note.slice(0, 200) : "",
   };
+}
+
+// ─── Comment task (P3-1 D2) ─────────────────────────────────────────────────
+
+export interface XhsOpsCommentChunkTaskInput {
+  label: string;
+  positioning: string;
+  persona: string;
+  postTitle: string;
+  postAuthor: string;
+  /** 人工审核通过的原文；手机端策略白名单里也只有这一条。 */
+  text: string;
+}
+
+export const COMMENT_JSON_MARKER = "COMMENT_JSON:";
+
+/**
+ * 一条评论一个任务：按标题搜帖 → 核对作者 → 慢滑看正文 → 评论框 TYPE 原文
+ * （一次）→ 发送 → 确认出现 → BACK。手机端 TaskPolicy 只放行这一条原文，
+ * 改写、评别的帖子、回复他人在机械层面都会被拦。
+ */
+export function buildCommentChunkTask(
+  input: XhsOpsCommentChunkTaskInput,
+): string {
+  const who = input.postAuthor ? `作者「${input.postAuthor}」` : "作者不明";
+  return [
+    `【小红书评论任务｜账号定位：${input.label}${input.persona ? `｜人设：${input.persona}` : ""}${input.positioning ? `｜${input.positioning}` : ""}】`,
+    `本次只做一件事：给一篇已经浏览过的笔记发一条**人工审核通过的**评论。目标笔记标题：「${input.postTitle}」，${who}。`,
+    `1. 首页右上角放大镜 → TYPE 输入笔记标题「${input.postTitle}」→ 搜索；在结果里找标题一致、${who}的那篇，点进去。找不到（被删/改名/搜不出）→ 记 post_not_found，不要评其他帖子，直接进入"结束"。`,
+    "2. 进入详情后先 WAIT 2 秒，慢滑看正文 5–10 秒（1–2 次 SCROLL + WAIT），像看完再评。",
+    "3. 点底部评论输入框（「说点什么」）→ 用一次 TYPE 原样输入下面这段文字，一个字都不能改、不能加表情或标点：",
+    `   ${input.text}`,
+    "4. 点「发送」。WAIT 2 秒，确认评论区出现自己昵称 + 这段原文；出现即算 sent。若提示「评论失败」「操作频繁」「内容违规」等 → 记 comment_failed 并把提示原文写进 detail，不要重试、不要改字重发。",
+    "5. 一次 BACK 回列表，按通用规则回到桌面，然后 COMPLETE。",
+    "禁止：改写文案、评论目标以外的任何帖子、回复他人评论、连发第二条、点赞/收藏/关注（本任务不做互动）、私信、分享。出现登录页/账号异常/操作频繁提示 → 分别记 login_required / account_restricted / rate_limited 后立即结束。",
+    `结束：COMPLETE 的 return 先写 2–3 行人读汇报，最后一行必须是 ${COMMENT_JSON_MARKER} 加一行紧凑 JSON：{"v":1,"status":"sent|failed|skipped","detail":"一句话","anomalies":[{"type":"…","detail":"…"}]}，status 只能三选一：sent=评论已出现在评论区，failed=尝试了但没成功（含 comment_failed），skipped=没有尝试（post_not_found/异常）。之后不再写任何字。`,
+  ].join("\n");
+}
+
+export interface XhsOpsCommentJson {
+  status: "sent" | "failed" | "skipped";
+  detail: string;
+  anomalies: Array<{ type: string; detail: string }>;
+}
+
+/** 宽容解析 COMMENT_JSON（字面 \n、缺字段、非法 status 都兜住）；没有标记 → null。 */
+export function parseCommentJson(message: string): XhsOpsCommentJson | null {
+  const normalized = message.replace(/\\n/g, "\n");
+  const idx = normalized.lastIndexOf(COMMENT_JSON_MARKER);
+  if (idx < 0) return null;
+  const raw = normalized.slice(idx + COMMENT_JSON_MARKER.length);
+  const end = raw.lastIndexOf("}");
+  if (end < 0) return null;
+  let obj: Record<string, unknown>;
+  try {
+    obj = JSON.parse(raw.slice(raw.indexOf("{"), end + 1)) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return null;
+  }
+  const statusRaw =
+    typeof obj.status === "string" ? obj.status.toLowerCase() : "";
+  const status: XhsOpsCommentJson["status"] =
+    statusRaw === "sent" || statusRaw === "failed" ? statusRaw : "skipped";
+  const anomalies = Array.isArray(obj.anomalies)
+    ? obj.anomalies
+        .map((a) =>
+          typeof a === "string"
+            ? { type: a, detail: "" }
+            : a && typeof a === "object"
+              ? {
+                  type: String((a as Record<string, unknown>).type ?? "other"),
+                  detail: String(
+                    (a as Record<string, unknown>).detail ?? "",
+                  ).slice(0, 200),
+                }
+              : null,
+        )
+        .filter((a): a is { type: string; detail: string } => a !== null)
+    : [];
+  return {
+    status,
+    detail: typeof obj.detail === "string" ? obj.detail.slice(0, 200) : "",
+    anomalies,
+  };
+}
+
+/** `[回执] 各应用生效点击: com.xingin.xhs=11` → 11；没有回执 → null。 */
+export function parseReceiptClicks(
+  message: string,
+  pkg: string,
+): number | null {
+  const m = message.match(/\[回执\][^\n]*/);
+  if (!m) return null;
+  const entry = m[0].match(new RegExp(`${pkg.replace(/\./g, "\\.")}=(\\d+)`));
+  return entry ? Number(entry[1]) : 0;
 }

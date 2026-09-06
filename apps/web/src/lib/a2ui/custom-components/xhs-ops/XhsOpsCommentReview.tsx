@@ -108,6 +108,12 @@ export function XhsOpsCommentReview({
     quotas.find((q) => q.accountId === accountId)?.accountLabel ??
     accountId;
 
+  const approvedUnclaimed = (accountId: string) =>
+    (drafts ?? []).filter(
+      (d) =>
+        d.accountId === accountId && d.status === "approved" && !d.sentRunId,
+    ).length;
+
   const replaceDraft = (next: XhsOpsCommentDraft) => {
     setDrafts((prev) =>
       prev ? prev.map((d) => (d.id === next.id ? next : d)) : prev,
@@ -149,7 +155,30 @@ export function XhsOpsCommentReview({
         <HintLine>正在加载评论队列…</HintLine>
       ) : (
         <>
-          <QuotaStrip quotas={quotas} />
+          <QuotaStrip
+            quotas={quotas}
+            approvedUnclaimed={approvedUnclaimed}
+            onDispatch={
+              projectId
+                ? async (accountId) => {
+                    const run = await xhsOpsApi.createCommentRun(
+                      projectId,
+                      accountId,
+                    );
+                    onAction?.("xhs_ops_comment_run_started", {
+                      runId: run.id,
+                      accountLabel: accountLabel(accountId),
+                      comments: run.plan.comments?.length ?? 0,
+                      queued: run.status === "planned",
+                      agentInstruction:
+                        "运营已把已批准的评论派发给手机（桌面评论任务，同一手机排队串行）。不要再派任何手机任务，也不要生成评论；结果会回写到评论队列和看板。",
+                    });
+                    await load();
+                    return run;
+                  }
+                : undefined
+            }
+          />
 
           <div className="flex flex-col gap-1.5">
             <SectionTitle hint={`${pending.length} 条待审核`}>
@@ -245,37 +274,92 @@ function statusClass(status: XhsOpsCommentDraft["status"]): string {
   }
 }
 
-function QuotaStrip({ quotas }: { quotas: XhsOpsCommentQuota[] }) {
+function QuotaStrip({
+  quotas,
+  approvedUnclaimed,
+  onDispatch,
+}: {
+  quotas: XhsOpsCommentQuota[];
+  approvedUnclaimed: (accountId: string) => number;
+  onDispatch?: (accountId: string) => Promise<XhsOpsRun>;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   if (quotas.length === 0) return null;
+  const dispatch = async (accountId: string, label: string) => {
+    if (!onDispatch) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `将把「${label}」已批准的 ${approvedUnclaimed(accountId)} 条评论派发到手机发送（08:00–23:00，距浏览结束 ≥10 分钟）。确认派发？`,
+      )
+    ) {
+      return;
+    }
+    setBusy(accountId);
+    setError(null);
+    setNotice(null);
+    try {
+      const run = await onDispatch(accountId);
+      setNotice(
+        `${label}：评论任务已${run.status === "planned" ? "排队（等同一手机上的任务结束）" : "开始执行"}，${run.plan.comments?.length ?? 0} 条；结果会回写到队列。`,
+      );
+    } catch (err) {
+      setError(describeXhsOpsError(err, "派发失败"));
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
     <div className="flex flex-col gap-1">
-      <SectionTitle hint="今日 · 每账号">配额</SectionTitle>
+      <SectionTitle hint="今日 · 每账号；已批准的评论由你手动派发到手机">
+        配额
+      </SectionTitle>
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-        {quotas.map((q) => (
-          <div
-            key={q.accountId}
-            className="rounded-md bg-surface-2/60 px-2 py-1.5 text-[12px]"
-          >
-            <div className="flex items-center justify-between">
-              <span className="truncate font-medium text-text-primary">
-                {q.accountLabel}
-              </span>
-              <span
-                className={`text-[11px] ${q.enabled ? "text-text-secondary" : "text-amber-600"}`}
-              >
-                {q.enabled
-                  ? `剩余 ${q.remaining} / 上限 ${q.cap}`
-                  : "评论开关未开"}
-              </span>
+        {quotas.map((q) => {
+          const ready = approvedUnclaimed(q.accountId);
+          return (
+            <div
+              key={q.accountId}
+              className="rounded-md bg-surface-2/60 px-2 py-1.5 text-[12px]"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-medium text-text-primary">
+                  {q.accountLabel}
+                </span>
+                <span
+                  className={`shrink-0 text-[11px] ${q.enabled ? "text-text-secondary" : "text-amber-600"}`}
+                >
+                  {q.enabled
+                    ? `剩余 ${q.remaining} / 上限 ${q.cap}`
+                    : "评论开关未开"}
+                </span>
+              </div>
+              <div className="text-[11px] text-text-tertiary">
+                今日浏览 {q.todayBrowsed} 篇 → 按 8 篇 1 条可评 {q.byBrowse}
+                ；每日上限 {q.dailyCap}；已发 {q.sentToday}，已批未发{" "}
+                {q.approvedPending}
+              </div>
+              {onDispatch ? (
+                <div className="mt-1 flex items-center justify-end">
+                  <PrimaryButton
+                    onClick={() => void dispatch(q.accountId, q.accountLabel)}
+                    disabled={ready === 0 || busy !== null}
+                    title={ready === 0 ? "没有已批准且未派发的评论" : undefined}
+                  >
+                    {busy === q.accountId
+                      ? "派发中…"
+                      : `派发已批准的评论（${ready}）`}
+                  </PrimaryButton>
+                </div>
+              ) : null}
             </div>
-            <div className="text-[11px] text-text-tertiary">
-              今日浏览 {q.todayBrowsed} 篇 → 按 8 篇 1 条可评 {q.byBrowse}
-              ；每日上限 {q.dailyCap}；已发 {q.sentToday}，已批未发{" "}
-              {q.approvedPending}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+      {notice ? <HintLine>{notice}</HintLine> : null}
+      <ErrorLine message={error} />
     </div>
   );
 }

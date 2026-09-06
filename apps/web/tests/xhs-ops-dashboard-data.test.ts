@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRunMatrix,
+  chunkTitle,
   collectObservations,
   keywordStats,
   lastNDates,
@@ -343,5 +344,37 @@ describe("xhs-ops dashboard data (P2-2 复盘看板)", () => {
     expect(pickProjectByName(projects, "新氧青春")).toBeNull(); // ambiguous
     expect(pickProjectByName(projects, "")).toBeNull(); // several, nothing asked
     expect(pickProjectByName(projects.slice(2), "")?.id).toBe("p3"); // only one
+  });
+
+  it("comment runs (P3-1 D2) title as 评论 and count towards interactions", () => {
+    const accounts = [account("a", "豆豆妈", ["亲子酒店"])];
+    const commentRun = run({
+      accountId: "a",
+      accountLabel: "豆豆妈",
+      date: "2026-09-05",
+      chunks: [
+        chunk({
+          mode: "comment",
+          keyword: null,
+          plannedCount: 1,
+          browsed: 0,
+          interactions: { like: 0, collect: 0, follow: 0, comment: 1 },
+        }),
+      ],
+    });
+    commentRun.summary.interactions = {
+      like: 0,
+      collect: 0,
+      follow: 0,
+      comment: 1,
+    };
+    commentRun.summary.plannedTotal = 0;
+    const rows = buildRunMatrix(accounts, [commentRun], lastNDates(1, TODAY));
+    expect(rows[0]?.cells[0]).toMatchObject({
+      interactions: 1,
+      browsed: 0,
+      planned: 0,
+    });
+    expect(chunkTitle(chunk({ mode: "comment", keyword: null }))).toBe("评论");
   });
 });

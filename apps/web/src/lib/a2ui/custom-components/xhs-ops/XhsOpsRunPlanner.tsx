@@ -139,6 +139,7 @@ function persistFiredRunId(ids: Set<string>): void {
 }
 
 function chunkTitle(chunk: XhsOpsRunChunk): string {
+  if (chunk.mode === "comment") return "评论";
   return chunk.mode === "home"
     ? "首页推荐流"
     : `搜索「${chunk.keyword ?? ""}」`;

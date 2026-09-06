@@ -25,10 +25,13 @@ import {
 import { suggestDailyPlans } from "./xhs-ops-plan-suggest.js";
 import {
   type XhsOpsChunkQuota,
+  buildCommentChunkTask,
   buildHomeChunkTask,
   buildSearchChunkTask,
   extractBrowsedFromMessage,
   formatPersona,
+  parseCommentJson,
+  parseReceiptClicks,
   parseRecordJson,
 } from "./xhs-ops-task-builder.js";
 
@@ -130,6 +133,24 @@ type ChunkOutcome = Pick<
 
 const ZERO_COUNTS: XhsOpsInteractionCounts = { like: 0, collect: 0, follow: 0 };
 
+/** 评论任务（P3-1 D2）：一条评论一个 chunk，步数预算与时间窗。 */
+export const XHS_COMMENT_CHUNK_MAX_STEPS = 40;
+export const XHS_COMMENT_WINDOW_START_HOUR = 8;
+export const XHS_COMMENT_WINDOW_END_HOUR = 23;
+export const XHS_COMMENT_MIN_GAP_AFTER_BROWSE_MS = 10 * 60_000;
+
+/** 评论任务的手机策略：仍禁发布/付款，评论放开但只放行这一条审核原文。 */
+export function commentTaskPolicy(text: string): DeviceTaskPolicy {
+  return {
+    ...XHS_TASK_POLICY,
+    confirmationPolicy: {
+      ...XHS_TASK_POLICY.confirmationPolicy,
+      comment: "allowed",
+    },
+    commentAllowlist: [text],
+  };
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -162,7 +183,19 @@ export function buildRunChunks(plan: XhsOpsRunPlan): XhsOpsRunChunk[] {
     totalSteps: null,
     finalScreenshot: null,
     error: null,
+    commentDraftId: null,
   };
+  if (plan.kind === "comment") {
+    // 一条评论一个 chunk：任务文本、手机白名单、回填都以草稿为单位。
+    return (plan.comments ?? []).map((comment, index) => ({
+      ...blank,
+      index,
+      mode: "comment" as const,
+      keyword: null,
+      plannedCount: 1,
+      commentDraftId: comment.draftId,
+    }));
+  }
   const chunks: XhsOpsRunChunk[] = plan.keywords.map((entry, index) => ({
     ...blank,
     index,
@@ -196,7 +229,14 @@ export function summarizeRun(
     anomalyCount: 0,
     durationMs: null,
   };
+  let comments = 0;
   for (const chunk of chunks) {
+    if (chunk.mode === "comment") {
+      // 评论 chunk 不算浏览篇数；计划/实际用"篇"口径会误导看板。
+      comments += chunk.interactions.comment ?? 0;
+      summary.anomalyCount += chunk.anomalies.length;
+      continue;
+    }
     summary.plannedTotal += chunk.plannedCount;
     summary.browsedTotal += chunk.browsed;
     if (chunk.mode === "search") summary.searchBrowsed += chunk.browsed;
@@ -206,6 +246,7 @@ export function summarizeRun(
     summary.interactions.follow += chunk.interactions.follow;
     summary.anomalyCount += chunk.anomalies.length;
   }
+  if (comments > 0) summary.interactions.comment = comments;
   if (startedAt && completedAt) {
     const duration = Date.parse(completedAt) - Date.parse(startedAt);
     summary.durationMs = Number.isFinite(duration)
@@ -262,11 +303,85 @@ export function computeChunkQuota(
  */
 export function chunkMaxSteps(
   plannedCount: number,
-  mode: "search" | "home" = "search",
+  mode: "search" | "home" | "comment" = "search",
 ): number {
+  if (mode === "comment") return XHS_COMMENT_CHUNK_MAX_STEPS;
   const budget =
     mode === "home" ? 30 + plannedCount * 12 : 20 + plannedCount * 10;
   return Math.min(100, budget);
+}
+
+/**
+ * 评论任务结果 → chunk 字段。sent 且回执里小红书有生效点击 → completed +
+ * interactions.comment=1；sent 但回执 0 次生效点击 → 不信，降为 failed 并记
+ * 异常；failed → failed；skipped（帖子搜不到等）→ skipped。detail 进 observation。
+ */
+export function interpretCommentTaskResult(result: TaskResult): ChunkOutcome {
+  const message = result.message ?? "";
+  const json = parseCommentJson(message);
+  const anomalies: XhsOpsAnomaly[] = [];
+  const outcome: ChunkOutcome = {
+    status: "failed",
+    browsed: 0,
+    skipped: 0,
+    interactions: { ...ZERO_COUNTS },
+    anomalies,
+    posts: [],
+    observation: null,
+    taskId: result.taskId,
+    totalSteps: result.totalSteps ?? null,
+    finalScreenshot: result.finalScreenshot ?? null,
+    message: message ? message.slice(0, MAX_MESSAGE_CHARS) : null,
+    error: null,
+  };
+  if (!json) {
+    anomalies.push({ type: "other", detail: "手机未返回 COMMENT_JSON" });
+    outcome.error = result.success
+      ? "手机未返回结构化评论结果"
+      : (message || "任务失败").slice(0, MAX_ERROR_CHARS);
+    return outcome;
+  }
+  for (const a of json.anomalies) {
+    anomalies.push({
+      type: (
+        [
+          "no_results",
+          "load_failed",
+          "login_required",
+          "account_restricted",
+          "rate_limited",
+          "content_mismatch",
+          "interrupted",
+          "other",
+        ] as const
+      ).includes(a.type as XhsOpsAnomalyType)
+        ? (a.type as XhsOpsAnomalyType)
+        : "other",
+      detail: a.detail || a.type,
+    });
+  }
+  outcome.observation = json.detail || null;
+  if (json.status === "sent") {
+    const clicks = parseReceiptClicks(message, XHS_PACKAGE);
+    if (clicks !== null && clicks === 0) {
+      anomalies.push({
+        type: "other",
+        detail: "汇报已发出但回执里小红书 0 次生效点击，不予采信",
+      });
+      outcome.error = "汇报与回执不一致";
+      return outcome;
+    }
+    outcome.status = "completed";
+    outcome.interactions = { ...ZERO_COUNTS, comment: 1 };
+    return outcome;
+  }
+  if (json.status === "skipped") {
+    outcome.status = "skipped";
+    outcome.error = json.detail || "未尝试评论";
+    return outcome;
+  }
+  outcome.error = (json.detail || "评论未成功").slice(0, MAX_ERROR_CHARS);
+  return outcome;
 }
 
 /** Turn a phone result into chunk fields (spec §4.3 + §6 fallback). */
@@ -369,6 +484,13 @@ export class XhsOpsRunService {
     if (!account.deviceId) {
       throw new XhsOpsError(400, "账号未绑定设备，无法创建运行计划");
     }
+    if (input.plan.kind === "comment") {
+      if ((input.plan.comments ?? []).length === 0) {
+        throw new XhsOpsError(400, "评论任务至少要有一条已批准的评论");
+      }
+    } else if (input.plan.keywords.length === 0) {
+      throw new XhsOpsError(400, "浏览计划至少填写一个关键词");
+    }
     const chunks = buildRunChunks(input.plan);
     const seed: XhsOpsRunSeed = {
       projectId: project.id,
@@ -388,6 +510,104 @@ export class XhsOpsRunService {
       completedAt: null,
     };
     return this.store.createRun(seed);
+  }
+
+  /**
+   * P3-1 D2：把该账号已批准、尚未派发的评论草稿打成一个评论 run（每条一个
+   * chunk），认领草稿（sentRunId）后创建。时间窗 08:00–23:00；距最近一次浏览
+   * run 结束 ≥10 分钟（评审拍板）。不在这里 start——调用方决定何时启动。
+   */
+  async createCommentRun(input: {
+    projectId: string;
+    accountId: string;
+    draftIds?: string[];
+  }): Promise<XhsOpsRun> {
+    const account = await this.store.getAccount(input.accountId);
+    if (!account || account.projectId !== input.projectId) {
+      throw new XhsOpsError(404, "账号不存在或不属于该项目");
+    }
+    if (!account.deviceId) {
+      throw new XhsOpsError(400, "账号未绑定设备，无法发评论");
+    }
+    const now = new Date(this.now());
+    const hour = now.getHours();
+    if (
+      hour < XHS_COMMENT_WINDOW_START_HOUR ||
+      hour >= XHS_COMMENT_WINDOW_END_HOUR
+    ) {
+      throw new XhsOpsError(
+        409,
+        `评论只在 ${String(XHS_COMMENT_WINDOW_START_HOUR).padStart(2, "0")}:00–${XHS_COMMENT_WINDOW_END_HOUR}:00 之间派发`,
+      );
+    }
+    const today = localDateString(now);
+    const todayRuns = await this.store.listRuns({
+      accountId: account.id,
+      date: today,
+    });
+    const lastBrowseEnd = todayRuns
+      .filter((r) => r.plan.kind !== "comment" && r.completedAt)
+      .map((r) => Date.parse(r.completedAt as string))
+      .filter((t) => Number.isFinite(t))
+      .reduce((max, t) => Math.max(max, t), 0);
+    if (
+      lastBrowseEnd > 0 &&
+      this.now() - lastBrowseEnd < XHS_COMMENT_MIN_GAP_AFTER_BROWSE_MS
+    ) {
+      const wait = Math.ceil(
+        (XHS_COMMENT_MIN_GAP_AFTER_BROWSE_MS - (this.now() - lastBrowseEnd)) /
+          60_000,
+      );
+      throw new XhsOpsError(
+        409,
+        `浏览刚结束，${wait} 分钟后再发评论（与浏览间隔 ≥10 分钟）`,
+      );
+    }
+    const approved = (
+      await this.store.listComments({
+        accountId: account.id,
+        status: "approved",
+      })
+    )
+      .filter((d) => !d.sentRunId && d.text)
+      .filter((d) => !input.draftIds || input.draftIds.includes(d.id))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, 5);
+    if (approved.length === 0) {
+      throw new XhsOpsError(400, "没有已批准且未派发的评论");
+    }
+    const run = await this.createRun({
+      projectId: input.projectId,
+      accountId: account.id,
+      date: today,
+      segment: null,
+      plan: {
+        kind: "comment",
+        keywords: [],
+        homeFeedCount: 0,
+        dwellSecMin: account.browseDefaults.dwellSecMin,
+        dwellSecMax: account.browseDefaults.dwellSecMax,
+        interaction: account.interaction,
+        comments: approved.map((d) => ({
+          draftId: d.id,
+          postTitle: d.post.title,
+          postAuthor: d.post.author,
+          text: d.text as string,
+        })),
+      },
+    });
+    for (const d of approved) {
+      await this.store.updateComment(d.id, (cur) => ({
+        ...cur,
+        sentRunId: run.id,
+        updatedAt: this.nowIso(),
+      }));
+    }
+    logger.info(
+      { runId: run.id, accountId: account.id, comments: approved.length },
+      "xhs-ops: comment run created",
+    );
+    return run;
   }
 
   /** Kick off the executor; returns immediately with the run in `running`. */
@@ -715,6 +935,9 @@ export class XhsOpsRunService {
         ...outcome,
         completedAt: this.nowIso(),
       }));
+      if (chunk.mode === "comment") {
+        await this.recordCommentOutcome(run.id, chunk, outcome);
+      }
       logger.info(
         {
           runId: run.id,
@@ -746,7 +969,56 @@ export class XhsOpsRunService {
       }
     }
 
+    if (run.plan.kind === "comment") {
+      await this.releaseUnprocessedDrafts(run.id);
+    }
     await this.finalizeRun(run.id, controller, stopReason);
+  }
+
+  /** 评论 chunk 收尾：把结果写回草稿（sent / failed），供队列和看板展示。 */
+  private async recordCommentOutcome(
+    runId: string,
+    chunk: XhsOpsRunChunk,
+    outcome: ChunkOutcome,
+  ): Promise<void> {
+    const draftId = chunk.commentDraftId;
+    if (!draftId) return;
+    const now = this.nowIso();
+    const sent =
+      outcome.status === "completed" && (outcome.interactions.comment ?? 0) > 0;
+    try {
+      await this.store.updateComment(draftId, (cur) => ({
+        ...cur,
+        status: sent ? "sent" : "failed",
+        sentRunId: runId,
+        sentAt: sent ? now : cur.sentAt,
+        sendResult: (
+          outcome.error ??
+          outcome.observation ??
+          (sent ? "已发出" : "未发出")
+        ).slice(0, 300),
+        updatedAt: now,
+      }));
+    } catch (error: unknown) {
+      logger.error(
+        { runId, draftId, error: describe(error) },
+        "xhs-ops: recording comment outcome failed",
+      );
+    }
+  }
+
+  /** 评论 run 结束时，认领了但没处理到的草稿（取消/中断）放回 approved 池。 */
+  private async releaseUnprocessedDrafts(runId: string): Promise<void> {
+    const claimed = (
+      await this.store.listComments({ status: "approved" })
+    ).filter((d) => d.sentRunId === runId);
+    for (const d of claimed) {
+      await this.store.updateComment(d.id, (cur) => ({
+        ...cur,
+        sentRunId: null,
+        updatedAt: this.nowIso(),
+      }));
+    }
   }
 
   private async runChunkOnDevice(
@@ -764,8 +1036,38 @@ export class XhsOpsRunService {
       dwellSecMax: run.plan.dwellSecMax,
       quota,
     };
-    const task =
-      chunk.mode === "search"
+    const comment =
+      chunk.mode === "comment"
+        ? (run.plan.comments ?? []).find(
+            (c) => c.draftId === chunk.commentDraftId,
+          )
+        : undefined;
+    if (chunk.mode === "comment" && !comment) {
+      return {
+        status: "failed",
+        browsed: 0,
+        skipped: 0,
+        interactions: { ...ZERO_COUNTS },
+        anomalies: [{ type: "other", detail: "评论 chunk 找不到对应草稿" }],
+        posts: [],
+        observation: null,
+        taskId: null,
+        totalSteps: null,
+        finalScreenshot: null,
+        message: null,
+        error: "评论 chunk 找不到对应草稿",
+      };
+    }
+    const task = comment
+      ? buildCommentChunkTask({
+          label: base.label,
+          positioning: base.positioning,
+          persona: base.persona,
+          postTitle: comment.postTitle,
+          postAuthor: comment.postAuthor,
+          text: comment.text,
+        })
+      : chunk.mode === "search"
         ? buildSearchChunkTask({
             ...base,
             keyword: chunk.keyword ?? "",
@@ -777,7 +1079,8 @@ export class XhsOpsRunService {
       maxSteps: chunkMaxSteps(chunk.plannedCount, chunk.mode),
       timeout: XHS_CHUNK_TIMEOUT_MS,
       allowedApps: [XHS_PACKAGE],
-      taskPolicy: XHS_TASK_POLICY,
+      // 评论 chunk：手机策略放开评论但只放行这一条审核原文（逐字白名单）。
+      taskPolicy: comment ? commentTaskPolicy(comment.text) : XHS_TASK_POLICY,
     };
 
     let outcome: ChunkOutcome;
@@ -786,7 +1089,9 @@ export class XhsOpsRunService {
         run.deviceId,
         body,
       );
-      outcome = interpretTaskResult(result);
+      outcome = comment
+        ? interpretCommentTaskResult(result)
+        : interpretTaskResult(result);
     } catch (error: unknown) {
       const reason = describe(error).slice(0, MAX_ERROR_CHARS);
       outcome = {

@@ -507,6 +507,9 @@ function RunDetail({
           {run.summary?.interactions?.like ?? 0} 藏{" "}
           {run.summary?.interactions?.collect ?? 0} 关{" "}
           {run.summary?.interactions?.follow ?? 0}
+          {(run.summary?.interactions?.comment ?? 0) > 0
+            ? ` 评 ${run.summary?.interactions?.comment}`
+            : ""}
         </span>
       </div>
       {run.error ? <ErrorLine message={run.error} /> : null}
