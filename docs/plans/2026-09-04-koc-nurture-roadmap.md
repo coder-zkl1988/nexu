@@ -15,7 +15,7 @@
 | 兴趣池三层 | ✅ | 无轮次历史（一期可接受） |
 | 当日任务生成 | ✅ | 确定性生成 + 比例生效 + 可选分段 + 定时（P1-4/P2-3/P2-4） |
 | 搜索/首页浏览执行 | ✅ | 刷新/跳过/距离随机进 research.md v32–33；距离抖动改为解析层机械保证（09-06） |
-| 互动可配置 | 🟡 | 比例已生效（P1-4）；评论 D1 桌面基建已落地，待 D2 手机阻断/执行 |
+| 互动可配置 | ✅ | 比例已生效（P1-4）；评论 D1–D3 落地、D4 灰度 Day 1 通过（真实评论 1 条 + forbidden 探针拦截） |
 | 执行结果记录 | ✅ | — |
 | 记录→下一轮 | ✅ | 复盘看板（P2-2） |
 
@@ -82,7 +82,7 @@
 ### 3.1 评论（脑图 3%；文档一期不做）—— **已拍板：现在立项，排在 P3 首位**
 - 前提：先设计评论内容审核与风控（文档原话）；立项后先出设计稿再动代码。方案雏形：生成规则「正向认同、≤10 字、不含营销、针对帖子内容」→ 桌面审核队列（人工放行）→ 每日上限与稀疏分布 → 手机 `interact` 子技能执行 → 回填。TaskPolicy 需新增 comment 阻断标签，保证未审核内容不会被发出。
 - 不在一期验收里，但设计与审核队列的基建可与 P2 并行推进。
-> 设计稿已出（2026-09-05）：[2026-09-05-xhs-ops-comment-design.md](2026-09-05-xhs-ops-comment-design.md)——风控规则表、数据模型（comments 集合 / interaction.comment / plan.kind=comment）、五段流程（手机只标注 commentWorthy → 桌面生成候选 → 人工审核组件 XhsOpsCommentReview → 评论 run → 回填看板）、桌面配额公式（min(dailyCap, 5, floor(今日浏览/8))）、**TabbyApp TaskPolicy `comment` 标签 + 文本白名单的机械阻断**、D0–D5 分期与验收。**2026-09-06 评审通过**：八项决策全部按稿子推荐值确认（频次 2/5、≤10 字、灰度 1 号×1 条×5 天、a11y 摘要、复用 generateText、搜不到即跳过、限流当日停评连续 2 天自动关、先推送→小修→D1），记录在设计稿 §11。**D1 桌面基建 ✅ 同日落地**（comments 集合 / 候选生成 + 硬校验 / 配额 / 审核状态机 / 4 个 REST / `XhsOpsCommentReview` 组件 / AccountPlanner 评论开关 / 插件与 TOOLS 路由；无头 e2e 通过），详见设计稿 §12。**D2 ✅ 同日落地**：TabbyApp 评论门禁（默认禁、白名单逐字放行、每条一次）、tabby-control 协议透传、nexu 评论 run（一条一个 chunk、回执交叉校验、草稿回写、时间窗）、队列里的「派发已批准的评论」按钮，详见设计稿 §13；新 APK 待荣耀再次 USB 连接后安装。**D3 ✅ 同日落地**（xhs 技能 v34 / bundle 53：comment.md 子技能、research.md posts 标注、interact.md 改口，详见设计稿 §14）。下一步 D4 灰度：先给荣耀装含评论门禁的 APK 跑一次浏览 run 验无误拦，再 1 账号 × 1 条/天 × 5 天人工全审。
+> 设计稿已出（2026-09-05）：[2026-09-05-xhs-ops-comment-design.md](2026-09-05-xhs-ops-comment-design.md)——风控规则表、数据模型（comments 集合 / interaction.comment / plan.kind=comment）、五段流程（手机只标注 commentWorthy → 桌面生成候选 → 人工审核组件 XhsOpsCommentReview → 评论 run → 回填看板）、桌面配额公式（min(dailyCap, 5, floor(今日浏览/8))）、**TabbyApp TaskPolicy `comment` 标签 + 文本白名单的机械阻断**、D0–D5 分期与验收。**2026-09-06 评审通过**：八项决策全部按稿子推荐值确认（频次 2/5、≤10 字、灰度 1 号×1 条×5 天、a11y 摘要、复用 generateText、搜不到即跳过、限流当日停评连续 2 天自动关、先推送→小修→D1），记录在设计稿 §11。**D1 桌面基建 ✅ 同日落地**（comments 集合 / 候选生成 + 硬校验 / 配额 / 审核状态机 / 4 个 REST / `XhsOpsCommentReview` 组件 / AccountPlanner 评论开关 / 插件与 TOOLS 路由；无头 e2e 通过），详见设计稿 §12。**D2 ✅ 同日落地**：TabbyApp 评论门禁（默认禁、白名单逐字放行、每条一次）、tabby-control 协议透传、nexu 评论 run（一条一个 chunk、回执交叉校验、草稿回写、时间窗）、队列里的「派发已批准的评论」按钮，详见设计稿 §13；新 APK 待荣耀再次 USB 连接后安装。**D3 ✅ 同日落地**（xhs 技能 v34 / bundle 53：comment.md 子技能、research.md posts 标注、interact.md 改口，详见设计稿 §14）。**D4 灰度 Day 1（2026-09-06）✅**：无误拦检查通过；用户选定并批准 1 条，22:23 派发、16 步发出、评论数 28→29、回执一致、草稿回写 sent；forbidden 探针第一次未拦（评论框是独立 Activity、占位文案「有话要说，快来评论」不在列表），修复识别（hint 标记 + "可编辑 + 发送键"结构规则）后第二次探针 `POLICY_COMMENT_FORBIDDEN` 拦住。后续 Day 2–5：每天 1 条人工批准后派发，观察限流/删评/拒绝率（设计稿 §15）。
 
 ### 3.2 其他
 - ~~新会话无 projectId 的兜底~~ ✅ 2026-09-06：`useProjectResolution` + `ProjectPicker` 抽成 `xhs-ops-project-picker.tsx`，看板/RunPlanner/ProfileMaterial 三个组件都支持省略 `projectId`（按 `projectName` 匹配或卡片内点选）；插件 schema 中 projectId 改为可选并写明「新会话不要去记忆/会话/文件里找 projectId」。

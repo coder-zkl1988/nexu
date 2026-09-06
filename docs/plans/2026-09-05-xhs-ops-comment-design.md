@@ -168,3 +168,14 @@ remaining      = cap − 今日已 sent − 今日已 approved 未执行
 - `interact.md`：评论只能通过评论任务发；其他任务被要求评论一律 `ABORT` 并指向审核队列；看评论只点气泡不点输入框。
 - 已镜像到 TabbyApp assets（`app/src/main/assets/skills/apps/xhs`）；bundle 53 已走 build:nexu → bundle → controller/openclaw 重启链路，荣耀在线时会自动同步。
 - **未做**：真机发评论（D4）。前置是荣耀装上带评论门禁的 APK 并跑一次浏览 run 确认搜索框 TYPE 不被误拦。
+
+## 15. D4 灰度记录
+
+### Day 1 · 2026-09-06（荣耀 PTP-AN10，账号「验收号·荣耀PTP」，每日上限 1）
+- 前置：装含评论门禁的 APK（22:07）后跑 2 篇浏览块：2/2 完成、32 步、搜索框 4 次 TYPE 全部放行、`POLICY_COMMENT_*` 0 次 → 无误拦。手机（bundle 53）已按 v34 回传 `commentWorthy`/`summary`。
+- 候选：4 篇帖子各 3 条候选（全部通过硬校验）。用户在会话中选定「千岛湖 Staycation 喜来登亲子房体验」@但但但但但 的第 ① 条「湖景亲子房绝了」，我按其决定调用审核接口批准；配额 cap=min(1,5,⌊22/8⌋)=1 → 批准后 remaining 0。
+- 派发：22:18 起被「距浏览结束 ≥10 分钟」挡了 11 次，22:23:34 通过并派发；评论 run 16 步、22:26 完成。手机按标题搜到原帖、核对作者、TYPE 原文「湖景亲子房绝了」一次、发送；汇报 `sent`「评论已发布，评论数 28→29」，`[回执]` 小红书 6 次生效点击，交叉校验通过；草稿回写 `sent` + sentAt + sendResult。**第 1 条真实评论成功，内容与批准原文逐字一致。**
+- **发现的洞**：运行器没有打出「白名单评论已使用」记账日志，说明 TYPE 那一刻 `isCommentEditorContext` 为 false——门禁没有识别到评论编辑态，白名单校验没有真正执行；这条评论正确是因为模型照办，不是机械保证。可能原因：键盘弹出后 `rootInActiveWindow` 落在输入法窗口、窗口标签 512 节点上限没走到底部输入栏、占位文案只在 `hintText` 里。修复（TabbyApp）：TYPE 时优先取应用窗口根节点、遍历上限 2048、所有节点的 hintText 计入标签、`findFocus` 拿不到时回退到树中第一个获焦可编辑节点，并加一行不含正文的 `[CommentGate] typing: editor=… focus=… labels=… window=…` 诊断日志。**验收标准 §9-2（forbidden 下必须拦住）在此修复验证前不算通过。**
+- **探针 1（22:34，用户授权的"打字不发送"探针，默认策略）**：门禁仍未拦——诊断 `editor=false pkg=com.xingin.xhs focus=EditText labels=2 window=11`。uiautomator 抓树看清了原因：小红书评论框是独立 Activity `com.xingin.comment.input.ui.NoteCommentActivity`（34 个节点、资源 id 全部混淆），输入框占位文案是「有话要说，快来评论」，不在当时的标记列表里，窗口里除此之外只有「发送」「表情」等。探针把「测试」两字留在了评论框（未发送），已用 adb 删除并退出编辑器。修复：标记补「有话要说」「快来评论」「发表你的看法」「说说你的看法」；新增结构兜底——焦点在 EditText 且同窗口有「发送」且无私信/聊天信号即判为评论编辑态（不再依赖文案穷举）；单测覆盖荣耀真实标签、未知文案、私信框、搜索框四种。
+- **探针 2（22:38，同一任务、新包）**：第 3 步被拦——`status: blocked`、`errorCode: POLICY_COMMENT_FORBIDDEN`、诊断 `editor=true`，评论框里没有输入任何字。**§9-2 通过。** 荣耀上现装的包（TabbyApp comment-gate 修复提交，22:37）即灰度用包。
+- Day 1 结论：链路（审核 → 派发 → 手机逐字输入 → 发送 → 回执交叉核对 → 回写）全部真机走通；forbidden 拦截真机验证通过；allowed 路径的"白名单校验真正执行"要在 Day 2 的诊断日志里再确认一次（预期出现 `editor=true policy=optional` 与「白名单评论已使用」）。
