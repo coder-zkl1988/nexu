@@ -1,6 +1,6 @@
 # 小红书养号 · 评论功能设计稿（P3-1，D0）
 
-> 状态：**已评审通过（2026-09-06）；D1 桌面基建、D2 手机阻断 + 评论 run 均已落地（见 §12/§13）**，下一步 D3 手机技能，然后 D4 灰度。拍板记录（2026-09-04）：评论**现在立项**，排 P3 首位，**先设计后实现**；运营文档原话「评论需先设计内容审核与风控」。脑图给评论的权重是 3%，即它是浏览之外的点缀，不是主线。
+> 状态：**已评审通过（2026-09-06）；D1 桌面基建、D2 手机阻断 + 评论 run、D3 手机技能均已落地（见 §12–§14）**，下一步 D4 灰度（先装新 APK 验无误拦）。拍板记录（2026-09-04）：评论**现在立项**，排 P3 首位，**先设计后实现**；运营文档原话「评论需先设计内容审核与风控」。脑图给评论的权重是 3%，即它是浏览之外的点缀，不是主线。
 
 ## 1. 目标与非目标
 
@@ -160,3 +160,11 @@ remaining      = cap − 今日已 sent − 今日已 approved 未执行
 - **前端**：审核队列配额条上多了「派发已批准的评论（N）」（二次确认，上报 `xhs_ops_comment_run_started`）；看板明细显示「评 N」；plan/chunk 类型扩展。插件/TOOLS：派发只由用户在队列里点，agent 不派、不重试、不代发。
 - **测试**：controller 新增 6（任务文本/解析/回执交叉校验/chunk 生成与汇总/时间窗与认领/执行回写）+ 路由未变；全量 1123/1123；web 23/23（xhs-ops 用例）。
 - **未做**：真机发评论——这就是 D4 灰度本身（1 账号 × 1 条/天 × 5 天，人工全审），需要先装新 APK，并由运营在队列里批准后点派发。
+
+## 14. D3 落地记录（2026-09-06，tabby-control xhs skill v34 / bundle 53）
+
+- `references/comment.md`（新）：「小红书评论任务」流程——按标题搜帖 → 核对标题+作者一致 → 慢滑 5–10s → 点评论框 → 一次 TYPE 原文并核对 → 发送 → 评论区出现自己昵称+原文才算 sent → BACK；只做这一件事，不互动、不改字、不评别的帖；异常表（post_not_found / comment_failed / login_required / account_restricted / rate_limited / interrupted）与 `COMMENT_JSON:{status: sent|failed|skipped, detail, anomalies}` 契约，并告知桌面会用点击回执交叉核对。skill.json 子技能 `comment`（优先级 45，低于 post 的 46，关键词「评论任务」「小红书评论任务」「COMMENT_JSON」等）。
+- `research.md` §六：`posts[]` 增 `commentWorthy`（只标注不评论：图文、与定位强相关、评论区正向、非广告/争议）与 `summary`（正文一句话 ≤60 字，视频帖空串）；示例同步。
+- `interact.md`：评论只能通过评论任务发；其他任务被要求评论一律 `ABORT` 并指向审核队列；看评论只点气泡不点输入框。
+- 已镜像到 TabbyApp assets（`app/src/main/assets/skills/apps/xhs`）；bundle 53 已走 build:nexu → bundle → controller/openclaw 重启链路，荣耀在线时会自动同步。
+- **未做**：真机发评论（D4）。前置是荣耀装上带评论门禁的 APK 并跑一次浏览 run 确认搜索框 TYPE 不被误拦。
